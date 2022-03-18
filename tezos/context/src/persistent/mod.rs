@@ -10,8 +10,6 @@ use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 
 #[cfg(test)]
 use crate::serialize::persistent::AbsoluteOffset;
-#[cfg(test)]
-use std::sync::Arc;
 
 use crate::{
     initializer::IndexInitializationError,
@@ -136,7 +134,7 @@ pub trait KeyValueStoreBackend {
     /// This is used on the persistent context, to avoid commiting unused HashId
     fn make_hash_id_ready_for_commit(&mut self, hash_id: HashId) -> Result<HashId, DBError>;
     /// Reload the persistent database and verify its integrity
-    fn reload_database(&mut self) -> Result<(), DBError>;
+    fn reload_database(&mut self) -> Result<(), ReloadError>;
     /// Return the file's statistics
     ///
     /// `Self::try_new` needs to be called with `read_mode=true`
@@ -145,7 +143,10 @@ pub trait KeyValueStoreBackend {
     #[cfg(test)]
     fn synchronize_data(
         &mut self,
-        batch: &[(HashId, Arc<[u8]>)],
+        batch: &[(
+            HashId,
+            crate::kv_store::inline_boxed_slice::InlinedBoxedSlice,
+        )],
         output: &[u8],
     ) -> Result<Option<AbsoluteOffset>, DBError>;
 }
@@ -167,6 +168,53 @@ impl Default for ReadStatistics {
             lowest_offset: u64::MAX,
             unique_shapes: HashMap::default(),
             shapes_length: 0,
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ReloadError {
+    #[error("Initialization error {error}")]
+    Init {
+        #[from]
+        error: IndexInitializationError,
+    },
+    #[error("DBError {error}")]
+    DBError {
+        #[from]
+        error: DBError,
+    },
+    #[error("Commit failed {error}")]
+    CommitFailed { error: DBError },
+    #[error("Failed to traverse on-disk tree {error}")]
+    TraverseError {
+        #[from]
+        error: MerkleError,
+    },
+    #[error("Last commit not found")]
+    LastCommitNotFound,
+    #[error("String interner not found")]
+    StringInternerNotFound,
+    #[error("Checkout on the last commit failed")]
+    CheckoutFailed,
+    #[error("Unable to fetch the `Commit` object")]
+    FetchCommitFailed,
+}
+
+impl From<ContextError> for ReloadError {
+    fn from(e: ContextError) -> Self {
+        ReloadError::DBError {
+            error: DBError::ContextError { error: Box::new(e) },
+        }
+    }
+}
+
+impl<T> From<PoisonError<T>> for ReloadError {
+    fn from(pe: PoisonError<T>) -> Self {
+        ReloadError::DBError {
+            error: DBError::LockError {
+                reason: format!("{}", pe),
+            },
         }
     }
 }

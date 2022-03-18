@@ -84,17 +84,15 @@ pub async fn baking_rights(
         }
         Err(RightsError::UnsupportedProtocolError { .. }) => {
             // fallback, if protocol is not supported, we trigger rpc protocol router
-            result_to_json_response(
-                services::protocol::call_protocol_rpc(
-                    chain_id_param,
-                    chain_id,
-                    block_hash,
-                    create_rpc_request(req).await?,
-                    &env,
-                )
-                .await,
-                env.log(),
+            let result = services::protocol::call_protocol_rpc(
+                chain_id_param,
+                chain_id,
+                block_hash,
+                create_rpc_request(req).await?,
+                &env,
             )
+            .await?;
+            make_response_with_status_and_json_string(result.0, &result.1)
         }
         Err(RightsError::ServiceError { reason }) => {
             slog::warn!(env.log(), "Failed to execute RPC function for baking rights"; "reason" => format!("{:?}", &reason));
@@ -140,17 +138,15 @@ pub async fn endorsing_rights(
         }
         Err(RightsError::UnsupportedProtocolError { .. }) => {
             // fallback, if protocol is not supported, we trigger rpc protocol router
-            result_to_json_response(
-                services::protocol::call_protocol_rpc(
-                    chain_id_param,
-                    chain_id,
-                    block_hash,
-                    create_rpc_request(req).await?,
-                    &env,
-                )
-                .await,
-                env.log(),
+            let result = services::protocol::call_protocol_rpc(
+                chain_id_param,
+                chain_id,
+                block_hash,
+                create_rpc_request(req).await?,
+                &env,
             )
+            .await?;
+            make_response_with_status_and_json_string(result.0, &result.1)
         }
         Err(RightsError::ServiceError { reason }) => {
             slog::warn!(env.log(), "Failed to execute RPC function for endorsing rights"; "reason" => format!("{:?}", &reason));

@@ -20,7 +20,6 @@ use crate::helpers::{
 use crate::server::RpcServiceEnvironment;
 use tezos_api::ffi::ApplyBlockRequest;
 use tezos_messages::p2p::encoding::prelude::OperationsForBlocksMessage;
-use tezos_messages::ts_to_rfc3339;
 
 pub type BlockOperationsHashes = Vec<String>;
 
@@ -52,7 +51,7 @@ pub(crate) fn get_blocks(
         let r = BlockStorage::new(persistent_storage)
             .get_multiple_with_direction(&hash, limit, Direction::Reverse)?
             .into_iter()
-            .filter(|b| b.header.timestamp() >= min_date)
+            .filter(|b| b.header.timestamp().i64() >= min_date)
             .map(|b| b.hash.to_base58_check())
             .collect::<Vec<_>>();
         response.push(r);
@@ -193,6 +192,22 @@ pub(crate) fn get_block_shell_header_or_fail(
             BlockHeaderShellInfo::try_new(&block_header).map_err(RpcServiceError::from)
         })
         .map(Arc::new)
+}
+
+/// Get the raw block  header
+#[cached(
+    name = "BLOCK_RAW_HEADER_CACHE",
+    type = "TimedSizedCache<(ChainId, BlockHash), Arc<BlockHeaderWithHash>>",
+    create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
+    convert = "{(chain_id.clone(), block_hash.clone())}",
+    result = true
+)]
+pub(crate) fn get_block_raw_header_or_fail(
+    chain_id: &ChainId,
+    block_hash: BlockHash,
+    persistent_storage: &PersistentStorage,
+) -> Result<Arc<BlockHeaderWithHash>, RpcServiceError> {
+    get_raw_block_header_with_hash(chain_id, &block_hash, persistent_storage)
 }
 
 #[cached(
@@ -537,15 +552,10 @@ pub(crate) async fn get_block(
         level: block_header.header.level(),
         proto: block_header.header.proto(),
         predecessor: block_header.header.predecessor().to_base58_check(),
-        timestamp: ts_to_rfc3339(block_header.header.timestamp())?,
+        timestamp: block_header.header.timestamp().to_rfc3339()?,
         validation_pass: block_header.header.validation_pass(),
         operations_hash: block_header.header.operations_hash().to_base58_check(),
-        fitness: block_header
-            .header
-            .fitness()
-            .iter()
-            .map(|x| hex::encode(&x))
-            .collect(),
+        fitness: block_header.header.fitness().as_hex_vec(),
         context: block_header.header.context().to_base58_check(),
         protocol_data: serde_json::from_str(block_header_proto_json).unwrap_or_default(),
     };

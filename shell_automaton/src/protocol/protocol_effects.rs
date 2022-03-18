@@ -3,7 +3,7 @@
 
 use crate::{Action, ActionWithMeta, Service, Store};
 
-use crate::service::ProtocolService;
+use crate::service::PrevalidatorService;
 
 pub fn protocol_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
@@ -11,7 +11,7 @@ where
 {
     match &action.action {
         Action::WakeupEvent(_) => {
-            while let Ok(action) = store.service.protocol().try_recv() {
+            while let Ok(action) = store.service.prevalidator().try_recv() {
                 store.dispatch(action);
             }
         }

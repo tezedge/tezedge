@@ -20,6 +20,11 @@ pub const FIXED: FixedConstants = FixedConstants {
     max_anon_ops_per_block: 132,
     max_operation_data_length: 16 * 1024,
     max_proposals_per_delegate: 20,
+    max_micheline_node_count: 50_000,
+    max_micheline_bytes_limit: 50_000,
+    max_allowed_global_constants_depth: 10_000,
+    cache_layout: [100_000_000],
+    michelson_maximum_type_size: 2001,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, CopyGetters)]
@@ -30,6 +35,11 @@ pub struct FixedConstants {
     max_anon_ops_per_block: u8,
     max_operation_data_length: i32,
     max_proposals_per_delegate: u8,
+    max_micheline_node_count: i32,
+    max_micheline_bytes_limit: i32,
+    max_allowed_global_constants_depth: i32,
+    cache_layout: [i64; 1],
+    michelson_maximum_type_size: u16,
 }
 
 impl ToRpcJsonMap for FixedConstants {
@@ -51,6 +61,26 @@ impl ToRpcJsonMap for FixedConstants {
         ret.insert(
             "max_proposals_per_delegate",
             UniversalValue::num(self.max_proposals_per_delegate),
+        );
+        ret.insert(
+            "max_micheline_node_count",
+            UniversalValue::num(self.max_micheline_node_count),
+        );
+        ret.insert(
+            "max_micheline_bytes_limit",
+            UniversalValue::num(self.max_micheline_bytes_limit),
+        );
+        ret.insert(
+            "max_allowed_global_constants_depth",
+            UniversalValue::num(self.max_allowed_global_constants_depth),
+        );
+        ret.insert(
+            "cache_layout",
+            UniversalValue::i64_list(self.cache_layout.to_vec()),
+        );
+        ret.insert(
+            "michelson_maximum_type_size",
+            UniversalValue::num(self.michelson_maximum_type_size),
         );
         ret
     }
@@ -87,12 +117,14 @@ pub struct ParametricConstants {
     endorsement_reward: Vec<Mutez>,
     cost_per_byte: Mutez,
     hard_storage_limit_per_operation: Zarith,
-    test_chain_duration: i64,
     quorum_min: i32,
     quorum_max: i32,
     min_proposal_quorum: i32,
     initial_endorsers: u16,
     delay_per_missing_endorsement: i64,
+    liquidity_baking_subsidy: Mutez,
+    liquidity_baking_sunset_level: i32,
+    liquidity_baking_escape_ema_threshold: i32,
 }
 
 impl ToRpcJsonMap for ParametricConstants {
@@ -178,10 +210,6 @@ impl ToRpcJsonMap for ParametricConstants {
             "hard_storage_limit_per_operation",
             UniversalValue::big_num(self.hard_storage_limit_per_operation.clone()),
         );
-        ret.insert(
-            "test_chain_duration",
-            UniversalValue::i64(self.test_chain_duration),
-        );
         ret.insert("quorum_min", UniversalValue::num(self.quorum_min));
         ret.insert("quorum_max", UniversalValue::num(self.quorum_max));
         ret.insert(
@@ -195,6 +223,18 @@ impl ToRpcJsonMap for ParametricConstants {
         ret.insert(
             "delay_per_missing_endorsement",
             UniversalValue::i64(self.delay_per_missing_endorsement),
+        );
+        ret.insert(
+            "liquidity_baking_subsidy",
+            UniversalValue::big_num(self.liquidity_baking_subsidy.clone()),
+        );
+        ret.insert(
+            "liquidity_baking_sunset_level",
+            UniversalValue::num(self.liquidity_baking_sunset_level),
+        );
+        ret.insert(
+            "liquidity_baking_escape_ema_threshold",
+            UniversalValue::num(self.liquidity_baking_escape_ema_threshold),
         );
         ret
     }

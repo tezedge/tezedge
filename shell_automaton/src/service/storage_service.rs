@@ -1,37 +1,32 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::BTreeSet;
-use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use std::time::Instant;
 use std::{fmt, thread};
 
+use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
-use strum::IntoEnumIterator;
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use storage::block_meta_storage::Meta;
 use storage::cycle_eras_storage::CycleErasData;
 use storage::cycle_storage::CycleData;
-use storage::persistent::BincodeEncoded;
-use storage::shell_automaton_action_meta_storage::{
-    ShellAutomatonActionStats, ShellAutomatonActionsStats,
-};
 use storage::{
     BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader,
     BlockStorage, BlockStorageReader, ChainMetaStorage, ConstantsStorage, CycleErasStorage,
-    CycleMetaStorage, OperationsMetaStorage, OperationsStorage, OperationsStorageReader,
-    PersistentStorage, ShellAutomatonActionMetaStorage, ShellAutomatonActionStorage,
+    CycleMetaStorage, OperationKey, OperationsMetaStorage, OperationsStorage,
+    OperationsStorageReader, PersistentStorage, ShellAutomatonActionStorage,
     ShellAutomatonStateStorage, StorageInitInfo,
 };
 use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse, CommitGenesisResult};
-use tezos_messages::p2p::encoding::block_header::BlockHeader;
+use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
+use tezos_messages::p2p::encoding::fitness::Fitness;
 use tezos_messages::p2p::encoding::operation::Operation;
+use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 
 use crate::request::RequestId;
 use crate::storage::kv_cycle_meta::CycleKey;
-use crate::{Action, ActionId, ActionKind, ActionWithMeta, State};
+use crate::{Action, ActionId, ActionWithMeta, State};
 
 use super::service_channel::{
     worker_channel, RequestSendError, ResponseTryRecvError, ServiceWorkerRequester,
@@ -61,33 +56,41 @@ type StorageWorkerResponder = ServiceWorkerResponder<StorageRequest, StorageResp
 #[error("Error accessing storage: {0}")]
 pub struct StorageError(String);
 
+impl StorageError {
+    pub fn mocked() -> Self {
+        Self("MockedStorageError".to_owned())
+    }
+}
+
 impl From<storage::StorageError> for StorageError {
     fn from(err: storage::StorageError) -> Self {
         Self(err.to_string())
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
+#[enum_kind(
+    StorageRequestPayloadKind,
+    derive(strum_macros::Display, Serialize, Deserialize,)
+)]
 pub enum StorageRequestPayload {
     StateSnapshotPut(Box<State>),
     ActionPut(Box<ActionWithMeta>),
-    ActionMetaUpdate {
-        action_id: ActionId,
-        action_kind: ActionKind,
-
-        /// Duration until next action.
-        duration_nanos: u64,
-    },
 
     BlockMetaGet(BlockHash),
+    BlockHashByLevelGet(Level),
     BlockHeaderGet(BlockHash),
+    BlockOperationsGet(OperationKey),
     BlockAdditionalDataGet(BlockHash),
     OperationsGet(BlockHash),
     ConstantsGet(ProtocolHash),
     CycleErasGet(ProtocolHash),
     CycleMetaGet(CycleKey),
 
-    BlockHeaderPut(BlockHeaderWithHash),
+    CurrentHeadGet(ChainId, Option<Level>),
+
+    BlockHeaderPut(ChainId, BlockHeaderWithHash),
+    BlockOperationsPut(OperationsForBlocksMessage),
     BlockAdditionalDataPut((BlockHash, BlockAdditionalData)),
 
     PrepareApplyBlockData {
@@ -96,9 +99,17 @@ pub enum StorageRequestPayload {
     },
     StoreApplyBlockResult {
         block_hash: Arc<BlockHash>,
+        block_fitness: Fitness,
         block_result: Arc<ApplyBlockResponse>,
         block_metadata: Arc<Meta>,
     },
+}
+
+impl StorageRequestPayload {
+    #[inline(always)]
+    pub fn kind(&self) -> StorageRequestPayloadKind {
+        StorageRequestPayloadKind::from(self)
+    }
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
@@ -106,17 +117,22 @@ pub enum StorageRequestPayload {
 pub enum StorageResponseSuccess {
     StateSnapshotPutSuccess(ActionId),
     ActionPutSuccess(ActionId),
-    ActionMetaUpdateSuccess(ActionId),
 
     BlockMetaGetSuccess(BlockHash, Option<Meta>),
+    BlockHashByLevelGetSuccess(Option<BlockHash>),
     BlockHeaderGetSuccess(BlockHash, Option<BlockHeader>),
+    BlockOperationsGetSuccess(Option<OperationsForBlocksMessage>),
     BlockAdditionalDataGetSuccess(BlockHash, Option<BlockAdditionalData>),
     OperationsGetSuccess(BlockHash, Option<Vec<Operation>>),
     ConstantsGetSuccess(ProtocolHash, Option<String>),
     CycleErasGetSuccess(ProtocolHash, Option<CycleErasData>),
     CycleMetaGetSuccess(CycleKey, Option<CycleData>),
 
+    /// Returns: `(CurrentHead, CurrentHeadPredecessor)`.
+    CurrentHeadGetSuccess(BlockHeaderWithHash, Option<BlockHeaderWithHash>),
+
     BlockHeaderPutSuccess(bool),
+    BlockOperationsPutSuccess(bool),
     BlockAdditionalDataPutSuccess(()),
 
     PrepareApplyBlockDataSuccess {
@@ -132,17 +148,21 @@ pub enum StorageResponseSuccess {
 pub enum StorageResponseError {
     StateSnapshotPutError(ActionId, StorageError),
     ActionPutError(StorageError),
-    ActionMetaUpdateError(StorageError),
 
     BlockMetaGetError(BlockHash, StorageError),
+    BlockHashByLevelGetError(StorageError),
     BlockHeaderGetError(BlockHash, StorageError),
+    BlockOperationsGetError(StorageError),
     BlockAdditionalDataGetError(BlockHash, StorageError),
     OperationsGetError(BlockHash, StorageError),
     ConstantsGetError(ProtocolHash, StorageError),
     CycleErasGetError(ProtocolHash, StorageError),
     CycleMetaGetError(CycleKey, StorageError),
 
+    CurrentHeadGetError(StorageError),
+
     BlockHeaderPutError(StorageError),
+    BlockOperationsPutError(StorageError),
     BlockAdditionalDataPutError(StorageError),
 
     PrepareApplyBlockDataError(StorageError),
@@ -203,41 +223,6 @@ impl fmt::Debug for StorageServiceDefault {
     }
 }
 
-#[derive(Serialize, Deserialize, Default)]
-pub struct ActionGraph(Vec<ActionGraphNode>);
-
-impl IntoIterator for ActionGraph {
-    type IntoIter = std::vec::IntoIter<ActionGraphNode>;
-    type Item = ActionGraphNode;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl Deref for ActionGraph {
-    type Target = Vec<ActionGraphNode>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for ActionGraph {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl BincodeEncoded for ActionGraph {}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ActionGraphNode {
-    pub action_kind: ActionKind,
-    pub next_actions: BTreeSet<usize>,
-}
-
 impl StorageServiceDefault {
     fn run_worker(
         log: slog::Logger,
@@ -250,31 +235,17 @@ impl StorageServiceDefault {
 
         let snapshot_storage = ShellAutomatonStateStorage::new(&storage);
         let action_storage = ShellAutomatonActionStorage::new(&storage);
-        let action_meta_storage = ShellAutomatonActionMetaStorage::new(&storage);
 
+        let chain_meta_storage = ChainMetaStorage::new(&storage);
         let block_storage = BlockStorage::new(&storage);
         let block_meta_storage = BlockMetaStorage::new(&storage);
         let operations_storage = OperationsStorage::new(&storage);
+        let operations_meta_storage = OperationsMetaStorage::new(&storage);
         let constants_storage = ConstantsStorage::new(&storage);
         let cycle_meta_storage = CycleMetaStorage::new(&storage);
         let cycle_eras_storage = CycleErasStorage::new(&storage);
 
-        let mut last_time_meta_saved = Instant::now();
-        let mut action_meta_update_prev_action_kind = None;
-        let mut action_graph = ActionGraph(
-            ActionKind::iter()
-                .map(|action_kind| ActionGraphNode {
-                    action_kind,
-                    next_actions: BTreeSet::new(),
-                })
-                .collect(),
-        );
-
-        let mut action_metas = action_meta_storage
-            .get_stats()
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| ShellAutomatonActionsStats::new());
+        // let mut last_time_meta_saved = Instant::now();
 
         while let Ok(req) = channel.recv() {
             let result = match req.payload {
@@ -289,35 +260,15 @@ impl StorageServiceDefault {
                     .put::<Action>(&action.id.into(), &action.action)
                     .map(|_| ActionPutSuccess(action.id))
                     .map_err(|err| ActionPutError(err.into())),
-                ActionMetaUpdate {
-                    action_id,
-                    action_kind,
-                    duration_nanos,
-                } => {
-                    if let Some(prev_action_kind) = action_meta_update_prev_action_kind.clone() {
-                        action_graph[prev_action_kind as usize]
-                            .next_actions
-                            .insert(action_kind as usize);
-                    }
 
-                    let meta = action_metas
-                        .stats
-                        .entry(action_kind.to_string())
-                        .or_insert_with(|| ShellAutomatonActionStats {
-                            total_calls: 0,
-                            total_duration: 0,
-                        });
-
-                    meta.total_calls += 1;
-                    meta.total_duration += duration_nanos;
-                    action_meta_update_prev_action_kind = Some(action_kind);
-
-                    Ok(ActionMetaUpdateSuccess(action_id))
-                }
                 BlockMetaGet(block_hash) => block_meta_storage
                     .get(&block_hash)
                     .map(|block_meta| BlockMetaGetSuccess(block_hash.clone(), block_meta))
                     .map_err(|err| BlockMetaGetError(block_hash, err.into())),
+                BlockHashByLevelGet(level) => block_storage
+                    .get_block_hash_by_level(level)
+                    .map(|result| BlockHashByLevelGetSuccess(result))
+                    .map_err(|err| BlockHashByLevelGetError(err.into())),
                 BlockHeaderGet(block_hash) => block_storage
                     .get(&block_hash)
                     .map(|block_header_with_hash| {
@@ -327,6 +278,10 @@ impl StorageServiceDefault {
                         )
                     })
                     .map_err(|err| BlockHeaderGetError(block_hash, err.into())),
+                BlockOperationsGet(key) => operations_storage
+                    .get(&key)
+                    .map(|ops| BlockOperationsGetSuccess(ops))
+                    .map_err(|err| BlockOperationsGetError(err.into())),
                 BlockAdditionalDataGet(block_hash) => block_meta_storage
                     .get_additional_data(&block_hash)
                     .map(|data| BlockAdditionalDataGetSuccess(block_hash.clone(), data))
@@ -349,10 +304,57 @@ impl StorageServiceDefault {
                     .map(|cycle_eras| CycleErasGetSuccess(proto_hash.clone(), cycle_eras))
                     .map_err(|err| CycleErasGetError(proto_hash, err.into())),
 
-                BlockHeaderPut(data) => match block_storage.put_block_header(&data) {
-                    Ok(is_new_block) => Ok(BlockHeaderPutSuccess(is_new_block)),
-                    Err(err) => Err(BlockHeaderPutError(err.into())),
-                },
+                CurrentHeadGet(chain_id, level_override) => {
+                    let result = level_override
+                        .and_then(|level| {
+                            Some(match block_storage.get_block_by_level(level) {
+                                Ok(head) => Ok(head?),
+                                Err(err) => Err(err),
+                            })
+                        })
+                        .unwrap_or_else(|| storage::hydrate_current_head(&chain_id, &storage))
+                        .and_then(|head| {
+                            let pred = if head.header.level() > 0 {
+                                block_storage.get(head.header.predecessor())?
+                            } else {
+                                None
+                            };
+                            Ok((head, pred))
+                        });
+                    match result {
+                        Ok((head, pred)) => Ok(CurrentHeadGetSuccess(head, pred)),
+                        Err(err) => Err(CurrentHeadGetError(err.into())),
+                    }
+                }
+
+                BlockHeaderPut(chain_id, header) => {
+                    match block_storage
+                        .put_block_header(&header)
+                        .and_then(|is_new| {
+                            block_meta_storage
+                                .put_block_header(&header, &chain_id, &log)
+                                .map(move |_| is_new)
+                        })
+                        .and_then(|is_new| {
+                            if !operations_meta_storage.contains(&header.hash)? {
+                                operations_meta_storage.put_block_header(&header)?;
+                            }
+                            Ok(is_new)
+                        }) {
+                        Ok(is_new_block) => Ok(BlockHeaderPutSuccess(is_new_block)),
+                        Err(err) => Err(BlockHeaderPutError(err.into())),
+                    }
+                }
+                BlockOperationsPut(message) => {
+                    match operations_storage
+                        .put_operations(&message)
+                        .and_then(|_| operations_meta_storage.put_operations(&message))
+                        .map(|(is_complete, _)| is_complete)
+                    {
+                        Ok(is_complete) => Ok(BlockOperationsPutSuccess(is_complete)),
+                        Err(err) => Err(BlockOperationsPutError(err.into())),
+                    }
+                }
 
                 BlockAdditionalDataPut((block_hash, data)) => {
                     match block_meta_storage.put_block_additional_data(&block_hash, &data) {
@@ -386,14 +388,17 @@ impl StorageServiceDefault {
                 }
                 StoreApplyBlockResult {
                     block_hash,
+                    block_fitness,
                     block_result,
                     block_metadata,
                 } => {
                     let mut block_meta = (*block_metadata).clone();
                     let result = storage::store_applied_block_result(
+                        &chain_meta_storage,
                         &block_storage,
                         &block_meta_storage,
                         &block_hash,
+                        block_fitness,
                         (*block_result).clone(),
                         &mut block_meta,
                         &cycle_meta_storage,
@@ -414,16 +419,14 @@ impl StorageServiceDefault {
                 slog::warn!(&log, "Storage request failed"; "result" => format!("{:?}", result));
             }
 
-            // Persist metas every 1 sec.
-            if Instant::now()
-                .duration_since(last_time_meta_saved)
-                .as_secs()
-                >= 1
-            {
-                let _ = action_meta_storage.set_graph(&action_graph);
-                let _ = action_meta_storage.set_stats(&action_metas);
-                last_time_meta_saved = Instant::now();
-            }
+            // // Persist metas every 1 sec.
+            // if Instant::now()
+            //     .duration_since(last_time_meta_saved)
+            //     .as_secs()
+            //     >= 1
+            // {
+            //     last_time_meta_saved = Instant::now();
+            // }
         }
     }
 

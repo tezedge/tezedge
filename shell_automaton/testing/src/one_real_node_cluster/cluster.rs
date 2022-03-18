@@ -9,7 +9,10 @@ use crypto::nonce::Nonce;
 use shell_automaton::event::{P2pPeerEvent, P2pServerEvent};
 use shell_automaton::peer::PeerCrypto;
 use shell_automaton::peers::add::multi::PeersAddMultiAction;
-use shell_automaton::{effects, reducer, Action, EnablingCondition, State, Store};
+use shell_automaton::{
+    check_timeouts, effects, reducer, Action, EnablingCondition, MioWaitForEventsAction, State,
+    Store,
+};
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::{AckMessage, NackInfo};
@@ -18,8 +21,8 @@ use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 
 use crate::service::{
     ActorsServiceDummy, ConnectedState, DnsServiceMocked, IOCondition, MioPeerMockedId,
-    MioPeerStreamMocked, MioServiceMocked, ProtocolRunnerServiceDummy, ProtocolServiceDummy,
-    QuotaServiceDummy, RandomnessServiceMocked, RpcServiceDummy, StorageServiceDummy,
+    MioPeerStreamMocked, MioServiceMocked, PrevalidatorServiceDummy, ProtocolRunnerServiceDummy,
+    RandomnessServiceMocked, RpcServiceDummy, StorageServiceDummy,
 };
 use crate::service::{Service, TimeService};
 
@@ -40,8 +43,7 @@ pub struct ServiceMocked {
     pub storage: StorageServiceDummy,
     pub rpc: RpcServiceDummy,
     pub actors: ActorsServiceDummy,
-    pub quota: QuotaServiceDummy,
-    pub protocol: ProtocolServiceDummy,
+    pub prevalidator: PrevalidatorServiceDummy,
 }
 
 impl ServiceMocked {
@@ -55,8 +57,7 @@ impl ServiceMocked {
             storage: StorageServiceDummy::new(),
             rpc: RpcServiceDummy::new(),
             actors: ActorsServiceDummy::new(),
-            quota: QuotaServiceDummy::new(),
-            protocol: ProtocolServiceDummy::new(),
+            prevalidator: PrevalidatorServiceDummy::new(),
         }
     }
 
@@ -79,8 +80,7 @@ impl Service for ServiceMocked {
     type Storage = StorageServiceDummy;
     type Rpc = RpcServiceDummy;
     type Actors = ActorsServiceDummy;
-    type Quota = QuotaServiceDummy;
-    type Protocol = ProtocolServiceDummy;
+    type Prevalidator = PrevalidatorServiceDummy;
 
     fn randomness(&mut self) -> &mut Self::Randomness {
         &mut self.randomness
@@ -110,12 +110,8 @@ impl Service for ServiceMocked {
         &mut self.actors
     }
 
-    fn quota(&mut self) -> &mut Self::Quota {
-        &mut self.quota
-    }
-
-    fn protocol(&mut self) -> &mut Self::Protocol {
-        &mut self.protocol
+    fn prevalidator(&mut self) -> &mut Self::Prevalidator {
+        &mut self.prevalidator
     }
 }
 
@@ -129,7 +125,11 @@ impl Cluster {
         Self {
             store: Store::new(
                 reducer,
-                effects,
+                |store, action| {
+                    eprintln!("[+] Action: {:#?}", &action);
+                    eprintln!("[+] State: {:#?}\n", store.state().peers);
+                    effects(store, action)
+                },
                 ServiceMocked::new(),
                 initial_time,
                 initial_state,
@@ -145,11 +145,21 @@ impl Cluster {
         self.store.state()
     }
 
+    pub fn service(&mut self) -> &mut ServiceMocked {
+        self.store.service()
+    }
+
     pub fn dispatch<T>(&mut self, action: T) -> bool
     where
         T: Into<Action> + EnablingCondition<State>,
     {
         self.store.dispatch(action)
+    }
+
+    /// End current simulated `make_progress` loop's current iteration.
+    pub fn loop_next(&mut self) {
+        self.dispatch(MioWaitForEventsAction {});
+        check_timeouts(&mut self.store);
     }
 
     pub fn dispatch_peer_ready_event(

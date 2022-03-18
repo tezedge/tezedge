@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{EnablingCondition, State};
 
-use super::PeersTimeouts;
+use super::{PeersCheckTimeoutsState, PeersTimeouts};
 
 // TODO: add Default for BasicEnum in fuzzcheck-rs and uncomment this code
 //#[cfg(feature = "fuzzing")]
@@ -22,8 +22,16 @@ use fuzzcheck::mutators::vector::VecMutator;
 pub struct PeersCheckTimeoutsInitAction {}
 
 impl EnablingCondition<State> for PeersCheckTimeoutsInitAction {
-    fn is_enabled(&self, _: &State) -> bool {
-        true
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.peers.check_timeouts {
+            PeersCheckTimeoutsState::Idle { time } => {
+                let check_timeouts_interval =
+                    state.config.check_timeouts_interval.as_nanos() as u64;
+
+                state.time_as_nanos() - time >= check_timeouts_interval
+            }
+            _ => false,
+        }
     }
 }
 

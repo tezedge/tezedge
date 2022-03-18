@@ -1,128 +1,114 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::BlockHash;
-use redux_rs::EnablingCondition;
-use tezos_messages::{
-    base::signature_public_key::SignaturePublicKey,
-    p2p::encoding::block_header::{BlockHeader, Level},
-};
+use std::sync::Arc;
 
-use crate::State;
+use crypto::hash::ProtocolHash;
+use serde::{Deserialize, Serialize};
 
-use super::{CurrentHeadPrecheckError, CurrentHeadState};
+use storage::BlockHeaderWithHash;
+
+use crate::protocol_runner::ProtocolRunnerState;
+use crate::request::RequestId;
+use crate::service::storage_service::StorageError;
+use crate::storage::blocks::genesis::init::StorageBlocksGenesisInitState;
+use crate::{EnablingCondition, State};
+
+use super::CurrentHeadState;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CurrentHeadReceivedAction {
-    pub block_hash: BlockHash,
-    pub block_header: BlockHeader,
-    pub injected: bool,
-}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CurrentHeadRehydrateInitAction {}
 
-/// Enables [CurrentHeadReceivedAction] when its level is the next to the one of last applied block
-/// and its block hash hasn't seen yet.
-impl EnablingCondition<State> for CurrentHeadReceivedAction {
+impl EnablingCondition<State> for CurrentHeadRehydrateInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state
-            .current_heads
-            .candidate_level()
-            .map_or(true, |l| l == self.block_header.level())
-            && !state
-                .current_heads
-                .applied_hashes
-                .contains_key(&self.block_hash)
-            && !state
-                .current_heads
-                .candidates
-                .contains_key(&self.block_hash)
+        if !matches!(&state.current_head, CurrentHeadState::Idle) {
+            return false;
+        }
+        if let ProtocolRunnerState::Ready(protocol) = &state.protocol_runner {
+            protocol.genesis_commit_hash.is_none()
+                || matches!(
+                    &state.storage.blocks.genesis.init,
+                    StorageBlocksGenesisInitState::Success
+                )
+        } else {
+            false
+        }
     }
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CurrentHeadPrecheckAction {
-    pub block_hash: BlockHash,
-    pub injected: bool,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CurrentHeadRehydratePendingAction {
+    pub storage_req_id: RequestId,
 }
 
-impl EnablingCondition<State> for CurrentHeadPrecheckAction {
+impl EnablingCondition<State> for CurrentHeadRehydratePendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state
-            .current_heads
-            .applied_head()
-            .map_or(false, |applied_head| {
-                if let Some(CurrentHeadState::Received { block_header }) =
-                    state.current_heads.candidates.get(&self.block_hash)
-                {
-                    block_header.level() == applied_head.level + 1
-                } else {
-                    false
-                }
-            })
+        match &state.current_head {
+            CurrentHeadState::RehydrateInit { .. } => true,
+            _ => false,
+        }
     }
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CurrentHeadPrecheckSuccessAction {
-    pub block_hash: BlockHash,
-    pub baker: SignaturePublicKey,
-    pub priority: u16,
-    pub injected: bool,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CurrentHeadRehydrateErrorAction {
+    pub error: StorageError,
 }
 
-impl EnablingCondition<State> for CurrentHeadPrecheckSuccessAction {
-    fn is_enabled(&self, _state: &State) -> bool {
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CurrentHeadPrecheckRejectedAction {
-    pub block_hash: BlockHash,
-}
-
-impl EnablingCondition<State> for CurrentHeadPrecheckRejectedAction {
-    fn is_enabled(&self, _state: &State) -> bool {
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CurrentHeadErrorAction {
-    pub block_hash: BlockHash,
-    pub error: CurrentHeadPrecheckError,
-}
-
-impl EnablingCondition<State> for CurrentHeadErrorAction {
-    fn is_enabled(&self, _state: &State) -> bool {
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CurrentHeadApplyAction {
-    pub block_hash: BlockHash,
-    pub level: Level,
-    pub timestamp: i64,
-}
-
-impl EnablingCondition<State> for CurrentHeadApplyAction {
-    fn is_enabled(&self, _state: &State) -> bool {
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CurrentHeadPrecacheBakingRightsAction {}
-
-impl EnablingCondition<State> for CurrentHeadPrecacheBakingRightsAction {
+impl EnablingCondition<State> for CurrentHeadRehydrateErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state.current_heads.applied_head().is_some()
+        match &state.current_head {
+            CurrentHeadState::RehydratePending { .. } => true,
+            _ => false,
+        }
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CurrentHeadRehydrateSuccessAction {
+    pub head: BlockHeaderWithHash,
+    pub head_pred: Option<BlockHeaderWithHash>,
+}
+
+impl EnablingCondition<State> for CurrentHeadRehydrateSuccessAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.current_head {
+            CurrentHeadState::RehydratePending { .. } => true,
+            _ => false,
+        }
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CurrentHeadRehydratedAction {}
+
+impl EnablingCondition<State> for CurrentHeadRehydratedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.current_head {
+            CurrentHeadState::RehydrateSuccess { .. } => true,
+            _ => false,
+        }
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CurrentHeadUpdateAction {
+    pub new_head: Arc<BlockHeaderWithHash>,
+    pub protocol: ProtocolHash,
+    pub next_protocol: ProtocolHash,
+}
+
+impl EnablingCondition<State> for CurrentHeadUpdateAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        match &state.current_head {
+            CurrentHeadState::Rehydrated { .. } => true,
+            _ => false,
+        }
     }
 }

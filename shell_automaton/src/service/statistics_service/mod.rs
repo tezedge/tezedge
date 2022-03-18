@@ -1,15 +1,22 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::net::SocketAddr;
+use std::ops::{Deref, DerefMut};
 
 use serde::{Deserialize, Serialize};
+use strum::IntoEnumIterator;
 
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
+use storage::shell_automaton_action_meta_storage::ShellAutomatonActionStats;
 use tezos_api::ffi::{ApplyBlockExecutionTimestamps, ApplyBlockResponse};
 use tezos_messages::base::signature_public_key::SignaturePublicKey;
 use tezos_messages::p2p::encoding::block_header::Level;
+
+use crate::{ActionId, ActionKind, ActionWithMeta};
+
+const STORAGE_REQUESTS_FINISHED_LEN: usize = 1024;
 
 fn ocaml_time_normalize(ocaml_time: f64) -> u64 {
     (ocaml_time * 1_000_000_000.0) as u64
@@ -124,13 +131,124 @@ impl From<&ApplyBlockExecutionTimestamps> for ApplyBlockProtocolStats {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ActionGraph(Vec<ActionGraphNode>);
+
+impl Default for ActionGraph {
+    fn default() -> Self {
+        Self(
+            ActionKind::iter()
+                .map(|action_kind| ActionGraphNode {
+                    action_kind,
+                    next_actions: BTreeSet::new(),
+                })
+                .collect(),
+        )
+    }
+}
+
+impl IntoIterator for ActionGraph {
+    type IntoIter = std::vec::IntoIter<ActionGraphNode>;
+    type Item = ActionGraphNode;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl Deref for ActionGraph {
+    type Target = Vec<ActionGraphNode>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ActionGraph {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionGraphNode {
+    pub action_kind: ActionKind,
+    pub next_actions: BTreeSet<usize>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct StorageRequestFinished {
+    #[serde(flatten)]
+    pub request: crate::service::rpc_service::StorageRequest,
+    pub status: StorageRequestFinishedStatus,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum StorageRequestFinishedStatus {
+    Error { error: String },
+    Success,
+}
+
+#[derive(Debug)]
 pub struct StatisticsService {
+    last_action_id: Option<ActionId>,
+    last_action_kind: Option<ActionKind>,
+    action_kind_stats: BTreeMap<ActionKind, ShellAutomatonActionStats>,
+    action_graph: ActionGraph,
+
     blocks_apply: BlocksApplyStats,
     levels: VecDeque<(Level, Vec<BlockHash>)>,
+
+    storage_requests_finished: VecDeque<StorageRequestFinished>,
+}
+
+impl Default for StatisticsService {
+    fn default() -> Self {
+        Self {
+            last_action_id: Default::default(),
+            last_action_kind: Default::default(),
+            action_kind_stats: Default::default(),
+            action_graph: Default::default(),
+            blocks_apply: Default::default(),
+            levels: Default::default(),
+            storage_requests_finished: VecDeque::with_capacity(STORAGE_REQUESTS_FINISHED_LEN),
+        }
+    }
 }
 
 impl StatisticsService {
+    pub fn action_new(&mut self, action: &ActionWithMeta) {
+        let pred_action_id = self.last_action_id.replace(action.id).unwrap_or(action.id);
+        let pred_action_kind = self.last_action_kind.replace(action.action.kind());
+        let action_kind = action.action.kind();
+        let duration = u64::from(action.id) - u64::from(pred_action_id);
+
+        let stats = self
+            .action_kind_stats
+            .entry(action_kind)
+            .or_insert_with(|| ShellAutomatonActionStats {
+                total_calls: 0,
+                total_duration: 0,
+            });
+        stats.total_calls += 1;
+        stats.total_duration += duration;
+
+        if let Some(pred_action_kind) = pred_action_kind {
+            self.action_graph[pred_action_kind as usize]
+                .next_actions
+                .insert(action_kind as usize);
+        }
+    }
+
+    pub fn action_kind_stats(&self) -> &BTreeMap<ActionKind, ShellAutomatonActionStats> {
+        &self.action_kind_stats
+    }
+
+    pub fn action_graph(&self) -> &ActionGraph {
+        &self.action_graph
+    }
+
     pub fn block_stats_get_all(&self) -> &BlocksApplyStats {
         &self.blocks_apply
     }
@@ -152,6 +270,7 @@ impl StatisticsService {
 
     fn add_block_level(
         levels: &mut VecDeque<(Level, Vec<BlockHash>)>,
+        blocks_apply: &mut BlocksApplyStats,
         block_hash: BlockHash,
         level: Level,
     ) {
@@ -164,7 +283,12 @@ impl StatisticsService {
                 Err(idx) => levels.insert(idx, (level, vec![block_hash.clone()])),
             },
         }
-        levels.drain(0..(levels.len().saturating_sub(120)));
+        levels
+            .drain(0..(levels.len().saturating_sub(120)))
+            .flat_map(|(_, v)| v.into_iter())
+            .for_each(|hash| {
+                blocks_apply.remove(&hash);
+            });
     }
 
     pub fn block_new(
@@ -179,20 +303,17 @@ impl StatisticsService {
         injected_timestamp: Option<u64>,
     ) {
         let levels = &mut self.levels;
-        let stats = self
-            .blocks_apply
-            .entry(block_hash.clone())
-            .or_insert_with(|| {
-                Self::add_block_level(levels, block_hash.clone(), level);
-                BlockApplyStats {
-                    level,
-                    block_timestamp,
-                    validation_pass,
-                    receive_timestamp,
-                    injected: injected_timestamp,
-                    ..BlockApplyStats::default()
-                }
-            });
+        let blocks_apply = &mut self.blocks_apply;
+        let stats = blocks_apply.entry(block_hash.clone());
+        let is_new = matches!(stats, std::collections::hash_map::Entry::Vacant(_));
+        let stats = stats.or_insert_with(|| BlockApplyStats {
+            level,
+            block_timestamp,
+            validation_pass,
+            receive_timestamp,
+            injected: injected_timestamp,
+            ..Default::default()
+        });
         if let Some(peer) = peer {
             stats
                 .peers
@@ -203,6 +324,9 @@ impl StatisticsService {
                 })
                 .head_recv
                 .push(receive_timestamp);
+        }
+        if is_new {
+            Self::add_block_level(levels, blocks_apply, block_hash.clone(), level);
         }
     }
 
@@ -403,5 +527,18 @@ impl StatisticsService {
         if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.injected = Some(time)
         }
+    }
+
+    pub fn storage_request_finished(&mut self, req: StorageRequestFinished) {
+        let len_to_remove = self
+            .storage_requests_finished
+            .len()
+            .saturating_sub(STORAGE_REQUESTS_FINISHED_LEN);
+        self.storage_requests_finished.drain(0..len_to_remove);
+        self.storage_requests_finished.push_back(req);
+    }
+
+    pub fn storage_requests_finished_all(&self) -> &VecDeque<StorageRequestFinished> {
+        &self.storage_requests_finished
     }
 }

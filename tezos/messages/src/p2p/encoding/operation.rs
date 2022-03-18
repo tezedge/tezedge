@@ -12,24 +12,15 @@ use crypto::{
     base58::FromBase58CheckError,
     hash::{BlockHash, OperationHash},
 };
-use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
+use tezos_encoding::{enc::BinWriter, types::Bytes};
 
 use super::limits::{GET_OPERATIONS_MAX_LENGTH, OPERATION_MAX_SIZE};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Debug,
-    Getters,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Eq, PartialEq, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct OperationMessage {
     #[get = "pub"]
@@ -51,30 +42,14 @@ impl From<OperationMessage> for Operation {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Clone,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Debug,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Clone, Serialize, Deserialize, Eq, PartialEq, Debug, HasEncoding, NomReader, BinWriter, Getters,
 )]
 pub struct Operation {
+    #[get = "pub"]
     branch: BlockHash,
-    #[encoding(list = "OPERATION_MAX_SIZE")]
-    data: Vec<u8>,
-}
-
-impl Operation {
-    pub fn branch(&self) -> &BlockHash {
-        &self.branch
-    }
-
-    pub fn data(&self) -> &Vec<u8> {
-        &self.data
-    }
+    #[encoding(bounded = "OPERATION_MAX_SIZE")]
+    #[get = "pub"]
+    data: Bytes,
 }
 
 #[derive(Error, Debug)]
@@ -102,7 +77,7 @@ impl TryFrom<DecodedOperation> for Operation {
     fn try_from(dop: DecodedOperation) -> Result<Operation, FromDecodedOperationError> {
         Ok(Operation {
             branch: BlockHash::from_base58_check(&dop.branch)?,
-            data: hex::decode(&dop.data)?,
+            data: hex::decode(&dop.data)?.into(),
         })
     }
 }
@@ -126,15 +101,7 @@ impl From<Operation> for DecodedOperation {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Getters,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Debug, Eq, PartialEq, Getters, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct GetOperationsMessage {
     #[get = "pub"]

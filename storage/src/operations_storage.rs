@@ -5,6 +5,7 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 
 use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
+use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
@@ -108,7 +109,8 @@ impl KVStoreKeyValueSchema for OperationsStorage {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct OperationKey {
     pub block_hash: BlockHash,
     pub validation_pass: u8,
@@ -120,6 +122,20 @@ impl OperationKey {
             block_hash: block_hash.clone(),
             validation_pass,
         }
+    }
+}
+
+impl Ord for OperationKey {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.block_hash
+            .cmp(&other.block_hash)
+            .then_with(|| self.validation_pass.cmp(&other.validation_pass))
+    }
+}
+
+impl PartialOrd for OperationKey {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(&other))
     }
 }
 

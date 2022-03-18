@@ -1,5 +1,6 @@
 import os
 import time
+import itertools
 from typing import Callable, Dict, List, Tuple
 
 from client.client import Client
@@ -7,6 +8,7 @@ from daemons.baker import Baker
 from daemons.endorser import Endorser
 from daemons.accuser import Accuser
 from daemons.node import Node
+from tools.constants import NodeParams
 
 NODE = 'light-node'
 CLIENT = 'tezos-client'
@@ -14,6 +16,16 @@ CLIENT_ADMIN = 'tezos-admin-client'
 BAKER = 'tezos-baker'
 ENDORSER = 'tezos-endorser'
 ACCUSER = 'tezos-accuser'
+NODE_LETTER = {
+    'T': 'light-node',
+    'O': 'tezos-node',
+}
+
+
+node_sequence = (
+    NODE_LETTER[l]
+    for l in itertools.cycle(os.getenv('TEZOS_NODE_SEQUENCE', 'T'))
+)
 
 
 class Sandbox:
@@ -54,8 +66,8 @@ class Sandbox:
         self,
         binaries_path: str,
         identities: Dict[str, Dict[str, str]],
-        rpc: int = 28730,
-        p2p: int = 29730,
+        rpc: int = 18730,
+        p2p: int = 19730,
         num_peers: int = 45,
         log_dir: str = None,
         singleprocess: bool = False,
@@ -140,6 +152,8 @@ class Sandbox:
             peers = list(range(self.num_peers))
         assert all(0 <= peer < self.num_peers for peer in peers)
 
+        node_name = next(node_sequence)
+
         log_file = None
         if self.log_dir:
             log_file = f'{self.log_dir}/node{node_id}_{self.counter}.txt'
@@ -148,15 +162,23 @@ class Sandbox:
 
         params = [] if params is None else params
         if private:
-            # TODO: FIX THIS IN TEZEDGE
-            params = params + ['--private-node', 'true']
-        params = params + ['--network=sandbox']
+            if node_name == 'light-node':
+                # TODO: FIX THIS IN TEZEDGE
+                params = params + ['--private-node', 'true']
+            else:
+                params = params + ['--private-mode']
+        if node_name == 'light-node':
+            params = params + ['--network=sandbox']
         if os.environ.get('CONTEXT_MUST_SURVIVE_RESTARTS'):
             # NOTE: The TezEdge in-memory context doesn't survive restarts,
             # and some tests require that, disable for now.
             params = params + ['--tezos-context-storage=irmin']
         peers_rpc = [self.p2p + p for p in peers]
-        node_bin = self._wrap_path(NODE, branch)
+        node_bin = self._wrap_path(node_name, branch)
+
+        if isinstance(params, NodeParams):
+            params = params[node_name]
+
         node = Node(
             node_bin,
             config=node_config,
@@ -283,8 +305,8 @@ class Sandbox:
 
     def init_node(self, node, snapshot, reconstruct):
         """Generate node id and import snapshot """
-        # node.init_id()
-        # node.init_config()
+        node.init_id()
+        node.init_config()
         if snapshot is not None:
             params = ['--reconstruct'] if reconstruct else []
             node.snapshot_import(snapshot, params)
@@ -389,9 +411,10 @@ class Sandbox:
     def add_baker(
         self,
         node_id: int,
-        account: str,
+        accounts: List[str],
         proto: str,
         params: List[str] = None,
+        log_levels: Dict[str, str] = None,
         branch: str = "",
         run_params: List[str] = None,
     ) -> None:
@@ -404,6 +427,7 @@ class Sandbox:
             proto (str): name of protocol, used to determine the binary to
                          use. E.g. 'alpha` for `tezos-baker-alpha`.
             params (list): additional parameters
+            log_levels (dict): log levels. e.g. {"p2p.connection-pool":"debug"}
             branch (str): see branch parameter for `add_node()`
         """
         assert node_id in self.nodes, f'No node running with id={node_id}'
@@ -430,8 +454,9 @@ class Sandbox:
             rpc_node,
             client.base_dir,
             node.node_dir,
-            account,
+            accounts,
             params=params,
+            log_levels=log_levels,
             log_file=log_file,
             run_params=run_params,
         )
@@ -683,14 +708,18 @@ class SandboxMultiBranch(Sandbox):
     def add_baker(
         self,
         node_id: int,
-        account: str,
+        accounts: List[str],
         proto: str,
         params: List[str] = None,
+        log_levels: Dict[str, str] = None,
         branch: str = "",
+        run_params: List[str] = None,
     ) -> None:
         """branch is overridden by branch_map"""
         branch = self._branch_map[node_id]
-        super().add_baker(node_id, account, proto, params, branch)
+        super().add_baker(
+            node_id, accounts, proto, params, log_levels, branch, run_params
+        )
 
     def add_endorser(
         self,

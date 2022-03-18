@@ -9,19 +9,44 @@ use std::sync::PoisonError;
 use blake2::digest::InvalidOutputSize;
 use thiserror::Error;
 
-use crypto::hash::FromBytesError;
+use crypto::hash::{ContextHash, FromBytesError};
 
+use crate::hash::HashingError;
 use crate::persistent::DBError;
-use crate::{hash::HashingError, kv_store::HashId};
 
+/// Print logs on stdout with the prefix `[tezedge.gc]`
+macro_rules! log {
+    () => (println!("[tezedge.gc]"));
+    ($($arg:tt)*) => ({
+        println!("[tezedge.gc] {}", format_args!($($arg)*))
+    })
+}
+
+/// Print logs on stderr with the prefix `[tezedge.gc]`
+macro_rules! elog {
+    () => (eprintln!("[tezedge.gc]"));
+    ($($arg:tt)*) => ({
+        eprintln!("[tezedge.gc] {}", format_args!($($arg)*));
+    })
+}
+
+pub mod jemalloc;
+mod sorted_map;
+mod stats;
 pub(crate) mod worker;
+
+// TODO: Use const default when the feature is stabilized, it will be in 1.59.0:
+// https://github.com/rust-lang/rust/pull/90207
+pub type SortedMap<K, V> = sorted_map::SortedMap<K, V, { sorted_map::DEFAULT_CHUNK_SIZE }>;
+pub use sorted_map::{Entry, VacantEntry};
 
 pub trait GarbageCollector {
     fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError>;
 
     fn block_applied(
         &mut self,
-        referenced_older_objects: Vec<HashId>,
+        block_level: u32,
+        context_hash: &ContextHash,
     ) -> Result<(), GarbageCollectionError>;
 }
 
@@ -34,7 +59,8 @@ impl<T: NotGarbageCollected> GarbageCollector for T {
 
     fn block_applied(
         &mut self,
-        _referenced_older_objects: Vec<HashId>,
+        _block_level: u32,
+        _context_hash: &ContextHash,
     ) -> Result<(), GarbageCollectionError> {
         Ok(())
     }
@@ -66,6 +92,8 @@ pub enum GarbageCollectionError {
     InvalidOutputSize,
     #[error("Expected value instead of `None` for {0}")]
     ValueExpected(&'static str),
+    #[error("ContextHash not found: {context_hash}")]
+    ContextHashNotFound { context_hash: ContextHash },
 }
 
 impl From<DBError> for GarbageCollectionError {

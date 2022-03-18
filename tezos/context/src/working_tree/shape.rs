@@ -3,10 +3,7 @@
 
 use std::{
     borrow::Cow,
-    collections::{
-        hash_map::DefaultHasher,
-        hash_map::Entry::{Occupied, Vacant},
-    },
+    collections::hash_map::DefaultHasher,
     convert::{TryFrom, TryInto},
     hash::Hasher,
     io::Read,
@@ -14,10 +11,10 @@ use std::{
 
 use crate::{
     chunks::ChunkedVec,
+    gc::{Entry, SortedMap},
     kv_store::index_map::IndexMap,
     persistent::file::{File, TAG_SHAPE, TAG_SHAPE_INDEX},
     serialize::DeserializationError,
-    Map,
 };
 use modular_bitfield::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -84,13 +81,13 @@ pub struct ShapeSliceId {
 /// A `DirectoryShapeId` maps to a slice of `StringId`
 pub struct DirectoryShapes {
     /// Map `DirectoryShapeHash` to its `DirectoryShapeId` and strings.
-    hash_to_strings: Map<DirectoryShapeHash, (DirectoryShapeId, ShapeSliceId)>,
-    shapes: ChunkedVec<StringId>,
+    hash_to_strings: SortedMap<DirectoryShapeHash, (DirectoryShapeId, ShapeSliceId)>,
+    shapes: ChunkedVec<StringId, { 64 * 1024 * 1024 }>,
 
     to_serialize: Vec<ShapeSliceId>,
 
     /// Map the `DirectoryShapeId` to its `DirectoryShapeHash`.
-    id_to_hash: IndexMap<DirectoryShapeId, DirectoryShapeHash>,
+    id_to_hash: IndexMap<DirectoryShapeId, DirectoryShapeHash, { 100 * 1024 }>,
     /// Temporary vector used to collect the `StringId` when creating/retrieving a shape.
     temp: Vec<StringId>,
 }
@@ -129,9 +126,9 @@ impl DirectoryShapes {
     pub fn new() -> Self {
         Self {
             hash_to_strings: Default::default(),
-            id_to_hash: IndexMap::with_chunk_capacity(1_024 * 100),
+            id_to_hash: IndexMap::default(),
             temp: Vec::with_capacity(256),
-            shapes: ChunkedVec::with_chunk_capacity(64 * 1024 * 1024), // 64 MB
+            shapes: ChunkedVec::default(), // 64 MB
             to_serialize: Vec::with_capacity(256),
         }
     }
@@ -180,8 +177,8 @@ impl DirectoryShapes {
         let shape_hash = DirectoryShapeHash(hasher.finish());
 
         match self.hash_to_strings.entry(shape_hash) {
-            Occupied(entry) => Ok(Some(entry.get().0)),
-            Vacant(entry) => {
+            Entry::Occupied(entry) => Ok(Some(entry.0)),
+            Entry::Vacant(entry) => {
                 let start = self.shapes.len() as u64;
                 let length = self.temp.len() as u32;
 
@@ -279,14 +276,17 @@ impl DirectoryShapes {
     }
 
     pub fn total_bytes(&self) -> usize {
-        let hash_to_strings = self.hash_to_strings.len()
-            * (std::mem::size_of::<(DirectoryShapeId, ShapeSliceId)>()
-                + std::mem::size_of::<DirectoryShapeHash>());
-
+        let hash_to_strings = self.hash_to_strings.total_bytes();
         let shapes = self.shapes.capacity() * std::mem::size_of::<StringId>();
-
         let id_to_hash = self.id_to_hash.capacity() * std::mem::size_of::<DirectoryShapeHash>();
+        let to_serialize = self.to_serialize.capacity() * std::mem::size_of::<ShapeSliceId>();
+        let temp = self.temp.capacity() * std::mem::size_of::<StringId>();
 
-        hash_to_strings + shapes + id_to_hash
+        hash_to_strings + shapes + id_to_hash + to_serialize + temp
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.hash_to_strings.shrink_to_fit();
+        self.to_serialize = Vec::with_capacity(256);
     }
 }

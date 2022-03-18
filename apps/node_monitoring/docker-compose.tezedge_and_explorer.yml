@@ -2,7 +2,7 @@ version: "3"
 
 services:
   tezedge-node:
-    image: tezedge/tezedge:v1.16.1
+    image: tezedge/tezedge:v1.17.0
     environment:
       - TEZOS_CONTEXT=index-log-size=5_000_000
     command: [
@@ -30,7 +30,7 @@ services:
       - "${TEZEDGE_VOLUME_PATH}:/tmp/tezedge"
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.16.0
+    image: tezedge/tezedge-explorer:v1.17.0
     environment:
       # need a better way to provide such information
       - API=[{"id":"rust","type":"tezedge","name":"rust.${NODE_HOSTNAME_OR_IP}","http":"http://${NODE_HOSTNAME_OR_IP}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP}:4927"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP}:38732/resources/tezedge"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP}:17832"},{"name":"mempool"},{"name":"network"}]},{"id":"ocaml","type":"octez","name":"ocaml.${NODE_HOSTNAME_OR_IP}","http":"http://${NODE_HOSTNAME_OR_IP}:18733","p2p_port":9733,"features":[{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP}:38732/resources/ocaml"},{"name":"resources/memory","memoryProfilerUrl":"http://${NODE_HOSTNAME_OR_IP}:17832"},{"name":"mempool"},{"name":"network"}]}]
@@ -40,7 +40,7 @@ services:
   monitoring:
     privileged: true
     network_mode: host
-    image: tezedge/node-monitoring:v1.16.1
+    image: tezedge/node-monitoring:v1.17.0
     pid: "host"
     command: [
       "--tezedge-nodes", "tezedge:18732:/tmp/tezedge",

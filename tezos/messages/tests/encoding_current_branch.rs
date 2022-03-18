@@ -5,9 +5,10 @@ use std::convert::TryFrom;
 
 use anyhow::Error;
 use crypto::hash::ChainId;
+use tezos_encoding::types::Bytes;
 use tezos_messages::p2p::{
     binary_message::{BinaryRead, BinaryWrite},
-    encoding::prelude::*,
+    encoding::{fitness::Fitness, prelude::*},
 };
 
 #[test]
@@ -70,17 +71,17 @@ fn can_deserialize_current_branch_message() -> Result<(), Error> {
                 current_head.operations_hash().as_ref()
             );
 
-            assert_eq!(2, current_head.fitness().len());
-            let fitness_0 = current_head.fitness().get(0).unwrap();
-            let expected_fitness_0 = hex::decode("00")?;
-            assert_eq!(&expected_fitness_0, fitness_0);
-            let fitness_1 = current_head.fitness().get(1).unwrap();
-            let expected_fitness_1 = hex::decode("00000000005ba1ca")?;
-            assert_eq!(&expected_fitness_1, fitness_1);
+            assert_eq!(
+                &Fitness::from_bytes([hex::decode("00")?, hex::decode("00000000005ba1ca")?]),
+                current_head.fitness()
+            );
 
             assert_eq!(75, current_head.protocol_data().len());
             let expected_protocol_data = hex::decode("0000000000031b4f9aff00c6d9a5d1fbf5eda49a01e52017dc78ca1d7a45f3f4fe32840052f9845a61ccdd6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a")?;
-            assert_eq!(&expected_protocol_data, current_head.protocol_data());
+            assert_eq!(
+                &Bytes::from(expected_protocol_data),
+                current_head.protocol_data()
+            );
 
             assert_eq!(141, current_branch_message.current_branch().history().len());
 

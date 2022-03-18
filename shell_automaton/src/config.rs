@@ -1,10 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{
-    convert::TryFrom,
-    time::{Duration, SystemTime},
-};
+use std::convert::TryFrom;
+use std::time::{Duration, SystemTime};
 
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
@@ -12,8 +10,9 @@ use storage::StorageInitInfo;
 use tezos_api::{environment::TezosEnvironmentConfiguration, ffi::TezosRuntimeConfiguration};
 use tezos_context_api::{
     ContextKvStoreConfiguration, GenesisChain, ProtocolOverrides, TezosContextStorageConfiguration,
-    TezosContextTezEdgeStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration, TezosContextTezedgeOnDiskBackendOptions,
 };
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_protocol_ipc_client::ProtocolRunnerConfiguration;
 
 use crate::shell_compatibility_version::ShellCompatibilityVersion;
@@ -98,6 +97,14 @@ pub struct Config {
     /// Duration after which graylisted peer will timeout and be whitelisted.
     pub peers_graylist_timeout: Duration,
 
+    pub bootstrap_block_header_get_timeout: Duration,
+    pub bootstrap_block_operations_get_timeout: Duration,
+
+    /// Override level that we will start bootstrapping from.
+    /// If we don't have block with such level in storage, we will use
+    /// actuall current head stored in storage instead.
+    pub current_head_level_override: Option<Level>,
+
     /// If `Some(interval)` record/persist state snapshots to storage
     /// every `interval` actions.
     /// If `None`, only persist initial state snapshot.
@@ -110,8 +117,6 @@ pub struct Config {
 
     pub disable_block_precheck: bool,
     pub disable_endorsements_precheck: bool,
-
-    pub disable_apply_retry: bool,
 }
 
 impl Config {
@@ -138,9 +143,9 @@ pub fn default_test_config() -> Config {
             },
             environment: TezosEnvironmentConfiguration {
                 genesis: GenesisChain {
-                    time: "".to_owned(),
-                    block: "".to_owned(),
-                    protocol: "".to_owned(),
+                    time: "2018-06-30T16:07:32Z".to_string(),
+                    block: "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2".to_string(),
+                    protocol: "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P".to_string(),
                 },
                 bootstrap_lookup_addresses: vec![],
                 version: "".to_owned(),
@@ -154,7 +159,12 @@ pub fn default_test_config() -> Config {
             enable_testchain: false,
             storage: TezosContextStorageConfiguration::TezEdgeOnly(
                 TezosContextTezEdgeStorageConfiguration {
-                    backend: ContextKvStoreConfiguration::InMem,
+                    backend: ContextKvStoreConfiguration::InMem(
+                        TezosContextTezedgeOnDiskBackendOptions {
+                            base_path: "/tmp/tezedge".to_string(),
+                            startup_check: false,
+                        },
+                    ),
                     ipc_socket_path: None,
                 },
             ),
@@ -200,6 +210,11 @@ pub fn default_test_config() -> Config {
         peers_graylist_disable: false,
         peers_graylist_timeout: Duration::from_secs(15 * 60),
 
+        bootstrap_block_header_get_timeout: Duration::from_millis(500),
+        bootstrap_block_operations_get_timeout: Duration::from_millis(1000),
+
+        current_head_level_override: None,
+
         record_state_snapshots_with_interval: None,
         record_actions: false,
 
@@ -211,6 +226,5 @@ pub fn default_test_config() -> Config {
 
         disable_endorsements_precheck: false,
         disable_block_precheck: true,
-        disable_apply_retry: false,
     }
 }

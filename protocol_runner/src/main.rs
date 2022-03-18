@@ -10,10 +10,12 @@ use clap::{App, Arg};
 use slog::*;
 use tezos_interop::runtime::OCamlBlockPanic;
 
-extern crate jemallocator;
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
 
+#[cfg(not(target_env = "msvc"))]
 #[global_allocator]
-static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+static GLOBAL: Jemalloc = Jemalloc;
 
 fn create_logger(log_level: Level, endpoint_name: String) -> Logger {
     let drain = slog_async::Async::new(

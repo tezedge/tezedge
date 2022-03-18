@@ -4,7 +4,7 @@
 use crate::{
     OCamlApplyBlockExecutionTimestamps, OCamlApplyBlockRequest, OCamlBeginApplicationRequest,
     OCamlBeginConstructionRequest, OCamlBlockHeader, OCamlBlockHeaderShellHeader,
-    OCamlComputePathRequest, OCamlContextGetKeyFromHistoryRequest,
+    OCamlBlockPayloadHash, OCamlComputePathRequest, OCamlContextGetKeyFromHistoryRequest,
     OCamlContextGetKeyValuesByPrefixRequest, OCamlContextGetTreeByPrefixRequest,
     OCamlCycleRollsOwnerSnapshot, OCamlDumpContextRequest, OCamlGenesisChain,
     OCamlGenesisResultDataParams, OCamlHelpersPreapplyBlockRequest, OCamlInitProtocolContextParams,
@@ -26,8 +26,8 @@ use super::{
     OCamlRpcMethod, OCamlTezosContextTezEdgeStorageConfiguration, TaggedHash,
 };
 use crypto::hash::{
-    BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationListListHash,
-    OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
+    BlockHash, BlockMetadataHash, BlockPayloadHash, ChainId, ContextHash, Hash, OperationHash,
+    OperationListListHash, OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use ocaml_interop::{
     impl_to_ocaml_polymorphic_variant, impl_to_ocaml_record, impl_to_ocaml_variant,
@@ -46,7 +46,10 @@ use tezos_context_api::{
     TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
     TezosContextTezedgeOnDiskBackendOptions,
 };
-use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
+use tezos_messages::p2p::encoding::{
+    fitness::Fitness,
+    prelude::{BlockHeader, Operation},
+};
 use tezos_protocol_ipc_messages::{
     ContextGetKeyFromHistoryRequest, ContextGetKeyValuesByPrefixRequest,
     ContextGetTreeByPrefixRequest, DumpContextRequest, GenesisResultDataParams,
@@ -93,6 +96,7 @@ to_ocaml_hash!(OCamlBlockHash, BlockHash);
 to_ocaml_hash!(OCamlContextHash, ContextHash);
 to_ocaml_hash!(OCamlProtocolHash, ProtocolHash);
 to_ocaml_hash!(OCamlBlockMetadataHash, BlockMetadataHash);
+to_ocaml_hash!(OCamlBlockPayloadHash, BlockPayloadHash);
 to_ocaml_hash!(OCamlOperationMetadataHash, OperationMetadataHash);
 to_ocaml_hash!(
     OCamlOperationMetadataListListHash,
@@ -117,7 +121,7 @@ impl_to_ocaml_record! {
 impl_to_ocaml_variant! {
     ContextKvStoreConfiguration => OCamlContextKvStoreConfiguration {
         ContextKvStoreConfiguration::ReadOnlyIpc,
-        ContextKvStoreConfiguration::InMem,
+        ContextKvStoreConfiguration::InMem(options: OCamlTezosContextTezedgeOnDiskBackendOptions),
         ContextKvStoreConfiguration::OnDisk(options: OCamlTezosContextTezedgeOnDiskBackendOptions),
     }
 }
@@ -177,7 +181,7 @@ impl<'a> From<&'a BlockHeader> for FfiBlockHeaderShellHeader<'a> {
             level: block_header.level(),
             proto_level: block_header.proto() as i32,
             predecessor: predecessor_hash,
-            timestamp: block_header.timestamp(),
+            timestamp: block_header.timestamp().into(),
             validation_passes: block_header.validation_pass() as i32,
             operations_hash,
             fitness: block_header.fitness(),
@@ -191,7 +195,7 @@ impl<'a> From<&'a BlockHeader> for FfiBlockHeader<'a> {
         let shell = FfiBlockHeaderShellHeader::from(block_header);
         Self {
             shell,
-            protocol_data: block_header.protocol_data(),
+            protocol_data: block_header.protocol_data().as_ref(),
         }
     }
 }
@@ -209,7 +213,7 @@ impl<'a> From<&'a Operation> for FfiOperation<'a> {
         let shell = FfiOperationShellHeader::from(operation);
         Self {
             shell,
-            data: operation.data(),
+            data: operation.data().as_ref(),
         }
     }
 }
@@ -312,7 +316,7 @@ impl_to_ocaml_record! {
     PrevalidatorWrapper => OCamlPrevalidatorWrapper {
         chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
-        context_fitness: Option<OCamlList<OCamlBytes>>
+        context_fitness: Option<OCamlList<OCamlBytes>>,
     }
 }
 
@@ -506,7 +510,7 @@ unsafe impl<'a> ToOCaml<OCamlBlockHeaderShellHeader> for FfiBlockHeaderShellHead
                 timestamp: OCamlInt64,
                 validation_passes: OCamlInt,
                 operations_hash: OCamlOperationListListHash,
-                fitness: OCamlList<OCamlBytes>,
+                fitness: OCamlList<OCamlBytes> => Fitness::as_ref(fitness),
                 context: OCamlContextHash,
             }
         }

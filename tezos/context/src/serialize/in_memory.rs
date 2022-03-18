@@ -4,14 +4,15 @@
 //! Serialization/deserialization for objects in the Working Tree so that they can be
 //! saved/loaded to/from the repository.
 
-use std::{borrow::Cow, convert::TryInto, io::Write, sync::Arc};
+use std::{borrow::Cow, convert::TryInto, io::Write};
 
 use modular_bitfield::prelude::*;
 use static_assertions::assert_eq_size;
 use tezos_timing::SerializeStats;
 
 use crate::{
-    kv_store::HashId,
+    chunks::ChunkedVec,
+    kv_store::{in_memory::BATCH_CHUNK_CAPACITY, inline_boxed_slice::InlinedBoxedSlice, HashId},
     serialize::{deserialize_hash_id, ObjectHeader, ObjectTag},
     working_tree::{
         shape::ShapeStrings,
@@ -182,8 +183,7 @@ pub fn serialize_object(
     storage: &Storage,
     strings: &StringInterner,
     stats: &mut SerializeStats,
-    batch: &mut Vec<(HashId, Arc<[u8]>)>,
-    referenced_older_objects: &mut Vec<HashId>,
+    batch: &mut ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>,
     repository: &mut ContextKeyValueStore,
     _object_offset: Option<AbsoluteOffset>,
 ) -> Result<Option<AbsoluteOffset>, SerializationError> {
@@ -200,7 +200,6 @@ pub fn serialize_object(
                     strings,
                     stats,
                     batch,
-                    referenced_older_objects,
                     repository,
                 )?;
             } else {
@@ -208,7 +207,7 @@ pub fn serialize_object(
 
                 serialize_directory(dir.as_ref(), output, storage, strings, repository, stats)?;
 
-                batch.push((object_hash_id, Arc::from(output.as_slice())));
+                batch.push((object_hash_id, InlinedBoxedSlice::from(output.as_slice())));
             }
         }
         Object::Blob(blob_id) => {
@@ -226,7 +225,7 @@ pub fn serialize_object(
 
             stats.add_blob(blob.len());
 
-            batch.push((object_hash_id, Arc::from(output.as_slice())));
+            batch.push((object_hash_id, InlinedBoxedSlice::from(output.as_slice())));
         }
         Object::Commit(commit) => {
             let header: [u8; 1] = ObjectHeader::new()
@@ -251,7 +250,7 @@ pub fn serialize_object(
             // It's until the end of the slice
             output.write_all(commit.message.as_bytes())?;
 
-            batch.push((object_hash_id, Arc::from(output.as_slice())));
+            batch.push((object_hash_id, InlinedBoxedSlice::from(output.as_slice())));
         }
     }
 
@@ -268,8 +267,7 @@ fn serialize_inode(
     storage: &Storage,
     strings: &StringInterner,
     stats: &mut SerializeStats,
-    batch: &mut Vec<(HashId, Arc<[u8]>)>,
-    referenced_older_objects: &mut Vec<HashId>,
+    batch: &mut ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>,
     repository: &mut ContextKeyValueStore,
 ) -> Result<(), SerializationError> {
     use SerializationError::*;
@@ -304,8 +302,8 @@ fn serialize_inode(
             // Make sure that INODE_POINTERS_NBYTES_TO_HASHES is correct.
             debug_assert_eq!(output.len(), INODE_POINTERS_NBYTES_TO_HASHES);
 
-            for (_, index) in pointers.iter() {
-                let pointer = storage.pointer_copy(index)?;
+            for (_, thin_pointer_id) in pointers.iter() {
+                let pointer = storage.pointer_copy(thin_pointer_id)?;
                 let hash_id = storage
                     .pointer_retrieve_hashid(&pointer, repository)?
                     .ok_or(MissingHashId)?;
@@ -313,11 +311,15 @@ fn serialize_inode(
                 serialize_hash_id(hash_id, output, repository, stats)?;
             }
 
-            batch.push((hash_id, Arc::from(output.as_slice())));
+            batch.push((hash_id, InlinedBoxedSlice::from(output.as_slice())));
 
             // Recursively serialize all children
-            for (_, index) in pointers.iter() {
-                let pointer = storage.pointer_copy(index)?;
+            for (_, thin_pointer_id) in pointers.iter() {
+                let pointer = storage.pointer_copy(thin_pointer_id)?;
+
+                let hash_id = storage
+                    .pointer_retrieve_hashid(&pointer, repository)?
+                    .ok_or(MissingHashId)?;
 
                 if pointer.is_commited() {
                     // We only want to serialize new inodes.
@@ -325,25 +327,12 @@ fn serialize_inode(
                     // in the repository.
                     // Add their hash_id to `referenced_older_objects` so the gargage
                     // collector won't collect them.
-                    referenced_older_objects.push(hash_id);
                     continue;
                 }
 
-                let hash_id = storage
-                    .pointer_retrieve_hashid(&pointer, repository)?
-                    .ok_or(MissingHashId)?;
-
                 let ptr_id = pointer.ptr_id().ok_or(MissingInodeId)?;
                 serialize_inode(
-                    ptr_id,
-                    output,
-                    hash_id,
-                    storage,
-                    strings,
-                    stats,
-                    batch,
-                    referenced_older_objects,
-                    repository,
+                    ptr_id, output, hash_id, storage, strings, stats, batch, repository,
                 )?;
             }
         }
@@ -354,7 +343,7 @@ fn serialize_inode(
             let dir = storage.get_small_dir(dir_id)?;
             serialize_directory(dir.as_ref(), output, storage, strings, repository, stats)?;
 
-            batch.push((hash_id, Arc::from(output.as_slice())));
+            batch.push((hash_id, InlinedBoxedSlice::from(output.as_slice())));
         }
     };
 
@@ -772,7 +761,9 @@ mod tests {
     use tezos_timing::SerializeStats;
 
     use crate::{
-        hash::hash_object, kv_store::in_memory::InMemory, working_tree::storage::DirectoryId,
+        hash::hash_object,
+        kv_store::in_memory::{InMemory, InMemoryConfiguration},
+        working_tree::storage::DirectoryId,
     };
 
     use super::*;
@@ -781,10 +772,13 @@ mod tests {
     fn test_serialize() {
         let mut storage = Storage::new();
         let mut strings = StringInterner::default();
-        let mut repo = InMemory::try_new().unwrap();
+        let mut repo = InMemory::try_new(InMemoryConfiguration {
+            db_path: Some("".to_string()),
+            startup_check: false,
+        })
+        .unwrap();
         let mut stats = SerializeStats::default();
-        let mut batch = Vec::new();
-        let mut older_objects = Vec::new();
+        let mut batch = ChunkedVec::<_, BATCH_CHUNK_CAPACITY>::default();
         let fake_hash_id = HashId::try_from(1).unwrap();
 
         // Test Object::Directory
@@ -827,7 +821,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             None,
         )
@@ -887,7 +880,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             None,
         )
@@ -921,7 +913,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             None,
         )
@@ -955,7 +946,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             None,
         )
@@ -987,8 +977,14 @@ mod tests {
 
             let hash_id = HashId::new((index + 1) as u64).unwrap();
 
-            repo.write_batch(vec![(hash_id, Arc::new(ObjectHeader::new().into_bytes()))])
-                .unwrap();
+            let mut vec =
+                ChunkedVec::<(HashId, InlinedBoxedSlice), BATCH_CHUNK_CAPACITY>::default();
+            vec.push((
+                hash_id,
+                InlinedBoxedSlice::from(&ObjectHeader::new().into_bytes()[..]),
+            ));
+
+            repo.write_batch(vec).unwrap();
 
             let fat_pointer = FatPointer::new_commited(Some(hash_id), None);
 
@@ -1003,15 +999,7 @@ mod tests {
         let hash_id = HashId::new(123).unwrap();
         batch.clear();
         serialize_inode(
-            inode,
-            &mut data,
-            hash_id,
-            &storage,
-            &strings,
-            &mut stats,
-            &mut batch,
-            &mut older_objects,
-            &mut repo,
+            inode, &mut data, hash_id, &storage, &strings, &mut stats, &mut batch, &mut repo,
         )
         .unwrap();
 
@@ -1082,15 +1070,7 @@ mod tests {
 
         batch.clear();
         serialize_inode(
-            inode_id,
-            &mut data,
-            hash_id,
-            &storage,
-            &strings,
-            &mut stats,
-            &mut batch,
-            &mut older_objects,
-            &mut repo,
+            inode_id, &mut data, hash_id, &storage, &strings, &mut stats, &mut batch, &mut repo,
         )
         .unwrap();
 
@@ -1115,12 +1095,15 @@ mod tests {
 
     #[test]
     fn test_serialize_empty_blob() {
-        let mut repo = InMemory::try_new().expect("failed to create context");
+        let mut repo = InMemory::try_new(InMemoryConfiguration {
+            db_path: Some("".to_string()),
+            startup_check: false,
+        })
+        .expect("failed to create context");
         let mut storage = Storage::new();
         let mut strings = StringInterner::default();
         let mut stats = SerializeStats::default();
-        let mut batch = Vec::new();
-        let mut older_objects = Vec::new();
+        let mut batch = ChunkedVec::<_, BATCH_CHUNK_CAPACITY>::default();
 
         let fake_hash_id = HashId::try_from(1).unwrap();
 
@@ -1151,7 +1134,6 @@ mod tests {
             &strings,
             &mut stats,
             &mut batch,
-            &mut older_objects,
             &mut repo,
             None,
         )

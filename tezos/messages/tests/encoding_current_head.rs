@@ -5,6 +5,7 @@ use std::convert::TryFrom;
 
 use anyhow::Error;
 use crypto::hash::ChainId;
+use tezos_encoding::types::Bytes;
 use tezos_messages::p2p::{
     binary_message::{BinaryRead, BinaryWrite},
     encoding::prelude::*,
@@ -37,7 +38,10 @@ fn can_deserialize_get_current_head_message_known_valid() -> Result<(), Error> {
             assert_eq!(1, block_header.proto());
 
             let expected_protocol_data = hex::decode("000000000003e35a661200a75ebed94c886ce8c2700cc2fb38e301e7573f481eff49aea6892068cef7c9290947567e9df3a2cfc99ed9b0666f9c0291f586f65eb9e42cf4cdbef1ef8424d0")?;
-            assert_eq!(&expected_protocol_data, block_header.protocol_data());
+            assert_eq!(
+                &Bytes::from(expected_protocol_data),
+                block_header.protocol_data()
+            );
 
             let mempool = current_head_message.current_mempool();
             assert_eq!(1, mempool.known_valid().len());
@@ -71,7 +75,10 @@ fn can_deserialize_get_current_head_message_pending() -> Result<(), Error> {
             assert_eq!(1, block_header.proto());
 
             let expected_protocol_data = hex::decode("000000000003d671d0520032846bbd8b2d6e10daa9cb6d6f82e4070d9c8047b081ea80cd6a473a3868135229c7650b7a6401d7c83c1b8896662faeb361a7bbb2f881ede725630e1ce34483")?;
-            assert_eq!(&expected_protocol_data, block_header.protocol_data());
+            assert_eq!(
+                &Bytes::from(expected_protocol_data),
+                block_header.protocol_data()
+            );
 
             let mempool = current_head_message.current_mempool();
             assert_eq!(0, mempool.known_valid().len());

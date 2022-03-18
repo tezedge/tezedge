@@ -50,7 +50,7 @@
 use std::{
     array::TryFromSliceError,
     collections::{HashMap, HashSet},
-    sync::{Arc, PoisonError},
+    sync::PoisonError,
     vec::IntoIter,
 };
 
@@ -60,7 +60,9 @@ use crypto::hash::FromBytesError;
 use tezos_timing::SerializeStats;
 
 use crate::{
+    chunks::ChunkedVec,
     gc::GarbageCollectionError,
+    kv_store::{in_memory::BATCH_CHUNK_CAPACITY, inline_boxed_slice::InlinedBoxedSlice},
     serialize::{
         persistent::AbsoluteOffset, DeserializationError, SerializationError,
         SerializeObjectSignature,
@@ -81,14 +83,13 @@ use crate::{ContextKey, ContextValue};
 
 use super::{
     storage::{BlobId, DirEntryId, DirectoryId, Storage, StorageError},
-    string_interner::StringInterner,
+    string_interner::{StringId, StringInterner},
     ObjectReference,
 };
 
 pub struct PostCommitData {
     pub commit_ref: ObjectReference,
-    pub batch: Vec<(HashId, Arc<[u8]>)>,
-    pub reused: Vec<HashId>,
+    pub batch: ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>,
     pub serialize_stats: Box<SerializeStats>,
     pub output: Vec<u8>,
 }
@@ -154,8 +155,7 @@ impl PostCommitData {
     fn empty_with_commit(commit_hash: HashId) -> Self {
         Self {
             commit_ref: ObjectReference::new(Some(commit_hash), None),
-            batch: Default::default(),
-            reused: Default::default(),
+            batch: ChunkedVec::<_, { BATCH_CHUNK_CAPACITY }>::empty(),
             serialize_stats: Default::default(),
             output: Default::default(),
         }
@@ -184,6 +184,12 @@ pub enum FoldDepth {
     Ge(i64), // folds over nodes and contents of depth more than or equal to [d].
 }
 
+#[derive(Clone, Copy)]
+pub enum FoldOrder {
+    Sorted,
+    Undefined,
+}
+
 impl FoldDepth {
     /// `true` if for this depth the fold function should be applied
     fn should_apply(self, depth: i64) -> bool {
@@ -209,19 +215,20 @@ impl FoldDepth {
 }
 
 struct TreeWalkerLevel {
-    key: ContextKeyOwned,
+    key: Vec<StringId>,
     root: WorkingTree,
     current_depth: i64,
     yield_self: bool,
-    children_iter: Option<IntoIter<(String, DirEntryId)>>,
+    children_iter: Option<IntoIter<(StringId, DirEntryId)>>,
 }
 
 impl TreeWalkerLevel {
     fn new(
-        key: ContextKeyOwned,
+        key: Vec<StringId>,
         root: WorkingTree,
         current_depth: i64,
         depth: &Option<FoldDepth>,
+        order: FoldOrder,
     ) -> Self {
         let should_continue = depth
             .map(|d| d.should_continue(current_depth))
@@ -229,7 +236,7 @@ impl TreeWalkerLevel {
 
         let children_iter = if should_continue {
             if let WorkingTreeRoot::Directory(dir_id) = &root.root {
-                let dir_vec = Self::get_keys_on_directory(&root, *dir_id);
+                let dir_vec = Self::get_keys_on_directory(&root, *dir_id, order);
                 Some(dir_vec.into_iter())
             } else {
                 None
@@ -247,7 +254,11 @@ impl TreeWalkerLevel {
         }
     }
 
-    fn get_keys_on_directory(root: &WorkingTree, dir_id: DirectoryId) -> Vec<(String, DirEntryId)> {
+    fn get_keys_on_directory(
+        root: &WorkingTree,
+        dir_id: DirectoryId,
+        order: FoldOrder,
+    ) -> Vec<(StringId, DirEntryId)> {
         let mut storage = root.index.storage.borrow_mut();
         let mut strings = match root.index.get_string_interner() {
             Ok(strings) => strings,
@@ -268,39 +279,38 @@ impl TreeWalkerLevel {
             }
         };
 
-        let dir = match storage.dir_to_vec_sorted(dir_id, &mut strings, &*repository) {
+        let fun = match order {
+            FoldOrder::Sorted => Storage::dir_to_vec_sorted,
+            FoldOrder::Undefined => Storage::dir_to_vec_unsorted,
+        };
+
+        match fun(&mut storage, dir_id, &mut strings, &*repository) {
             Ok(dir) => dir,
             Err(e) => {
                 eprintln!("TreeWalkerLevel `dir_to_vec_sorted` failed '{:?}'", e);
                 Vec::new()
             }
-        };
-
-        dir.into_iter()
-            .map(|(key_id, dir_entry_id)| {
-                (
-                    strings
-                        .get_str(key_id)
-                        .map(|s| s.to_string())
-                        // Never fail, the error would have been caught above with `dir_to_vec_sorted`.
-                        .unwrap_or_default(),
-                    dir_entry_id,
-                )
-            })
-            .collect()
+        }
     }
 }
 
 pub struct TreeWalker {
     depth: Option<FoldDepth>,
     stack: Vec<TreeWalkerLevel>,
+    order: FoldOrder,
 }
 
 impl TreeWalker {
-    fn new(key: ContextKeyOwned, root: WorkingTree, depth: Option<FoldDepth>) -> Self {
+    fn new(
+        key: Vec<StringId>,
+        root: WorkingTree,
+        depth: Option<FoldDepth>,
+        order: FoldOrder,
+    ) -> Self {
         Self {
             depth,
-            stack: vec![TreeWalkerLevel::new(key, root, 0, &depth)],
+            stack: vec![TreeWalkerLevel::new(key, root, 0, &depth, order)],
+            order,
         }
     }
 
@@ -308,6 +318,7 @@ impl TreeWalker {
         Self {
             depth: None,
             stack: vec![],
+            order: FoldOrder::Undefined,
         }
     }
 }
@@ -320,7 +331,27 @@ impl Iterator for TreeWalker {
             if let Some(current_level) = self.stack.last_mut() {
                 if current_level.yield_self {
                     current_level.yield_self = false;
-                    return Some((current_level.key.clone(), current_level.root.clone()));
+
+                    let strings = match current_level.root.index.get_string_interner() {
+                        Ok(strings) => strings,
+                        Err(e) => {
+                            eprintln!("TreeWalker failed to get the string interner: {:?}", e);
+                            return None;
+                        }
+                    };
+                    let keys = current_level
+                        .key
+                        .iter()
+                        .map(|string_id| match strings.get_str(*string_id) {
+                            Ok(s) => s.to_string(),
+                            Err(e) => {
+                                eprintln!("TreeWalker failed to get a string: {:?}", e);
+                                String::new()
+                            }
+                        })
+                        .collect();
+
+                    return Some((keys, current_level.root.clone()));
                 }
 
                 if let Some(iter) = &mut current_level.children_iter {
@@ -329,15 +360,16 @@ impl Iterator for TreeWalker {
                     if let Some((k, dir_entry)) = iter.next() {
                         match current_level.root.dir_entry_tree(dir_entry) {
                             Ok(root) => {
-                                // TODO: this is not very efficient, maybe we need to improve the key representation
-                                let mut key = current_level.key.clone();
-                                key.push(k.to_string());
+                                let mut key = Vec::with_capacity(current_level.key.len() + 1);
+                                key.extend_from_slice(&current_level.key);
+                                key.push(k);
 
                                 self.stack.push(TreeWalkerLevel::new(
                                     key,
                                     root,
                                     current_depth,
                                     &self.depth,
+                                    self.order,
                                 ));
                             }
                             Err(e) => {
@@ -470,14 +502,12 @@ pub enum CheckObjectHashError {
 }
 
 struct SerializingData<'a> {
-    batch: Vec<(HashId, Arc<[u8]>)>,
-    referenced_older_objects: Vec<HashId>,
+    batch: ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>,
     repository: &'a mut ContextKeyValueStore,
     serialized: Vec<u8>,
     stats: Box<SerializeStats>,
     offset: Option<AbsoluteOffset>,
     serialize_function: SerializeObjectSignature,
-    keep_older_objects: bool,
     dedup_objects: Option<HashMap<HashId, AbsoluteOffset>>,
 }
 
@@ -486,18 +516,15 @@ impl<'a> SerializingData<'a> {
         repository: &'a mut ContextKeyValueStore,
         offset: Option<AbsoluteOffset>,
         serialize_function: SerializeObjectSignature,
-        keep_older_objects: bool,
         enable_dedup_object: bool,
     ) -> Self {
         Self {
-            batch: Vec::with_capacity(2048),
-            referenced_older_objects: Vec::with_capacity(2048),
+            batch: ChunkedVec::default(),
             repository,
             serialized: Vec::with_capacity(2048),
             stats: Default::default(),
             offset,
             serialize_function,
-            keep_older_objects,
             dedup_objects: if enable_dedup_object {
                 Some(Default::default())
             } else {
@@ -537,30 +564,10 @@ impl<'a> SerializingData<'a> {
             strings,
             &mut self.stats,
             &mut self.batch,
-            &mut self.referenced_older_objects,
             self.repository,
             self.offset,
         )
         .map_err(Into::into)
-    }
-
-    fn add_older_object(
-        &mut self,
-        dir_entry: &DirEntry,
-        storage: &Storage,
-        strings: &StringInterner,
-    ) -> Result<(), MerkleError> {
-        if !self.keep_older_objects {
-            return Ok(());
-        }
-
-        let hash_id = dir_entry.object_hash_id(self.repository, storage, strings)?;
-
-        if let Some(hash_id) = hash_id {
-            self.referenced_older_objects.push(hash_id);
-        };
-
-        Ok(())
     }
 }
 
@@ -773,7 +780,7 @@ impl WorkingTree {
 
     // From OCaml:
     /*
-      [fold ?depth t root ~init ~f] recursively folds over the trees
+      [fold ?depth t root ~order ~init ~f] recursively folds over the trees
       and values of [t]. The [f] callbacks are called with a key relative
       to [root]. [f] is never called with an empty key for values; i.e.,
       folding over a value is a no-op.
@@ -788,17 +795,23 @@ impl WorkingTree {
       - [Le d] folds over nodes and contents of depth less than or equal to [d].
       - [Gt d] folds over nodes and contents of depth strictly more than [d].
       - [Ge d] folds over nodes and contents of depth more than or equal to [d].
+
+      If [order] is [`Sorted] (the default), the elements are traversed in
+      lexicographic order of their keys. For large nodes, it is memory-consuming,
+      use [`Undefined] for a more memory efficient [fold].
     */
     pub fn fold_iter(
         &self,
         depth: Option<FoldDepth>,
         key: &ContextKey,
+        order: FoldOrder,
     ) -> Result<TreeWalker, MerkleError> {
         if let Some(root) = self.find_tree(key)? {
             Ok(TreeWalker::new(
                 vec![], // Key is relative to the root
                 root,
                 depth,
+                order,
             ))
         } else {
             Ok(TreeWalker::empty())
@@ -906,7 +919,6 @@ impl WorkingTree {
         repository: &mut ContextKeyValueStore,
         serialize_function: Option<SerializeObjectSignature>,
         offset: Option<AbsoluteOffset>,
-        keep_older_objects: bool,
         enable_dedup_objects: bool,
     ) -> Result<PostCommitData, MerkleError> {
         let root_hash_id = self.get_root_directory_hash(repository)?;
@@ -927,13 +939,8 @@ impl WorkingTree {
             None => return Ok(PostCommitData::empty_with_commit(commit_hash)),
         };
 
-        let mut data = SerializingData::new(
-            repository,
-            offset,
-            serialize_function,
-            keep_older_objects,
-            enable_dedup_objects,
-        );
+        let mut data =
+            SerializingData::new(repository, offset, serialize_function, enable_dedup_objects);
 
         let storage = self.index.storage.borrow();
         let strings = self.index.get_string_interner()?;
@@ -950,7 +957,6 @@ impl WorkingTree {
         Ok(PostCommitData {
             commit_ref: ObjectReference::new(Some(commit_hash), commit_offset),
             batch: data.batch,
-            reused: data.referenced_older_objects,
             serialize_stats: data.stats,
             output: data.serialized,
         })
@@ -1121,10 +1127,8 @@ impl WorkingTree {
                         };
 
                     if dir_entry.is_commited() {
-                        data.add_older_object(dir_entry, storage, strings)?;
                         return Ok(());
                     }
-                    dir_entry.set_commited(true);
 
                     if let Some(offset) = data.get_dedup_object(object_hash_id) {
                         dir_entry.set_offset(offset);
@@ -1244,68 +1248,64 @@ impl WorkingTree {
             WorkingTreeRoot::Value(_) => DirectoryId::empty(),
         }
     }
-}
 
-/// Implementation used for `context-tool`
-mod tool {
-    use super::*;
+    /// See `Self::traverse_working_tree` below
+    fn traverse_working_tree_recursive(
+        &self,
+        object: Object,
+        object_hash_id: Option<HashId>,
+        storage: &mut Storage,
+        strings: &mut StringInterner,
+        depth: usize,
+        stats: &mut Option<WorkingTreeStatistics>,
+    ) -> Result<(), MerkleError> {
+        if let Some(stats) = stats.as_mut() {
+            stats.max_depth = depth.max(stats.max_depth);
+        };
 
-    impl WorkingTree {
-        /// See `Self::traverse_working_tree` below
-        ///
-        /// Method used for `context-tool` only.
-        fn traverse_working_tree_recursive(
-            &self,
-            object: Object,
-            object_hash_id: Option<HashId>,
-            storage: &mut Storage,
-            strings: &mut StringInterner,
-            depth: usize,
-            stats: &mut Option<WorkingTreeStatistics>,
-        ) -> Result<(), MerkleError> {
-            if let Some(stats) = stats.as_mut() {
-                stats.max_depth = depth.max(stats.max_depth);
-            };
-
-            match object {
-                Object::Blob(blob_id) => {
-                    if let Some(stats) = stats.as_mut() {
-                        if blob_id.is_inline() {
-                            stats.nobjects_inlined += 1;
-                        }
-
-                        let blob = storage.get_blob(blob_id)?;
-                        let blob_length = blob.len();
-
-                        let blob_stats =
-                            stats.blobs_by_length.entry(blob_length).or_insert_with(|| {
-                                BlobStatistics {
-                                    size: blob_length,
-                                    total: 0,
-                                    unique: HashSet::default(),
-                                }
-                            });
-                        blob_stats.total += 1;
-                        blob_stats.unique.insert(blob.to_vec());
+        match object {
+            Object::Blob(blob_id) => {
+                if let Some(stats) = stats.as_mut() {
+                    if blob_id.is_inline() {
+                        stats.nobjects_inlined += 1;
                     }
 
-                    Ok(())
+                    let blob = storage.get_blob(blob_id)?;
+                    let blob_length = blob.len();
+
+                    let blob_stats =
+                        stats.blobs_by_length.entry(blob_length).or_insert_with(|| {
+                            BlobStatistics {
+                                size: blob_length,
+                                total: 0,
+                                unique: HashSet::default(),
+                            }
+                        });
+                    blob_stats.total += 1;
+                    blob_stats.unique.insert(blob.to_vec());
                 }
-                Object::Directory(dir_id) => {
-                    let dir = {
-                        let repository = self.index.repository.read()?;
-                        storage.dir_to_vec_unsorted(dir_id, strings, &*repository)?
+
+                Ok(())
+            }
+            Object::Directory(dir_id) => {
+                let dir = {
+                    let repository = self.index.repository.read()?;
+                    storage.dir_to_vec_unsorted(dir_id, strings, &*repository)?
+                };
+
+                if let Some(stats) = stats.as_mut() {
+                    stats.ndirectories += 1;
+
+                    let dir_hash = match object_hash_id {
+                        Some(hash_id) => {
+                            let repository = self.index.repository.read()?;
+                            Some(repository.get_hash(hash_id.into())?.to_vec())
+                        }
+                        None => None,
                     };
 
-                    if let Some(stats) = stats.as_mut() {
-                        stats.ndirectories += 1;
-
-                        let dir_hash = object_hash_id.map(|hash_id| {
-                            let repository = self.index.repository.read().unwrap();
-                            repository.get_hash(hash_id.into()).unwrap().to_vec()
-                        });
-
-                        let dir_stats = stats
+                    let dir_stats =
+                        stats
                             .directories_by_length
                             .entry(dir.len())
                             .or_insert_with(|| DirectoryStatistics {
@@ -1313,107 +1313,103 @@ mod tool {
                                 total: 0,
                                 unique: HashSet::default(),
                             });
-                        dir_stats.total += 1;
-                        if let Some(dir_hash) = dir_hash {
-                            dir_stats.unique.insert(dir_hash);
-                        }
-
-                        stats.nobjects += dir.len();
+                    dir_stats.total += 1;
+                    if let Some(dir_hash) = dir_hash {
+                        dir_stats.unique.insert(dir_hash);
                     }
 
-                    for (string_id, dir_entry_id) in dir {
-                        if let Some(stats) = stats.as_mut() {
-                            let string = strings.get_str(string_id)?.into_owned();
+                    stats.nobjects += dir.len();
+                }
 
-                            let mut length_to_add = 0;
-                            stats
-                                .unique_strings
-                                .entry(string)
-                                .or_insert_with_key(|string| {
-                                    length_to_add = string.len();
-                                });
-                            stats.strings_total_bytes += length_to_add;
-                        }
+                for (string_id, dir_entry_id) in dir {
+                    if let Some(stats) = stats.as_mut() {
+                        let string = strings.get_str(string_id)?.into_owned();
 
-                        let dir_entry = storage.get_dir_entry(dir_entry_id)?;
+                        let mut length_to_add = 0;
+                        stats
+                            .unique_strings
+                            .entry(string)
+                            .or_insert_with_key(|string| {
+                                length_to_add = string.len();
+                            });
+                        stats.strings_total_bytes += length_to_add;
+                    }
 
-                        let object_hash_id = {
-                            let mut repository = self.index.repository.write()?;
-                            match dir_entry.object_hash_id(&mut *repository, storage, strings)? {
-                                Some(hash_id) => {
-                                    assert!(dir_entry.get_hash_id().is_ok());
+                    let dir_entry = storage.get_dir_entry(dir_entry_id)?;
 
-                                    if let Some(stats) = stats.as_mut() {
-                                        stats.nhashes += 1;
-                                        let hash =
-                                            repository.get_hash(hash_id.into())?.into_owned();
-                                        stats.unique_hash.insert(hash);
-                                    }
+                    let object_hash_id = {
+                        let mut repository = self.index.repository.write()?;
+                        match dir_entry.object_hash_id(&mut *repository, storage, strings)? {
+                            Some(hash_id) => {
+                                assert!(dir_entry.get_hash_id().is_ok());
 
-                                    Some(hash_id)
+                                if let Some(stats) = stats.as_mut() {
+                                    stats.nhashes += 1;
+                                    let hash = repository.get_hash(hash_id.into())?.into_owned();
+                                    stats.unique_hash.insert(hash);
                                 }
-                                None => {
-                                    // inlined blob
-                                    None
-                                }
+
+                                Some(hash_id)
                             }
-                        };
+                            None => {
+                                // inlined blob
+                                None
+                            }
+                        }
+                    };
 
-                        let object = self
-                            .index
-                            .dir_entry_object(dir_entry_id, storage, strings)?;
+                    let object = self
+                        .index
+                        .dir_entry_object(dir_entry_id, storage, strings)?;
 
-                        self.traverse_working_tree_recursive(
-                            object,
-                            object_hash_id,
-                            storage,
-                            strings,
-                            depth + 1,
-                            stats,
-                        )?;
-                    }
-
-                    Ok(())
+                    self.traverse_working_tree_recursive(
+                        object,
+                        object_hash_id,
+                        storage,
+                        strings,
+                        depth + 1,
+                        stats,
+                    )?;
                 }
-                Object::Commit(_commit) => {
-                    panic!()
-                }
+
+                Ok(())
+            }
+            Object::Commit(_commit) => {
+                unreachable!()
             }
         }
+    }
 
-        /// Traverse the whole tree by fetching all its objects and storing them in
-        /// the `Storage`.
-        ///
-        /// Method used for `context-tool` only.
-        pub fn traverse_working_tree(
-            &self,
-            enable_stats: bool,
-        ) -> Result<Option<WorkingTreeStatistics>, MerkleError> {
-            let object = match self.root {
-                WorkingTreeRoot::Directory(dir_id) => Object::Directory(dir_id),
-                WorkingTreeRoot::Value(blob_id) => Object::Blob(blob_id),
-            };
+    /// Traverse the whole tree by fetching all its objects and storing them in
+    /// the `Storage`.
+    pub fn traverse_working_tree(
+        &self,
+        enable_stats: bool,
+    ) -> Result<Option<WorkingTreeStatistics>, MerkleError> {
+        let object = match self.root {
+            WorkingTreeRoot::Directory(dir_id) => Object::Directory(dir_id),
+            WorkingTreeRoot::Value(blob_id) => Object::Blob(blob_id),
+        };
 
-            let mut storage = self.index.storage.borrow_mut();
-            let mut strings = self.index.get_string_interner()?;
+        let mut storage = self.index.storage.borrow_mut();
+        let mut strings = self.index.get_string_interner()?;
 
-            let mut stats = if enable_stats {
-                Some(WorkingTreeStatistics::default())
-            } else {
-                None
-            };
+        let mut stats = if enable_stats {
+            Some(WorkingTreeStatistics::default())
+        } else {
+            None
+        };
 
-            self.traverse_working_tree_recursive(
-                object,
-                None,
-                &mut *storage,
-                &mut *strings,
-                0,
-                &mut stats,
-            )?;
+        self.traverse_working_tree_recursive(
+            object,
+            None,
+            &mut *storage,
+            &mut *strings,
+            0,
+            &mut stats,
+        )?;
 
-            Ok(stats)
-        }
+        Ok(stats)
     }
 }
 

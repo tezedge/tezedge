@@ -19,7 +19,7 @@ use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult};
 use tezos_context_api::{
     ContextKvStoreConfiguration, GenesisChain, ProtocolOverrides,
     TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
-    TezosContextTezEdgeStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration, TezosContextTezedgeOnDiskBackendOptions,
 };
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -66,7 +66,10 @@ fn test_storage() -> Result<(), Error> {
             data_dir: context_dir,
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: ContextKvStoreConfiguration::InMem,
+            backend: ContextKvStoreConfiguration::InMem(TezosContextTezedgeOnDiskBackendOptions {
+                base_path: tmp_storage_dir.to_str().unwrap().to_string(),
+                startup_check: false,
+            }),
             ipc_socket_path: None,
         },
     );
@@ -219,9 +222,11 @@ fn test_storage() -> Result<(), Error> {
         execution_timestamps: Default::default(),
     };
     let block_additional_data = store_applied_block_result(
+        &chain_meta_storage,
         &block_storage,
         &block_meta_storage,
         &block.hash,
+        block.header.fitness().clone(),
         apply_result.clone(),
         &mut metadata,
         &cycle_meta_storage,
@@ -235,7 +240,7 @@ fn test_storage() -> Result<(), Error> {
         Head::new(
             block.hash.clone(),
             block.header.level(),
-            block.header.fitness().to_vec(),
+            block.header.fitness().clone(),
         ),
     )?;
 

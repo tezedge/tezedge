@@ -12,11 +12,12 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
-use slog::{info, o, warn, Logger};
+use slog::{info, warn, Logger};
 use storage::{PersistentStorage, StorageInitInfo};
 
 use networking::network_channel::NetworkChannelRef;
 use tezos_identity::Identity;
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
 pub use shell_automaton::service::actors_service::{
@@ -26,8 +27,8 @@ pub use shell_automaton::service::actors_service::{ApplyBlockCallback, ApplyBloc
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
 use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use shell_automaton::service::{
-    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, ProtocolRunnerServiceDefault,
-    ProtocolServiceDefault, RpcServiceDefault, ServiceDefault, StorageServiceDefault,
+    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, PrevalidatorServiceDefault,
+    ProtocolRunnerServiceDefault, RpcServiceDefault, ServiceDefault, StorageServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::ShellAutomaton;
@@ -45,7 +46,6 @@ pub struct P2p {
     pub disable_block_precheck: bool,
     pub disable_endorsements_precheck: bool,
     pub disable_peer_graylist: bool,
-    pub disable_apply_retry: bool,
     pub private_node: bool,
 
     pub peer_threshold: PeerConnectionThreshold,
@@ -57,6 +57,8 @@ pub struct P2p {
 
     /// Peers (IP:port) which we try to connect all the time
     pub bootstrap_peers: Vec<SocketAddr>,
+
+    pub current_head_level_override: Option<Level>,
 
     /// Randomness seed for [shell_automaton::ShellAutomaton].
     pub randomness_seed: Option<u64>,
@@ -71,7 +73,7 @@ impl P2p {
 
 enum ShellAutomatonThreadHandle {
     Running(std::thread::JoinHandle<()>),
-    NotRunning(ShellAutomaton<ServiceDefault, MioInternalEventsContainer>),
+    NotRunning(Box<ShellAutomaton<ServiceDefault, MioInternalEventsContainer>>),
 }
 
 pub struct ShellAutomatonManager {
@@ -141,31 +143,27 @@ impl ShellAutomatonManager {
                 Self::SHELL_AUTOMATON_QUEUE_MAX_CAPACITY,
             );
 
-        let quota_service = shell_automaton::service::QuotaServiceDefault::new(
+        let prevalidator_service = PrevalidatorServiceDefault::new(
             mio_service.waker(),
-            Duration::from_millis(100),
-            log.new(o!("service" => "quota")),
+            Arc::new(protocol_runner_api.clone()),
         );
-
-        let protocol_service =
-            ProtocolServiceDefault::new(mio_service.waker(), Arc::new(protocol_runner_api.clone()));
         let protocol_runner_service = ProtocolRunnerServiceDefault::new(
             protocol_runner_api,
             mio_service.waker(),
             64,
             context_init_status_sender,
+            log.new(slog::o!("service" => "protocol_runner")),
         );
 
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),
             dns: DnsServiceDefault::default(),
             mio: mio_service,
-            protocol: protocol_service,
+            prevalidator: prevalidator_service,
             protocol_runner: protocol_runner_service,
             storage: storage_service,
             rpc: rpc_service,
             actors: ActorsServiceDefault::new(automaton_receiver, network_channel),
-            quota: quota_service,
             statistics: Some(Default::default()),
         };
 
@@ -186,14 +184,14 @@ impl ShellAutomatonManager {
             pow_target,
             chain_id,
 
-            check_timeouts_interval: Duration::from_millis(500),
+            check_timeouts_interval: Duration::from_millis(200),
 
             peers_dns_lookup_addresses: bootstrap_addresses.into_iter().collect(),
 
             peer_connecting_timeout: Duration::from_secs(4),
             peer_handshaking_timeout: Duration::from_secs(8),
 
-            peer_max_io_syscalls: 64,
+            peer_max_io_syscalls: 32,
 
             peers_potential_max: p2p_config.peer_threshold.high * 5,
             peers_connected_max: p2p_config.peer_threshold.high,
@@ -203,6 +201,11 @@ impl ShellAutomatonManager {
 
             peers_graylist_disable: p2p_config.disable_peer_graylist,
             peers_graylist_timeout: Duration::from_secs(15 * 60),
+
+            bootstrap_block_header_get_timeout: Duration::from_millis(500),
+            bootstrap_block_operations_get_timeout: Duration::from_millis(1000),
+
+            current_head_level_override: p2p_config.current_head_level_override,
 
             record_state_snapshots_with_interval: match p2p_config
                 .record_shell_automaton_state_snapshots
@@ -220,7 +223,6 @@ impl ShellAutomatonManager {
             },
             disable_block_precheck: p2p_config.disable_block_precheck,
             disable_endorsements_precheck: p2p_config.disable_endorsements_precheck,
-            disable_apply_retry: p2p_config.disable_apply_retry,
         });
 
         initial_state.set_logger(log.clone());
@@ -230,9 +232,9 @@ impl ShellAutomatonManager {
         let this = Self {
             log,
             shell_automaton_sender: automaton_sender,
-            shell_automaton_thread_handle: Some(ShellAutomatonThreadHandle::NotRunning(
+            shell_automaton_thread_handle: Some(ShellAutomatonThreadHandle::NotRunning(Box::new(
                 shell_automaton,
-            )),
+            ))),
         };
 
         (this, rpc_channel)

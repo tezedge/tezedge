@@ -81,7 +81,7 @@ impl fmt::Display for NodeInfo {
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug, Default, CopyGetters)]
-pub struct OcamlDiskData {
+pub struct OCamlDiskData {
     #[get_copy = "pub(crate)"]
     debugger: u64,
 
@@ -89,25 +89,25 @@ pub struct OcamlDiskData {
     block_storage: u64,
 
     #[get_copy = "pub(crate)"]
-    context_irmin: u64,
+    context_storage: u64,
 }
 
-impl fmt::Display for OcamlDiskData {
+impl fmt::Display for OCamlDiskData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let total = self.block_storage + self.context_irmin;
+        let total = self.block_storage + self.context_storage;
         write!(
             f,
             "{} MB (total)\n\tBlock storage: {} MB\n\tContext: {} MB",
-            total, self.block_storage, self.context_irmin,
+            total, self.block_storage, self.context_storage,
         )
     }
 }
 
-impl OcamlDiskData {
-    pub fn new(debugger: u64, block_storage: u64, context_irmin: u64) -> Self {
+impl OCamlDiskData {
+    pub fn new(debugger: u64, block_storage: u64, context_storage: u64) -> Self {
         Self {
             block_storage,
-            context_irmin,
+            context_storage,
             debugger,
         }
     }
@@ -115,7 +115,7 @@ impl OcamlDiskData {
     pub fn to_megabytes(&self) -> Self {
         Self {
             block_storage: self.block_storage / 1024 / 1024,
-            context_irmin: self.context_irmin / 1024 / 1024,
+            context_storage: self.context_storage / 1024 / 1024,
             debugger: self.debugger / 1024 / 1024,
         }
     }
@@ -124,13 +124,13 @@ impl OcamlDiskData {
 #[derive(Serialize, PartialEq, Clone, Debug)]
 #[serde(untagged)]
 pub enum DiskData {
-    Ocaml(OcamlDiskData),
+    OCaml(OCamlDiskData),
     Tezedge(TezedgeDiskData),
 }
 
-impl From<OcamlDiskData> for DiskData {
-    fn from(data: OcamlDiskData) -> Self {
-        DiskData::Ocaml(data)
+impl From<OCamlDiskData> for DiskData {
+    fn from(data: OCamlDiskData) -> Self {
+        DiskData::OCaml(data)
     }
 }
 
@@ -146,8 +146,8 @@ impl fmt::Display for DiskData {
             DiskData::Tezedge(tezedge) => {
                 write!(f, "Tezedge node: {}", tezedge.to_megabytes(),)
             }
-            DiskData::Ocaml(ocaml) => {
-                write!(f, "\nOcaml node: {}", ocaml.to_megabytes(),)
+            DiskData::OCaml(ocaml) => {
+                write!(f, "\nOCaml node: {}", ocaml.to_megabytes(),)
             }
         }
     }
@@ -156,16 +156,13 @@ impl fmt::Display for DiskData {
 #[derive(Serialize, PartialEq, Clone, Debug, Default, CopyGetters)]
 pub struct TezedgeDiskData {
     #[get_copy = "pub(crate)"]
-    context_irmin: u64,
-
-    #[get_copy = "pub(crate)"]
-    context_merkle_rocksdb: u64,
+    context_storage: u64,
 
     #[get_copy = "pub(crate)"]
     block_storage: u64,
 
     #[get_copy = "pub(crate)"]
-    context_actions: u64,
+    context_stats: u64,
 
     #[get_copy = "pub(crate)"]
     main_db: u64,
@@ -177,24 +174,22 @@ pub struct TezedgeDiskData {
 impl fmt::Display for TezedgeDiskData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let TezedgeDiskData {
-            context_actions,
-            context_irmin,
-            context_merkle_rocksdb,
+            context_stats,
+            context_storage,
             block_storage,
             main_db,
             debugger,
         } = self;
 
         let total =
-            context_actions + context_irmin + context_merkle_rocksdb + block_storage + main_db;
+            context_stats + context_storage + block_storage + main_db;
         writeln!(
             f,
-            "{} MB (total)\n\tMain database: {} MB\n\tContex - irmin: {} MB\n\tContext - rust_merkel_tree: {} MB\n\tContext actions: {} MB\n\tBlock storage (commit log): {} MB\n\tDebugger: {} MB",
+            "{} MB (total)\n\tMain database: {} MB\n\tContext: {} MB\n\tContext stats: {} MB\n\tBlock storage (commit log): {} MB\n\tDebugger: {} MB",
             total,
             main_db,
-            context_irmin,
-            context_merkle_rocksdb,
-            context_actions,
+            context_storage,
+            context_stats,
             block_storage,
             debugger
         )
@@ -204,17 +199,15 @@ impl fmt::Display for TezedgeDiskData {
 impl TezedgeDiskData {
     pub fn new(
         debugger: u64,
-        context_irmin: u64,
-        context_merkle_rocksdb: u64,
+        context: u64,
         block_storage: u64,
-        context_actions: u64,
+        context_stats: u64,
         main_db: u64,
     ) -> Self {
         Self {
-            context_irmin,
-            context_merkle_rocksdb,
+            context_storage,
             block_storage,
-            context_actions,
+            context_stats,
             main_db,
             debugger,
         }
@@ -222,10 +215,9 @@ impl TezedgeDiskData {
 
     pub fn to_megabytes(&self) -> Self {
         Self {
-            context_irmin: self.context_irmin / 1024 / 1024,
-            context_merkle_rocksdb: self.context_merkle_rocksdb / 1024 / 1024,
+            context_storage: self.context_storage / 1024 / 1024,
             block_storage: self.block_storage / 1024 / 1024,
-            context_actions: self.context_actions / 1024 / 1024,
+            context_stats: self.context_stats / 1024 / 1024,
             main_db: self.main_db / 1024 / 1024,
             debugger: self.debugger / 1024 / 1024,
         }
@@ -243,7 +235,7 @@ impl fmt::Display for CpuData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "\nOcaml: {}%\nTezedge: \n\tNode: {}\n\tProtocol: {}",
+            "\nOCaml: {}%\nTezedge: \n\tNode: {}\n\tProtocol: {}",
             self.ocaml, self.tezedge, self.protocol_runners
         )
     }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 mod storage_state;
-
 pub use storage_state::*;
 
 pub mod request;
@@ -141,6 +140,7 @@ macro_rules! kv_effects {
             match &action.action {
                 Action::$get($get_action { key }) => store.dispatch(StorageRequestCreateAction {
                     payload: StorageRequestPayload::$request(key.clone()),
+                    requestor: StorageRequestor::None,
                 }),
                 Action::StorageRequestSuccess(StorageRequestSuccessAction {
                     result: StorageResponseSuccess::$success(key, Some(value)),

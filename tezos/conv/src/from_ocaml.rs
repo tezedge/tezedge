@@ -4,9 +4,9 @@
 use std::convert::TryFrom;
 
 use crate::{
-    OCamlApplyBlockExecutionTimestamps, OCamlCommitGenesisResult, OCamlComputePathResponse,
-    OCamlCycleRollsOwnerSnapshot, OCamlInitProtocolContextResult, OCamlNodeMessage,
-    OCamlTezosContextTezedgeOnDiskBackendOptions,
+    OCamlApplyBlockExecutionTimestamps, OCamlBlockPayloadHash, OCamlCommitGenesisResult,
+    OCamlComputePathResponse, OCamlCycleRollsOwnerSnapshot, OCamlInitProtocolContextResult,
+    OCamlNodeMessage, OCamlTezosContextTezedgeOnDiskBackendOptions,
 };
 
 use super::{
@@ -20,8 +20,8 @@ use super::{
     OCamlTezosErrorTrace, OCamlValidateOperationResponse, OCamlValidateOperationResult,
 };
 use crypto::hash::{
-    BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationMetadataHash,
-    OperationMetadataListListHash, ProtocolHash,
+    BlockHash, BlockMetadataHash, BlockPayloadHash, ChainId, ContextHash, Hash, OperationHash,
+    OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use ocaml_interop::{
     impl_from_ocaml_polymorphic_variant, impl_from_ocaml_record, impl_from_ocaml_variant,
@@ -62,7 +62,7 @@ macro_rules! from_ocaml_typed_hash {
                     let vec: Vec<u8> = v.field::<OCamlBytes>(0).to_rust();
                     use std::convert::TryFrom;
                     $rust_name::try_from(vec).unwrap_or_else(|e| {
-                        unreachable!(format!("Wrong bytes received from OCaml: {:?}", e))
+                        unreachable!("Wrong bytes received from OCaml: {:?}", e)
                     })
                 }
             }
@@ -76,6 +76,7 @@ from_ocaml_typed_hash!(OCamlBlockHash, BlockHash);
 from_ocaml_typed_hash!(OCamlContextHash, ContextHash);
 from_ocaml_typed_hash!(OCamlProtocolHash, ProtocolHash);
 from_ocaml_typed_hash!(OCamlBlockMetadataHash, BlockMetadataHash);
+from_ocaml_typed_hash!(OCamlBlockPayloadHash, BlockPayloadHash);
 from_ocaml_typed_hash!(OCamlOperationMetadataHash, OperationMetadataHash);
 from_ocaml_typed_hash!(
     OCamlOperationMetadataListListHash,
@@ -106,7 +107,7 @@ impl_from_ocaml_record! {
 impl_from_ocaml_variant! {
     OCamlContextKvStoreConfiguration => ContextKvStoreConfiguration {
         ContextKvStoreConfiguration::ReadOnlyIpc,
-        ContextKvStoreConfiguration::InMem,
+        ContextKvStoreConfiguration::InMem(options: OCamlTezosContextTezedgeOnDiskBackendOptions),
         ContextKvStoreConfiguration::OnDisk(options: OCamlTezosContextTezedgeOnDiskBackendOptions),
     }
 }
@@ -188,7 +189,7 @@ impl_from_ocaml_record! {
     OCamlPrevalidatorWrapper => PrevalidatorWrapper {
         chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
-        context_fitness: Option<OCamlList<OCamlBytes>>
+        context_fitness: Option<OCamlList<OCamlBytes>>,
     }
 }
 
@@ -220,6 +221,7 @@ impl_from_ocaml_record! {
         refused: OCamlList<OCamlErrored>,
         branch_refused: OCamlList<OCamlErrored>,
         branch_delayed: OCamlList<OCamlErrored>,
+        outdated: OCamlList<OCamlErrored>,
     }
 }
 

@@ -2,15 +2,17 @@ import json
 import os.path
 
 from tools import paths
+from typing import List
 
 
-def get_parameters(folder: str) -> dict:
-    """Takes a protocol folder ('proto_alpha', 'proto_005_PsBabyM1'...) and
+def get_parameters(folder: str, network='test') -> dict:
+    """Takes a protocol suffix ('alpha', '005_PsBabyM1'...) and
     retrieve json test parameters for that protocol. Assertion failure
     if parameters can't be found."""
 
     params_file = (
-        f'{paths.TEZOS_HOME}src/{folder}/parameters/' 'test-parameters.json'
+        f'{paths.TEZOS_HOME}/src/{folder}/parameters/'
+        f'{network}-parameters.json'
     )
     assert os.path.isfile(params_file), (
         f'{params_file}'
@@ -84,22 +86,15 @@ ALPHA_DAEMON = "alpha"  # tezos-baker-alpha
 ALPHA_FOLDER = "proto_alpha"
 ALPHA_PARAMETERS = get_parameters(ALPHA_FOLDER)
 
-BABYLON = "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"
-BABYLON_DAEMON = "005-PsBabyM1"
-BABYLON_FOLDER = "proto_005_PsBabyM1"
-
-CARTHAGE = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb"
-CARTHAGE_FOLDER = "proto_006_PsCARTHA"
-
-GRANADA = "PtGRANADsDU8R9daYKAgWnQYAJ64omN1o3KMGVCykShA97vQbvV"
-GRANADA_DAEMON = "010-PtGRANAD"
-GRANADA_FOLDER = "proto_010_PtGRANAD"
-GRANADA_PARAMETERS = get_parameters(GRANADA_FOLDER)
-
 HANGZHOU = "PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx"
 HANGZHOU_DAEMON = "011-PtHangz2"
 HANGZHOU_FOLDER = "proto_011_PtHangz2"
 HANGZHOU_PARAMETERS = get_parameters(HANGZHOU_FOLDER)
+
+ITHACA = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A"
+ITHACA_DAEMON = "012-Psithaca"
+ITHACA_FOLDER = "proto_012_Psithaca"
+ITHACA_PARAMETERS = get_parameters(ITHACA_FOLDER)
 
 TEZOS_CRT = """
 Certificate:
@@ -255,16 +250,77 @@ A high-number of connections helps triggering the maintenance process
  ensures all nodes are bootstrapped when they start, which can avoid
  some spurious deadlocks (e.g. a node not broadcasting its head).
 """
-# NODE_PARAMS = ['--connections', '500', '--synchronisation-threshold', '0']
-NODE_PARAMS = ['--sandbox-patch-context-json-file', paths.TEZOS_HOME + 'sandbox-patch-context.json',
-               '--bootstrap-db-path', 'light-node', '--log-format', 'simple',
-               '--ocaml-log-enabled', 'false',
-               '--protocol-runner', paths.TEZOS_HOME + 'protocol-runner',
-               '--peer-thresh-low', '250', '--peer-thresh-high', '500',
-               '--disable-peer-graylist',
-               '--compute-context-action-tree-hashes=false',
-               '--tokio-threads=0', '--enable-testchain=false', '--log-level=debug',
-               '--synchronization-thresh', '0',
-               # zcash-params files used for init, if zcash-params is not correctly setup it in OS
-               '--init-sapling-spend-params-file', paths.TEZOS_HOME + 'sapling-spend.params',
-               '--init-sapling-output-params-file', paths.TEZOS_HOME + 'sapling-output.params']
+OCTEZ_NODE_PARAMS = ['--connections', '100', '--synchronisation-threshold', '0']
+
+TEZEDGE_NODE_PARAMS = [
+    '--sandbox-patch-context-json-file',
+    paths.TEZOS_HOME + 'sandbox-patch-context.json',
+    '--bootstrap-db-path',
+    'light-node',
+    '--log-format',
+    'simple',
+    '--ocaml-log-enabled',
+    'false',
+    '--protocol-runner',
+    paths.TEZOS_HOME + 'protocol-runner',
+    '--peer-thresh-low',
+    '250',
+    '--peer-thresh-high',
+    '500',
+    '--disable-peer-graylist',
+    '--compute-context-action-tree-hashes=false',
+    '--tokio-threads=0',
+    '--enable-testchain=false',
+    '--log-level=debug',
+    '--synchronization-thresh',
+    '0',
+    # zcash-params files used for init, if zcash-params is not correctly setup it in OS
+    '--init-sapling-spend-params-file',
+    paths.TEZOS_HOME + 'sapling-spend.params',
+    '--init-sapling-output-params-file',
+    paths.TEZOS_HOME + 'sapling-output.params',
+]
+
+
+class NodeParams:
+    def __init__(
+        self,
+        octez_params: List[str],
+        tezedge_params: List[str],
+        more_params: List[str] = [],
+    ):
+        self._octez_params = octez_params
+        self._tezedge_params = tezedge_params
+        self._more_params = more_params
+
+    def __add__(self, more_params: List[str]):
+        return NodeParams(
+            self._octez_params,
+            self._tezedge_params,
+            self._more_params + more_params,
+        )
+
+    def __getitem__(self, node_name: str):
+        if node_name == 'tezos-node':
+            return self._octez_params + self._more_params
+        elif node_name == 'light-node':
+            return self._tezedge_params + self._more_params
+        else:
+            raise Exception(
+                message="NodeParams: Unknown node type: " + node_name
+            )
+
+
+NODE_PARAMS = NodeParams(
+    octez_params=OCTEZ_NODE_PARAMS, tezedge_params=TEZEDGE_NODE_PARAMS
+)
+
+TENDERBAKE_BAKER_LOG_LEVELS = {"alpha.baker.*": "debug"}
+
+TENDERBAKE_NODE_LOG_LEVELS = {
+    "node.chain_validator": "debug",
+    "node.validator.block": "debug",
+    "node_prevalidator": "debug",
+    "validator.block": "debug",
+    "validator.chain": "debug",
+}

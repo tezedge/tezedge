@@ -69,6 +69,8 @@ pub const TAG: Symbol = Symbol("tag");
 pub const Z_ARITH: Symbol = Symbol("zarith");
 pub const MU_TEZ: Symbol = Symbol("mutez");
 
+pub const RESERVE: Symbol = Symbol("reserve");
+
 impl PartialEq<Symbol> for Ident {
     fn eq(&self, word: &Symbol) -> bool {
         self == word.0

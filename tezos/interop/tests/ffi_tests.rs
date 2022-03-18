@@ -12,7 +12,7 @@ use tezos_api::ffi::{
 };
 use tezos_context_api::{
     TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
-    TezosContextTezEdgeStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration, TezosContextTezedgeOnDiskBackendOptions,
 };
 use tezos_interop::apply_encoded_message;
 use tezos_messages::p2p::binary_message::BinaryRead;
@@ -96,23 +96,23 @@ fn test_assert_encoding_for_protocol_data() {
 
     // check
     assert!(assert_encoding_for_protocol_data(
-        protocol_hash_1.clone(),
-        block_header_1.protocol_data().clone(),
+        protocol_hash_1.clone().into(),
+        block_header_1.protocol_data().clone().into(),
     )
     .is_ok());
     assert!(assert_encoding_for_protocol_data(
         protocol_hash_1,
-        block_header_2.protocol_data().clone(),
+        block_header_2.protocol_data().clone().into(),
     )
     .is_err());
     assert!(assert_encoding_for_protocol_data(
         protocol_hash_2.clone(),
-        block_header_1.protocol_data().clone(),
+        block_header_1.protocol_data().clone().into(),
     )
     .is_err());
     assert!(assert_encoding_for_protocol_data(
         protocol_hash_2,
-        block_header_2.protocol_data().clone(),
+        block_header_2.protocol_data().clone().into(),
     )
     .is_ok());
 }
@@ -134,7 +134,12 @@ fn prepare_protocol_context(
             data_dir: common::prepare_empty_dir(dir_name),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_context_api::ContextKvStoreConfiguration::InMem,
+            backend: tezos_context_api::ContextKvStoreConfiguration::InMem(
+                TezosContextTezedgeOnDiskBackendOptions {
+                    base_path: dir_name.to_string(),
+                    startup_check: false,
+                },
+            ),
             ipc_socket_path: None,
         },
     );

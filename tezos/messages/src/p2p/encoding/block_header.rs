@@ -5,38 +5,27 @@ use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
+use crate::Timestamp;
+
+use super::fitness::Fitness;
 use crypto::hash::{BlockHash, ContextHash, OperationListListHash};
-use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
+use tezos_encoding::{enc::BinWriter, types::Bytes};
 
 use super::limits::{
-    BLOCK_HEADER_FITNESS_MAX_SIZE, BLOCK_HEADER_MAX_SIZE, BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE,
-    GET_BLOCK_HEADERS_MAX_LENGTH,
+    BLOCK_HEADER_MAX_SIZE, BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE, GET_BLOCK_HEADERS_MAX_LENGTH,
 };
 
-pub type Fitness = Vec<Vec<u8>>;
 pub type Level = i32;
 
 pub fn display_fitness(fitness: &Fitness) -> String {
-    fitness
-        .iter()
-        .map(hex::encode)
-        .collect::<Vec<String>>()
-        .join("::")
+    fitness.to_string()
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Getters,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Debug, Eq, PartialEq, Getters, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct BlockHeaderMessage {
     #[get = "pub"]
@@ -58,15 +47,7 @@ impl From<BlockHeaderMessage> for BlockHeader {
 // -----------------------------------------------------------------------------------------------
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Getters,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Debug, Eq, PartialEq, Getters, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct GetBlockHeadersMessage {
     #[get = "pub"]
@@ -85,8 +66,8 @@ impl GetBlockHeadersMessage {
 #[derive(
     Serialize,
     Deserialize,
+    Eq,
     PartialEq,
-    Debug,
     Clone,
     Builder,
     Getters,
@@ -94,7 +75,6 @@ impl GetBlockHeadersMessage {
     HasEncoding,
     NomReader,
     BinWriter,
-    tezos_encoding::generator::Generated,
 )]
 #[encoding(bounded = "BLOCK_HEADER_MAX_SIZE")]
 pub struct BlockHeader {
@@ -106,31 +86,19 @@ pub struct BlockHeader {
     #[get = "pub"]
     predecessor: BlockHash,
     #[get_copy = "pub"]
-    #[encoding(timestamp)]
-    timestamp: i64,
+    timestamp: Timestamp,
     #[get_copy = "pub"]
     validation_pass: u8,
     #[get = "pub"]
     operations_hash: OperationListListHash,
     #[get = "pub"]
-    #[encoding(composite(
-        dynamic = "BLOCK_HEADER_FITNESS_MAX_SIZE",
-        list,
-        dynamic,
-        list,
-        builtin = "Uint8"
-    ))]
     fitness: Fitness,
     #[get = "pub"]
     context: ContextHash,
 
     #[get = "pub"]
-    #[encoding(
-        bounded = "BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE",
-        list,
-        builtin = "Uint8"
-    )]
-    protocol_data: Vec<u8>,
+    #[encoding(bounded = "BLOCK_HEADER_PROTOCOL_DATA_MAX_SIZE")]
+    protocol_data: Bytes,
 
     #[get = "pub"]
     #[serde(skip)]
@@ -139,13 +107,29 @@ pub struct BlockHeader {
     hash: EncodingHash,
 }
 
+impl std::fmt::Debug for BlockHeader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BlockHeader")
+            .field("level", &self.level)
+            .field("proto", &self.proto)
+            .field("predecessor", &self.predecessor)
+            .field("timestamp", &self.timestamp)
+            .field("validation_pass", &self.validation_pass)
+            .field("operations_hash", &self.operations_hash)
+            .field("fitness", &self.fitness)
+            .field("context", &self.context)
+            .field("protocol_data", &self.protocol_data)
+            .finish()
+    }
+}
+
 /// Optional 256-bit digest of encoded data
 /// TODO https://viablesystems.atlassian.net/browse/TE-675
 #[cfg_attr(
     feature = "fuzzing",
     derive(fuzzcheck::DefaultMutator, Serialize, Deserialize)
 )]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq)]
 pub struct EncodingHash(pub Option<Vec<u8>>);
 
 impl PartialEq for EncodingHash {

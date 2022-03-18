@@ -9,6 +9,7 @@ use std::{
 };
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
+use storage::shell_automaton_action_meta_storage::ShellAutomatonActionsStats;
 use tezos_messages::p2p::encoding::{
     block_header::{BlockHeader, Level},
     operation::Operation,
@@ -17,9 +18,11 @@ use tezos_messages::p2p::encoding::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::State;
+use crate::{request::RequestId, rpc::ValidBlocksQuery, storage::request::StorageRequestor, State};
 
-use super::BlockApplyStats;
+use super::{
+    statistics_service::ActionGraph, storage_service::StorageRequestPayloadKind, BlockApplyStats,
+};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -43,11 +46,37 @@ pub trait RpcService {
     fn respond_stream(&mut self, call_id: RpcId, json: Option<serde_json::Value>);
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct StorageRequest {
+    pub req_id: RequestId,
+    pub pending_since: u64,
+    /// How long request has been pending for. `now - pending_since`.
+    pub pending_for: u64,
+    pub kind: StorageRequestPayloadKind,
+    pub requestor: StorageRequestor,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct StorageRequests {
+    pub pending: Vec<StorageRequest>,
+    pub finished: Vec<crate::service::statistics_service::StorageRequestFinished>,
+}
+
 #[derive(Debug)]
 pub enum RpcRequest {
     GetCurrentGlobalState {
         channel: oneshot::Sender<State>,
     },
+    GetStorageRequests {
+        channel: oneshot::Sender<StorageRequests>,
+    },
+    GetActionKindStats {
+        channel: oneshot::Sender<ShellAutomatonActionsStats>,
+    },
+    GetActionGraph {
+        channel: oneshot::Sender<ActionGraph>,
+    },
+
     GetMempoolOperationStats {
         channel: oneshot::Sender<crate::mempool::OperationsStats>,
     },
@@ -58,21 +87,21 @@ pub enum RpcRequest {
         channel: oneshot::Sender<Option<crate::service::statistics_service::BlocksApplyStats>>,
     },
 
-    InjectOperation {
-        operation_hash: OperationHash,
-        operation: Operation,
-        injected: Instant,
-    },
-    InjectBlock {
+    InjectBlockStart {
         chain_id: ChainId,
         block_header: Arc<BlockHeader>,
         block_hash: BlockHash,
         injected: Instant,
     },
-    RequestCurrentHeadFromConnectedPeers,
-    RemoveOperations {
-        operation_hashes: Vec<OperationHash>,
+    InjectBlock {
+        block_hash: BlockHash,
     },
+    InjectOperation {
+        operation_hash: OperationHash,
+        operation: Operation,
+        injected: Instant,
+    },
+    RequestCurrentHeadFromConnectedPeers,
     MempoolStatus,
     GetPendingOperations,
     GetBakingRights {
@@ -95,11 +124,13 @@ pub enum RpcRequest {
 #[derive(Debug)]
 pub enum RpcRequestStream {
     Bootstrapped,
+    ValidBlocks(ValidBlocksQuery),
     GetOperations {
         applied: bool,
         refused: bool,
         branch_delayed: bool,
         branch_refused: bool,
+        outdated: bool,
     },
 }
 

@@ -13,7 +13,7 @@ use crate::{ActionWithMeta, Store};
 use super::{
     StorageRequestErrorAction, StorageRequestFinishAction, StorageRequestInitAction,
     StorageRequestPendingAction, StorageRequestStatus, StorageRequestSuccessAction,
-    StorageResponseReceivedAction,
+    StorageRequestor, StorageResponseReceivedAction,
 };
 
 pub fn storage_request_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -32,7 +32,7 @@ where
                 None => return,
             };
             match req.status {
-                StorageRequestStatus::Idle => {}
+                StorageRequestStatus::Idle { .. } => {}
                 _ => return,
             }
             // TODO: handle send error in case of mpsc disconnection.
@@ -51,7 +51,15 @@ where
         Action::WakeupEvent(_) => {
             // TODO: handle disconnected error.
             while let Ok(response) = store.service.storage().response_try_recv() {
-                store.dispatch(StorageResponseReceivedAction { response });
+                let requestor = response
+                    .req_id
+                    .and_then(|req_id| store.state().storage.requests.get(req_id))
+                    .map(|req| req.requestor.clone())
+                    .unwrap_or(StorageRequestor::None);
+                store.dispatch(StorageResponseReceivedAction {
+                    response,
+                    requestor,
+                });
             }
         }
         Action::StorageResponseReceived(action) => {
@@ -82,14 +90,64 @@ where
                 };
             }
         }
-        Action::StorageRequestError(action) => {
+        Action::StorageRequestError(content) => {
+            use crate::service::rpc_service::StorageRequest;
+            use crate::service::statistics_service::{
+                StorageRequestFinished, StorageRequestFinishedStatus,
+            };
+            store.service.statistics().map(|stats| {
+                let req = match store.state.get().storage.requests.get(content.req_id) {
+                    Some(v) => v,
+                    None => return,
+                };
+                let pending_since = match req.status.pending_since() {
+                    Some(v) => v,
+                    None => return,
+                };
+                stats.storage_request_finished(StorageRequestFinished {
+                    request: StorageRequest {
+                        req_id: content.req_id,
+                        pending_since,
+                        pending_for: action.time_as_nanos() - pending_since,
+                        kind: req.payload.kind(),
+                        requestor: req.requestor.clone(),
+                    },
+                    status: StorageRequestFinishedStatus::Error {
+                        error: format!("{:?}", content.error),
+                    },
+                });
+            });
             store.dispatch(StorageRequestFinishAction {
-                req_id: action.req_id,
+                req_id: content.req_id,
             });
         }
-        Action::StorageRequestSuccess(action) => {
+        Action::StorageRequestSuccess(content) => {
+            use crate::service::rpc_service::StorageRequest;
+            use crate::service::statistics_service::{
+                StorageRequestFinished, StorageRequestFinishedStatus,
+            };
+            store.service.statistics().map(|stats| {
+                let req = match store.state.get().storage.requests.get(content.req_id) {
+                    Some(v) => v,
+                    None => return,
+                };
+                let pending_since = match req.status.pending_since() {
+                    Some(v) => v,
+                    None => return,
+                };
+                stats.storage_request_finished(StorageRequestFinished {
+                    request: StorageRequest {
+                        req_id: content.req_id,
+                        pending_since,
+                        pending_for: action.time_as_nanos() - pending_since,
+                        kind: req.payload.kind(),
+                        requestor: req.requestor.clone(),
+                    },
+                    status: StorageRequestFinishedStatus::Success,
+                });
+            });
             store.dispatch(StorageRequestFinishAction {
-                req_id: action.req_id,
+                req_id: content.req_id,
             });
         }
         _ => {}

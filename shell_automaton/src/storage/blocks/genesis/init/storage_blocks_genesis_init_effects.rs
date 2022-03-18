@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crate::current_head::CurrentHeadRehydrateInitAction;
 use crate::protocol_runner::ProtocolRunnerNotifyStatusAction;
 use crate::{Action, ActionWithMeta, Service, Store};
 
@@ -33,6 +34,7 @@ where
             store.dispatch(StorageBlocksGenesisInitSuccessAction {});
         }
         Action::StorageBlocksGenesisInitSuccess(_) => {
+            store.dispatch(CurrentHeadRehydrateInitAction {});
             store.dispatch(ProtocolRunnerNotifyStatusAction {});
         }
         _ => {}

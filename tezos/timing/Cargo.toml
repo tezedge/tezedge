@@ -1,6 +1,6 @@
 [package]
 name = "tezos_timing"
-version = "1.16.1"
+version = "1.17.0"
 authors = ["Sebastien Chapuis <sebastien@chapu.is>"]
 edition = "2021"
 

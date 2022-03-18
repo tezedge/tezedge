@@ -88,6 +88,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
     routes.handle(
         hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/header/protocol_data/raw",
+        shell_handler::chains_block_id_header_protocol_data_raw,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/chains/:chain_id/mempool/pending_operations",
         shell_handler::mempool_pending_operations,
     );
@@ -295,6 +300,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         "/dev/shell/automaton/state_raw",
         dev_handler::dev_shell_automaton_state_raw_get,
     );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/shell/automaton/storage/requests",
+        dev_handler::dev_shell_automaton_storage_requests_get,
+    );
 
     routes.handle(
         hash_set![Method::GET],
@@ -386,6 +396,27 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         hash_set![Method::GET],
         "/stats/:chain_id/blocks/:block_id",
         dev_handler::block_actions,
+    );
+
+    routes.handle(
+        hash_set![Method::GET],
+        "/network/stat",
+        shell_handler::network_stat,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/network/connections",
+        shell_handler::network_connections,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/network/peers",
+        shell_handler::network_connections,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/network/points",
+        shell_handler::network_connections,
     );
 
     // DEPRECATED in ocaml but still used by python tests

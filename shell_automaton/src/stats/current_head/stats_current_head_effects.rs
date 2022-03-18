@@ -5,7 +5,7 @@ use crypto::hash::BlockHash;
 use tezos_messages::p2p::{binary_message::MessageHash, encoding::peer::PeerMessage};
 
 use crate::{
-    current_head::current_head_actions::CurrentHeadPrecheckSuccessAction,
+    current_head_precheck::CurrentHeadPrecheckSuccessAction,
     mempool::mempool_actions::BlockInjectAction,
     peer::{
         message::write::{
@@ -37,7 +37,7 @@ where
                 s.block_new(
                     block_hash.clone(),
                     block_header.level(),
-                    block_header.timestamp(),
+                    block_header.timestamp().into(),
                     block_header.validation_pass(),
                     action.time_as_nanos(),
                     None,

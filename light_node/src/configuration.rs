@@ -327,6 +327,12 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(false)
             .conflicts_with("bootstrap-lookup-address")
             .help("Disables dns lookup to get the peers to bootstrap the network from. Default: false"))
+        .arg(Arg::with_name("current-head-level-override")
+            .long("current-head-level-override")
+            .global(true)
+            .takes_value(true)
+            .help("Override node's current head level in order to bootstrap from that block.")
+            .validator(parse_validator_fn!(u32, "Value must be a valid number")))
         .arg(Arg::with_name("log")
             .long("log")
             .global(true)
@@ -387,12 +393,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .help("Enable or disable blocks prechecking"))
         .arg(Arg::with_name("disable-endorsements-precheck")
             .long("disable-endorsements-precheck")
-            .global(true)
-            .takes_value(true)
-            .value_name("BOOL")
-            .help("Enable or disable prechecking of endorsements"))
-        .arg(Arg::with_name("disable-apply-retry")
-            .long("disable-apply-retry")
             .global(true)
             .takes_value(true)
             .value_name("BOOL")
@@ -1059,6 +1059,9 @@ impl Environment {
                             .collect()
                     })
                     .unwrap_or_default(),
+                current_head_level_override: args
+                    .value_of("current-head-level-override")
+                    .and_then(|level| level.parse().ok()),
                 peer_threshold: PeerConnectionThreshold::try_new(
                     args.value_of("peer-thresh-low")
                         .unwrap_or("")
@@ -1090,10 +1093,6 @@ impl Environment {
                         s.parse()
                             .expect("Boolean value expected for disable-endorsements-precheck")
                     }),
-                disable_apply_retry: args.value_of("disable-apply-retry").map_or(false, |s| {
-                    s.parse()
-                        .expect("Boolean value expected for disable-apply-retry")
-                }),
                 randomness_seed: args.value_of("randomness-seed").map(|s| {
                     s.parse::<u64>()
                         .expect("Provided value cannot be converted to u64")
@@ -1196,7 +1195,15 @@ impl Environment {
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
                     .parse::<SupportedContextKeyValueStore>()
                     .map(|v| match v {
-                        SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
+                        SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem(
+                            TezosContextTezedgeOnDiskBackendOptions {
+                                base_path: get_final_path(&tezos_data_dir, "context".into())
+                                    .into_os_string()
+                                    .into_string()
+                                    .unwrap(),
+                                startup_check,
+                            },
+                        ),
                         SupportedContextKeyValueStore::OnDisk => {
                             ContextKvStoreConfiguration::OnDisk(
                                 TezosContextTezedgeOnDiskBackendOptions {

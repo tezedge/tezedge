@@ -4,6 +4,7 @@
 use std::convert::TryFrom;
 use std::fmt;
 
+use num_bigint::BigUint;
 pub use tezos_encoding_derive::BinWriter;
 
 use thiserror::Error;
@@ -160,7 +161,7 @@ where
 pub type BinResult = Result<(), BinError>;
 
 pub trait BinWriter {
-    fn bin_write(&self, bytes: &mut Vec<u8>) -> BinResult;
+    fn bin_write(&self, output: &mut Vec<u8>) -> BinResult;
 }
 
 impl BinWriter for u16 {
@@ -231,6 +232,8 @@ mod integers {
 
 pub use integers::*;
 
+use crate::types::Mutez;
+
 macro_rules! encode_hash {
     ($hash_name:ty) => {
         impl BinWriter for $hash_name {
@@ -245,6 +248,7 @@ macro_rules! encode_hash {
 encode_hash!(crypto::hash::ChainId);
 encode_hash!(crypto::hash::BlockHash);
 encode_hash!(crypto::hash::BlockMetadataHash);
+encode_hash!(crypto::hash::BlockPayloadHash);
 encode_hash!(crypto::hash::OperationHash);
 encode_hash!(crypto::hash::OperationListListHash);
 encode_hash!(crypto::hash::OperationMetadataHash);
@@ -260,6 +264,13 @@ encode_hash!(crypto::hash::PublicKeyEd25519);
 encode_hash!(crypto::hash::PublicKeySecp256k1);
 encode_hash!(crypto::hash::PublicKeyP256);
 encode_hash!(crypto::hash::Signature);
+encode_hash!(crypto::hash::NonceHash);
+
+impl BinWriter for Mutez {
+    fn bin_write(&self, out: &mut Vec<u8>) -> BinResult {
+        n_bignum(self.0.magnitude(), out)
+    }
+}
 
 pub fn sized<T>(
     size: usize,
@@ -416,6 +427,32 @@ pub fn optional_field<'a, T: 'a>(
         }
         Ok(())
     }
+}
+
+pub fn n_bignum(n: &BigUint, out: &mut Vec<u8>) -> BinResult {
+    let bytes = n.to_bytes_be();
+    let mut d = 0;
+    let mut acc = 0;
+    for c in 0..bytes.len() {
+        let i = bytes.len() - c - 1;
+        let mut byte = acc | (bytes[i] << d) & 0x7f;
+        if d == 7 {
+            acc = 0;
+            d = 0;
+        } else {
+            let acc_d = 7 - d;
+            acc = bytes[i] >> acc_d;
+            d = 8 - acc_d;
+        }
+        if !(i == 0 && acc == 0) {
+            byte |= 0x80;
+        }
+        out.push(byte);
+    }
+    if acc != 0 {
+        out.push(acc);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -594,5 +631,39 @@ mod test {
         let mut out = Vec::new();
         super::optional_field(super::sized(32, super::bytes))(&data, &mut out)
             .expect("Should not fail");
+    }
+
+    #[test]
+    fn test_n_bignum() {
+        let data = [
+            ("0", "00"),
+            ("1", "01"),
+            ("7f", "7f"),
+            ("80", "8001"),
+            ("81", "8101"),
+            ("ff", "ff01"),
+            ("100", "8002"),
+            ("101", "8102"),
+            ("7fff", "ffff01"),
+            ("8000", "808002"),
+            ("8001", "818002"),
+            ("ffff", "ffff03"),
+            ("10000", "808004"),
+            ("10001", "818004"),
+        ];
+
+        for (hex, enc) in data {
+            println!("{hex} <=> {enc}");
+            let num = hex_to_biguint(hex);
+            let exp_enc = hex::decode(enc).unwrap();
+            let mut act_enc = Vec::new();
+            super::n_bignum(&num, &mut act_enc).unwrap();
+            assert_eq!(act_enc, exp_enc);
+        }
+    }
+
+    fn hex_to_biguint(s: &str) -> num_bigint::BigUint {
+        use num_traits::FromPrimitive;
+        num_bigint::BigUint::from_u64(u64::from_str_radix(s, 16).unwrap()).unwrap()
     }
 }

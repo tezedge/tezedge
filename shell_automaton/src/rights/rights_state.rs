@@ -267,3 +267,18 @@ pub struct ProtocolConstants {
     pub endorsers_per_block: u16,
     pub nonce_length: u8,
 }
+
+impl ProtocolConstants {
+    pub fn blocks_per_cycle(&self) -> Option<i32> {
+        Some(self.blocks_per_cycle)
+    }
+    pub fn preserved_cycles(&self) -> Option<u8> {
+        Some(self.preserved_cycles)
+    }
+    pub fn endorsers_per_block(&self) -> Option<u16> {
+        Some(self.endorsers_per_block)
+    }
+    pub fn nonce_length(&self) -> Option<u8> {
+        Some(self.nonce_length)
+    }
+}

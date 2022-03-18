@@ -1,22 +1,27 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::action::BootstrapNewCurrentHeadAction;
-use crate::block_applier::BlockApplierApplyState;
+use crypto::hash::{BlockHash, ChainId};
+use std::collections::HashMap;
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
+use crate::block_applier::BlockApplierApplyState;
+use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::mempool::mempool_actions::{
     BlockInjectAction, MempoolAskCurrentHeadAction, MempoolGetPendingOperationsAction,
     MempoolOperationInjectAction, MempoolRegisterOperationsStreamAction,
-    MempoolRemoveAppliedOperationsAction, MempoolRpcEndorsementsStatusGetAction,
+    MempoolRpcEndorsementsStatusGetAction,
 };
 use crate::mempool::OperationKind;
 use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
 use crate::service::rpc_service::{RpcRequest, RpcRequestStream};
 use crate::service::{RpcService, Service};
+use crate::storage::request::StorageRequestStatus;
 use crate::{Action, ActionWithMeta, Store};
 
 use super::rpc_actions::{
     RpcBootstrappedAction, RpcBootstrappedDoneAction, RpcBootstrappedNewBlockAction,
+    RpcMonitorValidBlocksAction, RpcReplyValidBlockAction,
 };
 use super::BootstrapState;
 
@@ -28,11 +33,15 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     RpcRequestStream::Bootstrapped => {
                         store.dispatch(RpcBootstrappedAction { rpc_id });
                     }
+                    RpcRequestStream::ValidBlocks(query) => {
+                        store.dispatch(RpcMonitorValidBlocksAction { query, rpc_id });
+                    }
                     RpcRequestStream::GetOperations {
                         applied,
                         refused,
                         branch_delayed,
                         branch_refused,
+                        outdated,
                     } => {
                         store.dispatch(MempoolRegisterOperationsStreamAction {
                             rpc_id,
@@ -40,6 +49,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             refused,
                             branch_delayed,
                             branch_refused,
+                            outdated,
                         });
                     }
                 }
@@ -48,7 +58,81 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                 match msg {
                     RpcRequest::GetCurrentGlobalState { channel } => {
                         let _ = channel.send(store.state.get().clone());
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
                     }
+                    RpcRequest::GetStorageRequests { channel } => {
+                        let state = store.state.get();
+                        let now = state.time_as_nanos();
+                        let req_iter = state.storage.requests.iter();
+                        let pending_requests = req_iter
+                            .filter_map(|(req_id, req)| {
+                                let time = match &req.status {
+                                    StorageRequestStatus::Pending { time, .. } => *time,
+                                    _ => return None,
+                                };
+                                Some(crate::service::rpc_service::StorageRequest {
+                                    req_id,
+                                    pending_since: time,
+                                    pending_for: now - time,
+                                    kind: req.payload.kind(),
+                                    requestor: req.requestor.clone(),
+                                })
+                            })
+                            .collect();
+                        let requests = crate::service::rpc_service::StorageRequests {
+                            pending: pending_requests,
+                            finished: store.service().statistics().map_or(
+                                Default::default(),
+                                |stats| {
+                                    stats
+                                        .storage_requests_finished_all()
+                                        .iter()
+                                        .rev()
+                                        .cloned()
+                                        .collect()
+                                },
+                            ),
+                        };
+                        let _ = channel.send(requests);
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
+                    }
+                    RpcRequest::GetActionKindStats { channel } => {
+                        let data = store
+                            .service
+                            .statistics()
+                            .map(|s| {
+                                s.action_kind_stats()
+                                    .iter()
+                                    .map(|(k, v)| (k.to_string(), v.clone()))
+                                    .collect::<HashMap<_, _>>()
+                                    .into()
+                            })
+                            .unwrap_or_default();
+                        let _ = channel.send(data);
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
+                    }
+                    RpcRequest::GetActionGraph { channel } => {
+                        let data = store
+                            .service
+                            .statistics()
+                            .map(|s| s.action_graph().clone())
+                            .unwrap_or_default();
+                        let _ = channel.send(data);
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
+                    }
+
                     RpcRequest::GetMempoolOperationStats { channel } => {
                         let stats = store.state().mempool.operation_stats.clone();
                         let _ = channel.send(stats);
@@ -56,6 +140,12 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     RpcRequest::GetBlockStats { channel } => {
                         let stats = store.service().statistics();
                         let _ = channel.send(stats.map(|s| s.block_stats_get_all().clone()));
+                    }
+                    RpcRequest::InjectBlock { block_hash } => {
+                        store.dispatch(BlockApplierEnqueueBlockAction {
+                            block_hash: block_hash.into(),
+                            injector_rpc_id: Some(rpc_id),
+                        });
                     }
                     RpcRequest::InjectOperation {
                         operation,
@@ -70,7 +160,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             injected_timestamp,
                         });
                     }
-                    RpcRequest::InjectBlock {
+                    RpcRequest::InjectBlockStart {
                         chain_id,
                         block_hash,
                         block_header,
@@ -86,9 +176,10 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     }
                     RpcRequest::RequestCurrentHeadFromConnectedPeers => {
                         store.dispatch(MempoolAskCurrentHeadAction {});
-                    }
-                    RpcRequest::RemoveOperations { operation_hashes } => {
-                        store.dispatch(MempoolRemoveAppliedOperationsAction { operation_hashes });
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
                     }
                     RpcRequest::MempoolStatus => match &store.state().mempool.running_since {
                         None => store
@@ -136,7 +227,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .ops
                             .iter()
                             .filter(|(_, op)| {
-                                OperationKind::from_operation_content_raw(op.data())
+                                OperationKind::from_operation_content_raw(op.data().as_ref())
                                     .is_endorsement()
                             })
                             .map(|(op_hash, _)| op_hash.clone())
@@ -156,28 +247,28 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
             }
         }
 
-        Action::BootstrapNewCurrentHead(BootstrapNewCurrentHeadAction {
-            chain_id: _,
-            block,
-            is_bootstrapped,
-        }) => {
+        Action::CurrentHeadUpdate(content) => {
+            let is_bootstrapped = store.state().is_bootstrapped_strict();
             store.dispatch(RpcBootstrappedNewBlockAction {
-                block: block.hash.clone(),
-                timestamp: block.header.timestamp(),
-                is_bootstrapped: *is_bootstrapped,
+                block: content.new_head.hash.clone(),
+                timestamp: content.new_head.header.timestamp().into(),
+                is_bootstrapped,
             });
-        }
-        Action::BlockApplierApplySuccess(_) => {
-            if let BlockApplierApplyState::Success { block, .. } =
-                &store.state().block_applier.current
+            for rpc_id in store
+                .state
+                .get()
+                .rpc
+                .valid_blocks
+                .requests
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
             {
-                let timestamp = block.header.timestamp();
-                let block = block.hash.clone();
-
-                store.dispatch(RpcBootstrappedNewBlockAction {
-                    block,
-                    timestamp,
-                    is_bootstrapped: true,
+                store.dispatch(RpcReplyValidBlockAction {
+                    rpc_id,
+                    block: content.new_head.clone(),
+                    protocol: content.protocol.clone(),
+                    next_protocol: content.next_protocol.clone(),
                 });
             }
         }
@@ -223,6 +314,52 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                 store.service.rpc().respond_stream(*rpc_id, None);
             }
         }
+
+        Action::RpcMonitorValidBlocks(RpcMonitorValidBlocksAction { rpc_id, .. }) => {
+            let (block, protocol, next_protocol) = if let BlockApplierApplyState::Success {
+                block,
+                block_additional_data,
+                ..
+            } = &store.state.get().block_applier.current
+            {
+                (
+                    block.clone(),
+                    block_additional_data.protocol_hash.clone(),
+                    block_additional_data.next_protocol_hash.clone(),
+                )
+            } else {
+                return;
+            };
+            store.dispatch(RpcReplyValidBlockAction {
+                rpc_id: *rpc_id,
+                block,
+                protocol,
+                next_protocol,
+            });
+        }
+        Action::RpcReplyValidBlock(RpcReplyValidBlockAction { rpc_id, block, .. }) => {
+            #[derive(serde::Serialize)]
+            struct ValidBlock<'a> {
+                chain_id: &'a ChainId,
+                hash: &'a BlockHash,
+                #[serde(flatten)]
+                header: &'a BlockHeader,
+            }
+
+            let json = match serde_json::to_value(ValidBlock {
+                chain_id: &store.state.get().config.chain_id,
+                hash: &block.hash,
+                header: block.header.as_ref(),
+            }) {
+                Ok(json) => json,
+                Err(err) => {
+                    slog::warn!(store.state.get().log, "Error converting valid block to json"; "error" => slog::FnValue(|_| err.to_string()));
+                    return;
+                }
+            };
+            store.service.rpc().respond_stream(*rpc_id, Some(json));
+        }
+
         _ => {}
     }
 }

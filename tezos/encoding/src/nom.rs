@@ -225,17 +225,17 @@ pub type NomResult<'a, T> = nom::IResult<NomInput<'a>, T, NomError<'a>>;
 
 /// Traits defining message decoding using `nom` primitives.
 pub trait NomReader: Sized {
-    fn nom_read(bytes: &[u8]) -> NomResult<Self>;
+    fn nom_read(input: &[u8]) -> NomResult<Self>;
 }
 
 macro_rules! hash_nom_reader {
     ($hash_name:ident) => {
         impl NomReader for crypto::hash::$hash_name {
             #[inline(always)]
-            fn nom_read(bytes: &[u8]) -> NomResult<Self> {
+            fn nom_read(input: &[u8]) -> NomResult<Self> {
                 map(take(Self::hash_size()), |bytes| {
                     Self::try_from_bytes(bytes).unwrap()
-                })(bytes)
+                })(input)
             }
         }
     };
@@ -244,6 +244,7 @@ macro_rules! hash_nom_reader {
 hash_nom_reader!(ChainId);
 hash_nom_reader!(BlockHash);
 hash_nom_reader!(BlockMetadataHash);
+hash_nom_reader!(BlockPayloadHash);
 hash_nom_reader!(OperationHash);
 hash_nom_reader!(OperationListListHash);
 hash_nom_reader!(OperationMetadataHash);
@@ -259,6 +260,7 @@ hash_nom_reader!(PublicKeyEd25519);
 hash_nom_reader!(PublicKeySecp256k1);
 hash_nom_reader!(PublicKeyP256);
 hash_nom_reader!(Signature);
+hash_nom_reader!(NonceHash);
 
 impl NomReader for Zarith {
     fn nom_read(bytes: &[u8]) -> NomResult<Self> {

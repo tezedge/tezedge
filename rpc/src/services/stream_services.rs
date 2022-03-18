@@ -11,7 +11,7 @@ use slog::{error, Logger};
 use crypto::hash::{BlockHash, ProtocolHash};
 use shell_integration::{generate_stream_id, StreamCounter, StreamId};
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
-use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
+use tezos_messages::TimestampOutOfRangeError;
 
 use crate::helpers::RpcServiceError;
 use crate::server::RpcCollectedStateRef;
@@ -40,15 +40,10 @@ impl TryFrom<&BlockHeaderWithHash> for BlockHeaderMonitorInfo {
             level: block.header.level(),
             proto: block.header.proto(),
             predecessor: block.header.predecessor().to_base58_check(),
-            timestamp: ts_to_rfc3339(block.header.timestamp())?,
+            timestamp: block.header.timestamp().to_rfc3339()?,
             validation_pass: block.header.validation_pass(),
             operations_hash: block.header.operations_hash().to_base58_check(),
-            fitness: block
-                .header
-                .fitness()
-                .iter()
-                .map(|x| hex::encode(&x))
-                .collect(),
+            fitness: block.header.fitness().as_hex_vec(),
             context: block.header.context().to_base58_check(),
             protocol_data: hex::encode(block.header.protocol_data()),
         })

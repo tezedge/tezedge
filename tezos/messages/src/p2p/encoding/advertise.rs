@@ -14,15 +14,7 @@ use super::limits::{ADVERTISE_ID_LIST_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Debug,
-    Getters,
-    Clone,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    tezos_encoding::generator::Generated,
+    Serialize, Deserialize, Eq, PartialEq, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter,
 )]
 pub struct AdvertiseMessage {
     #[get = "pub"]

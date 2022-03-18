@@ -9,7 +9,7 @@ use hyper::{Body, Method, Request};
 
 use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 
-use crypto::hash::ProtocolHash;
+use crypto::hash::{ChainId, ProtocolHash};
 use shell_automaton::service::rpc_service::RpcRequestStream;
 
 use crate::helpers::{
@@ -72,10 +72,26 @@ pub async fn protocols(
 pub async fn valid_blocks(
     _: Request<Body>,
     _: Params,
-    _: Query,
-    _: Arc<RpcServiceEnvironment>,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
 ) -> HResult {
-    empty()
+    use shell_automaton::rpc::ValidBlocksQuery;
+    let chain_id = query.get_hash::<ChainId>("chain_id")?;
+    let protocol = query.get_hash::<ProtocolHash>("protocol")?;
+    let next_protocol = query.get_hash::<ProtocolHash>("next_protocol")?;
+    let stream = env
+        .shell_automaton_sender()
+        .request_stream(RpcRequestStream::ValidBlocks(ValidBlocksQuery {
+            chain_id,
+            protocol,
+            next_protocol,
+        }))
+        .await
+        .ok()
+        .expect("state machine should be correct");
+    let stream =
+        UnboundedReceiverStream::new(stream).map(|v| serde_json::to_string(&v).map_err(From::from));
+    make_json_stream_response(stream)
 }
 
 pub async fn head_chain(
@@ -112,6 +128,7 @@ pub async fn mempool_monitor_operations(
     let branch_refused = query.get_str("branch_refused");
     let branch_delayed = query.get_str("branch_delayed");
     let refused = query.get_str("refused");
+    let outdated = query.get_str("outdated");
 
     let stream = env
         .shell_automaton_sender()
@@ -120,6 +137,7 @@ pub async fn mempool_monitor_operations(
             branch_refused: branch_refused == Some("yes"),
             branch_delayed: branch_delayed == Some("yes"),
             refused: refused == Some("yes"),
+            outdated: outdated == Some("yes"),
         })
         .await
         .ok()
@@ -221,6 +239,28 @@ pub async fn chains_block_id_header_shell(
             e => error(e.into()),
         },
     }
+}
+
+pub async fn chains_block_id_header_protocol_data_raw(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash =
+        parse_block_hash_or_fail!(&chain_id, required_param!(params, "block_id")?, &env);
+
+    let block_header = base_services::get_block_raw_header_or_fail(
+        &chain_id,
+        block_hash,
+        env.persistent_storage(),
+    );
+
+    result_to_json_response(
+        block_header.map(|header| hex::encode(header.header.protocol_data())),
+        env.log(),
+    )
 }
 
 pub async fn chains_block_id_metadata(
@@ -666,6 +706,42 @@ pub async fn preapply_block(
     )
 }
 
+// TODO: properly implement this handler
+
+#[derive(serde::Serialize)]
+struct P2pStats {
+    total_sent: String,
+    total_recv: String,
+    current_inflow: i64,
+    current_outflow: i64,
+}
+
+pub async fn network_stat(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let dummy = P2pStats {
+        total_sent: "100".into(),
+        total_recv: "100".into(),
+        current_inflow: 10,
+        current_outflow: 10,
+    };
+
+    result_to_json_response(Ok(dummy), env.log())
+}
+
+pub async fn network_connections(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let connections: Vec<()> = vec![];
+    result_to_json_response(Ok(connections), env.log())
+}
+
 pub async fn node_version(
     _: Request<Body>,
     _: Params,
@@ -732,7 +808,10 @@ pub async fn describe(
         // TODO: same reasoning as above
         if path.contains(&"injection".to_string()) || path.contains(&"forge".to_string()) {
             &Method::POST
-        } else if path.contains(&"storage".to_string()) {
+        } else if path.contains(&"storage".to_string())
+            || path.contains(&"round".to_string())
+            || path.contains(&"delegates".to_string())
+        {
             &Method::GET
         } else {
             allowed_methods.iter().next().unwrap()

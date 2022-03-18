@@ -13,6 +13,7 @@ use thiserror::Error;
 
 use ocaml::ocaml_hash_string;
 
+use crate::kv_store::HashIdError;
 use crate::working_tree::storage::DirectoryOrInodeId;
 use crate::working_tree::string_interner::StringInterner;
 use crate::working_tree::ObjectReference;
@@ -52,6 +53,11 @@ pub enum HashingError {
     DBError { error: DBError },
     #[error("HashId not found: {hash_id:?}")]
     HashIdNotFound { hash_id: HashId },
+    #[error("HashId conversion error: {error:?}")]
+    HashIdError {
+        #[from]
+        error: HashIdError,
+    },
     #[error("HashId empty")]
     HashIdEmpty,
     #[error("DirEntry not found")]
@@ -214,7 +220,7 @@ fn hash_long_inode(
 
     let hash_id = store
         .get_vacant_object_hash()?
-        .write_with(|object| hasher.finalize_variable(|r| object.copy_from_slice(r)));
+        .write_with(|object| hasher.finalize_variable(|r| object.copy_from_slice(r)))?;
 
     Ok(hash_id)
 }
@@ -266,7 +272,7 @@ fn hash_short_inode(
 
     let hash_id = store
         .get_vacant_object_hash()?
-        .write_with(|object| hasher.finalize_variable(|r| object.copy_from_slice(r)));
+        .write_with(|object| hasher.finalize_variable(|r| object.copy_from_slice(r)))?;
 
     Ok(hash_id)
 }
@@ -306,7 +312,7 @@ pub(crate) fn hash_blob(
 
     let hash_id = store
         .get_vacant_object_hash()?
-        .write_with(|object| hasher.finalize_variable(|r| object.copy_from_slice(r)));
+        .write_with(|object| hasher.finalize_variable(|r| object.copy_from_slice(r)))?;
 
     Ok(Some(hash_id))
 }
@@ -361,7 +367,7 @@ pub(crate) fn hash_commit(
 
     let hash_id = store
         .get_vacant_object_hash()?
-        .write_with(|object| hasher.finalize_variable(|r| object.copy_from_slice(r)));
+        .write_with(|object| hasher.finalize_variable(|r| object.copy_from_slice(r)))?;
 
     Ok(hash_id)
 }
@@ -389,7 +395,8 @@ mod tests {
     use crypto::hash::{ContextHash, HashTrait};
     use tezos_timing::SerializeStats;
 
-    use crate::kv_store::in_memory::InMemory;
+    use crate::chunks::ChunkedVec;
+    use crate::kv_store::in_memory::{InMemory, InMemoryConfiguration, BATCH_CHUNK_CAPACITY};
     use crate::kv_store::persistent::{Persistent, PersistentConfiguration};
     use crate::serialize::{in_memory, persistent, SerializeObjectSignature};
     use crate::working_tree::ObjectReference;
@@ -410,7 +417,11 @@ mod tests {
 
     #[test]
     fn test_hash_of_commit() {
-        let mut repo = InMemory::try_new().expect("failed to create in-memory context");
+        let mut repo = InMemory::try_new(InMemoryConfiguration {
+            db_path: None,
+            startup_check: true,
+        })
+        .expect("failed to create in-memory context");
         hash_of_commit(&mut repo);
     }
 
@@ -432,7 +443,8 @@ mod tests {
         let hash_id = repo
             .get_vacant_object_hash()
             .unwrap()
-            .write_with(|entry| entry.copy_from_slice(&hash));
+            .write_with(|entry| entry.copy_from_slice(&hash))
+            .unwrap();
 
         let dummy_commit = Commit {
             parent_commit_ref: None,
@@ -525,7 +537,11 @@ mod tests {
 
     #[test]
     fn test_hash_of_small_dir() {
-        let mut repo = InMemory::try_new().expect("failed to create in-memory context");
+        let mut repo = InMemory::try_new(InMemoryConfiguration {
+            db_path: None,
+            startup_check: true,
+        })
+        .expect("failed to create in-memory context");
         hash_of_small_dir(&mut repo);
     }
 
@@ -649,13 +665,21 @@ mod tests {
 
     #[test]
     fn test_dir_entry_hashes_memory() {
-        let mut repo = InMemory::try_new().expect("failed to create in-memory context");
+        let mut repo = InMemory::try_new(InMemoryConfiguration {
+            db_path: None,
+            startup_check: true,
+        })
+        .expect("failed to create in-memory context");
         test_type_hashes("nodes.json.gz", &mut repo, in_memory::serialize_object);
     }
 
     #[test]
     fn test_inode_hashes_memory() {
-        let mut repo = InMemory::try_new().expect("failed to create in-memory context");
+        let mut repo = InMemory::try_new(InMemoryConfiguration {
+            db_path: None,
+            startup_check: true,
+        })
+        .expect("failed to create in-memory context");
         test_type_hashes("inodes.json.gz", &mut repo, in_memory::serialize_object);
     }
 
@@ -669,7 +693,6 @@ mod tests {
 
         let mut strings = StringInterner::default();
         let mut output = Vec::new();
-        let mut older_objects = Vec::new();
         let mut stats = SerializeStats::default();
 
         // Create HashId ready to be commited
@@ -687,7 +710,7 @@ mod tests {
 
             let bindings_count = test_case.bindings.len();
             let mut dir_id = DirectoryId::empty();
-            let mut batch = Vec::new();
+            let mut batch = ChunkedVec::<_, BATCH_CHUNK_CAPACITY>::default();
 
             let mut names = HashSet::new();
 
@@ -702,7 +725,8 @@ mod tests {
                 let hash_id = repo
                     .get_vacant_object_hash()
                     .unwrap()
-                    .write_with(|bytes| bytes.copy_from_slice(object_hash.as_ref()));
+                    .write_with(|bytes| bytes.copy_from_slice(object_hash.as_ref()))
+                    .unwrap();
 
                 let object = match dir_entry_kind {
                     DirEntryKind::Blob => Object::Blob(
@@ -811,7 +835,6 @@ mod tests {
                             &strings,
                             &mut stats,
                             &mut batch,
-                            &mut older_objects,
                             repo,
                             offset,
                         )
@@ -825,9 +848,9 @@ mod tests {
                     })
                     .unwrap();
 
-                let offset = repo.synchronize_data(&batch, &output).unwrap();
+                let offset = repo.synchronize_data(&batch.to_vec(), &output).unwrap();
 
-                let mut batch = Default::default();
+                let mut batch = ChunkedVec::<_, BATCH_CHUNK_CAPACITY>::default();
                 output.clear();
 
                 let offset = serialize_fun(
@@ -838,12 +861,11 @@ mod tests {
                     &strings,
                     &mut stats,
                     &mut batch,
-                    &mut older_objects,
                     repo,
                     offset,
                 )
                 .unwrap();
-                repo.synchronize_data(&batch, &output).unwrap();
+                repo.synchronize_data(&batch.to_vec(), &output).unwrap();
 
                 let object_ref = ObjectReference::new(Some(computed_hash_id), offset);
                 let object = repo

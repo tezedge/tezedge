@@ -8,22 +8,13 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
-use tezos_encoding::generator::Generated;
 use tezos_encoding::nom::NomReader;
 
 use crate::p2p::binary_message::SizeFromChunk;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    CopyGetters,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    Generated,
-    PartialEq,
-    Clone,
+    Serialize, Deserialize, CopyGetters, HasEncoding, NomReader, BinWriter, PartialEq, Clone,
 )]
 pub struct MetadataMessage {
     #[get_copy = "pub"]

@@ -16,6 +16,7 @@ mod prefix_bytes {
     pub const CHAIN_ID: [u8; 3] = [87, 82, 0];
     pub const BLOCK_HASH: [u8; 2] = [1, 52];
     pub const BLOCK_METADATA_HASH: [u8; 2] = [234, 249];
+    pub const BLOCK_PAYLOAD_HASH: [u8; 3] = [1, 106, 242];
     pub const CONTEXT_HASH: [u8; 2] = [79, 199];
     pub const OPERATION_HASH: [u8; 2] = [5, 116];
     pub const OPERATION_LIST_LIST_HASH: [u8; 3] = [29, 159, 109];
@@ -32,6 +33,7 @@ mod prefix_bytes {
     pub const PUBLIC_KEY_P256: [u8; 4] = [3, 178, 139, 127];
     pub const ED22519_SIGNATURE_HASH: [u8; 5] = [9, 245, 205, 134, 18];
     pub const GENERIC_SIGNATURE_HASH: [u8; 3] = [4, 130, 43];
+    pub const NONCE_HASH: [u8; 3] = [69, 220, 169];
 }
 
 pub type Hash = Vec<u8>;
@@ -270,6 +272,7 @@ macro_rules! define_hash {
 define_hash!(ChainId);
 define_hash!(BlockHash);
 define_hash!(BlockMetadataHash);
+define_hash!(BlockPayloadHash);
 define_hash!(OperationHash);
 define_hash!(OperationListListHash);
 define_hash!(OperationMetadataHash);
@@ -286,9 +289,10 @@ define_hash!(PublicKeySecp256k1);
 define_hash!(PublicKeyP256);
 define_hash!(Ed25519Signature);
 define_hash!(Signature);
+define_hash!(NonceHash);
 
 /// Note: see Tezos ocaml lib_crypto/base58.ml
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, strum_macros::AsRefStr)]
 pub enum HashType {
     // "\087\082\000" (* Net(15) *)
     ChainId,
@@ -296,6 +300,8 @@ pub enum HashType {
     BlockHash,
     // "\234\249" (* bm(52) *)
     BlockMetadataHash,
+    // "\001\106\242" (* vh(52) *)
+    BlockPayloadHash,
     // "\002\170" (* P(51) *)
     ProtocolHash,
     // "\079\199" (* Co(52) *)
@@ -328,6 +334,8 @@ pub enum HashType {
     Ed25519Signature,
     // "\004\130\043" (* sig(96) *)
     Signature,
+    // "\069\220\169" (* nce(53) *)
+    NonceHash,
 }
 
 impl HashType {
@@ -338,6 +346,7 @@ impl HashType {
             HashType::ChainId => &CHAIN_ID,
             HashType::BlockHash => &BLOCK_HASH,
             HashType::BlockMetadataHash => &BLOCK_METADATA_HASH,
+            HashType::BlockPayloadHash => &BLOCK_PAYLOAD_HASH,
             HashType::ContextHash => &CONTEXT_HASH,
             HashType::ProtocolHash => &PROTOCOL_HASH,
             HashType::OperationHash => &OPERATION_HASH,
@@ -354,6 +363,7 @@ impl HashType {
             HashType::PublicKeyP256 => &PUBLIC_KEY_P256,
             HashType::Ed25519Signature => &ED22519_SIGNATURE_HASH,
             HashType::Signature => &GENERIC_SIGNATURE_HASH,
+            HashType::NonceHash => &NONCE_HASH,
         }
     }
 
@@ -363,13 +373,15 @@ impl HashType {
             HashType::ChainId => 4,
             HashType::BlockHash
             | HashType::BlockMetadataHash
+            | HashType::BlockPayloadHash
             | HashType::ContextHash
             | HashType::ProtocolHash
             | HashType::OperationHash
             | HashType::OperationListListHash
             | HashType::OperationMetadataHash
             | HashType::OperationMetadataListListHash
-            | HashType::PublicKeyEd25519 => 32,
+            | HashType::PublicKeyEd25519
+            | HashType::NonceHash => 32,
             HashType::CryptoboxPublicKeyHash => 16,
             HashType::ContractKt1Hash
             | HashType::ContractTz1Hash

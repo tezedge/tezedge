@@ -7,6 +7,7 @@ pub mod connection;
 pub mod disconnection;
 pub mod handshaking;
 pub mod message;
+pub mod remote_requests;
 
 mod peer_token;
 pub use peer_token::*;

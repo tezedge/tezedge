@@ -87,14 +87,16 @@ impl Default for SupportedProtocolState {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProtocolVersionCache {
     pub time: Duration,
-    pub protocol_versions: BTreeMap<BlockHash, (ActionId, SupportedProtocol)>,
+    /// Mapping from block hash to next protocol, to be used to get protocol
+    /// for incoming current head basing on its predecessor.
+    pub next_protocol_versions: BTreeMap<BlockHash, (ActionId, SupportedProtocol)>,
 }
 
 impl Default for ProtocolVersionCache {
     fn default() -> ProtocolVersionCache {
         Self {
             time: Duration::from_secs(600),
-            protocol_versions: Default::default(),
+            next_protocol_versions: Default::default(),
         }
     }
 }

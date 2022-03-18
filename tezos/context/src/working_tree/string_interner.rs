@@ -10,11 +10,11 @@ use std::{borrow::Cow, collections::hash_map::DefaultHasher, convert::TryInto, h
 use static_assertions::const_assert;
 use tezos_timing::StringsMemoryUsage;
 
+use crate::gc::SortedMap;
 use crate::{
     chunks::{ChunkedString, ChunkedVec},
     persistent::file::{File, TAG_BIG_STRINGS, TAG_STRINGS},
     serialize::DeserializationError,
-    Map,
 };
 
 use super::storage::StorageError;
@@ -86,23 +86,12 @@ pub struct SerializeStrings {
     pub strings: Vec<u8>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct BigStrings {
-    hashes: Map<u64, u32>,
-    strings: ChunkedString,
-    offsets: ChunkedVec<(u32, u32)>,
+    hashes: SortedMap<u64, u32>,
+    strings: ChunkedString<{ 64 * 1024 * 1024 }>, // ~67MB
+    offsets: ChunkedVec<(u32, u32), { 128 * 1024 }>, // ~1MB
     to_serialize_index: usize,
-}
-
-impl Default for BigStrings {
-    fn default() -> Self {
-        Self {
-            hashes: Map::default(),
-            strings: ChunkedString::with_chunk_capacity(64 * 1024 * 1024), // ~67MB
-            offsets: ChunkedVec::with_chunk_capacity(128 * 1024),          // ~1MB
-            to_serialize_index: 0,
-        } // Total ~68MB
-    }
 }
 
 impl PartialEq for BigStrings {
@@ -216,12 +205,12 @@ pub struct StringInterner {
     /// `Map` of hash of the string to their `StringId`
     /// We don't use `HashMap<String, StringId>` because the map would
     /// keep a copy of the string
-    string_to_offset: Map<u64, StringId>,
+    string_to_offset: SortedMap<u64, StringId>,
     /// Concatenation of all strings < STRING_INTERN_THRESHOLD.
     /// This is never cleared/deallocated
-    all_strings: ChunkedString,
+    all_strings: ChunkedString<{ 512 * 1024 }>,
     /// List of `StringId` that needs to be commited
-    pub all_strings_to_serialize: Vec<StringId>,
+    pub all_strings_to_serialize: ChunkedVec<StringId, 2048>,
     /// Concatenation of big strings. This is cleared/deallocated
     /// before every checkouts
     big_strings: BigStrings,
@@ -230,9 +219,9 @@ pub struct StringInterner {
 impl Default for StringInterner {
     fn default() -> Self {
         Self {
-            string_to_offset: Map::default(),
-            all_strings: ChunkedString::with_chunk_capacity(512 * 1024), // ~512KB
-            all_strings_to_serialize: Vec::new(),
+            string_to_offset: SortedMap::default(),
+            all_strings: ChunkedString::new(), // ~512KB
+            all_strings_to_serialize: ChunkedVec::default(),
             big_strings: BigStrings::default(),
         } // Total ~69MB
     }
@@ -276,7 +265,7 @@ impl StringInterner {
             self.all_strings.extend_from(&other.all_strings);
 
             self.all_strings_to_serialize
-                .extend_from_slice(&other.all_strings_to_serialize);
+                .extend_from_chunks(&other.all_strings_to_serialize);
         }
 
         debug_assert_eq!(self.all_strings, other.all_strings);
@@ -345,17 +334,21 @@ impl StringInterner {
     pub fn memory_usage(&self) -> StringsMemoryUsage {
         let all_strings_cap = self.all_strings.capacity();
         let big_strings_cap = self.big_strings.strings.capacity();
+        let big_strings_hashes_bytes = self.big_strings.hashes.total_bytes();
+        let all_strings_to_serialize_cap = self.all_strings_to_serialize.capacity();
 
         StringsMemoryUsage {
-            all_strings_map_cap: self.string_to_offset.capacity(),
+            all_strings_map_cap: self.string_to_offset.len(),
             all_strings_map_len: self.string_to_offset.len(),
+            all_strings_to_serialize_cap,
             all_strings_cap,
             all_strings_len: self.all_strings.len(),
             big_strings_cap,
             big_strings_len: self.big_strings.strings.len(),
             big_strings_map_cap: self.big_strings.offsets.capacity(),
             big_strings_map_len: self.big_strings.offsets.len(),
-            total_bytes: all_strings_cap + big_strings_cap,
+            big_strings_hashes_bytes,
+            total_bytes: all_strings_cap + big_strings_cap + big_strings_hashes_bytes,
         }
     }
 
@@ -365,7 +358,7 @@ impl StringInterner {
             strings: Vec::with_capacity(1000),
         };
 
-        for id in &self.all_strings_to_serialize {
+        for id in self.all_strings_to_serialize.iter() {
             let (start, end) = id.get_start_end();
 
             let string = self.all_strings.get(start..end).unwrap();
@@ -379,7 +372,6 @@ impl StringInterner {
         }
 
         self.all_strings_to_serialize.clear();
-
         self.big_strings.serialize_big_strings(&mut output);
 
         output
@@ -433,6 +425,11 @@ impl StringInterner {
 
     pub fn get_to_serialize_index(&self) -> usize {
         self.big_strings.to_serialize_index
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.string_to_offset.shrink_to_fit();
+        self.big_strings.hashes.shrink_to_fit();
     }
 }
 

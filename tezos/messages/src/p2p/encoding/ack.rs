@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::{
     enc::BinWriter,
     encoding::HasEncoding,
-    generator::Generated,
     nom::{size, NomReader},
 };
 
@@ -32,7 +31,6 @@ use super::limits::{NACK_PEERS_MAX_LENGTH, P2P_POINT_MAX_SIZE};
     HasEncoding,
     NomReader,
     BinWriter,
-    Generated,
     Arbitrary,
     Debug,
     Eq,
@@ -70,16 +68,7 @@ impl SizeFromChunk for AckMessage {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    Getters,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    Generated,
-    Eq,
-    PartialEq,
-    Clone,
+    Serialize, Deserialize, Getters, HasEncoding, NomReader, BinWriter, Eq, PartialEq, Clone,
 )]
 pub struct NackInfo {
     #[get = "pub"]
@@ -104,16 +93,7 @@ impl Arbitrary for NackInfo {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize,
-    Deserialize,
-    HasEncoding,
-    NomReader,
-    BinWriter,
-    Generated,
-    Arbitrary,
-    Eq,
-    PartialEq,
-    Clone,
+    Serialize, Deserialize, HasEncoding, NomReader, BinWriter, Arbitrary, Eq, PartialEq, Clone,
 )]
 #[encoding(tags = "u16")]
 pub enum NackMotive {

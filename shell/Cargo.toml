@@ -1,6 +1,6 @@
 [package]
 name = "shell"
-version = "1.16.1"
+version = "1.17.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2021"
 
@@ -27,7 +27,6 @@ tokio = { version = "1.12", features = ["time"] }
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
-shell_integration = { path = "../shell-integration" }
 shell_automaton = { path = "../shell_automaton" }
 storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }

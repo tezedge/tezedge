@@ -14,7 +14,7 @@ use crypto::hash::{
     OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use tezos_messages::p2p::binary_message::{MessageHash, MessageHashError};
-use tezos_messages::p2p::encoding::block_header::{display_fitness, Fitness};
+use tezos_messages::p2p::encoding::fitness::{FitnessInner, FitnessRef};
 use tezos_messages::p2p::encoding::prelude::{
     BlockHeader, Operation, OperationsForBlocksMessage, Path,
 };
@@ -147,7 +147,7 @@ pub struct ApplyBlockExecutionTimestamps {
 pub struct PrevalidatorWrapper {
     pub chain_id: ChainId,
     pub protocol: ProtocolHash,
-    pub context_fitness: Option<Fitness>,
+    pub context_fitness: Option<FitnessInner>,
 }
 
 impl fmt::Debug for PrevalidatorWrapper {
@@ -158,7 +158,7 @@ impl fmt::Debug for PrevalidatorWrapper {
             self.chain_id.to_base58_check(),
             self.protocol.to_base58_check(),
             match &self.context_fitness {
-                Some(fitness) => display_fitness(fitness),
+                Some(fitness) => FitnessRef(fitness).to_string(),
                 None => "-none-".to_string(),
             },
         )
@@ -282,7 +282,7 @@ pub struct ValidateOperationResult {
     pub refused: Vec<Errored>,
     pub branch_refused: Vec<Errored>,
     pub branch_delayed: Vec<Errored>,
-    // TODO: outedate?
+    pub outdated: Vec<Errored>,
 }
 
 impl ValidateOperationResult {
@@ -292,6 +292,7 @@ impl ValidateOperationResult {
         changed |= Self::merge_items(&mut self.refused, new_result.refused);
         changed |= Self::merge_items(&mut self.branch_refused, new_result.branch_refused);
         changed |= Self::merge_items(&mut self.branch_delayed, new_result.branch_delayed);
+        changed |= Self::merge_items(&mut self.outdated, new_result.outdated);
         changed
     }
 
@@ -328,6 +329,7 @@ impl ValidateOperationResult {
             + self.branch_delayed.len()
             + self.branch_refused.len()
             + self.refused.len()
+            + self.outdated.len()
     }
 }
 
@@ -1084,6 +1086,7 @@ mod tests {
                 refused: vec![],
                 branch_refused: vec![],
                 branch_delayed: vec![],
+                outdated: vec![],
             })
         );
         assert_eq!(2, validate_result1.applied.len());
@@ -1110,6 +1113,7 @@ mod tests {
             refused: vec![],
             branch_refused: vec![],
             branch_delayed: vec![],
+            outdated: vec![],
         };
         assert_eq!(0, validate_result.applied.len());
         assert_eq!(
@@ -1226,11 +1230,31 @@ mod tests {
             }
         ];
 
+        let outdated = vec![
+            Errored {
+                hash: op1.try_into().expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            },
+            Errored {
+                hash: op2.try_into().expect("Error"),
+                is_endorsement: None,
+                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
+                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
+                },
+            }
+        ];
+
         ValidateOperationResult {
             applied,
             branch_delayed,
             branch_refused,
             refused,
+            outdated,
         }
     }
 

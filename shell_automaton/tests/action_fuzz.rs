@@ -5,11 +5,11 @@
 #![cfg_attr(test, feature(no_coverage))]
 
 use fuzzcheck::{DefaultMutator, SerdeSerializer};
-use redux_rs::{ActionId, ActionWithMeta, EnablingCondition, SafetyCondition};
+use redux_rs::{ActionId, ActionWithMeta, SafetyCondition};
 use serde::{Deserialize, Serialize};
 use shell_automaton::action::{Action, InitAction};
 use shell_automaton::block_applier;
-use shell_automaton::current_head::current_head_actions;
+use shell_automaton::current_head_precheck;
 use shell_automaton::fuzzing::state_singleton::FUZZER_STATE;
 use shell_automaton::mempool::mempool_actions;
 use shell_automaton::peers::init::PeersInitAction;
@@ -22,12 +22,34 @@ use shell_automaton::shutdown::ShutdownPendingAction;
 use shell_automaton::shutdown::ShutdownSuccessAction;
 use shell_automaton::stats::current_head::stats_current_head_actions;
 //use shell_automaton::storage::request::StorageRequestSuccessAction;
-use shell_automaton::action::BootstrapNewCurrentHeadAction;
 use shell_automaton::MioWaitForEventsAction;
 
 use shell_automaton::MioTimeoutEvent;
 use shell_automaton::State;
 use shell_automaton::{
+    bootstrap::{
+        BootstrapCheckTimeoutsInitAction, BootstrapErrorAction, BootstrapFinishedAction,
+        BootstrapFromPeerCurrentHeadAction, BootstrapInitAction,
+        BootstrapPeerBlockHeaderGetFinishAction, BootstrapPeerBlockHeaderGetInitAction,
+        BootstrapPeerBlockHeaderGetPendingAction, BootstrapPeerBlockHeaderGetSuccessAction,
+        BootstrapPeerBlockHeaderGetTimeoutAction, BootstrapPeerBlockOperationsGetPendingAction,
+        BootstrapPeerBlockOperationsGetRetryAction, BootstrapPeerBlockOperationsGetSuccessAction,
+        BootstrapPeerBlockOperationsGetTimeoutAction, BootstrapPeerBlockOperationsReceivedAction,
+        BootstrapPeerCurrentBranchReceivedAction, BootstrapPeersBlockHeadersGetInitAction,
+        BootstrapPeersBlockHeadersGetPendingAction, BootstrapPeersBlockHeadersGetSuccessAction,
+        BootstrapPeersBlockOperationsGetInitAction, BootstrapPeersBlockOperationsGetNextAction,
+        BootstrapPeersBlockOperationsGetNextAllAction,
+        BootstrapPeersBlockOperationsGetPendingAction,
+        BootstrapPeersBlockOperationsGetSuccessAction, BootstrapPeersConnectPendingAction,
+        BootstrapPeersConnectSuccessAction, BootstrapPeersMainBranchFindInitAction,
+        BootstrapPeersMainBranchFindPendingAction, BootstrapPeersMainBranchFindSuccessAction,
+        BootstrapScheduleBlockForApplyAction, BootstrapScheduleBlocksForApplyAction,
+    },
+    current_head::{
+        CurrentHeadRehydrateErrorAction, CurrentHeadRehydrateInitAction,
+        CurrentHeadRehydratePendingAction, CurrentHeadRehydrateSuccessAction,
+        CurrentHeadRehydratedAction, CurrentHeadUpdateAction,
+    },
     event::{P2pPeerEvent, P2pServerEvent, WakeupEvent},
     paused_loops::{
         PausedLoopsAddAction, PausedLoopsResumeAllAction, PausedLoopsResumeNextInitAction,
@@ -94,8 +116,36 @@ use shell_automaton::{
                 PeerMessageWriteNextAction, PeerMessageWriteSuccessAction,
             },
         },
-        PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction, PeerTryWriteLoopFinishAction,
-        PeerTryWriteLoopStartAction,
+        remote_requests::{
+            block_header_get::{
+                PeerRemoteRequestsBlockHeaderGetEnqueueAction,
+                PeerRemoteRequestsBlockHeaderGetErrorAction,
+                PeerRemoteRequestsBlockHeaderGetFinishAction,
+                PeerRemoteRequestsBlockHeaderGetInitNextAction,
+                PeerRemoteRequestsBlockHeaderGetPendingAction,
+                PeerRemoteRequestsBlockHeaderGetSuccessAction,
+            },
+            block_operations_get::{
+                PeerRemoteRequestsBlockOperationsGetEnqueueAction,
+                PeerRemoteRequestsBlockOperationsGetErrorAction,
+                PeerRemoteRequestsBlockOperationsGetFinishAction,
+                PeerRemoteRequestsBlockOperationsGetInitNextAction,
+                PeerRemoteRequestsBlockOperationsGetPendingAction,
+                PeerRemoteRequestsBlockOperationsGetSuccessAction,
+            },
+            current_branch_get::{
+                PeerRemoteRequestsCurrentBranchGetFinishAction,
+                PeerRemoteRequestsCurrentBranchGetInitAction,
+                PeerRemoteRequestsCurrentBranchGetNextBlockErrorAction,
+                PeerRemoteRequestsCurrentBranchGetNextBlockInitAction,
+                PeerRemoteRequestsCurrentBranchGetNextBlockPendingAction,
+                PeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction,
+                PeerRemoteRequestsCurrentBranchGetPendingAction,
+                PeerRemoteRequestsCurrentBranchGetSuccessAction,
+            },
+        },
+        PeerCurrentHeadUpdateAction, PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction,
+        PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
     },
     peers::{
         add::{multi::PeersAddMultiAction, PeersAddIncomingPeerAction},
@@ -116,15 +166,6 @@ use shell_automaton::{
     storage,
 };
 
-/*
-
-
-pub enum Action {
-}
-
-
-*/
-
 #[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum AllActionsTest {
     TestControl(ControlActionTest),
@@ -138,6 +179,8 @@ enum AllActionsTest {
     TestRights(RightsActionTest),
     TestCurrentHead(CurrentHeadActionTest),
     TestStats(StatsActionTest),
+    TestBootstrap(BootstrapActionTest),
+    TestRemoteRequest(RemoteRequestActionTest),
 }
 
 impl AllActionsTest {
@@ -154,13 +197,178 @@ impl AllActionsTest {
             Self::TestRights(a) => a.to_action(),
             Self::TestCurrentHead(a) => a.to_action(),
             Self::TestStats(a) => a.to_action(),
+            Self::TestBootstrap(a) => a.to_action(),
+            Self::TestRemoteRequest(a) => a.to_action(),
+        }
+    }
+}
+
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
+enum RemoteRequestActionTest {
+    TestPeerRemoteRequestsBlockHeaderGetEnqueueAction(
+        PeerRemoteRequestsBlockHeaderGetEnqueueAction,
+    ),
+    TestPeerRemoteRequestsBlockHeaderGetInitNextAction(
+        PeerRemoteRequestsBlockHeaderGetInitNextAction,
+    ),
+    TestPeerRemoteRequestsBlockHeaderGetPendingAction(
+        PeerRemoteRequestsBlockHeaderGetPendingAction,
+    ),
+    TestPeerRemoteRequestsBlockHeaderGetErrorAction(PeerRemoteRequestsBlockHeaderGetErrorAction),
+    TestPeerRemoteRequestsBlockHeaderGetSuccessAction(
+        PeerRemoteRequestsBlockHeaderGetSuccessAction,
+    ),
+    TestPeerRemoteRequestsBlockHeaderGetFinishAction(PeerRemoteRequestsBlockHeaderGetFinishAction),
+    TestPeerRemoteRequestsBlockOperationsGetEnqueueAction(
+        PeerRemoteRequestsBlockOperationsGetEnqueueAction,
+    ),
+    TestPeerRemoteRequestsBlockOperationsGetInitNextAction(
+        PeerRemoteRequestsBlockOperationsGetInitNextAction,
+    ),
+    TestPeerRemoteRequestsBlockOperationsGetPendingAction(
+        PeerRemoteRequestsBlockOperationsGetPendingAction,
+    ),
+    TestPeerRemoteRequestsBlockOperationsGetErrorAction(
+        PeerRemoteRequestsBlockOperationsGetErrorAction,
+    ),
+    TestPeerRemoteRequestsBlockOperationsGetSuccessAction(
+        PeerRemoteRequestsBlockOperationsGetSuccessAction,
+    ),
+    TestPeerRemoteRequestsBlockOperationsGetFinishAction(
+        PeerRemoteRequestsBlockOperationsGetFinishAction,
+    ),
+    TestPeerRemoteRequestsCurrentBranchGetInitAction(PeerRemoteRequestsCurrentBranchGetInitAction),
+    TestPeerRemoteRequestsCurrentBranchGetPendingAction(
+        PeerRemoteRequestsCurrentBranchGetPendingAction,
+    ),
+    TestPeerRemoteRequestsCurrentBranchGetNextBlockInitAction(
+        PeerRemoteRequestsCurrentBranchGetNextBlockInitAction,
+    ),
+    TestPeerRemoteRequestsCurrentBranchGetNextBlockPendingAction(
+        PeerRemoteRequestsCurrentBranchGetNextBlockPendingAction,
+    ),
+    TestPeerRemoteRequestsCurrentBranchGetNextBlockErrorAction(
+        PeerRemoteRequestsCurrentBranchGetNextBlockErrorAction,
+    ),
+    TestPeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction(
+        PeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction,
+    ),
+    TestPeerRemoteRequestsCurrentBranchGetSuccessAction(
+        PeerRemoteRequestsCurrentBranchGetSuccessAction,
+    ),
+    TestPeerRemoteRequestsCurrentBranchGetFinishAction(
+        PeerRemoteRequestsCurrentBranchGetFinishAction,
+    ),
+}
+
+impl RemoteRequestActionTest {
+    fn to_action(&self) -> Action {
+        match self.clone() {
+            Self::TestPeerRemoteRequestsBlockHeaderGetEnqueueAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsBlockHeaderGetInitNextAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsBlockHeaderGetPendingAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsBlockHeaderGetErrorAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsBlockHeaderGetSuccessAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsBlockHeaderGetFinishAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsBlockOperationsGetEnqueueAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsBlockOperationsGetInitNextAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsBlockOperationsGetPendingAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsBlockOperationsGetErrorAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsBlockOperationsGetSuccessAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsBlockOperationsGetFinishAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsCurrentBranchGetInitAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsCurrentBranchGetPendingAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsCurrentBranchGetNextBlockInitAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsCurrentBranchGetNextBlockPendingAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsCurrentBranchGetNextBlockErrorAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsCurrentBranchGetNextBlockSuccessAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsCurrentBranchGetSuccessAction(a) => a.into(),
+            Self::TestPeerRemoteRequestsCurrentBranchGetFinishAction(a) => a.into(),
+        }
+    }
+}
+
+#[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
+enum BootstrapActionTest {
+    TestBootstrapInitAction(BootstrapInitAction),
+    TestBootstrapPeersConnectPendingAction(BootstrapPeersConnectPendingAction),
+    TestBootstrapPeersConnectSuccessAction(BootstrapPeersConnectSuccessAction),
+    TestBootstrapPeersMainBranchFindInitAction(BootstrapPeersMainBranchFindInitAction),
+    TestBootstrapPeersMainBranchFindPendingAction(BootstrapPeersMainBranchFindPendingAction),
+    TestBootstrapPeerCurrentBranchReceivedAction(BootstrapPeerCurrentBranchReceivedAction),
+    TestBootstrapPeersMainBranchFindSuccessAction(BootstrapPeersMainBranchFindSuccessAction),
+    TestBootstrapPeersBlockHeadersGetInitAction(BootstrapPeersBlockHeadersGetInitAction),
+    TestBootstrapPeersBlockHeadersGetPendingAction(BootstrapPeersBlockHeadersGetPendingAction),
+    TestBootstrapPeerBlockHeaderGetInitAction(BootstrapPeerBlockHeaderGetInitAction),
+    TestBootstrapPeerBlockHeaderGetPendingAction(BootstrapPeerBlockHeaderGetPendingAction),
+    TestBootstrapPeerBlockHeaderGetTimeoutAction(BootstrapPeerBlockHeaderGetTimeoutAction),
+    TestBootstrapPeerBlockHeaderGetSuccessAction(BootstrapPeerBlockHeaderGetSuccessAction),
+    TestBootstrapPeerBlockHeaderGetFinishAction(BootstrapPeerBlockHeaderGetFinishAction),
+    TestBootstrapPeersBlockHeadersGetSuccessAction(BootstrapPeersBlockHeadersGetSuccessAction),
+    TestBootstrapPeersBlockOperationsGetInitAction(BootstrapPeersBlockOperationsGetInitAction),
+    TestBootstrapPeersBlockOperationsGetPendingAction(
+        BootstrapPeersBlockOperationsGetPendingAction,
+    ),
+    TestBootstrapPeersBlockOperationsGetNextAllAction(
+        BootstrapPeersBlockOperationsGetNextAllAction,
+    ),
+    TestBootstrapPeersBlockOperationsGetNextAction(BootstrapPeersBlockOperationsGetNextAction),
+    TestBootstrapPeerBlockOperationsGetPendingAction(BootstrapPeerBlockOperationsGetPendingAction),
+    TestBootstrapPeerBlockOperationsGetTimeoutAction(BootstrapPeerBlockOperationsGetTimeoutAction),
+    TestBootstrapPeerBlockOperationsGetRetryAction(BootstrapPeerBlockOperationsGetRetryAction),
+    TestBootstrapPeerBlockOperationsReceivedAction(BootstrapPeerBlockOperationsReceivedAction),
+    TestBootstrapPeerBlockOperationsGetSuccessAction(BootstrapPeerBlockOperationsGetSuccessAction),
+    TestBootstrapScheduleBlocksForApplyAction(BootstrapScheduleBlocksForApplyAction),
+    TestBootstrapScheduleBlockForApplyAction(BootstrapScheduleBlockForApplyAction),
+    TestBootstrapPeersBlockOperationsGetSuccessAction(
+        BootstrapPeersBlockOperationsGetSuccessAction,
+    ),
+    TestBootstrapCheckTimeoutsInitAction(BootstrapCheckTimeoutsInitAction),
+    TestBootstrapErrorAction(BootstrapErrorAction),
+    TestBootstrapFinishedAction(BootstrapFinishedAction),
+    TestBootstrapFromPeerCurrentHeadAction(BootstrapFromPeerCurrentHeadAction),
+}
+
+impl BootstrapActionTest {
+    fn to_action(&self) -> Action {
+        match self.clone() {
+            Self::TestBootstrapInitAction(a) => a.into(),
+            Self::TestBootstrapPeersConnectPendingAction(a) => a.into(),
+            Self::TestBootstrapPeersConnectSuccessAction(a) => a.into(),
+            Self::TestBootstrapPeersMainBranchFindInitAction(a) => a.into(),
+            Self::TestBootstrapPeersMainBranchFindPendingAction(a) => a.into(),
+            Self::TestBootstrapPeerCurrentBranchReceivedAction(a) => a.into(),
+            Self::TestBootstrapPeersMainBranchFindSuccessAction(a) => a.into(),
+            Self::TestBootstrapPeersBlockHeadersGetInitAction(a) => a.into(),
+            Self::TestBootstrapPeersBlockHeadersGetPendingAction(a) => a.into(),
+            Self::TestBootstrapPeerBlockHeaderGetInitAction(a) => a.into(),
+            Self::TestBootstrapPeerBlockHeaderGetPendingAction(a) => a.into(),
+            Self::TestBootstrapPeerBlockHeaderGetTimeoutAction(a) => a.into(),
+            Self::TestBootstrapPeerBlockHeaderGetSuccessAction(a) => a.into(),
+            Self::TestBootstrapPeerBlockHeaderGetFinishAction(a) => a.into(),
+            Self::TestBootstrapPeersBlockHeadersGetSuccessAction(a) => a.into(),
+            Self::TestBootstrapPeersBlockOperationsGetInitAction(a) => a.into(),
+            Self::TestBootstrapPeersBlockOperationsGetPendingAction(a) => a.into(),
+            Self::TestBootstrapPeersBlockOperationsGetNextAllAction(a) => a.into(),
+            Self::TestBootstrapPeersBlockOperationsGetNextAction(a) => a.into(),
+            Self::TestBootstrapPeerBlockOperationsGetPendingAction(a) => a.into(),
+            Self::TestBootstrapPeerBlockOperationsGetTimeoutAction(a) => a.into(),
+            Self::TestBootstrapPeerBlockOperationsGetRetryAction(a) => a.into(),
+            Self::TestBootstrapPeerBlockOperationsReceivedAction(a) => a.into(),
+            Self::TestBootstrapPeerBlockOperationsGetSuccessAction(a) => a.into(),
+            Self::TestBootstrapScheduleBlocksForApplyAction(a) => a.into(),
+            Self::TestBootstrapScheduleBlockForApplyAction(a) => a.into(),
+            Self::TestBootstrapPeersBlockOperationsGetSuccessAction(a) => a.into(),
+            Self::TestBootstrapCheckTimeoutsInitAction(a) => a.into(),
+            Self::TestBootstrapErrorAction(a) => a.into(),
+            Self::TestBootstrapFinishedAction(a) => a.into(),
+            Self::TestBootstrapFromPeerCurrentHeadAction(a) => a.into(),
         }
     }
 }
 
 #[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum StatsActionTest {
-    //TestStatsCurrentHeadReceivedAction(stats_current_head_actions::StatsCurrentHeadReceivedAction),
     TestStatsCurrentHeadPrecheckSuccessAction(
         stats_current_head_actions::StatsCurrentHeadPrecheckSuccessAction,
     ),
@@ -171,46 +379,44 @@ enum StatsActionTest {
     TestStatsCurrentHeadSentErrorAction(
         stats_current_head_actions::StatsCurrentHeadSentErrorAction,
     ),
-    //TestStatsCurrentHeadRpcGetAction(stats_current_head_actions::StatsCurrentHeadRpcGetAction),
-    //TestStatsCurrentHeadPruneAction(stats_current_head_actions::StatsCurrentHeadPruneAction),
-    //TestStatsCurrentHeadRpcGetPeersAction(
-    //    stats_current_head_actions::StatsCurrentHeadRpcGetPeersAction,
-    //),
-    //TestStatsCurrentHeadRpcGetApplicationAction(
-    //    stats_current_head_actions::StatsCurrentHeadRpcGetApplicationAction,
-    //),
     TestStatsCurrentHeadPrecheckInitAction(
         stats_current_head_actions::StatsCurrentHeadPrecheckInitAction,
     ),
+    TestCurrentHeadRehydrateInitAction(CurrentHeadRehydrateInitAction),
+    TestCurrentHeadRehydratePendingAction(CurrentHeadRehydratePendingAction),
+    TestCurrentHeadRehydrateErrorAction(CurrentHeadRehydrateErrorAction),
+    TestCurrentHeadRehydrateSuccessAction(CurrentHeadRehydrateSuccessAction),
+    TestCurrentHeadRehydratedAction(CurrentHeadRehydratedAction),
+    TestCurrentHeadUpdateAction(CurrentHeadUpdateAction),
 }
 
 impl StatsActionTest {
     fn to_action(&self) -> Action {
         match self.clone() {
-            //Self::TestStatsCurrentHeadReceivedAction(a) => a.into(),
             Self::TestStatsCurrentHeadPrecheckSuccessAction(a) => a.into(),
             Self::TestStatsCurrentHeadPrepareSendAction(a) => a.into(),
             Self::TestStatsCurrentHeadSentAction(a) => a.into(),
             Self::TestStatsCurrentHeadSentErrorAction(a) => a.into(),
-            //Self::TestStatsCurrentHeadRpcGetAction(a) => a.into(),
-            //Self::TestStatsCurrentHeadPruneAction(a) => a.into(),
-            //Self::TestStatsCurrentHeadRpcGetPeersAction(a) => a.into(),
-            //Self::TestStatsCurrentHeadRpcGetApplicationAction(a) => a.into(),
             Self::TestStatsCurrentHeadPrecheckInitAction(a) => a.into(),
+            Self::TestCurrentHeadRehydrateInitAction(a) => a.into(),
+            Self::TestCurrentHeadRehydratePendingAction(a) => a.into(),
+            Self::TestCurrentHeadRehydrateErrorAction(a) => a.into(),
+            Self::TestCurrentHeadRehydrateSuccessAction(a) => a.into(),
+            Self::TestCurrentHeadRehydratedAction(a) => a.into(),
+            Self::TestCurrentHeadUpdateAction(a) => a.into(),
         }
     }
 }
 
 #[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum CurrentHeadActionTest {
-    TestCurrentHeadReceivedAction(current_head_actions::CurrentHeadReceivedAction),
-    TestCurrentHeadPrecheckAction(current_head_actions::CurrentHeadPrecheckAction),
-    TestCurrentHeadPrecheckSuccessAction(current_head_actions::CurrentHeadPrecheckSuccessAction),
-    TestCurrentHeadPrecheckRejectedAction(current_head_actions::CurrentHeadPrecheckRejectedAction),
-    TestCurrentHeadErrorAction(current_head_actions::CurrentHeadErrorAction),
-    TestCurrentHeadApplyAction(current_head_actions::CurrentHeadApplyAction),
+    TestCurrentHeadReceivedAction(current_head_precheck::CurrentHeadReceivedAction),
+    TestCurrentHeadPrecheckAction(current_head_precheck::CurrentHeadPrecheckAction),
+    TestCurrentHeadPrecheckSuccessAction(current_head_precheck::CurrentHeadPrecheckSuccessAction),
+    TestCurrentHeadPrecheckRejectedAction(current_head_precheck::CurrentHeadPrecheckRejectedAction),
+    TestCurrentHeadErrorAction(current_head_precheck::CurrentHeadErrorAction),
     TestCurrentHeadPrecacheBakingRightsAction(
-        current_head_actions::CurrentHeadPrecacheBakingRightsAction,
+        current_head_precheck::CurrentHeadPrecacheBakingRightsAction,
     ),
 }
 
@@ -222,7 +428,6 @@ impl CurrentHeadActionTest {
             Self::TestCurrentHeadPrecheckSuccessAction(a) => a.into(),
             Self::TestCurrentHeadPrecheckRejectedAction(a) => a.into(),
             Self::TestCurrentHeadErrorAction(a) => a.into(),
-            Self::TestCurrentHeadApplyAction(a) => a.into(),
             Self::TestCurrentHeadPrecacheBakingRightsAction(a) => a.into(),
         }
     }
@@ -627,9 +832,6 @@ enum MempoolActionTest {
     TestMempoolOperationRecvDoneAction(mempool_actions::MempoolOperationRecvDoneAction),
     TestMempoolOperationInjectAction(mempool_actions::MempoolOperationInjectAction),
     TestMempoolValidateStartAction(mempool_actions::MempoolValidateStartAction),
-    TestMempoolValidateWaitPrevalidatorAction(
-        mempool_actions::MempoolValidateWaitPrevalidatorAction,
-    ),
     TestMempoolRpcRespondAction(mempool_actions::MempoolRpcRespondAction),
     TestMempoolRegisterOperationsStreamAction(
         mempool_actions::MempoolRegisterOperationsStreamAction,
@@ -642,8 +844,6 @@ enum MempoolActionTest {
     TestMempoolAskCurrentHeadAction(mempool_actions::MempoolAskCurrentHeadAction),
     TestMempoolBroadcastAction(mempool_actions::MempoolBroadcastAction),
     TestMempoolBroadcastDoneAction(mempool_actions::MempoolBroadcastDoneAction),
-    TestMempoolCleanupWaitPrevalidatorAction(mempool_actions::MempoolCleanupWaitPrevalidatorAction),
-    TestMempoolRemoveAppliedOperationsAction(mempool_actions::MempoolRemoveAppliedOperationsAction),
     TestMempoolGetPendingOperationsAction(mempool_actions::MempoolGetPendingOperationsAction),
     TestMempoolFlushAction(mempool_actions::MempoolFlushAction),
     TestMempoolOperationDecodedAction(mempool_actions::MempoolOperationDecodedAction),
@@ -662,7 +862,6 @@ impl MempoolActionTest {
             Self::TestMempoolOperationRecvDoneAction(a) => a.into(),
             Self::TestMempoolOperationInjectAction(a) => a.into(),
             Self::TestMempoolValidateStartAction(a) => a.into(),
-            Self::TestMempoolValidateWaitPrevalidatorAction(a) => a.into(),
             Self::TestMempoolRpcRespondAction(a) => a.into(),
             Self::TestMempoolRegisterOperationsStreamAction(a) => a.into(),
             Self::TestMempoolUnregisterOperationsStreamsAction(a) => a.into(),
@@ -671,8 +870,6 @@ impl MempoolActionTest {
             Self::TestMempoolAskCurrentHeadAction(a) => a.into(),
             Self::TestMempoolBroadcastAction(a) => a.into(),
             Self::TestMempoolBroadcastDoneAction(a) => a.into(),
-            Self::TestMempoolCleanupWaitPrevalidatorAction(a) => a.into(),
-            Self::TestMempoolRemoveAppliedOperationsAction(a) => a.into(),
             Self::TestMempoolGetPendingOperationsAction(a) => a.into(),
             Self::TestMempoolFlushAction(a) => a.into(),
             Self::TestMempoolOperationDecodedAction(a) => a.into(),
@@ -784,6 +981,7 @@ enum PeerActionTest {
     TestPeerChunking(PeerChunkActionTest),
     TestPeerMessages(PeerMessageActionTest),
     TestPeerHandshaking(PeerHandshakingActionTest),
+    TestPeerCurrentHeadUpdateAction(PeerCurrentHeadUpdateAction),
 }
 
 impl PeerActionTest {
@@ -796,6 +994,7 @@ impl PeerActionTest {
             Self::TestPeerChunking(a) => a.to_action(),
             Self::TestPeerMessages(a) => a.to_action(),
             Self::TestPeerHandshaking(a) => a.to_action(),
+            Self::TestPeerCurrentHeadUpdateAction(a) => a.into(),
         }
     }
 }
@@ -844,7 +1043,6 @@ enum ControlActionTest {
     TestPeerTryWriteLoopFinishAction(PeerTryWriteLoopFinishAction),
     TestPeerTryReadLoopStartAction(PeerTryReadLoopStartAction),
     TestPeerTryReadLoopFinishAction(PeerTryReadLoopFinishAction),
-    TestBootstrapNewCurrentHeadAction(BootstrapNewCurrentHeadAction),
 }
 
 impl ControlActionTest {
@@ -869,7 +1067,6 @@ impl ControlActionTest {
             Self::TestPeerTryWriteLoopFinishAction(a) => a.into(),
             Self::TestPeerTryReadLoopStartAction(a) => a.into(),
             Self::TestPeerTryReadLoopFinishAction(a) => a.into(),
-            Self::TestBootstrapNewCurrentHeadAction(a) => a.into(),
         }
     }
 }
@@ -1187,294 +1384,8 @@ fn action_test_storage(action_test: &StorageActionTest) -> bool {
     reduce_with_state(&action)
 }
 
-/*
-    TODO: we can't take advantage of enum_dispatch because the EnablingCondition trait
-    is defined in redux-rs, while Action is in shell_automaton. A solution would be
-    to move the redux-rs implementation inside shell_automaton.
-*/
 fn is_action_enabled(action: Action, state: &State) -> bool {
-    match action {
-        Action::Init(a) => a.is_enabled(state),
-        Action::PausedLoopsAdd(a) => a.is_enabled(state),
-        Action::PausedLoopsResumeAll(a) => a.is_enabled(state),
-        Action::PausedLoopsResumeNextInit(a) => a.is_enabled(state),
-        Action::PausedLoopsResumeNextSuccess(a) => a.is_enabled(state),
-        Action::ProtocolRunnerStart(a) => a.is_enabled(state),
-        Action::ProtocolRunnerSpawnServerInit(a) => a.is_enabled(state),
-        Action::ProtocolRunnerSpawnServerPending(a) => a.is_enabled(state),
-        Action::ProtocolRunnerSpawnServerError(a) => a.is_enabled(state),
-        Action::ProtocolRunnerSpawnServerSuccess(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInit(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitRuntime(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitRuntimePending(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitRuntimeError(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitRuntimeSuccess(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitCheckGenesisApplied(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitCheckGenesisAppliedSuccess(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitContext(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitContextPending(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitContextError(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitContextSuccess(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitContextIpcServer(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitContextIpcServerPending(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitContextIpcServerError(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitContextIpcServerSuccess(a) => a.is_enabled(state),
-        Action::ProtocolRunnerInitSuccess(a) => a.is_enabled(state),
-        Action::ProtocolRunnerReady(a) => a.is_enabled(state),
-        Action::ProtocolRunnerNotifyStatus(a) => a.is_enabled(state),
-        Action::ProtocolRunnerResponse(a) => a.is_enabled(state),
-        Action::ProtocolRunnerResponseUnexpected(a) => a.is_enabled(state),
-        Action::BlockApplierEnqueueBlock(a) => a.is_enabled(state),
-        Action::BlockApplierApplyInit(a) => a.is_enabled(state),
-        Action::BlockApplierApplyPrepareDataPending(a) => a.is_enabled(state),
-        Action::BlockApplierApplyPrepareDataSuccess(a) => a.is_enabled(state),
-        Action::BlockApplierApplyProtocolRunnerApplyInit(a) => a.is_enabled(state),
-        Action::BlockApplierApplyProtocolRunnerApplyPending(a) => a.is_enabled(state),
-        Action::BlockApplierApplyProtocolRunnerApplyRetry(a) => a.is_enabled(state),
-        Action::BlockApplierApplyProtocolRunnerApplySuccess(a) => a.is_enabled(state),
-        Action::BlockApplierApplyStoreApplyResultPending(a) => a.is_enabled(state),
-        Action::BlockApplierApplyStoreApplyResultSuccess(a) => a.is_enabled(state),
-        Action::BlockApplierApplyError(a) => a.is_enabled(state),
-        Action::BlockApplierApplySuccess(a) => a.is_enabled(state),
-        Action::PeersInit(a) => a.is_enabled(state),
-        Action::PeersDnsLookupInit(a) => a.is_enabled(state),
-        Action::PeersDnsLookupError(a) => a.is_enabled(state),
-        Action::PeersDnsLookupSuccess(a) => a.is_enabled(state),
-        Action::PeersDnsLookupCleanup(a) => a.is_enabled(state),
-        Action::PeersGraylistAddress(a) => a.is_enabled(state),
-        Action::PeersGraylistIpAdd(a) => a.is_enabled(state),
-        Action::PeersGraylistIpAdded(a) => a.is_enabled(state),
-        Action::PeersGraylistIpRemove(a) => a.is_enabled(state),
-        Action::PeersGraylistIpRemoved(a) => a.is_enabled(state),
-        Action::PeersAddIncomingPeer(a) => a.is_enabled(state),
-        Action::PeersAddMulti(a) => a.is_enabled(state),
-        Action::PeersRemove(a) => a.is_enabled(state),
-        Action::PeersCheckTimeoutsInit(a) => a.is_enabled(state),
-        Action::PeersCheckTimeoutsSuccess(a) => a.is_enabled(state),
-        Action::PeersCheckTimeoutsCleanup(a) => a.is_enabled(state),
-        Action::PeerConnectionIncomingAccept(a) => a.is_enabled(state),
-        Action::PeerConnectionIncomingAcceptError(a) => a.is_enabled(state),
-        Action::PeerConnectionIncomingRejected(a) => a.is_enabled(state),
-        Action::PeerConnectionIncomingAcceptSuccess(a) => a.is_enabled(state),
-        Action::PeerConnectionIncomingError(a) => a.is_enabled(state),
-        Action::PeerConnectionIncomingSuccess(a) => a.is_enabled(state),
-        Action::PeerConnectionOutgoingRandomInit(a) => a.is_enabled(state),
-        Action::PeerConnectionOutgoingInit(a) => a.is_enabled(state),
-        Action::PeerConnectionOutgoingPending(a) => a.is_enabled(state),
-        Action::PeerConnectionOutgoingError(a) => a.is_enabled(state),
-        Action::PeerConnectionOutgoingSuccess(a) => a.is_enabled(state),
-        Action::PeerConnectionClosed(a) => a.is_enabled(state),
-        Action::PeerDisconnect(a) => a.is_enabled(state),
-        Action::PeerDisconnected(a) => a.is_enabled(state),
-        Action::MioWaitForEvents(a) => a.is_enabled(state),
-        Action::MioTimeoutEvent(a) => a.is_enabled(state),
-        Action::P2pServerEvent(a) => a.is_enabled(state),
-        Action::P2pPeerEvent(a) => a.is_enabled(state),
-        Action::WakeupEvent(a) => a.is_enabled(state),
-        Action::PeerTryWriteLoopStart(a) => a.is_enabled(state),
-        Action::PeerTryWriteLoopFinish(a) => a.is_enabled(state),
-        Action::PeerTryReadLoopStart(a) => a.is_enabled(state),
-        Action::PeerTryReadLoopFinish(a) => a.is_enabled(state),
-        Action::PeerChunkReadInit(a) => a.is_enabled(state),
-        Action::PeerChunkReadPart(a) => a.is_enabled(state),
-        Action::PeerChunkReadDecrypt(a) => a.is_enabled(state),
-        Action::PeerChunkReadReady(a) => a.is_enabled(state),
-        Action::PeerChunkReadError(a) => a.is_enabled(state),
-        Action::PeerChunkWriteSetContent(a) => a.is_enabled(state),
-        Action::PeerChunkWriteEncryptContent(a) => a.is_enabled(state),
-        Action::PeerChunkWriteCreateChunk(a) => a.is_enabled(state),
-        Action::PeerChunkWritePart(a) => a.is_enabled(state),
-        Action::PeerChunkWriteReady(a) => a.is_enabled(state),
-        Action::PeerChunkWriteError(a) => a.is_enabled(state),
-        Action::PeerBinaryMessageReadInit(a) => a.is_enabled(state),
-        Action::PeerBinaryMessageReadChunkReady(a) => a.is_enabled(state),
-        Action::PeerBinaryMessageReadSizeReady(a) => a.is_enabled(state),
-        Action::PeerBinaryMessageReadReady(a) => a.is_enabled(state),
-        Action::PeerBinaryMessageReadError(a) => a.is_enabled(state),
-        Action::PeerBinaryMessageWriteSetContent(a) => a.is_enabled(state),
-        Action::PeerBinaryMessageWriteNextChunk(a) => a.is_enabled(state),
-        Action::PeerBinaryMessageWriteReady(a) => a.is_enabled(state),
-        Action::PeerBinaryMessageWriteError(a) => a.is_enabled(state),
-        Action::PeerMessageReadInit(a) => a.is_enabled(state),
-        Action::PeerMessageReadError(a) => a.is_enabled(state),
-        Action::PeerMessageReadSuccess(a) => a.is_enabled(state),
-        Action::PeerMessageWriteNext(a) => a.is_enabled(state),
-        Action::PeerMessageWriteInit(a) => a.is_enabled(state),
-        Action::PeerMessageWriteError(a) => a.is_enabled(state),
-        Action::PeerMessageWriteSuccess(a) => a.is_enabled(state),
-        Action::PeerHandshakingInit(a) => a.is_enabled(state),
-        Action::PeerHandshakingConnectionMessageInit(a) => a.is_enabled(state),
-        Action::PeerHandshakingConnectionMessageEncode(a) => a.is_enabled(state),
-        Action::PeerHandshakingConnectionMessageWrite(a) => a.is_enabled(state),
-        Action::PeerHandshakingConnectionMessageRead(a) => a.is_enabled(state),
-        Action::PeerHandshakingConnectionMessageDecode(a) => a.is_enabled(state),
-        Action::PeerHandshakingEncryptionInit(a) => a.is_enabled(state),
-        Action::PeerHandshakingMetadataMessageInit(a) => a.is_enabled(state),
-        Action::PeerHandshakingMetadataMessageEncode(a) => a.is_enabled(state),
-        Action::PeerHandshakingMetadataMessageWrite(a) => a.is_enabled(state),
-        Action::PeerHandshakingMetadataMessageRead(a) => a.is_enabled(state),
-        Action::PeerHandshakingMetadataMessageDecode(a) => a.is_enabled(state),
-        Action::PeerHandshakingAckMessageInit(a) => a.is_enabled(state),
-        Action::PeerHandshakingAckMessageEncode(a) => a.is_enabled(state),
-        Action::PeerHandshakingAckMessageWrite(a) => a.is_enabled(state),
-        Action::PeerHandshakingAckMessageRead(a) => a.is_enabled(state),
-        Action::PeerHandshakingAckMessageDecode(a) => a.is_enabled(state),
-        Action::PeerHandshakingError(a) => a.is_enabled(state),
-        Action::PeerHandshakingFinish(a) => a.is_enabled(state),
-        Action::Protocol(a) => a.is_enabled(state),
-        Action::MempoolRecvDone(a) => a.is_enabled(state),
-        Action::MempoolGetOperations(a) => a.is_enabled(state),
-        Action::MempoolMarkOperationsAsPending(a) => a.is_enabled(state),
-        Action::MempoolOperationRecvDone(a) => a.is_enabled(state),
-        Action::MempoolOperationInject(a) => a.is_enabled(state),
-        Action::MempoolValidateStart(a) => a.is_enabled(state),
-        Action::MempoolValidateWaitPrevalidator(a) => a.is_enabled(state),
-        Action::MempoolRpcRespond(a) => a.is_enabled(state),
-        Action::MempoolRegisterOperationsStream(a) => a.is_enabled(state),
-        Action::MempoolUnregisterOperationsStreams(a) => a.is_enabled(state),
-        Action::MempoolSend(a) => a.is_enabled(state),
-        Action::MempoolSendValidated(a) => a.is_enabled(state),
-        Action::MempoolAskCurrentHead(a) => a.is_enabled(state),
-        Action::MempoolBroadcast(a) => a.is_enabled(state),
-        Action::MempoolBroadcastDone(a) => a.is_enabled(state),
-        Action::MempoolCleanupWaitPrevalidator(a) => a.is_enabled(state),
-        Action::MempoolRemoveAppliedOperations(a) => a.is_enabled(state),
-        Action::MempoolGetPendingOperations(a) => a.is_enabled(state),
-        Action::MempoolFlush(a) => a.is_enabled(state),
-        Action::MempoolOperationDecoded(a) => a.is_enabled(state),
-        Action::MempoolRpcEndorsementsStatusGet(a) => a.is_enabled(state),
-        Action::BlockInject(a) => a.is_enabled(state),
-        Action::PrecheckerPrecheckOperationRequest(a) => a.is_enabled(state),
-        Action::PrecheckerPrecheckOperationResponse(a) => a.is_enabled(state),
-        Action::PrecheckerCacheAppliedBlock(a) => a.is_enabled(state),
-        Action::PrecheckerPrecheckOperationInit(a) => a.is_enabled(state),
-        Action::PrecheckerGetProtocolVersion(a) => a.is_enabled(state),
-        Action::PrecheckerProtocolVersionReady(a) => a.is_enabled(state),
-        Action::PrecheckerDecodeOperation(a) => a.is_enabled(state),
-        Action::PrecheckerOperationDecoded(a) => a.is_enabled(state),
-        //Action::PrecheckerWaitForBlockApplication(a) => a.is_enabled(state),
-        Action::PrecheckerWaitForBlockPrechecked(a) => a.is_enabled(state),
-        Action::PrecheckerBlockPrechecked(a) => a.is_enabled(state),
-        Action::PrecheckerWaitForBlockApplied(a) => a.is_enabled(state),
-        Action::PrecheckerBlockApplied(a) => a.is_enabled(state),
-        Action::PrecheckerGetEndorsingRights(a) => a.is_enabled(state),
-        Action::PrecheckerEndorsingRightsReady(a) => a.is_enabled(state),
-        Action::PrecheckerValidateEndorsement(a) => a.is_enabled(state),
-        Action::PrecheckerEndorsementValidationApplied(a) => a.is_enabled(state),
-        Action::PrecheckerEndorsementValidationRefused(a) => a.is_enabled(state),
-        Action::PrecheckerProtocolNeeded(a) => a.is_enabled(state),
-        Action::PrecheckerError(a) => a.is_enabled(state),
-        Action::PrecheckerPrecacheEndorsingRights(a) => a.is_enabled(state),
-        Action::PrecheckerSetNextBlockProtocol(a) => a.is_enabled(state),
-        Action::PrecheckerQueryNextBlockProtocol(a) => a.is_enabled(state),
-        Action::PrecheckerNextBlockProtocolReady(a) => a.is_enabled(state),
-        Action::PrecheckerNextBlockProtocolError(a) => a.is_enabled(state),
-        Action::PrecheckerPruneOperation(a) => a.is_enabled(state),
-        Action::RightsGet(a) => a.is_enabled(state),
-        Action::RightsRpcGet(a) => a.is_enabled(state),
-        Action::RightsRpcEndorsingReady(a) => a.is_enabled(state),
-        Action::RightsRpcBakingReady(a) => a.is_enabled(state),
-        Action::RightsRpcError(a) => a.is_enabled(state),
-        Action::RightsPruneRpcRequest(a) => a.is_enabled(state),
-        Action::RightsInit(a) => a.is_enabled(state),
-        Action::RightsGetBlockHeader(a) => a.is_enabled(state),
-        Action::RightsBlockHeaderReady(a) => a.is_enabled(state),
-        Action::RightsGetProtocolHash(a) => a.is_enabled(state),
-        Action::RightsProtocolHashReady(a) => a.is_enabled(state),
-        Action::RightsGetProtocolConstants(a) => a.is_enabled(state),
-        Action::RightsProtocolConstantsReady(a) => a.is_enabled(state),
-        Action::RightsGetCycleEras(a) => a.is_enabled(state),
-        Action::RightsCycleErasReady(a) => a.is_enabled(state),
-        Action::RightsGetCycle(a) => a.is_enabled(state),
-        Action::RightsCycleReady(a) => a.is_enabled(state),
-        Action::RightsGetCycleData(a) => a.is_enabled(state),
-        Action::RightsCycleDataReady(a) => a.is_enabled(state),
-        Action::RightsCalculateEndorsingRights(a) => a.is_enabled(state),
-        Action::RightsEndorsingReady(a) => a.is_enabled(state),
-        Action::RightsBakingReady(a) => a.is_enabled(state),
-        Action::RightsError(a) => a.is_enabled(state),
-        Action::CurrentHeadReceived(a) => a.is_enabled(state),
-        Action::CurrentHeadPrecheck(a) => a.is_enabled(state),
-        Action::CurrentHeadPrecheckSuccess(a) => a.is_enabled(state),
-        Action::CurrentHeadPrecheckRejected(a) => a.is_enabled(state),
-        Action::CurrentHeadError(a) => a.is_enabled(state),
-        Action::CurrentHeadApply(a) => a.is_enabled(state),
-        Action::CurrentHeadPrecacheBakingRights(a) => a.is_enabled(state),
-        Action::StatsCurrentHeadPrecheckInit(a) => a.is_enabled(state),
-        //Action::StatsCurrentHeadReceived(a) => a.is_enabled(state),
-        Action::StatsCurrentHeadPrecheckSuccess(a) => a.is_enabled(state),
-        Action::StatsCurrentHeadPrepareSend(a) => a.is_enabled(state),
-        Action::StatsCurrentHeadSent(a) => a.is_enabled(state),
-        Action::StatsCurrentHeadSentError(a) => a.is_enabled(state),
-        //Action::StatsCurrentHeadRpcGet(a) => a.is_enabled(state),
-        //Action::StatsCurrentHeadPrune(a) => a.is_enabled(state),
-        //Action::StatsCurrentHeadRpcGetPeers(a) => a.is_enabled(state),
-        //Action::StatsCurrentHeadRpcGetApplication(a) => a.is_enabled(state),
-        Action::RpcBootstrapped(a) => a.is_enabled(state),
-        Action::RpcBootstrappedNewBlock(a) => a.is_enabled(state),
-        Action::RpcBootstrappedDone(a) => a.is_enabled(state),
-        Action::StorageBlockHeaderGet(a) => a.is_enabled(state),
-        Action::StorageBlockHeaderOk(a) => a.is_enabled(state),
-        Action::StorageBlockHeaderError(a) => a.is_enabled(state),
-        Action::StorageBlockMetaGet(a) => a.is_enabled(state),
-        Action::StorageBlockMetaOk(a) => a.is_enabled(state),
-        Action::StorageBlockMetaError(a) => a.is_enabled(state),
-        Action::StorageOperationsGet(a) => a.is_enabled(state),
-        Action::StorageOperationsOk(a) => a.is_enabled(state),
-        Action::StorageOperationsError(a) => a.is_enabled(state),
-        Action::StorageBlockAdditionalDataGet(a) => a.is_enabled(state),
-        Action::StorageBlockAdditionalDataOk(a) => a.is_enabled(state),
-        Action::StorageBlockAdditionalDataError(a) => a.is_enabled(state),
-        Action::StorageConstantsGet(a) => a.is_enabled(state),
-        Action::StorageConstantsOk(a) => a.is_enabled(state),
-        Action::StorageConstantsError(a) => a.is_enabled(state),
-        Action::StorageCycleMetaGet(a) => a.is_enabled(state),
-        Action::StorageCycleMetaOk(a) => a.is_enabled(state),
-        Action::StorageCycleMetaError(a) => a.is_enabled(state),
-        Action::StorageCycleErasGet(a) => a.is_enabled(state),
-        Action::StorageCycleErasOk(a) => a.is_enabled(state),
-        Action::StorageCycleErasError(a) => a.is_enabled(state),
-        Action::StorageRequestCreate(a) => a.is_enabled(state),
-        Action::StorageRequestInit(a) => a.is_enabled(state),
-        Action::StorageRequestPending(a) => a.is_enabled(state),
-        Action::StorageResponseReceived(a) => a.is_enabled(state),
-        Action::StorageRequestError(a) => a.is_enabled(state),
-        Action::StorageRequestSuccess(a) => a.is_enabled(state),
-        Action::StorageRequestFinish(a) => a.is_enabled(state),
-        Action::StorageStateSnapshotCreateInit(a) => a.is_enabled(state),
-        Action::StorageStateSnapshotCreatePending(a) => a.is_enabled(state),
-        Action::StorageStateSnapshotCreateError(a) => a.is_enabled(state),
-        Action::StorageStateSnapshotCreateSuccess(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisCheckAppliedInit(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisCheckAppliedGetMetaPending(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisCheckAppliedGetMetaError(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisCheckAppliedGetMetaSuccess(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisCheckAppliedSuccess(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInit(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitHeaderPutInit(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitHeaderPutPending(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitHeaderPutError(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitHeaderPutSuccess(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitAdditionalDataPutInit(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitAdditionalDataPutPending(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitAdditionalDataPutError(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitAdditionalDataPutSuccess(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitCommitResultGetInit(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitCommitResultGetPending(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitCommitResultGetError(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitCommitResultGetSuccess(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitCommitResultPutInit(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitCommitResultPutError(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitCommitResultPutSuccess(a) => a.is_enabled(state),
-        Action::StorageBlocksGenesisInitSuccess(a) => a.is_enabled(state),
-        Action::ShutdownInit(a) => a.is_enabled(state),
-        Action::ShutdownPending(a) => a.is_enabled(state),
-        Action::ShutdownSuccess(a) => a.is_enabled(state),
-        Action::ProtocolRunnerShutdownInit(a) => a.is_enabled(state),
-        Action::ProtocolRunnerShutdownPending(a) => a.is_enabled(state),
-        Action::ProtocolRunnerShutdownSuccess(a) => a.is_enabled(state),
-        Action::BootstrapNewCurrentHead(a) => a.is_enabled(state),
-    }
+    action.is_enabled(state)
 }
 
 #[cfg(test)]

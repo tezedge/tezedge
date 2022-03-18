@@ -1,212 +1,91 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::convert::TryInto;
+use networking::network_channel::NewCurrentHeadNotification;
 
-use crypto::hash::BlockHash;
-use tezos_messages::p2p::{binary_message::MessageHash, encoding::peer::PeerMessage};
+use crate::bootstrap::BootstrapInitAction;
+use crate::service::actors_service::{ActorsMessageTo, ActorsService};
+use crate::service::storage_service::{
+    StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
+};
+use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
+use crate::{Action, ActionWithMeta, Service, Store};
 
-use crate::{
-    block_applier::BlockApplierApplyState,
-    mempool::mempool_actions::BlockInjectAction,
-    peer::message::read::PeerMessageReadSuccessAction,
-    rights::{rights_actions::RightsGetAction, RightsKey},
-    stats::current_head::stats_current_head_actions::StatsCurrentHeadPrecheckInitAction,
-    Action,
+use super::{
+    CurrentHeadRehydrateErrorAction, CurrentHeadRehydratePendingAction,
+    CurrentHeadRehydrateSuccessAction, CurrentHeadRehydratedAction, CurrentHeadState,
 };
 
-use super::{current_head_actions::*, BakingPriorityError, CurrentHeadState};
-
-pub fn current_head_effects<S>(store: &mut crate::Store<S>, action: &crate::ActionWithMeta)
+pub fn current_head_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
-    S: crate::Service,
+    S: Service,
 {
     match &action.action {
-        Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { message, .. }) => {
-            let current_head = if let PeerMessage::CurrentHead(current_head) = message.message() {
-                current_head
-            } else {
-                return;
-            };
-
-            let current_block_header = current_head.current_block_header();
-            let block_hash = match current_block_header.message_typed_hash::<BlockHash>() {
-                Ok(v) => v,
-                Err(_) => return,
-            };
-
-            store.dispatch(CurrentHeadReceivedAction {
-                block_hash,
-                block_header: current_block_header.clone(),
-                injected: false,
+        Action::CurrentHeadRehydrateInit(_) => {
+            let chain_id = store.state().config.chain_id.clone();
+            let level_override = store.state().config.current_head_level_override;
+            let storage_req_id = store.state().storage.requests.next_req_id();
+            store.dispatch(StorageRequestCreateAction {
+                payload: StorageRequestPayload::CurrentHeadGet(chain_id, level_override),
+                requestor: StorageRequestor::None,
             });
+            store.dispatch(CurrentHeadRehydratePendingAction { storage_req_id });
         }
-        Action::BlockInject(BlockInjectAction {
-            block_hash,
-            block_header,
-            ..
-        }) => {
-            store.dispatch(CurrentHeadReceivedAction {
-                block_hash: block_hash.clone(),
-                block_header: block_header.as_ref().clone(),
-                injected: true,
-            });
-        }
-        Action::BlockApplierApplySuccess(_) => {
-            let block = match &store.state().block_applier.current {
-                BlockApplierApplyState::Success { block, .. } => block,
+        Action::StorageResponseReceived(content) => {
+            let target_req_id = match &store.state().current_head {
+                CurrentHeadState::RehydratePending { storage_req_id, .. } => storage_req_id,
                 _ => return,
             };
-
-            let block_hash = block.hash.clone();
-            let level = block.header.level();
-            let timestamp = block.header.timestamp();
-            store.dispatch(CurrentHeadApplyAction {
-                block_hash,
-                level,
-                timestamp,
-            });
-        }
-
-        Action::CurrentHeadReceived(CurrentHeadReceivedAction {
-            block_hash,
-            injected,
-            ..
-        }) => {
-            if let Some(CurrentHeadState::Received { .. }) =
-                store.state.get().current_heads.candidates.get(block_hash)
+            if content
+                .response
+                .req_id
+                .filter(|id| id.eq(target_req_id))
+                .is_none()
             {
-                store.dispatch(StatsCurrentHeadPrecheckInitAction {
-                    hash: block_hash.clone(),
-                });
-                store.dispatch(CurrentHeadPrecheckAction {
-                    block_hash: block_hash.clone(),
-                    injected: *injected,
-                });
+                return;
+            }
+
+            match &content.response.result {
+                Ok(StorageResponseSuccess::CurrentHeadGetSuccess(head, pred)) => {
+                    store.dispatch(CurrentHeadRehydrateSuccessAction {
+                        head: head.clone(),
+                        head_pred: pred.clone(),
+                    });
+                }
+                Err(StorageResponseError::CurrentHeadGetError(error)) => {
+                    store.dispatch(CurrentHeadRehydrateErrorAction {
+                        error: error.clone(),
+                    });
+                }
+                _ => {}
             }
         }
-        Action::CurrentHeadPrecheck(CurrentHeadPrecheckAction {
-            block_hash,
-            injected,
-        }) => {
-            match store.state.get().current_heads.candidates.get(block_hash) {
-                Some(CurrentHeadState::Prechecked {
-                    block_header: _,
-                    baker,
-                    priority,
-                }) => {
-                    let baker = baker.clone();
-                    let priority = *priority;
-                    store.dispatch(CurrentHeadPrecheckSuccessAction {
-                        block_hash: block_hash.clone(),
-                        baker,
-                        priority,
-                        injected: *injected,
-                    });
-                }
-                Some(CurrentHeadState::Rejected) => {
-                    store.dispatch(CurrentHeadPrecheckRejectedAction {
-                        block_hash: block_hash.clone(),
-                    });
-                }
-                Some(CurrentHeadState::Error { error }) => {
-                    let error = error.clone();
-                    store.dispatch(CurrentHeadErrorAction {
-                        block_hash: block_hash.clone(),
-                        error,
-                    });
-                }
-                _ => (),
-            };
+        Action::CurrentHeadRehydrateSuccess(_) => {
+            store.dispatch(CurrentHeadRehydratedAction {});
         }
-        Action::CurrentHeadError(CurrentHeadErrorAction { block_hash, error }) => {
-            slog::error!(&store.state().log, "current head error"; "block_hash" => block_hash.to_base58_check(), "error" => error.to_string());
+        Action::CurrentHeadRehydrated(_) => {
+            store.dispatch(BootstrapInitAction {});
+            notify_new_current_head(store);
         }
-
-        Action::CurrentHeadApply(CurrentHeadApplyAction { .. }) => {
-            store.dispatch(CurrentHeadPrecacheBakingRightsAction {});
+        Action::CurrentHeadUpdate(_) => {
+            notify_new_current_head(store);
         }
-        Action::CurrentHeadPrecacheBakingRights(CurrentHeadPrecacheBakingRightsAction {
-            ..
-        }) => {
-            let block = match &store.state().block_applier.current {
-                BlockApplierApplyState::Success { block, .. } => block,
-                _ => return,
-            };
-
-            let current_block_hash = block.hash.clone();
-            let level = block.header.level();
-
-            let max_priority = match max_priority_to_precache(
-                block.header.timestamp(),
-                (20, 30),
-                action.duration_since_epoch().as_secs(),
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    slog::error!(&store.state.get().log, "error calculating max priority"; "error" => err.to_string());
-                    return;
-                }
-            };
-            store.dispatch(RightsGetAction {
-                key: RightsKey::baking(current_block_hash, Some(level + 1), Some(max_priority)),
-            });
-        }
-        _ => (),
+        _ => {}
     }
 }
 
-fn max_priority_to_precache(
-    prev_timestamp: i64,
-    block_times: (i64, i64),
-    now: u64,
-) -> Result<u16, BakingPriorityError> {
-    let now: i64 = now.try_into()?;
-    let priority: u16 = if now < prev_timestamp + block_times.0 {
-        0
-    } else {
-        ((now - prev_timestamp - block_times.0) / block_times.1 + 1).try_into()?
+fn notify_new_current_head<S: Service>(store: &mut Store<S>) {
+    let block = match store.state().current_head.get() {
+        Some(v) => v.clone().into(),
+        None => return,
     };
-    Ok(priority)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::current_head::current_head_reducer::TIME_BETWEEN_BLOCKS;
-
-    #[test]
-    fn test_max_priority_to_precache_0() {
-        let prev_timestamp = 100;
-        let now = prev_timestamp + 1;
-        let res = max_priority_to_precache(prev_timestamp, TIME_BETWEEN_BLOCKS, now as u64);
-        assert_eq!(res, Ok(0));
-
-        let now = prev_timestamp + TIME_BETWEEN_BLOCKS.0 - 1;
-        let res = max_priority_to_precache(prev_timestamp, TIME_BETWEEN_BLOCKS, now as u64);
-        assert_eq!(res, Ok(0));
-    }
-
-    #[test]
-    fn test_max_priority_to_precache_1() {
-        let prev_timestamp = 100;
-        let now = prev_timestamp + TIME_BETWEEN_BLOCKS.0;
-        let res = max_priority_to_precache(prev_timestamp, TIME_BETWEEN_BLOCKS, now as u64);
-        assert_eq!(res, Ok(1));
-    }
-
-    #[test]
-    fn test_max_priority_to_precache_n() {
-        const N: u16 = 10;
-
-        let prev_timestamp = 100;
-        let now = prev_timestamp + TIME_BETWEEN_BLOCKS.0 + TIME_BETWEEN_BLOCKS.1 * (N as i64) - 1;
-        let res = max_priority_to_precache(prev_timestamp, TIME_BETWEEN_BLOCKS, now as u64);
-        assert_eq!(res, Ok(N));
-
-        let prev_timestamp = 100;
-        let now = prev_timestamp + TIME_BETWEEN_BLOCKS.0 + TIME_BETWEEN_BLOCKS.1 * (N as i64);
-        let res = max_priority_to_precache(prev_timestamp, TIME_BETWEEN_BLOCKS, now as u64);
-        assert_eq!(res, Ok(N + 1));
-    }
+    let chain_id = store.state().config.chain_id.clone().into();
+    let is_bootstrapped = store.state().is_bootstrapped();
+    let best_remote_level = store.state().best_remote_level();
+    let new_head =
+        NewCurrentHeadNotification::new(chain_id, block, is_bootstrapped, best_remote_level);
+    store
+        .service
+        .actors()
+        .send(ActorsMessageTo::NewCurrentHead(new_head.into()));
 }

@@ -25,7 +25,7 @@ use tezos_api::ffi::{RpcMethod, RpcRequest};
 use tezos_messages::p2p::binary_message::MessageHashError;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
-use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
+use tezos_messages::TimestampOutOfRangeError;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
@@ -206,6 +206,10 @@ pub struct BlockHeaderInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_round: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub seed_nonce_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_of_work_nonce: Option<String>,
@@ -234,15 +238,10 @@ impl BlockHeaderShellInfo {
             level: block.header.level(),
             proto: block.header.proto(),
             predecessor: block.header.predecessor().to_base58_check(),
-            timestamp: ts_to_rfc3339(block.header.timestamp())?,
+            timestamp: block.header.timestamp().to_rfc3339()?,
             validation_pass: block.header.validation_pass(),
             operations_hash: block.header.operations_hash().to_base58_check(),
-            fitness: block
-                .header
-                .fitness()
-                .iter()
-                .map(|x| hex::encode(&x))
-                .collect(),
+            fitness: block.header.fitness().as_hex_vec(),
             context: block.header.context().to_base58_check(),
         })
     }
@@ -257,9 +256,9 @@ impl BlockHeaderInfo {
     ) -> Result<Self, TimestampOutOfRangeError> {
         let header: &BlockHeader = &block.header;
         let predecessor = header.predecessor().to_base58_check();
-        let timestamp = ts_to_rfc3339(header.timestamp())?;
+        let timestamp = header.timestamp().to_rfc3339()?;
         let operations_hash = header.operations_hash().to_base58_check();
-        let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
+        let fitness = header.fitness().as_hex_vec();
         let context = header.context().to_base58_check();
         let hash = block.hash.to_base58_check();
 
@@ -269,6 +268,12 @@ impl BlockHeaderInfo {
             .get("signature")
             .map(|val| val.as_str().unwrap().to_string());
         let priority = header_data.get("priority").map(|val| val.as_i64().unwrap());
+        let payload_hash = header_data
+            .get("payload_hash")
+            .map(|val| val.as_str().unwrap().to_owned());
+        let payload_round = header_data
+            .get("payload_round")
+            .map(|val| val.as_i64().unwrap() as i32);
         let proof_of_work_nonce = header_data
             .get("proof_of_work_nonce")
             .map(|val| val.as_str().unwrap().to_string());
@@ -298,6 +303,8 @@ impl BlockHeaderInfo {
             protocol: block_additional_data.protocol_hash().to_base58_check(),
             signature,
             priority,
+            payload_hash,
+            payload_round,
             seed_nonce_hash,
             proof_of_work_nonce,
             liquidity_baking_escape_vote,
@@ -689,15 +696,13 @@ pub(crate) fn parse_block_hash(
 
     // find requested header, if no offset we return header
     let block_hash = if let Some(offset) = offset {
+        // If we go further back enough that a block cannot be found, then
+        // the genesis block will be reached
         match BlockMetaStorage::new(env.persistent_storage())
             .find_block_at_distance(block_hash, offset)?
         {
             Some(block_hash) => block_hash,
-            None => {
-                return Err(RpcServiceError::NoDataFoundError {
-                    reason: format!("Unknown block for block_id_param: {}", block_id_param),
-                });
-            }
+            None => genesis_block_hash()?,
         }
     } else {
         block_hash

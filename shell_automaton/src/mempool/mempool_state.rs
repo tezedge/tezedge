@@ -43,8 +43,6 @@ pub struct MempoolState {
     pub(super) pending_full_content: HashSet<OperationHash>,
     // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: HashMap<OperationHash, Operation>,
-    // operations that passed basic checks, are not sent because prevalidator is not ready
-    pub(super) wait_prevalidator_operations: Vec<Operation>,
     pub validated_operations: ValidatedOperations,
     // track ttl
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
@@ -70,7 +68,7 @@ pub struct MempoolState {
 impl MempoolState {
     /// Is endorsement for already applied block or not.
     pub fn is_old_endorsement(&self, operation: &Operation) -> bool {
-        OperationKind::from_operation_content_raw(operation.data()).is_endorsement()
+        OperationKind::from_operation_content_raw(operation.data().as_ref()).is_endorsement()
             && self
                 .last_predecessor_blocks
                 .contains_key(operation.branch())
@@ -81,8 +79,6 @@ impl MempoolState {
 pub struct HeadState {
     pub header: BlockHeader,
     pub hash: BlockHash,
-    // operations included in the head already removed
-    pub ops_removed: bool,
     // prevalidator for the head is created
     pub prevalidator_ready: bool,
 
@@ -97,6 +93,7 @@ pub struct OperationStream {
     pub refused: bool,
     pub branch_delayed: bool,
     pub branch_refused: bool,
+    pub outdated: bool,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -111,6 +108,7 @@ pub struct ValidatedOperations {
     // might be applied on a different branch if a reorganization happens
     pub branch_refused: Vec<Errored>,
     pub refused: Vec<Errored>,
+    pub outdated: Vec<Errored>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -402,6 +400,7 @@ pub enum OperationValidationResult {
     Refused,
     BranchRefused,
     BranchDelayed,
+    Outdated,
 
     Prechecked,
     PrecheckRefused,
@@ -607,6 +606,7 @@ pub enum OperationState {
     Refused,
     BranchRefused,
     BranchDelayed,
+    Outdated,
 }
 
 impl OperationState {

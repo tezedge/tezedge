@@ -1,19 +1,20 @@
 [package]
 name = "tezos_messages"
-version = "1.16.1"
+version = "1.17.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
 bytes = "1"
-time = { version = "0.3", features = ["formatting"] }
+time = { version = "0.3", features = ["formatting", "parsing"] }
 derive_builder = "0.9"
 thiserror = "1.0"
 getset = "0.1"
 hex = "0.4"
 lazy_static = "1.4"
 serde = { version = "1.0", features = ["derive"] }
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
 strum = "0.20"
 strum_macros = "0.20"
 num-bigint = "0.3"

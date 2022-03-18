@@ -20,9 +20,9 @@ use super::index_map::IndexMap;
 /// such as `WorkingTree::hash` and the ones being commited.
 pub struct HashesContainer {
     /// `ObjectHash` created during the working tree manipulation
-    working_tree: IndexMap<HashId, ObjectHash>,
+    working_tree: IndexMap<HashId, ObjectHash, 1000>,
     /// `ObjectHash` ready to be commited to disk
-    commiting: IndexMap<HashId, ObjectHash>,
+    commiting: IndexMap<HashId, ObjectHash, 1000>,
     /// `true` when we create `ObjectHash` to must be commited
     is_commiting: bool,
     /// First `HashId` in `Self::working_tree` and `Self::commiting`
@@ -35,8 +35,8 @@ pub struct HashesContainer {
 impl HashesContainer {
     pub fn new(first_index: usize) -> Self {
         Self {
-            working_tree: IndexMap::with_chunk_capacity(1000),
-            commiting: IndexMap::with_chunk_capacity(1000),
+            working_tree: IndexMap::default(),
+            commiting: IndexMap::default(),
             is_commiting: false,
             first_index,
             dedup_hashes: None,
@@ -54,12 +54,12 @@ impl HashesContainer {
     pub fn commited(&mut self) {
         self.first_index += self.commiting.len();
         if self.working_tree.capacity() > 1000 {
-            self.working_tree = IndexMap::with_chunk_capacity(1000);
+            self.working_tree = IndexMap::default();
         } else {
             self.working_tree.clear();
         }
         if self.commiting.capacity() > 1000 {
-            self.commiting = IndexMap::with_chunk_capacity(1000);
+            self.commiting = IndexMap::default();
         } else {
             self.commiting.clear();
         }

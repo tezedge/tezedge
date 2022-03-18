@@ -8,9 +8,6 @@ pub use randomness_service::*;
 mod dns_service;
 pub use dns_service::*;
 
-mod quota_service;
-pub use quota_service::*;
-
 mod storage_service;
 pub use storage_service::*;
 
@@ -23,8 +20,8 @@ pub use rpc_service::*;
 mod mio_service;
 pub use mio_service::*;
 
-mod protocol_service;
-pub use protocol_service::*;
+mod prevalidator_service;
+pub use prevalidator_service::*;
 
 mod protocol_runner_service;
 pub use protocol_runner_service::*;

@@ -3,7 +3,9 @@
 
 use crate::actors::actors_effects;
 use crate::block_applier::block_applier_effects;
+use crate::bootstrap::{bootstrap_effects, BootstrapCheckTimeoutsInitAction};
 use crate::current_head::current_head_effects;
+use crate::current_head_precheck::current_head_precheck_effects;
 use crate::prechecker::prechecker_effects;
 use crate::rights::rights_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
@@ -12,7 +14,7 @@ use crate::shutdown::shutdown_effects;
 use crate::stats::current_head::stats_current_head_effects;
 use crate::storage::blocks::genesis::init::commit_result_get::storage_blocks_genesis_init_commit_result_get_effects;
 use crate::storage::blocks::genesis::init::commit_result_put::storage_blocks_genesis_init_commit_result_put_effects;
-use crate::{Action, ActionId, ActionWithMeta, Store};
+use crate::{Action, ActionWithMeta, Store};
 
 use crate::logger::logger_effects;
 use crate::paused_loops::paused_loops_effects;
@@ -37,9 +39,12 @@ use crate::peer::handshaking::peer_handshaking_effects;
 use crate::peer::message::read::peer_message_read_effects;
 use crate::peer::message::write::peer_message_write_effects;
 use crate::peer::peer_effects;
+use crate::peer::remote_requests::block_header_get::peer_remote_requests_block_header_get_effects;
+use crate::peer::remote_requests::block_operations_get::peer_remote_requests_block_operations_get_effects;
+use crate::peer::remote_requests::current_branch_get::peer_remote_requests_current_branch_get_effects;
 
 use crate::peers::add::multi::peers_add_multi_effects;
-use crate::peers::check::timeouts::peers_check_timeouts_effects;
+use crate::peers::check::timeouts::{peers_check_timeouts_effects, PeersCheckTimeoutsInitAction};
 use crate::peers::dns_lookup::peers_dns_lookup_effects;
 use crate::peers::graylist::peers_graylist_effects;
 use crate::peers::init::peers_init_effects;
@@ -68,6 +73,11 @@ use crate::storage::{
 use crate::rpc::rpc_effects;
 
 fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
+    store
+        .service
+        .statistics()
+        .map(|stats| stats.action_new(action));
+
     if !store.state.get().config.record_actions {
         return;
     }
@@ -76,28 +86,18 @@ fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta
         None,
         StorageRequestPayload::ActionPut(Box::new(action.clone())),
     ));
-
-    let prev_action = &store.state.get().prev_action;
-
-    if prev_action.id() == ActionId::ZERO {
-        return;
-    }
-
-    let _ = store.service.storage().request_send(StorageRequest::new(
-        None,
-        StorageRequestPayload::ActionMetaUpdate {
-            action_id: prev_action.id(),
-            action_kind: prev_action.kind(),
-
-            duration_nanos: action.time_as_nanos() - prev_action.time_as_nanos(),
-        },
-    ));
 }
 
 fn applied_actions_count_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     if !matches!(&action.action, Action::StorageStateSnapshotCreateInit(_)) {
         store.dispatch(StorageStateSnapshotCreateInitAction {});
     }
+}
+
+/// All the actions which trigger checking for timeouts are called here.
+pub fn check_timeouts<S: Service>(store: &mut Store<S>) {
+    store.dispatch(PeersCheckTimeoutsInitAction {});
+    store.dispatch(BootstrapCheckTimeoutsInitAction {});
 }
 
 pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
@@ -123,6 +123,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     protocol_runner_init_context_effects(store, action);
     protocol_runner_init_context_ipc_server_effects(store, action);
 
+    current_head_effects(store, action);
+
     block_applier_effects(store, action);
 
     peer_effects(store, action);
@@ -144,12 +146,17 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
 
     peer_handshaking_effects(store, action);
 
+    peer_remote_requests_block_header_get_effects(store, action);
+    peer_remote_requests_block_operations_get_effects(store, action);
+    peer_remote_requests_current_branch_get_effects(store, action);
+
     peers_init_effects(store, action);
     peers_dns_lookup_effects(store, action);
     peers_add_multi_effects(store, action);
     peers_check_timeouts_effects(store, action);
     peers_graylist_effects(store, action);
 
+    bootstrap_effects(store, action);
     mempool_effects(store, action);
 
     storage_request_effects(store, action);
@@ -169,7 +176,7 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
 
     rights_effects(store, action);
 
-    current_head_effects(store, action);
+    current_head_precheck_effects(store, action);
 
     prechecker_effects(store, action);
 

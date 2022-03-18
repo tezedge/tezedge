@@ -26,7 +26,7 @@ mod reducer;
 pub use reducer::reducer;
 
 mod effects;
-pub use effects::effects;
+pub use effects::{check_timeouts, effects};
 
 pub mod paused_loops;
 use paused_loops::PausedLoopsResumeAllAction;
@@ -49,6 +49,8 @@ use protocol_runner::ProtocolRunnerStartAction;
 
 pub mod block_applier;
 
+pub mod bootstrap;
+
 pub mod rpc;
 
 pub mod actors;
@@ -65,6 +67,7 @@ pub mod prechecker;
 pub mod shutdown;
 
 pub mod current_head;
+pub mod current_head_precheck;
 
 pub mod stats;
 
@@ -131,6 +134,7 @@ where
     pub fn make_progress(&mut self) {
         let mio_timeout = self.store.state().mio_timeout();
 
+        check_timeouts(&mut self.store);
         self.store.dispatch(MioWaitForEventsAction {});
         self.store
             .service()
