@@ -22,7 +22,7 @@ pub fn shutdown_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::ProtocolRunnerShutdownSuccess(_) => match &mut state.shutdown {
             ShutdownState::Pending(state) => state.protocol_runner_shutdown = true,
-            _ => return,
+            _ => {}
         },
         _ => {}
     }

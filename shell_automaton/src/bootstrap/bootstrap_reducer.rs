@@ -51,7 +51,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 state,
                 peer,
                 branch_level,
-                branch_hash.clone(),
+                branch_hash,
                 &content.history,
             ) {
                 Some(v) => v,
@@ -114,12 +114,13 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                             *level <= *main_chain_last_level - main_chain.len() as Level
                         })
                         .fold(0, |mut index, (block_level, block_hash)| {
-                            while let Some(_) = peer_intervals
+                            while peer_intervals
                                 .iter()
                                 .rev()
                                 .nth(index + 1)
                                 .and_then(|p| p.highest_level())
                                 .filter(|l| block_level <= *l)
+                                .is_some()
                             {
                                 index += 1;
                             }
@@ -202,10 +203,8 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         .get(index as usize)
                         .filter(|b| &b.block_hash == hash)
                         .is_some()
-                } else if main_chain_last_hash == content.current_head.header.predecessor() {
-                    true
                 } else {
-                    false
+                    main_chain_last_hash == content.current_head.header.predecessor()
                 };
                 if is_same_chain {
                     peer_intervals
@@ -337,10 +336,9 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
         Action::BootstrapPeerBlockHeaderGetPending(content) => {
-            state
-                .bootstrap
-                .peer_next_interval_mut(content.peer)
-                .map(|(_, p)| p.current.to_pending(action.time_as_nanos(), content.peer));
+            if let Some((_, p)) = state.bootstrap.peer_next_interval_mut(content.peer) {
+                p.current.to_pending(action.time_as_nanos(), content.peer)
+            }
         }
         Action::BootstrapPeerBlockHeaderGetTimeout(content) => {
             state
@@ -354,18 +352,15 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 });
         }
         Action::BootstrapPeerBlockHeaderGetSuccess(content) => {
-            state
-                .bootstrap
-                .peer_interval_mut(content.peer, |p| {
-                    p.current.is_pending_block_level_and_hash_eq(
-                        content.block.header.level(),
-                        &content.block.hash,
-                    )
-                })
-                .map(|(_, p)| {
-                    p.current
-                        .to_success(action.time_as_nanos(), content.block.clone())
-                });
+            if let Some((_, p)) = state.bootstrap.peer_interval_mut(content.peer, |p| {
+                p.current.is_pending_block_level_and_hash_eq(
+                    content.block.header.level(),
+                    &content.block.hash,
+                )
+            }) {
+                p.current
+                    .to_success(action.time_as_nanos(), content.block.clone())
+            }
         }
         Action::BootstrapPeerBlockHeaderGetFinish(content) => {
             let log = &state.log;
@@ -502,7 +497,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     let peers = peer_intervals[index]
                         .peers
                         .iter()
-                        .map(|p| *p)
+                        .copied()
                         .collect::<Vec<_>>();
                     let rev_index = peer_intervals.len() - index - 1;
                     peer_intervals
@@ -629,10 +624,12 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
         },
         Action::BootstrapPeerBlockOperationsGetTimeout(content) => match &mut state.bootstrap {
             BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
-                pending
+                if let Some(p) = pending
                     .get_mut(&content.block_hash)
                     .and_then(|b| b.peers.get_mut(&content.peer))
-                    .map(|p| p.to_timed_out(action.time_as_nanos()));
+                {
+                    p.to_timed_out(action.time_as_nanos())
+                }
             }
             _ => {}
         },
@@ -679,7 +676,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     .and_then(|b| b.peers.iter_mut().find(|(_, p)| p.is_complete()))
                     .map(|(_, p)| {
                         if let Some(ops) = p.pending_operations_mut() {
-                            let operations = ops.drain(..).filter_map(|v| v).collect();
+                            let operations = ops.drain(..).flatten().collect();
                             *p = PeerBlockOperationsGetState::Success {
                                 time: action.time_as_nanos(),
                                 operations,
@@ -723,16 +720,15 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         .peer()
                         .filter(|p| p == &content.address)
                         .is_some()
+                        && (interval.current.is_idle() || interval.current.is_pending())
                     {
-                        if interval.current.is_idle() || interval.current.is_pending() {
-                            if let Some((level, hash)) = interval.current.block_level_with_hash() {
-                                let hash = hash.clone();
-                                interval.current = PeerIntervalCurrentState::Disconnected {
-                                    time: action.time_as_nanos(),
-                                    peer: content.address,
-                                    block_level: level,
-                                    block_hash: hash,
-                                }
+                        if let Some((level, hash)) = interval.current.block_level_with_hash() {
+                            let hash = hash.clone();
+                            interval.current = PeerIntervalCurrentState::Disconnected {
+                                time: action.time_as_nanos(),
+                                peer: content.address,
+                                block_level: level,
+                                block_hash: hash,
                             }
                         }
                     }

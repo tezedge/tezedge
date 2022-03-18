@@ -59,7 +59,7 @@ pub fn peer_message_write_reducer(state: &mut State, action: &ActionWithMeta) {
                             };
                             message_write.queue.pop_front();
                         }
-                        _ => return,
+                        _ => {}
                     },
                     _ => {}
                 }

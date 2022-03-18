@@ -120,21 +120,21 @@ impl EdgeKV {
         if key.is_empty() {
             return Ok(None);
         }
-        self.store.get(&key)
+        self.store.get(key)
     }
 
     pub fn contains(&self, key: &Vec<u8>) -> Result<bool> {
         if key.is_empty() {
             return Ok(false);
         }
-        self.store.contains(&key)
+        self.store.contains(key)
     }
 
     pub fn delete(&self, key: &Vec<u8>) -> Result<()> {
         if key.is_empty() {
             return Ok(());
         }
-        self.store.delete(&key)
+        self.store.delete(key)
     }
 
     pub fn compact(&self) -> Result<()> {

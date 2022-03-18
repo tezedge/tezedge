@@ -22,7 +22,7 @@ impl<T: Clone + PartialEq + Eq> RetryPolicy<T> {
         if self.subject.eq(requested_subject) {
             if self.retries > 0 {
                 // remove one try and continue
-                self.retries = self.retries.checked_sub(1).unwrap_or(0);
+                self.retries = self.retries.saturating_sub(1);
                 Some(self)
             } else {
                 // stop, no more retries

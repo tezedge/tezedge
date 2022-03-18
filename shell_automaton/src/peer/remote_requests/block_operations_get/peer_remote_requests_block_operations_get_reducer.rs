@@ -28,7 +28,7 @@ pub fn peer_remote_requests_block_operations_get_reducer(
             };
 
             let queue = &mut peer.remote_requests.block_operations_get.queue;
-            let next_key = queue.iter().nth(0).cloned();
+            let next_key = queue.iter().next().cloned();
             let key = next_key
                 .filter(|nb| nb == &content.key)
                 .map(|key| {

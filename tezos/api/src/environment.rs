@@ -144,12 +144,12 @@ impl TezosEnvironment {
         alternate_networks: Vec<TezosEnvironment>,
     ) -> String {
         let mut selected = selected_network.supported_values();
-        selected.sort();
+        selected.sort_unstable();
         let mut alternate_networks = alternate_networks
             .iter()
             .flat_map(|rn| rn.supported_values())
             .collect::<Vec<_>>();
-        alternate_networks.sort();
+        alternate_networks.sort_unstable();
         format!(
             "\n\n\n\n////////////////////////////////////////// \
             \n//      !!! DEPRECATED TESTNET !!!      //\
@@ -170,9 +170,9 @@ impl TezosEnvironment {
         alternate: TezosEnvironment,
     ) -> String {
         let mut selected = selected.supported_values();
-        selected.sort();
+        selected.sort_unstable();
         let mut alternate_networks = alternate.supported_values();
-        alternate_networks.sort();
+        alternate_networks.sort_unstable();
         format!(
             "\n\n\n\n////////////////////////////////////////// \
             \n//      !!! DEPRECATED {} !!!      //\
@@ -782,7 +782,7 @@ pub fn parse_bootstrap_addr_port(
             }
         }
     } else {
-        if let Some(_) = addr.rfind(']') {
+        if addr.rfind(']').is_some() {
             return Err(AddrParseError(format!(
                 "Invalid value '{}' - missing starting '['",
                 addr

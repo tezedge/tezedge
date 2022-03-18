@@ -64,7 +64,7 @@ where
                 config.port,
                 &config.identity.public_key,
                 &config.identity.proof_of_work_stamp,
-                nonce.clone(),
+                nonce,
                 config.shell_compatibility_version.to_network_version(),
             ) {
                 Ok(connection_message) => {
@@ -102,7 +102,7 @@ where
                         status:
                             PeerHandshakingStatus::ConnectionMessageEncoded { binary_message, .. },
                         ..
-                    }) => match BinaryChunk::from_content(&binary_message) {
+                    }) => match BinaryChunk::from_content(binary_message) {
                         Ok(chunk) => {
                             store.dispatch(PeerHandshakingConnectionMessageWriteAction {
                                 address: action.address,
@@ -196,7 +196,7 @@ where
                             }
                         };
 
-                        match BinaryChunk::from_content(&remote_chunk) {
+                        match BinaryChunk::from_content(remote_chunk) {
                             Ok(remote_chunk) => {
                                 store.dispatch(PeerHandshakingConnectionMessageDecodeAction {
                                     address: action.address,

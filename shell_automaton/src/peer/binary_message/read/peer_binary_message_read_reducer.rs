@@ -138,7 +138,7 @@ pub fn peer_binary_message_read_reducer(state: &mut State, action: &ActionWithMe
                         } = state
                         {
                             if buffer.len() + chunk_content.len() <= *size {
-                                buffer.extend_from_slice(&chunk_content);
+                                buffer.extend_from_slice(chunk_content);
                                 if buffer.len() == *size {
                                     *binary_message_state = PeerBinaryMessageReadState::Ready {
                                         crypto: crypto.clone(),

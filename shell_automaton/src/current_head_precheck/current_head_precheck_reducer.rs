@@ -69,7 +69,7 @@ pub fn current_head_precheck_reducer(state: &mut crate::State, action: &crate::A
                     }
 
                     *current_head_state = match precheck_block_header(block_header, chain_id, &priorities[..=(max_priority as usize)]) {
-                        Ok(Some((delegate, priority))) => CurrentHeadState::Prechecked { block_header: block_header.clone(), baker: delegate.clone(), priority },
+                        Ok(Some((delegate, priority))) => CurrentHeadState::Prechecked { block_header: block_header.clone(), baker: delegate, priority },
                         Ok(None) => CurrentHeadState::Rejected,
                         Err(err) => CurrentHeadState::Error { error: err.into() },
                     };

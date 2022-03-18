@@ -539,7 +539,7 @@ mod tests {
 
     fn read_data(file: &str) -> Result<serde_json::Value> {
         let dir = std::env::var("CARGO_MANIFEST_DIR")
-            .with_context(|| format!("`CARGO_MANIFEST_DIR` is not set"))?;
+            .with_context(|| "`CARGO_MANIFEST_DIR` is not set".to_string())?;
         let path = PathBuf::from(dir)
             .join("resources")
             .join("operations")

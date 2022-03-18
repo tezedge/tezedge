@@ -237,10 +237,8 @@ impl OperationStats {
             self.min_time
                 .map_or(stats.time, |time| time.min(stats.time)),
         );
-        if self.first_block_timestamp.is_none() {
-            if stats.block_timestamp >= 0 {
-                self.first_block_timestamp = Some(stats.block_timestamp as u64);
-            }
+        if self.first_block_timestamp.is_none() && stats.block_timestamp >= 0 {
+            self.first_block_timestamp = Some(stats.block_timestamp as u64);
         }
 
         let time = stats.time;
@@ -249,7 +247,7 @@ impl OperationStats {
             node_stats.content_received.push(time);
         } else {
             self.nodes.insert(
-                self_pkh.clone().into(),
+                self_pkh.clone(),
                 OperationNodeStats {
                     received: vec![stats],
                     content_received: vec![time],
@@ -268,17 +266,15 @@ impl OperationStats {
             self.min_time
                 .map_or(stats.time, |time| time.min(stats.time)),
         );
-        if self.first_block_timestamp.is_none() {
-            if stats.block_timestamp >= 0 {
-                self.first_block_timestamp = Some(stats.block_timestamp as u64);
-            }
+        if self.first_block_timestamp.is_none() && stats.block_timestamp >= 0 {
+            self.first_block_timestamp = Some(stats.block_timestamp as u64);
         }
 
         if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
             node_stats.received.push(stats);
         } else {
             self.nodes.insert(
-                node_pkh.clone().into(),
+                node_pkh.clone(),
                 OperationNodeStats {
                     received: vec![stats],
                     ..Default::default()
@@ -301,7 +297,7 @@ impl OperationStats {
             node_stats.sent.push(stats);
         } else {
             self.nodes.insert(
-                node_pkh.clone().into(),
+                node_pkh.clone(),
                 OperationNodeStats {
                     sent: vec![stats],
                     ..Default::default()
@@ -317,7 +313,7 @@ impl OperationStats {
             node_stats.content_requested.push(time);
         } else {
             self.nodes.insert(
-                node_pkh.clone().into(),
+                node_pkh.clone(),
                 OperationNodeStats {
                     content_requested: vec![time],
                     ..Default::default()
@@ -339,7 +335,7 @@ impl OperationStats {
             node_stats.content_received.push(time);
         } else {
             self.nodes.insert(
-                node_pkh.clone().into(),
+                node_pkh.clone(),
                 OperationNodeStats {
                     content_received: vec![time],
                     ..Default::default()
@@ -355,7 +351,7 @@ impl OperationStats {
             node_stats.content_requested_remote.push(time);
         } else {
             self.nodes.insert(
-                node_pkh.clone().into(),
+                node_pkh.clone(),
                 OperationNodeStats {
                     content_requested_remote: vec![time],
                     ..Default::default()
@@ -371,7 +367,7 @@ impl OperationStats {
             node_stats.content_sent.push(time);
         } else {
             self.nodes.insert(
-                node_pkh.clone().into(),
+                node_pkh.clone(),
                 OperationNodeStats {
                     content_sent: vec![time],
                     ..Default::default()
@@ -560,7 +556,7 @@ impl MempoolOperation {
         Self {
             times,
             state,
-            operation_decoded_contents: Some(operation_decoded_contents.clone()),
+            operation_decoded_contents: Some(operation_decoded_contents),
             ..self.clone()
         }
     }

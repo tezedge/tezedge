@@ -194,7 +194,7 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
                 .iterator_cf(cf, rocksdb::IteratorMode::From(&key, direction.into())),
         };
 
-        Ok(Box::new(iter.map(|kv| Ok(kv))))
+        Ok(Box::new(iter.map(Ok)))
     }
 
     fn find_by_prefix<'a>(
@@ -208,9 +208,7 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
 
-        Ok(Box::new(
-            self.db.prefix_iterator_cf(cf, key).map(|kv| Ok(kv)),
-        ))
+        Ok(Box::new(self.db.prefix_iterator_cf(cf, key).map(Ok)))
     }
 
     fn column_stats(&self) -> HashMap<&'static str, DBStats> {

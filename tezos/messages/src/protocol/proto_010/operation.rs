@@ -214,7 +214,7 @@ mod tests {
 
     fn read_data(file: &str) -> Result<Vec<u8>> {
         let dir = std::env::var("CARGO_MANIFEST_DIR")
-            .with_context(|| format!("`CARGO_MANIFEST_DIR` is not set"))?;
+            .with_context(|| "`CARGO_MANIFEST_DIR` is not set".to_string())?;
         let path = PathBuf::from(dir)
             .join("resources")
             .join("operations")

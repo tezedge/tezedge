@@ -48,7 +48,7 @@ pub fn context_set_get_commit(
 
     // init block storage (because of commit)
     let block = dummy_block("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe", 0)?;
-    let block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // context
@@ -197,7 +197,7 @@ pub fn context_delete_and_remove(
 
     // init block with level 0 (because of commit)
     let block = dummy_block("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe", 0)?;
-    let block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // context
@@ -281,14 +281,14 @@ pub fn context_delete_and_remove(
 
     // insert another block with level 1
     let block = dummy_block("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", 1)?;
-    let block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // checkout last commit to be modified
-    context = context.index.checkout(&context_hash_1)?.expect(&format!(
-        "Commit not found: {}",
-        context_hash_1.to_base58_check()
-    ));
+    context = context
+        .index
+        .checkout(&context_hash_1)?
+        .unwrap_or_else(|| panic!("Commit not found: {}", context_hash_1.to_base58_check()));
 
     // 1. remove rec
     context = context.delete(&context_key!("data/rolls/owner/current/cpu/2"))?;
@@ -380,7 +380,7 @@ fn context_copy(backend: ContextKvStoreConfiguration, tmp_dir: &str) -> Result<(
 
     // init block with level 0 (because of commit)
     let block = dummy_block("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe", 0)?;
-    let block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // context
@@ -453,14 +453,14 @@ fn context_copy(backend: ContextKvStoreConfiguration, tmp_dir: &str) -> Result<(
 
     // insert another block with level 1
     let block = dummy_block("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET", 1)?;
-    let block_storage = BlockStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
     block_storage.put_block_header(&block)?;
 
     // checkout last commit to be modified
-    context = context.index.checkout(&context_hash_1)?.expect(&format!(
-        "Commit not found: {}",
-        context_hash_1.to_base58_check()
-    ));
+    context = context
+        .index
+        .checkout(&context_hash_1)?
+        .unwrap_or_else(|| panic!("Commit not found: {}", context_hash_1.to_base58_check()));
 
     // 1. copy
     let context = ctx_copy(

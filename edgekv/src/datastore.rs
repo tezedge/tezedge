@@ -170,7 +170,7 @@ impl KeysDir {
                 if let Persisted(entry) = entry {
                     return Some(entry.clone());
                 }
-                return None;
+                None
             }
         }
     }
@@ -341,7 +341,7 @@ impl DataStore {
 
         buffer.insert(key.clone(), value.clone());
         self.keys_dir.partial_insert(key.clone())?;
-        cache.insert(key.clone(), value.clone());
+        cache.insert(key, value);
         Ok(())
     }
 
@@ -556,7 +556,7 @@ impl DataStore {
         }
         active_file.sync()?;
         self.keys_dir.insert_bulk(key_entries)?;
-        fs_extra::remove_items(&vec![buffer_file_path.as_path()])?;
+        fs_extra::remove_items(&[buffer_file_path.as_path()])?;
         if split_active_file {
             self.try_split(&mut active_file)?;
             self.index_dir.insert(active_file.as_file_pair().clone())?;

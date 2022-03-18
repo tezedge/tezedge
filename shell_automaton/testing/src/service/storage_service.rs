@@ -41,7 +41,7 @@ impl StorageService for StorageServiceDummy {
     fn response_try_recv(&mut self) -> Result<StorageResponse, ResponseTryRecvError> {
         self.responses
             .pop_front()
-            .map(|resp| Ok(resp))
+            .map(Ok)
             .unwrap_or(Err(ResponseTryRecvError::Empty))
     }
 

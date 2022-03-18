@@ -47,7 +47,7 @@ impl PeerConnectionOutgoingState {
         match self {
             Self::Idle { .. } => None,
             Self::Pending { token, .. } => Some(*token),
-            Self::Error { token, .. } => token.clone(),
+            Self::Error { token, .. } => *token,
             Self::Success { token, .. } => Some(*token),
         }
     }

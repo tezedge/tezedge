@@ -15,8 +15,8 @@ use tezos_encoding::binary_writer::BinaryWriterError;
 use tezos_messages::p2p::binary_message::{BinaryRead, BinaryWrite};
 
 pub fn read_data(file: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
-    let dir =
-        std::env::var("CARGO_MANIFEST_DIR").context(format!("`CARGO_MANIFEST_DIR` is not set"))?;
+    let dir = std::env::var("CARGO_MANIFEST_DIR")
+        .context("`CARGO_MANIFEST_DIR` is not set".to_string())?;
     let path = PathBuf::from(dir).join("resources").join(file);
     let data = File::open(&path)
         .and_then(|mut file| {

@@ -12,9 +12,7 @@ use tezos_messages::p2p::{
 
 #[test]
 fn can_serialize_swap_max() -> Result<(), Error> {
-    let point = iter::repeat('x')
-        .take(P2P_POINT_MAX_LENGTH)
-        .collect::<String>();
+    let point = "x".repeat(P2P_POINT_MAX_LENGTH);
     let peer_id = [0; HashType::CryptoboxPublicKeyHash.size()]
         .as_ref()
         .try_into()?;
@@ -26,9 +24,7 @@ fn can_serialize_swap_max() -> Result<(), Error> {
 
 #[test]
 fn can_t_serialize_swap_point_max_plus() -> Result<(), Error> {
-    let point = iter::repeat('x')
-        .take(P2P_POINT_MAX_LENGTH + 1)
-        .collect::<String>();
+    let point = "x".repeat(P2P_POINT_MAX_LENGTH + 1);
     let peer_id = [0; HashType::CryptoboxPublicKeyHash.size()]
         .as_ref()
         .try_into()?;

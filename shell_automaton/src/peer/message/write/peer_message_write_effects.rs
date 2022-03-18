@@ -44,7 +44,7 @@ fn stats_message_write_start(
         let time: u64 = action_id.into();
         match message {
             PeerMessage::GetBlockHeaders(m) => m.get_block_headers().iter().for_each(|b| {
-                stats.block_header_download_start(&b, time);
+                stats.block_header_download_start(b, time);
             }),
             PeerMessage::GetOperationsForBlocks(m) => m
                 .get_operations_for_blocks()

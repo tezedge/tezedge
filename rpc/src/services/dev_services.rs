@@ -239,7 +239,7 @@ pub(crate) fn get_cycle_eras(
 pub(crate) fn get_dev_version() -> String {
     let version_env: &'static str = env!("CARGO_PKG_VERSION");
 
-    format!("v{}", version_env.to_string())
+    format!("v{}", version_env)
 }
 
 #[inline]
@@ -580,7 +580,7 @@ pub(crate) async fn get_shell_automaton_actions(
                     result.push_front(RpcShellAutomatonAction {
                         action,
                         state: state.clone(),
-                        duration: next_action_time.checked_sub(action_time).unwrap_or(0),
+                        duration: next_action_time.saturating_sub(action_time),
                     });
                     (state, result)
                 },
@@ -652,7 +652,7 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
                     result.push_front(RpcShellAutomatonAction {
                         action,
                         state: state.clone(),
-                        duration: next_action_time.checked_sub(action_time).unwrap_or(0),
+                        duration: next_action_time.saturating_sub(action_time),
                     });
                     (state, result)
                 },

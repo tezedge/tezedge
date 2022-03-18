@@ -90,7 +90,7 @@ where
                         }
                         PeerChunkReadState::EncryptedReady {
                             chunk_encrypted: chunk_content_encrypted,
-                        } => match chunk.crypto.decrypt(&chunk_content_encrypted) {
+                        } => match chunk.crypto.decrypt(chunk_content_encrypted) {
                             Ok(decrypted_bytes) => {
                                 store.dispatch(PeerChunkReadDecryptAction {
                                     address: action.address,

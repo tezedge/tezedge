@@ -255,17 +255,17 @@ impl PeerIntervalCurrentState {
                     block_hash: block_hash.clone(),
                 };
             }
-            _ => return,
+            _ => {}
         }
     }
 
     pub fn to_success(&mut self, time: u64, block: BlockHeaderWithHash) {
         match self {
             Self::Pending { peer, .. } | Self::TimedOut { peer, .. } => {
-                let peer = peer.clone();
+                let peer = *peer;
                 *self = Self::Success { time, peer, block };
             }
-            _ => return,
+            _ => {}
         }
     }
 
@@ -284,7 +284,7 @@ impl PeerIntervalCurrentState {
                     block_hash: block_hash.clone(),
                 };
             }
-            _ => return,
+            _ => {}
         }
     }
 
@@ -309,7 +309,7 @@ impl PeerIntervalCurrentState {
                     block_hash: block_hash.clone(),
                 };
             }
-            _ => return,
+            _ => {}
         }
     }
 

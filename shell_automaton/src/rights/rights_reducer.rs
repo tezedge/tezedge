@@ -277,10 +277,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 let duration = state.rights.cache.time;
                 cache.retain(|_, (timestamp, _)| action.id.duration_since(*timestamp) < duration);
                 slog::trace!(&state.log, "cached endorsing rights"; "level" => baking_rights.level);
-                cache.insert(
-                    baking_rights.level,
-                    (action.id, baking_rights.clone().into()),
-                );
+                cache.insert(baking_rights.level, (action.id, baking_rights.clone()));
             }
         }
         Action::RightsEndorsingReady(RightsEndorsingReadyAction {
@@ -297,7 +294,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 slog::trace!(&state.log, "cached endorsing rights"; "level" => endorsing_rights.level);
                 cache.insert(
                     endorsing_rights.level,
-                    (action.id, endorsing_rights.clone().into()),
+                    (action.id, endorsing_rights.clone()),
                 );
             }
         }

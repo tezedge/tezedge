@@ -258,11 +258,7 @@ impl StatisticsService {
             Ok(idx) => self.levels[idx]
                 .1
                 .iter()
-                .filter_map(|h| {
-                    self.blocks_apply
-                        .get(h)
-                        .and_then(|s| Some((h.clone(), s.clone())))
-                })
+                .filter_map(|h| self.blocks_apply.get(h).map(|s| (h.clone(), s.clone())))
                 .collect(),
             Err(_) => Vec::new(),
         }
@@ -275,12 +271,12 @@ impl StatisticsService {
         level: Level,
     ) {
         match levels.back_mut() {
-            Some((l, hs)) if l == &level => hs.push(block_hash.clone()),
-            Some((l, _)) if *l < level => levels.push_back((level, vec![block_hash.clone()])),
-            None => levels.push_back((level, vec![block_hash.clone()])),
+            Some((l, hs)) if l == &level => hs.push(block_hash),
+            Some((l, _)) if *l < level => levels.push_back((level, vec![block_hash])),
+            None => levels.push_back((level, vec![block_hash])),
             _ => match levels.binary_search_by_key(&level, |(l, _)| *l) {
-                Ok(idx) => levels[idx].1.push(block_hash.clone()),
-                Err(idx) => levels.insert(idx, (level, vec![block_hash.clone()])),
+                Ok(idx) => levels[idx].1.push(block_hash),
+                Err(idx) => levels.insert(idx, (level, vec![block_hash])),
             },
         }
         levels
@@ -326,7 +322,7 @@ impl StatisticsService {
                 .push(receive_timestamp);
         }
         if is_new {
-            Self::add_block_level(levels, blocks_apply, block_hash.clone(), level);
+            Self::add_block_level(levels, blocks_apply, block_hash, level);
         }
     }
 
@@ -371,9 +367,9 @@ impl StatisticsService {
     }
 
     pub fn block_precheck_start(&mut self, block_hash: &BlockHash, time: u64) {
-        self.blocks_apply.get_mut(block_hash).map(|v| {
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.precheck_start = Some(time);
-        });
+        }
     }
 
     pub fn block_precheck_end(
@@ -471,7 +467,7 @@ impl StatisticsService {
         node_id: Option<&CryptoboxPublicKeyHash>,
         validation_pass: i8,
     ) {
-        self.blocks_apply.get_mut(block_hash).map(|v| {
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.peers
                 .entry(address)
                 .or_insert_with(|| BlockPeerStats {
@@ -480,7 +476,7 @@ impl StatisticsService {
                 })
                 .get_ops_recv
                 .push((time, validation_pass));
-        });
+        }
     }
 
     pub fn block_operations_send_start(
@@ -491,7 +487,7 @@ impl StatisticsService {
         node_id: Option<&CryptoboxPublicKeyHash>,
         validation_pass: i8,
     ) {
-        self.blocks_apply.get_mut(block_hash).map(|v| {
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.peers
                 .entry(address)
                 .or_insert_with(|| BlockPeerStats {
@@ -500,7 +496,7 @@ impl StatisticsService {
                 })
                 .ops_send_start
                 .push((time, validation_pass));
-        });
+        }
     }
 
     pub fn block_operations_send_end(
@@ -511,7 +507,7 @@ impl StatisticsService {
         node_id: Option<&CryptoboxPublicKeyHash>,
         validation_pass: i8,
     ) {
-        self.blocks_apply.get_mut(block_hash).map(|v| {
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.peers
                 .entry(address)
                 .or_insert_with(|| BlockPeerStats {
@@ -520,7 +516,7 @@ impl StatisticsService {
                 })
                 .ops_send_end
                 .push((time, validation_pass));
-        });
+        }
     }
 
     pub fn block_injected(&mut self, block_hash: &BlockHash, time: u64) {

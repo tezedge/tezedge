@@ -51,7 +51,9 @@ pub fn peer_remote_requests_current_branch_get_reducer(state: &mut State, action
                 Some(v) => v,
                 None => return,
             };
-            get_state.next_block_mut().map(|nb| nb.init(next_level));
+            if let Some(nb) = get_state.next_block_mut() {
+                nb.init(next_level)
+            }
         }
         Action::PeerRemoteRequestsCurrentBranchGetNextBlockPending(content) => {
             let peer = match state.peers.get_handshaked_mut(&content.address) {
@@ -59,7 +61,9 @@ pub fn peer_remote_requests_current_branch_get_reducer(state: &mut State, action
                 None => return,
             };
             let next_block_state = peer.remote_requests.current_branch_get.next_block_mut();
-            next_block_state.map(|nb| nb.to_pending(content.storage_req_id));
+            if let Some(nb) = next_block_state {
+                nb.to_pending(content.storage_req_id)
+            }
         }
         Action::PeerRemoteRequestsCurrentBranchGetNextBlockError(content) => {
             let peer = match state.peers.get_handshaked_mut(&content.address) {
@@ -67,7 +71,9 @@ pub fn peer_remote_requests_current_branch_get_reducer(state: &mut State, action
                 None => return,
             };
             let next_block_state = peer.remote_requests.current_branch_get.next_block_mut();
-            next_block_state.map(|nb| nb.to_error(content.error.clone()));
+            if let Some(nb) = next_block_state {
+                nb.to_error(content.error.clone())
+            }
         }
         Action::PeerRemoteRequestsCurrentBranchGetNextBlockSuccess(content) => {
             let peer = match state.peers.get_handshaked_mut(&content.address) {
@@ -85,7 +91,7 @@ pub fn peer_remote_requests_current_branch_get_reducer(state: &mut State, action
                         history.push(block_hash);
                     }
                 }
-                _ => return,
+                _ => {}
             }
         }
         Action::PeerRemoteRequestsCurrentBranchGetSuccess(content) => {

@@ -27,15 +27,15 @@ pub struct ServiceWorkerAsyncRequester<Req, Resp> {
 
 impl<Req, Resp> ServiceWorkerAsyncRequester<Req, Resp> {
     pub fn blocking_send(&self, req: Req) -> Result<(), RequestSendError<Req>> {
-        Ok(self.sender.blocking_send(req)?)
+        self.sender.blocking_send(req)
     }
 
     pub fn try_send(&self, req: Req) -> Result<(), RequestTrySendError<Req>> {
-        Ok(self.sender.try_send(req)?)
+        self.sender.try_send(req)
     }
 
     pub fn try_recv(&mut self) -> Result<Resp, ResponseTryRecvError> {
-        Ok(self.receiver.try_recv()?)
+        self.receiver.try_recv()
     }
 }
 

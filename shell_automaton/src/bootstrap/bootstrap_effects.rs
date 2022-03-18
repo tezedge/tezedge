@@ -70,7 +70,7 @@ where
                 BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
                     let blocks = pending
                         .iter()
-                        .filter(|(_, b)| b.peers.iter().find(|(_, p)| p.is_pending()).is_none())
+                        .filter(|(_, b)| !b.peers.iter().any(|(_, p)| p.is_pending()))
                         .map(|(block_hash, _)| block_hash.clone())
                         .collect::<Vec<_>>();
                     for block_hash in blocks {
@@ -246,7 +246,7 @@ where
             };
             request_block_operations(
                 store,
-                content.peer.clone(),
+                content.peer,
                 content.block_hash.clone(),
                 validation_pass,
             );
@@ -545,7 +545,7 @@ where
         .collect::<Vec<_>>();
     let new_peers = peers
         .iter()
-        .map(|p| *p)
+        .copied()
         .filter(|p| !existing_peers.contains(p))
         .collect::<Vec<_>>();
     let peers = if new_peers.is_empty() {

@@ -88,9 +88,7 @@ impl<Request> PendingRequests<Request> {
 
     #[inline]
     pub fn remove(&mut self, id: RequestId) -> Option<Request> {
-        if self.get(id).is_none() {
-            return None;
-        }
+        self.get(id)?;
         let removed_req = self.list.remove(id.locator()).request;
         self.next_index = self.list.vacant_entry().key();
         Some(removed_req)

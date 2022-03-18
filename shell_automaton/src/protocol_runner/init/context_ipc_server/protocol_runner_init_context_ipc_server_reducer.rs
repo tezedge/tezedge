@@ -34,7 +34,7 @@ pub fn protocol_runner_init_context_ipc_server_reducer(state: &mut State, action
                         token: content.token,
                     }
                 }
-                _ => return,
+                _ => {}
             }
         }
         Action::ProtocolRunnerInitContextIpcServerError(content) => {
@@ -48,7 +48,7 @@ pub fn protocol_runner_init_context_ipc_server_reducer(state: &mut State, action
                         error: content.error.clone(),
                     }
                 }
-                _ => return,
+                _ => {}
             }
         }
         Action::ProtocolRunnerInitContextIpcServerSuccess(content) => {
@@ -61,7 +61,7 @@ pub fn protocol_runner_init_context_ipc_server_reducer(state: &mut State, action
                         token: content.token,
                     }
                 }
-                _ => return,
+                _ => {}
             }
         }
         _ => {}

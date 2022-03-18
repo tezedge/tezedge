@@ -4,7 +4,7 @@ use hyper::{Body, Request};
 use std::sync::Arc;
 
 // Includes open api specification with binary
-static OPEN_API_JSON_FILE: &'static [u8] = include_bytes!("../../openapi/tezedge-openapi.json");
+static OPEN_API_JSON_FILE: &[u8] = include_bytes!("../../openapi/tezedge-openapi.json");
 
 pub async fn get_spec_file(
     _: Request<Body>,

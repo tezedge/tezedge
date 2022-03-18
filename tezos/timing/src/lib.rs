@@ -634,7 +634,7 @@ impl TimingChannel {
             self.shared.condvar.notify_one();
         }
 
-        result.map_err(|e| ChannelError::PushError(e))
+        result.map_err(ChannelError::PushError)
     }
 }
 
@@ -1229,8 +1229,8 @@ impl Timing {
             None => return Ok(()),
         };
 
-        self.add_block_stats(root, &query);
-        self.add_global_stats(root, &query);
+        self.add_block_stats(root, query);
+        self.add_global_stats(root, query);
 
         Ok(())
     }
@@ -1617,11 +1617,7 @@ impl Timing {
                 Err(_) => continue,
             };
 
-            let protocol = row
-                .get_ref(41)?
-                .as_str()
-                .ok()
-                .and_then(|s| Protocol::from_str(s));
+            let protocol = row.get_ref(41)?.as_str().ok().and_then(Protocol::from_str);
 
             let global_stats = match protocol {
                 Some(protocol) => self.stats_per_protocol.entry(protocol).or_default(),

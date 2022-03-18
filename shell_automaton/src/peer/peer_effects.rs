@@ -257,7 +257,7 @@ where
                 // debug_assert!(bytes_to_read > 0);
 
                 match mio_peer.read(bytes_to_read) {
-                    Ok(bytes) if bytes.len() > 0 => {
+                    Ok(bytes) if !bytes.is_empty() => {
                         let bytes = bytes.to_vec();
                         store.dispatch(PeerChunkReadPartAction { address, bytes });
                     }

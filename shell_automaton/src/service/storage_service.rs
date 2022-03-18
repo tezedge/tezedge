@@ -267,7 +267,7 @@ impl StorageServiceDefault {
                     .map_err(|err| BlockMetaGetError(block_hash, err.into())),
                 BlockHashByLevelGet(level) => block_storage
                     .get_block_hash_by_level(level)
-                    .map(|result| BlockHashByLevelGetSuccess(result))
+                    .map(BlockHashByLevelGetSuccess)
                     .map_err(|err| BlockHashByLevelGetError(err.into())),
                 BlockHeaderGet(block_hash) => block_storage
                     .get(&block_hash)
@@ -280,7 +280,7 @@ impl StorageServiceDefault {
                     .map_err(|err| BlockHeaderGetError(block_hash, err.into())),
                 BlockOperationsGet(key) => operations_storage
                     .get(&key)
-                    .map(|ops| BlockOperationsGetSuccess(ops))
+                    .map(BlockOperationsGetSuccess)
                     .map_err(|err| BlockOperationsGetError(err.into())),
                 BlockAdditionalDataGet(block_hash) => block_meta_storage
                     .get_additional_data(&block_hash)

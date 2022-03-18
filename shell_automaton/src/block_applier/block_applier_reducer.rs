@@ -11,7 +11,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
             state
                 .block_applier
                 .queue
-                .push_back((content.block_hash.clone(), content.injector_rpc_id.clone()));
+                .push_back((content.block_hash.clone(), content.injector_rpc_id));
         }
         Action::BlockApplierApplyInit(content) => {
             if let Some((block_hash, _)) = state.block_applier.queue.front() {
@@ -22,7 +22,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
             state.block_applier.current = BlockApplierApplyState::Init {
                 time: action.time_as_nanos(),
                 block_hash: content.block_hash.clone(),
-                injector_rpc_id: content.injector_rpc_id.clone(),
+                injector_rpc_id: content.injector_rpc_id,
             };
         }
         Action::BlockApplierApplyPrepareDataPending(content) => {
@@ -36,7 +36,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                         time: action.time_as_nanos(),
                         storage_req_id: content.storage_req_id,
                         block_hash: block_hash.clone(),
-                        injector_rpc_id: injector_rpc_id.clone(),
+                        injector_rpc_id: *injector_rpc_id,
                     };
                 }
                 _ => {}
@@ -55,7 +55,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                         block: content.block.clone(),
                         block_meta: content.block_meta.clone(),
                         apply_block_req: content.apply_block_req.clone(),
-                        injector_rpc_id: injector_rpc_id.clone(),
+                        injector_rpc_id: *injector_rpc_id,
                     };
                 }
                 _ => {}
@@ -74,16 +74,16 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                     state.block_applier.current =
                         BlockApplierApplyState::ProtocolRunnerApplyPending {
                             time: action.time_as_nanos(),
-                            prepare_data_duration: prepare_data_duration.clone(),
+                            prepare_data_duration: *prepare_data_duration,
                             block: block.clone(),
                             block_meta: block_meta.clone(),
                             apply_block_req: apply_block_req.clone(),
 
                             retry: None,
-                            injector_rpc_id: injector_rpc_id.clone(),
+                            injector_rpc_id: *injector_rpc_id,
                         };
                 }
-                _ => return,
+                _ => {}
             };
         }
         Action::BlockApplierApplyProtocolRunnerApplyRetry(content) => {
@@ -91,7 +91,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                 BlockApplierApplyState::ProtocolRunnerApplyPending { retry, .. } => {
                     *retry = Some(content.reason.clone());
                 }
-                _ => return,
+                _ => {}
             };
         }
         Action::BlockApplierApplyProtocolRunnerApplySuccess(content) => {
@@ -116,10 +116,10 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                             block_operations: apply_block_req.operations.clone(),
                             apply_result: content.apply_result.clone(),
                             retry: retry.clone(),
-                            injector_rpc_id: injector_rpc_id.clone(),
+                            injector_rpc_id: *injector_rpc_id,
                         };
                 }
-                _ => return,
+                _ => {}
             };
         }
         Action::BlockApplierApplyStoreApplyResultPending(content) => {
@@ -139,16 +139,16 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                         time: action.time_as_nanos(),
                         prepare_data_duration: *prepare_data_duration,
                         protocol_runner_apply_duration: *protocol_runner_apply_duration,
-                        storage_req_id: content.storage_req_id.clone(),
+                        storage_req_id: content.storage_req_id,
                         block: block.clone(),
                         block_meta: block_meta.clone(),
                         block_operations: std::mem::take(block_operations),
                         apply_result: apply_result.clone(),
                         retry: retry.clone(),
-                        injector_rpc_id: injector_rpc_id.clone(),
+                        injector_rpc_id: *injector_rpc_id,
                     };
                 }
-                _ => return,
+                _ => {}
             };
         }
         Action::BlockApplierApplyStoreApplyResultSuccess(content) => {
@@ -174,10 +174,10 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                         block_operations: std::mem::take(block_operations),
                         apply_result: apply_result.clone(),
                         retry: retry.clone(),
-                        injector_rpc_id: injector_rpc_id.clone(),
+                        injector_rpc_id: *injector_rpc_id,
                     };
                 }
-                _ => return,
+                _ => {}
             };
         }
         Action::BlockApplierApplyError(content) => {
@@ -209,19 +209,19 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                 } => {
                     state.block_applier.last_applied = block.hash.clone().into();
                     state.block_applier.current = BlockApplierApplyState::Success {
-                        time: time.clone(),
-                        prepare_data_duration: prepare_data_duration.clone(),
-                        protocol_runner_apply_duration: protocol_runner_apply_duration.clone(),
-                        store_apply_result_duration: store_apply_result_duration.clone(),
+                        time: *time,
+                        prepare_data_duration: *prepare_data_duration,
+                        protocol_runner_apply_duration: *protocol_runner_apply_duration,
+                        store_apply_result_duration: *store_apply_result_duration,
                         block: block.clone(),
                         block_additional_data: block_additional_data.clone(),
                         block_operations: std::mem::take(block_operations),
                         apply_result: apply_result.clone(),
                         retry: retry.clone(),
-                        injector_rpc_id: injector_rpc_id.clone(),
+                        injector_rpc_id: *injector_rpc_id,
                     };
                 }
-                _ => return,
+                _ => {}
             };
         }
         _ => {}

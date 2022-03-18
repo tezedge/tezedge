@@ -133,7 +133,7 @@ where
                 })
             {
                 let max_priority = match max_priority_to_precache(
-                    prev_timestamp.into(),
+                    prev_timestamp,
                     (20, 30),
                     action.duration_since_epoch().as_secs(),
                 ) {

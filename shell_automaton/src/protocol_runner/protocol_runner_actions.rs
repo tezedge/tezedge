@@ -73,7 +73,7 @@ impl EnablingCondition<State> for ProtocolRunnerNotifyStatusAction {
     fn is_enabled(&self, state: &State) -> bool {
         match &state.protocol_runner {
             ProtocolRunnerState::Ready(s) => {
-                !s.genesis_commit_hash.is_some()
+                s.genesis_commit_hash.is_none()
                     || matches!(
                         &state.storage.blocks.genesis.init,
                         StorageBlocksGenesisInitState::Success

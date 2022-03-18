@@ -288,7 +288,7 @@ impl TezosClientRunner {
 
         self.run_client(
             node_ref,
-            ["bake", "for", &alias].to_vec(),
+            ["bake", "for", alias].to_vec(),
             &mut client_output,
             log,
         )?;
@@ -452,7 +452,7 @@ pub fn reply_with_client_output(
 pub fn extract_field_name_and_message_ocaml(error: &str) -> Option<(String, String)> {
     let parsed_message = error
         .replace("\\", "")
-        .split("\"")
+        .split('\"')
         .filter(|s| s.contains("Invalid protocol_parameters"))
         .join("")
         .replace(" n{ ", "")
@@ -467,11 +467,11 @@ pub fn extract_field_name_and_message_ocaml(error: &str) -> Option<(String, Stri
                 .unwrap_or("")
                 .to_string(),
         )
-    } else if parsed_message.contains("/") {
+    } else if parsed_message.contains('/') {
         Some(
             parsed_message
                 .split_whitespace()
-                .filter(|s| s.contains("/"))
+                .filter(|s| s.contains('/'))
                 .join("")
                 .replace("/", "")
                 .replace(",", ""),

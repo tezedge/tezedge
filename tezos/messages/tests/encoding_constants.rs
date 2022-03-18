@@ -116,7 +116,7 @@ fn assert_constants_eq(
 
     // get all constatnts (fixed + dynamic decoded)
     let constants = get_constants_for_rpc(
-        &just_dynamic_constants_bytes,
+        just_dynamic_constants_bytes,
         &SupportedProtocol::try_from(protocol_hash)?,
     )?;
     assert!(constants.is_some());
@@ -124,10 +124,10 @@ fn assert_constants_eq(
 
     // split to fixed and dynamic
     let mut just_dynamic_constants = constants.clone();
-    just_dynamic_constants.retain(|&key, _| expected_fixed_constants.contains_key(key) == false);
+    just_dynamic_constants.retain(|&key, _| !expected_fixed_constants.contains_key(key));
 
     let mut just_fixed_constants = constants.clone();
-    just_fixed_constants.retain(|&key, _| expected_fixed_constants.contains_key(key) == true);
+    just_fixed_constants.retain(|&key, _| expected_fixed_constants.contains_key(key));
 
     // compare fixed jsons
     assert_json_eq!(

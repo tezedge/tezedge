@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use bytes::Buf;
-use csv;
+
 use hex::FromHex;
 use serde::{Deserialize, Deserializer};
 
@@ -40,10 +40,10 @@ impl BinaryStream {
             self.0.drain(0..chunk_length + CONTENT_LENGTH_FIELD_BYTES);
             return chunk;
         }
-        return Err(BinaryChunkError::IncorrectSizeInformation {
+        Err(BinaryChunkError::IncorrectSizeInformation {
             expected: chunk_length,
             actual: self.0.len() - CONTENT_LENGTH_FIELD_BYTES,
-        });
+        })
     }
 
     fn add_payload(&mut self, payload: &Vec<u8>) {
@@ -124,7 +124,7 @@ pub fn decode_stream() {
             TxRx::Sent => {
                 outgoing.add_payload(&messages[i].message);
                 match outgoing.drain_chunk() {
-                    Ok(chunk) => match precomputed_key.decrypt(&chunk.content(), &local) {
+                    Ok(chunk) => match precomputed_key.decrypt(chunk.content(), &local) {
                         Ok(dm) => {
                             local = local.increment();
                             Ok(dm)
@@ -137,7 +137,7 @@ pub fn decode_stream() {
             TxRx::Received => {
                 incoming.add_payload(&messages[i].message);
                 match incoming.drain_chunk() {
-                    Ok(chunk) => match precomputed_key.decrypt(&chunk.content(), &remote) {
+                    Ok(chunk) => match precomputed_key.decrypt(chunk.content(), &remote) {
                         Ok(dm) => {
                             remote = remote.increment();
                             Ok(dm)
@@ -161,7 +161,7 @@ pub fn decode_stream() {
         }
     }
     assert!(
-        decrypted_messages.len() > 0,
+        !decrypted_messages.is_empty(),
         "could not decrypt any message"
     );
     assert_eq!(

@@ -135,7 +135,7 @@ impl Ord for OperationKey {
 
 impl PartialOrd for OperationKey {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 

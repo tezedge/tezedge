@@ -24,7 +24,7 @@ pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
                             time: action.time_as_nanos(),
                         };
                     }
-                    _ => return,
+                    _ => {}
                 }
             }
         }
@@ -39,7 +39,7 @@ pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
                             error: content.error.clone(),
                         };
                     }
-                    _ => return,
+                    _ => {}
                 }
             }
         }
@@ -53,7 +53,7 @@ pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
                             result: content.result.clone(),
                         };
                     }
-                    _ => return,
+                    _ => {}
                 }
             }
         }
@@ -63,7 +63,7 @@ pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
                     StorageRequestStatus::Error { .. } | StorageRequestStatus::Success { .. } => {
                         state.storage.requests.remove(content.req_id);
                     }
-                    _ => return,
+                    _ => {}
                 }
             }
         }

@@ -76,7 +76,7 @@ where
                             let action_id = *action_id;
                             store.dispatch(StorageStateSnapshotCreateSuccessAction { action_id });
                         }
-                        _ => return,
+                        _ => {}
                     },
                     Err(result) => match result {
                         StorageResponseError::StateSnapshotPutError(action_id, error) => {
@@ -85,7 +85,7 @@ where
                                 error: error.clone(),
                             });
                         }
-                        _ => return,
+                        _ => {}
                     },
                 };
             }

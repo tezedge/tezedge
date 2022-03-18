@@ -239,8 +239,8 @@ impl Receive<NetworkChannelMsg> for Monitor {
         match msg {
             NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                 let previous = self.peer_monitors.insert(
-                    peer_id.address.clone(),
-                    PeerMonitor::new(peer_id.address.into(), peer_id.public_key_hash.clone()),
+                    peer_id.address,
+                    PeerMonitor::new(peer_id.address, peer_id.public_key_hash.clone()),
                 );
                 if let Some(_previous) = previous {
                     warn!(ctx.system.log(), "Duplicate monitor found for peer"; "key" => peer_id.address.to_string());

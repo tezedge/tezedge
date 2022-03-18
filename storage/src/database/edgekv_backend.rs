@@ -281,9 +281,9 @@ impl TezedgeDatabaseBackendStore for EdgeKVBackend {
             }
         };
 
-        return Ok(Box::new(iter.map(|result| {
+        Ok(Box::new(iter.map(|result| {
             result.map(|(k, v)| (k.into_boxed_slice(), v.into_boxed_slice()))
-        })));
+        })))
     }
 
     fn find_by_prefix<'a>(
@@ -299,9 +299,9 @@ impl TezedgeDatabaseBackendStore for EdgeKVBackend {
         let prefix_key = key[..max_key_len].to_vec();
         let iter = EdgeKVIterator::new(EdgeKVIteratorMode::Prefix(prefix_key), db);
 
-        return Ok(Box::new(iter.map(|result| {
+        Ok(Box::new(iter.map(|result| {
             result.map(|(k, v)| (k.into_boxed_slice(), v.into_boxed_slice()))
-        })));
+        })))
     }
 
     fn column_stats(&self) -> HashMap<&'static str, DBStats> {

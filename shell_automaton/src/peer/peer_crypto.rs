@@ -40,7 +40,7 @@ impl PeerCrypto {
         received_conn_msg: &BinaryChunk,
         incoming: bool,
     ) -> Result<Self, Blake2bError> {
-        let nonce_pair = generate_nonces(&sent_conn_msg.raw(), &received_conn_msg.raw(), incoming)?;
+        let nonce_pair = generate_nonces(sent_conn_msg.raw(), received_conn_msg.raw(), incoming)?;
 
         let key = PrecomputedKey::precompute(peer_public_key, node_secret_key);
 

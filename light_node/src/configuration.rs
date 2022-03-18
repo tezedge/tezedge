@@ -659,7 +659,7 @@ pub fn tezos_app() -> App<'static, 'static> {
                      .required(false)
                      .help("Block to snapshot (by hash, level or offset (~<NUM>) from head)")
                      .validator(|value| {
-                         if value.parse::<BlockHash>().is_err() && value.parse::<u32>().is_err() && !(value.starts_with("~") && (&value[1..]).parse::<u32>().is_ok()) {
+                         if value.parse::<BlockHash>().is_err() && value.parse::<u32>().is_err() && !(value.starts_with('~') && (&value[1..]).parse::<u32>().is_ok()) {
                              Err("Block hash, level of offset  not valid".to_string())
                          } else {
                              Ok(())
@@ -925,7 +925,7 @@ impl Environment {
                 }
 
                 // ~num is an offset from HEAD
-                if b.starts_with("~") {
+                if b.starts_with('~') {
                     let maybe_num = &b[1..];
                     if let Ok(offset) = maybe_num.parse::<u32>() {
                         return BlockReference::OffsetFromHead(offset);

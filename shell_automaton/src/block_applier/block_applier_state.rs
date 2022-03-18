@@ -153,35 +153,35 @@ impl BlockApplierApplyState {
             Self::Idle { .. } => None,
             Self::Init {
                 injector_rpc_id, ..
-            } => injector_rpc_id.clone(),
+            } => *injector_rpc_id,
 
             Self::PrepareDataPending {
                 injector_rpc_id, ..
-            } => injector_rpc_id.clone(),
+            } => *injector_rpc_id,
             Self::PrepareDataSuccess {
                 injector_rpc_id, ..
-            } => injector_rpc_id.clone(),
+            } => *injector_rpc_id,
 
             Self::ProtocolRunnerApplyPending {
                 injector_rpc_id, ..
-            } => injector_rpc_id.clone(),
+            } => *injector_rpc_id,
             Self::ProtocolRunnerApplySuccess {
                 injector_rpc_id, ..
-            } => injector_rpc_id.clone(),
+            } => *injector_rpc_id,
 
             Self::StoreApplyResultPending {
                 injector_rpc_id, ..
-            } => injector_rpc_id.clone(),
+            } => *injector_rpc_id,
             Self::StoreApplyResultSuccess {
                 injector_rpc_id, ..
-            } => injector_rpc_id.clone(),
+            } => *injector_rpc_id,
 
             Self::Error {
                 injector_rpc_id, ..
-            } => injector_rpc_id.clone(),
+            } => *injector_rpc_id,
             Self::Success {
                 injector_rpc_id, ..
-            } => injector_rpc_id.clone(),
+            } => *injector_rpc_id,
         }
     }
 

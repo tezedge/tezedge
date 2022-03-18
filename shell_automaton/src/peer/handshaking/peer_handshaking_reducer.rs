@@ -331,7 +331,7 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithMeta) {
                             *status = PeerHandshakingStatus::MetadataMessageReady {
                                 time: action_time,
                                 remote_message: action.message.clone(),
-                                crypto: crypto.clone(),
+                                crypto,
                                 compatible_version: compatible_version.clone(),
                                 remote_connection_message: remote_connection_message.clone(),
                             }
@@ -480,7 +480,7 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithMeta) {
                             *status = PeerHandshakingStatus::AckMessageReady {
                                 time: action_time,
                                 remote_message: action.message.clone(),
-                                crypto: crypto.clone(),
+                                crypto,
                                 compatible_version: compatible_version.clone(),
                                 remote_connection_message: remote_connection_message.clone(),
                                 remote_metadata_message: remote_metadata_message.clone(),
@@ -541,7 +541,7 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithMeta) {
                                 peer.status = PeerStatus::Handshaked(PeerHandshaked {
                                     handshaked_since: action.time_as_nanos(),
 
-                                    token: token.clone(),
+                                    token: *token,
                                     port: remote_connection_message.port,
                                     version,
                                     public_key,

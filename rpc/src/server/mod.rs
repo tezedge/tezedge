@@ -232,7 +232,7 @@ pub fn spawn_server(
 
                         let result = match result {
                             Ok(v) => {
-                                let remote_addr = remote_addr.clone();
+                                let remote_addr = remote_addr;
                                 let req_method = req_method.clone();
                                 let normalized_path = normalized_path.clone();
                                 let status = v.status();

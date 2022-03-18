@@ -113,7 +113,7 @@ where
             }) = prechecker_state_operations.get(key)
             {
                 // TODO use proper protocol to parse operation
-                match OperationDecodedContents::parse(&operation_binary_encoding, proto) {
+                match OperationDecodedContents::parse(operation_binary_encoding, proto) {
                     Ok(contents) => {
                         store.dispatch(PrecheckerOperationDecodedAction {
                             key: key.clone(),
@@ -531,7 +531,7 @@ where
             ..
         }) => {
             store.dispatch(StorageBlockAdditionalDataGetAction {
-                key: block_hash.clone().into(),
+                key: block_hash.clone(),
             });
         }
         Action::StorageBlockAdditionalDataOk(StorageBlockAdditionalDataOkAction { key, value }) => {
@@ -539,7 +539,7 @@ where
                 Ok(proto) => {
                     store.dispatch(PrecheckerNextBlockProtocolReadyAction {
                         block_hash: key.clone(),
-                        supported_protocol: proto.clone(),
+                        supported_protocol: proto,
                     });
                 }
                 Err(err) => {

@@ -27,7 +27,7 @@ where
                             chunk_state: PeerChunkWriteState::UnencryptedContent { content },
                             ..
                         } => {
-                            return match BinaryChunk::from_content(&content) {
+                            return match BinaryChunk::from_content(content) {
                                 Ok(chunk) => {
                                     store.dispatch(PeerChunkWriteCreateChunkAction {
                                         address: action.address,
@@ -67,7 +67,7 @@ where
                             },
                         ..
                     } => {
-                        match crypto.encrypt(&content) {
+                        match crypto.encrypt(content) {
                             Ok(encrypted_content) => {
                                 store.dispatch(PeerChunkWriteEncryptContentAction {
                                     address: action.address,
@@ -82,7 +82,7 @@ where
                             }
                         };
                     }
-                    _ => return,
+                    _ => {}
                 };
             }
         }
@@ -114,7 +114,7 @@ where
                                 ..
                             },
                         ..
-                    } => match BinaryChunk::from_content(&content) {
+                    } => match BinaryChunk::from_content(content) {
                         Ok(chunk) => {
                             store.dispatch(PeerChunkWriteCreateChunkAction {
                                 address: action.address,

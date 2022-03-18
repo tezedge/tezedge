@@ -65,7 +65,7 @@ fn stats_message_received(
                             return;
                         }
                         stats.block_new(
-                            b.clone(),
+                            b,
                             block_header.level(),
                             block_header.timestamp().into(),
                             block_header.validation_pass(),

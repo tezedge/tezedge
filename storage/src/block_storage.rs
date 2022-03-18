@@ -123,14 +123,13 @@ impl BlockStorage {
         let location = match self
             .by_level_index
             .get_blocks(level, 1)
-            .map(|v| v.into_iter().nth(0))?
+            .map(|v| v.into_iter().next())?
         {
             Some(v) => v,
             None => return Ok(None),
         };
 
-        self.get_block_header_by_location(&location)
-            .map(|v| Some(v))
+        self.get_block_header_by_location(&location).map(Some)
     }
 
     pub fn get_block_hash_by_level(&self, level: Level) -> Result<Option<BlockHash>, StorageError> {

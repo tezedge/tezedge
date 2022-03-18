@@ -33,10 +33,10 @@ pub fn can_update_current_head(
     let context_fitness = current_context_fitness;
 
     // according to chain_validator.ml
-    if context_fitness.eq(&current_head_fitness) {
-        new_head_fitness.gt(&context_fitness)
+    if context_fitness.eq(current_head_fitness) {
+        new_head_fitness.gt(context_fitness)
     } else {
-        new_head_fitness.ge(&context_fitness)
+        new_head_fitness.ge(context_fitness)
     }
 }
 
