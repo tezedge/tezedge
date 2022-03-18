@@ -12,7 +12,7 @@ mod message_limit;
 use message_limit::*;
 
 fn get_contents(
-    context: &String,
+    context: &str,
     encoding: &Encoding,
     infos: &mut HashMap<String, Rc<MessageInfo>>,
 ) -> FieldContents {
@@ -200,7 +200,7 @@ type MessageInfoList = Vec<Rc<MessageInfo>>;
 
 fn add_fields(
     info: &mut MessageInfo,
-    name: &String,
+    name: &str,
     encoding: &Encoding,
     infos: &mut HashMap<String, Rc<MessageInfo>>,
 ) {
@@ -262,7 +262,7 @@ fn get_obj_info(
 
 fn get_single_info(
     name: &str,
-    fields: &Vec<Field>,
+    fields: &[Field],
     infos: &mut HashMap<String, Rc<MessageInfo>>,
 ) -> Rc<MessageInfo> {
     if let Some(info) = infos.get(name) {
@@ -280,7 +280,7 @@ fn get_single_info(
 
 fn get_info(
     name: &str,
-    fields: &Vec<Field>,
+    fields: &[Field],
     infos: &mut HashMap<String, Rc<MessageInfo>>,
 ) -> Rc<MessageInfo> {
     let info = get_single_info(name, fields, infos);
@@ -348,7 +348,8 @@ fn peer_message_limited() -> Result<(), Error> {
 
     let mut infos = HashMap::new();
 
-    let mut file = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or(".".to_string()));
+    let mut file =
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()));
     file.push("Messages.md");
     let mut file = std::fs::File::create(file)?;
 

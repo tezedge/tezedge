@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::ptr_arg)]
+
 use ocaml_interop::*;
 
 pub type ContextKey = OCamlList<String>;

@@ -15,12 +15,12 @@ pub struct StorageBlocksGenesisInitCommitResultPutInitAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitCommitResultPutInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::CommitResultGet(
                 StorageBlocksGenesisInitCommitResultGetState::Success { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }
 
@@ -30,12 +30,12 @@ pub struct StorageBlocksGenesisInitCommitResultPutErrorAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitCommitResultPutErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::CommitResultPut(
                 StorageBlocksGenesisInitCommitResultPutState::Init { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }
 
@@ -45,11 +45,11 @@ pub struct StorageBlocksGenesisInitCommitResultPutSuccessAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitCommitResultPutSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::CommitResultPut(
                 StorageBlocksGenesisInitCommitResultPutState::Init { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }

@@ -96,10 +96,7 @@ impl GenKind {
     }
 
     fn is_valid(&self) -> bool {
-        match self {
-            GenKind::Over => false,
-            _ => true,
-        }
+        !matches!(self, GenKind::Over)
     }
 }
 
@@ -437,7 +434,7 @@ impl EncodedDataGenerator {
         }
     }
 
-    fn obj_fill(&mut self, path: &Rc<NodePath>, fields: &Vec<Field>) -> Vec<u8> {
+    fn obj_fill(&mut self, path: &Rc<NodePath>, fields: &[Field]) -> Vec<u8> {
         let mut res = Vec::new();
         let self_kind = self.kind;
         if self_kind == GenKind::Over {
@@ -469,7 +466,7 @@ impl EncodedDataGenerator {
         res
     }
 
-    fn obj_other(&mut self, path: &Rc<NodePath>, fields: &Vec<Field>) -> Vec<u8> {
+    fn obj_other(&mut self, path: &Rc<NodePath>, fields: &[Field]) -> Vec<u8> {
         let mut res = Vec::new();
         for field in fields {
             let path = NodePath::child(path, NodeKind::Field(field.get_name().clone()));
@@ -483,7 +480,7 @@ impl EncodedDataGenerator {
         res
     }
 
-    fn obj(&mut self, path: &Rc<NodePath>, fields: &Vec<Field>) -> Vec<u8> {
+    fn obj(&mut self, path: &Rc<NodePath>, fields: &[Field]) -> Vec<u8> {
         match self.mode {
             GenMode::Fill => self.obj_fill(path, fields),
             _ => self.obj_other(path, fields),

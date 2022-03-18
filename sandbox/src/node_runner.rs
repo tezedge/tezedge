@@ -4,6 +4,7 @@
 use std::fmt;
 use std::fs;
 use std::io::{BufReader, Read};
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, RwLock};
@@ -306,10 +307,7 @@ impl LightNodeRunner {
 
     fn is_running(&mut self) -> bool {
         if let Some(process) = &mut self.process {
-            match process.try_wait() {
-                Ok(None) => true,
-                _ => false,
-            }
+            matches!(process.try_wait(), Ok(None))
         } else {
             false
         }
@@ -349,7 +347,7 @@ impl LightNodeRunner {
     fn ensure_sandbox_cfg(
         &self,
         mut cfg: serde_json::Value,
-        sandbox_data_dir: &PathBuf,
+        sandbox_data_dir: &Path,
         log: &Logger,
     ) -> Result<serde_json::Value, LightNodeRunnerError> {
         if let Some(map) = cfg.as_object_mut() {

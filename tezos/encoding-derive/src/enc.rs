@@ -24,7 +24,7 @@ pub(crate) fn generate_encoding(encoding: &Encoding) -> TokenStream {
         Encoding::Primitive(primitive, span) => generage_primitive_encoding(*primitive, *span),
         Encoding::Bytes(span) => quote_spanned!(*span=> tezos_encoding::encoding::Encoding::Bytes),
         Encoding::Path(path) => {
-            quote_spanned!(path.span()=> <#path as tezos_encoding::encoding::HasEncoding>::encoding().clone())
+            quote_spanned!(path.span()=> #[allow(clippy::redundant_clone)]<#path as tezos_encoding::encoding::HasEncoding>::encoding().clone())
         }
         Encoding::String(size, span) => generate_string_encoding(size, *span),
         Encoding::Struct(encoding) => generate_struct_encoding(encoding),

@@ -62,7 +62,7 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
         let _ = tree.insert(key, value).map_err(Error::from)?;
 
         let total_write_duration = timer.elapsed();
-        let mut stat = stats.entry(column).or_insert(Default::default());
+        let mut stat = stats.entry(column).or_insert_with(Default::default);
         stat.total_write_duration += total_write_duration;
         stat.total_writes += 1;
 
@@ -86,7 +86,7 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
         let _ = tree.merge(key, value).map_err(Error::from)?;
 
         let total_update_duration = timer.elapsed();
-        let mut stat = stats.entry(column).or_insert(Default::default());
+        let mut stat = stats.entry(column).or_insert_with(Default::default);
         stat.total_update_duration += total_update_duration;
         stat.total_updates += 1;
         Ok(())
@@ -106,7 +106,7 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
             .map_err(Error::from)?;
 
         let total_read_duration = timer.elapsed();
-        let mut stat = stats.entry(column).or_insert(Default::default());
+        let mut stat = stats.entry(column).or_insert_with(Default::default);
         stat.total_read_duration += total_read_duration;
         stat.total_reads += 1;
 

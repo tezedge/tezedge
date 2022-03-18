@@ -66,6 +66,7 @@ impl Protocol {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Protocol> {
         match s {
             "genesis" => Some(Protocol::Genesis),
@@ -611,7 +612,7 @@ pub struct TimingChannel {
 #[derive(Debug)]
 pub enum ChannelError {
     PtrNull,
-    PushError(PushError<TimingMessage>),
+    PushError(Box<PushError<TimingMessage>>),
 }
 
 impl TimingChannel {
@@ -634,7 +635,7 @@ impl TimingChannel {
             self.shared.condvar.notify_one();
         }
 
-        result.map_err(ChannelError::PushError)
+        result.map_err(|err| ChannelError::PushError(Box::new(err)))
     }
 }
 
@@ -819,9 +820,9 @@ impl Timing {
         }
     }
 
-    fn insert_block_memory_usage<'a>(
+    fn insert_block_memory_usage(
         &mut self,
-        sql: &'a Connection,
+        sql: &Connection,
         stats: BlockMemoryUsage,
     ) -> Result<(), SQLError> {
         let block_id = match self.current_block.as_ref().map(|b| b.0.as_str()) {
@@ -1655,8 +1656,10 @@ impl Timing {
                     let entry = match global_stats.get_mut(root) {
                         Some(entry) => entry,
                         None => {
-                            let mut stats = QueryStatsWithRange::default();
-                            stats.root = root.to_string();
+                            let stats = QueryStatsWithRange {
+                                root: root.to_string(),
+                                ..Default::default()
+                            };
                             global_stats.insert(root.to_string(), stats);
                             global_stats.get_mut(root).unwrap()
                         }

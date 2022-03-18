@@ -778,6 +778,7 @@ mod tests {
             std::mem::drop(boxed);
 
             // Fully filled byte
+            #[allow(clippy::same_item_push)]
             vec.push(0xFF);
         }
     }

@@ -109,7 +109,7 @@ fn assert_constants_eq(
     expected_dynamic_constants_json: Value,
     expected_fixed_constants: HashMap<&str, UniversalValue>,
     protocol_hash: ProtocolHash,
-    just_dynamic_constants_bytes: &Vec<u8>,
+    just_dynamic_constants_bytes: &[u8],
 ) -> Result<(), Error> {
     // check protocol hash
     assert_eq!(expected_protocol_hash, protocol_hash);

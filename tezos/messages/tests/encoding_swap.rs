@@ -3,7 +3,7 @@
 
 use anyhow::Error;
 use crypto::hash::HashType;
-use std::{convert::TryInto, iter};
+use std::convert::TryInto;
 use tezos_messages::p2p::encoding::swap::*;
 use tezos_messages::p2p::{
     binary_message::{BinaryRead, BinaryWrite},

@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::ptr_arg)]
+
 use crate::datastore::DataIndex::Persisted;
 use crate::errors::EdgeKVError;
 use crate::file_ops::{
@@ -200,7 +202,7 @@ impl KeysDir {
         let keys_dir = Self {
             keys: Default::default(),
         };
-        for (_, fp) in file_pairs {
+        for fp in file_pairs.values() {
             fp.fetch_hint_entries(&keys_dir)?;
         }
         Ok(keys_dir)
@@ -215,11 +217,8 @@ impl IndexDir {
     pub fn new(file_pairs: BTreeMap<String, FilePair>) -> Result<IndexDir> {
         let mut indexes = BTreeMap::new();
         for (k, v) in file_pairs {
-            match v.to_index() {
-                Ok(index) => {
-                    indexes.insert(k, index);
-                }
-                Err(_) => {}
+            if let Ok(index) = v.to_index() {
+                indexes.insert(k, index);
             }
         }
 
