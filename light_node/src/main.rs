@@ -37,7 +37,7 @@ use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
 use crate::configuration::Environment;
 use crate::notification_integration::RpcNotificationCallbackActor;
-use crate::snapshot_command::snapshot_storage;
+use crate::snapshot_command::{import_snapshot, snapshot_storage};
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::initialize_maindb;
 
@@ -516,6 +516,12 @@ fn main() {
     );
     check_deprecated_network(&env, &log);
 
+    if let Some(configuration::Commands::ImportSnapshot { from }) = &env.sub_command {
+        info!(log, "Importing snapshot...");
+        import_snapshot(from, &env.database_base_directory);
+        return;
+    }
+
     // create/initialize databases
     info!(log, "Loading databases...");
     let instant = Instant::now();
@@ -562,7 +568,7 @@ fn main() {
                         );
                         return;
                     }
-                    None => {},
+                    None | Some(_) => {},
                 }
 
                 // let blocks_replay = env

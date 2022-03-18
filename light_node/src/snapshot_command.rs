@@ -20,8 +20,12 @@
 use std::{
     path::{Path, PathBuf},
     time::Instant,
+    fs::File,
+    io::BufReader,
 };
 use tempfile::tempdir_in;
+use flate2::bufread::GzDecoder;
+use tar::Archive;
 
 use slog::{info, Logger};
 
@@ -431,4 +435,20 @@ fn resolve_block_reference(
             .expect("Failed to obtain predecessor")
             .unwrap_or_else(|| head.block_hash().clone()),
     }
+}
+
+pub fn import_snapshot(from: &Path, tezos_data_dir: &Path) {
+
+    // remove existing data
+    let to_remove = ["context", "bootstrap_db"];
+    fs_extra::remove_items(&to_remove).expect("Failed to remove existing data");
+
+    let tar_gz = File::open(from).unwrap_or_else(|_| panic!("Failed to open snapshot file {}", from.display()));
+
+    let buffered = BufReader::new(tar_gz);
+
+    let tar = GzDecoder::new(buffered);
+    let mut archive = Archive::new(tar);
+
+    archive.unpack(tezos_data_dir).expect("Failed to unpack snapshot tarball");
 }

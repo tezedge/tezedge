@@ -21,7 +21,6 @@ use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
 use storage::BlockReference;
-use tezedge_actor_system::actors::ActorReference;
 use tezos_api::environment::{self, TezosEnvironmentConfiguration};
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_context_api::{
@@ -278,6 +277,12 @@ pub enum Commands {
         /// Directory where the snapshot will be created
         #[clap(long, validator = validate_directory_exists_create, default_value = "/tmp/tezedge-snapshot")]
         target_path: PathBuf,
+    },
+    /// Import the specified snapshot file into --tezos-data-dir [Default: /tmp/tezedge].
+    ImportSnapshot {
+        /// Path to the snapshot file
+        #[clap(long)]
+        from: PathBuf,
     }
 }
 
@@ -471,6 +476,7 @@ impl Ffi {
 
 #[derive(Debug, Clone)]
 pub struct Environment {
+    pub database_base_directory: PathBuf,
     pub p2p: P2p,
     pub rpc: Rpc,
     pub logging: Logging,
@@ -746,6 +752,7 @@ impl Environment {
         let tezos_data_dir = cli_args.tezos_data_dir;
 
         Environment {
+            database_base_directory: tezos_data_dir.clone(),
             p2p: crate::configuration::P2p {
                 listener_port: cli_args.p2p_port,
                 listener_address: format!("0.0.0.0:{}", cli_args.p2p_port)
