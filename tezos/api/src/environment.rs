@@ -46,14 +46,26 @@ pub enum TezosEnvironment {
     Sandbox,
     Zeronet,
     Alphanet,
+    // Create aliases for the variants, so clap recognizes them as the same variant
+    // E.g.: Clap translates Babylonnet babylonnet and adds it to possible values
+    //       With the alias it also adds babylon (the alias) to the possible values
+    #[clap(alias("babylon"))]
     Babylonnet,
+    #[clap(alias("carthage"))]
     Carthagenet,
+    #[clap(alias("delphi"))]
     Delphinet,
+    #[clap(alias("edo"))]
     Edonet,
+    #[clap(alias("edo2"))]
     Edo2net,
+    #[clap(alias("florence"))]
     Florencenet,
+    #[clap(alias("granada"))]
     Granadanet,
+    #[clap(alias("hangzhou"))]
     Hangzhounet,
+    #[clap(alias("ithaca"))]
     Ithacanet,
 }
 
