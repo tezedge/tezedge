@@ -55,11 +55,11 @@ pub fn peer_remote_requests_current_branch_get_effects<S>(
                 Some(v) => v,
                 None => return,
             };
+            let storage_req_id = store.state().storage.requests.next_req_id();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::BlockHashByLevelGet(level),
                 requestor: StorageRequestor::Peer(content.address),
             });
-            let storage_req_id = store.state().storage.requests.last_added_req_id();
             store.dispatch(PeerRemoteRequestsCurrentBranchGetNextBlockPendingAction {
                 address: content.address,
                 storage_req_id,

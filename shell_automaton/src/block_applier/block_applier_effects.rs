@@ -33,6 +33,7 @@ where
         }
         Action::BlockApplierApplyInit(content) => {
             let chain_id = store.state().config.chain_id.clone();
+            let storage_req_id = store.state().storage.requests.next_req_id();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::PrepareApplyBlockData {
                     chain_id: chain_id.into(),
@@ -41,10 +42,7 @@ where
                 requestor: StorageRequestor::BlockApplier,
             });
 
-            let req_id = store.state().storage.requests.last_added_req_id();
-            store.dispatch(BlockApplierApplyPrepareDataPendingAction {
-                storage_req_id: req_id,
-            });
+            store.dispatch(BlockApplierApplyPrepareDataPendingAction { storage_req_id });
         }
         Action::BlockApplierApplyPrepareDataPending(_) => {
             let block_hash = match store.state.get().block_applier.current.block_hash() {
@@ -168,6 +166,8 @@ where
                 .service
                 .statistics()
                 .map(|s| s.block_apply_end(&block_hash, action.time_as_nanos(), &block_result));
+
+            let storage_req_id = store.state().storage.requests.next_req_id();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::StoreApplyBlockResult {
                     block_hash,
@@ -178,10 +178,7 @@ where
                 requestor: StorageRequestor::BlockApplier,
             });
 
-            let req_id = store.state().storage.requests.last_added_req_id();
-            store.dispatch(BlockApplierApplyStoreApplyResultPendingAction {
-                storage_req_id: req_id,
-            });
+            store.dispatch(BlockApplierApplyStoreApplyResultPendingAction { storage_req_id });
         }
         Action::BlockApplierApplyStoreApplyResultPending(_) => {
             let block_hash = match store.state.get().block_applier.current.block_hash() {

@@ -124,7 +124,7 @@ impl Cluster {
                 reducer,
                 |store, action| {
                     eprintln!("[+] Action: {:#?}", &action);
-                    eprintln!("[+] State: {:#?}\n", store.state());
+                    eprintln!("[+] State: {:#?}\n", store.state().peers);
                     effects(store, action)
                 },
                 ServiceMocked::new(),

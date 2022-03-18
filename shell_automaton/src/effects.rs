@@ -3,7 +3,7 @@
 
 use crate::actors::actors_effects;
 use crate::block_applier::block_applier_effects;
-use crate::bootstrap::bootstrap_effects;
+use crate::bootstrap::{bootstrap_effects, BootstrapCheckTimeoutsInitAction};
 use crate::current_head::current_head_effects;
 use crate::current_head_precheck::current_head_precheck_effects;
 use crate::prechecker::prechecker_effects;
@@ -44,7 +44,7 @@ use crate::peer::remote_requests::block_operations_get::peer_remote_requests_blo
 use crate::peer::remote_requests::current_branch_get::peer_remote_requests_current_branch_get_effects;
 
 use crate::peers::add::multi::peers_add_multi_effects;
-use crate::peers::check::timeouts::peers_check_timeouts_effects;
+use crate::peers::check::timeouts::{peers_check_timeouts_effects, PeersCheckTimeoutsInitAction};
 use crate::peers::dns_lookup::peers_dns_lookup_effects;
 use crate::peers::graylist::peers_graylist_effects;
 use crate::peers::init::peers_init_effects;
@@ -92,6 +92,12 @@ fn applied_actions_count_effects<S: Service>(store: &mut Store<S>, action: &Acti
     if !matches!(&action.action, Action::StorageStateSnapshotCreateInit(_)) {
         store.dispatch(StorageStateSnapshotCreateInitAction {});
     }
+}
+
+/// All the actions which trigger checking for timeouts are called here.
+fn check_timeouts_effects<S: Service>(store: &mut Store<S>, _: &ActionWithMeta) {
+    store.dispatch(PeersCheckTimeoutsInitAction {});
+    store.dispatch(BootstrapCheckTimeoutsInitAction {});
 }
 
 pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
@@ -183,4 +189,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     kv_operations_effects(store, action);
 
     shutdown_effects(store, action);
+
+    // Must be last as the timeout check can be triggered by
+    // any action and that might break some assumptions.
+    check_timeouts_effects(store, action);
 }

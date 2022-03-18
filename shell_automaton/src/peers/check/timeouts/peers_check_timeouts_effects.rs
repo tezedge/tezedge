@@ -17,8 +17,8 @@ use crate::peers::graylist::PeersGraylistIpRemoveAction;
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
-    PeerTimeout, PeersCheckTimeoutsCleanupAction, PeersCheckTimeoutsInitAction,
-    PeersCheckTimeoutsState, PeersCheckTimeoutsSuccessAction,
+    PeerTimeout, PeersCheckTimeoutsCleanupAction, PeersCheckTimeoutsState,
+    PeersCheckTimeoutsSuccessAction,
 };
 
 fn check_timeout(
@@ -160,16 +160,6 @@ where
             }
             store.dispatch(PeersCheckTimeoutsCleanupAction {});
         }
-        _ => match &state.peers.check_timeouts {
-            PeersCheckTimeoutsState::Idle { time } => {
-                let check_timeouts_interval =
-                    state.config.check_timeouts_interval.as_nanos() as u64;
-
-                if current_time - time >= check_timeouts_interval {
-                    store.dispatch(PeersCheckTimeoutsInitAction {});
-                }
-            }
-            _ => {}
-        },
+        _ => {}
     }
 }

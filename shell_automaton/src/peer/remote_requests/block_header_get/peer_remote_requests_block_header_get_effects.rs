@@ -36,11 +36,11 @@ pub fn peer_remote_requests_block_header_get_effects<S>(
                 Some(v) => v.clone(),
                 None => return,
             };
+            let storage_req_id = store.state().storage.requests.next_req_id();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::BlockHeaderGet(block_hash.clone()),
                 requestor: StorageRequestor::Peer(content.address),
             });
-            let storage_req_id = store.state().storage.requests.last_added_req_id();
             store.dispatch(PeerRemoteRequestsBlockHeaderGetPendingAction {
                 address: content.address,
                 block_hash,

@@ -25,28 +25,26 @@ use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
-    BootstrapCheckTimeoutsInitAction, BootstrapError, BootstrapErrorAction,
-    BootstrapFinishedAction, BootstrapFromPeerCurrentHeadAction,
-    BootstrapPeerBlockHeaderGetFinishAction, BootstrapPeerBlockHeaderGetInitAction,
-    BootstrapPeerBlockHeaderGetPendingAction, BootstrapPeerBlockHeaderGetSuccessAction,
-    BootstrapPeerBlockHeaderGetTimeoutAction, BootstrapPeerBlockOperationsGetPendingAction,
-    BootstrapPeerBlockOperationsGetRetryAction, BootstrapPeerBlockOperationsGetSuccessAction,
-    BootstrapPeerBlockOperationsGetTimeoutAction, BootstrapPeersBlockHeadersGetInitAction,
-    BootstrapPeersBlockHeadersGetPendingAction, BootstrapPeersBlockHeadersGetSuccessAction,
-    BootstrapPeersBlockOperationsGetInitAction, BootstrapPeersBlockOperationsGetNextAction,
-    BootstrapPeersBlockOperationsGetNextAllAction, BootstrapPeersBlockOperationsGetPendingAction,
-    BootstrapPeersBlockOperationsGetSuccessAction, BootstrapPeersConnectPendingAction,
-    BootstrapPeersConnectSuccessAction, BootstrapPeersMainBranchFindInitAction,
-    BootstrapPeersMainBranchFindPendingAction, BootstrapPeersMainBranchFindSuccessAction,
-    BootstrapScheduleBlockForApplyAction, BootstrapScheduleBlocksForApplyAction,
-    PeerIntervalCurrentState, PeerIntervalError,
+    BootstrapError, BootstrapErrorAction, BootstrapFinishedAction,
+    BootstrapFromPeerCurrentHeadAction, BootstrapPeerBlockHeaderGetFinishAction,
+    BootstrapPeerBlockHeaderGetInitAction, BootstrapPeerBlockHeaderGetPendingAction,
+    BootstrapPeerBlockHeaderGetSuccessAction, BootstrapPeerBlockHeaderGetTimeoutAction,
+    BootstrapPeerBlockOperationsGetPendingAction, BootstrapPeerBlockOperationsGetRetryAction,
+    BootstrapPeerBlockOperationsGetSuccessAction, BootstrapPeerBlockOperationsGetTimeoutAction,
+    BootstrapPeersBlockHeadersGetInitAction, BootstrapPeersBlockHeadersGetPendingAction,
+    BootstrapPeersBlockHeadersGetSuccessAction, BootstrapPeersBlockOperationsGetInitAction,
+    BootstrapPeersBlockOperationsGetNextAction, BootstrapPeersBlockOperationsGetNextAllAction,
+    BootstrapPeersBlockOperationsGetPendingAction, BootstrapPeersBlockOperationsGetSuccessAction,
+    BootstrapPeersConnectPendingAction, BootstrapPeersConnectSuccessAction,
+    BootstrapPeersMainBranchFindInitAction, BootstrapPeersMainBranchFindPendingAction,
+    BootstrapPeersMainBranchFindSuccessAction, BootstrapScheduleBlockForApplyAction,
+    BootstrapScheduleBlocksForApplyAction, PeerIntervalCurrentState, PeerIntervalError,
 };
 
 pub fn bootstrap_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
     S: Service,
 {
-    store.dispatch(BootstrapCheckTimeoutsInitAction {});
     match &action.action {
         Action::BootstrapInit(_) => {
             store.dispatch(BootstrapPeersConnectPendingAction {});
