@@ -24,11 +24,11 @@ where
         Action::CurrentHeadRehydrateInit(_) => {
             let chain_id = store.state().config.chain_id.clone();
             let level_override = store.state().config.current_head_level_override;
+            let storage_req_id = store.state().storage.requests.next_req_id();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::CurrentHeadGet(chain_id, level_override),
                 requestor: StorageRequestor::None,
             });
-            let storage_req_id = store.state().storage.requests.last_added_req_id();
             store.dispatch(CurrentHeadRehydratePendingAction { storage_req_id });
         }
         Action::StorageResponseReceived(content) => {

@@ -43,11 +43,11 @@ pub fn peer_remote_requests_block_operations_get_effects<S>(
                 Some(v) => v.clone(),
                 None => return,
             };
+            let storage_req_id = store.state().storage.requests.next_req_id();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::BlockOperationsGet(key.clone()),
                 requestor: StorageRequestor::Peer(content.address),
             });
-            let storage_req_id = store.state().storage.requests.last_added_req_id();
             store.dispatch(PeerRemoteRequestsBlockOperationsGetPendingAction {
                 address: content.address,
                 key,

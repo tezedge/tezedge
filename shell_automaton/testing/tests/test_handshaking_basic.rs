@@ -6,7 +6,6 @@ use std::{
 use crypto::hash::ChainId;
 use crypto::nonce::Nonce;
 use shell_automaton::config::default_test_config;
-use shell_automaton::peers::check::timeouts::PeersCheckTimeoutsInitAction;
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::{Config, State};
 use shell_automaton_testing::one_real_node_cluster::{Cluster, HandshakeError};
@@ -437,12 +436,12 @@ fn test_connecting_timeout_incoming() {
 
     for _ in 1..(configured_timeout.as_nanos() / check_timeouts_interval.as_nanos()).max(1) {
         cluster.advance_time(check_timeouts_interval);
-        cluster.dispatch(PeersCheckTimeoutsInitAction {});
+        cluster.loop_next();
     }
     assert!(cluster.state().peers.get(&peer_id.to_ipv4()).is_some());
 
     cluster.advance_time(check_timeouts_interval);
-    cluster.dispatch(PeersCheckTimeoutsInitAction {});
+    cluster.loop_next();
 
     assert!(cluster.state().peers.get(&peer_id.to_ipv4()).is_none());
     assert!(cluster
@@ -465,12 +464,12 @@ fn test_connecting_timeout_outgoing() {
 
     for _ in 1..(configured_timeout.as_nanos() / check_timeouts_interval.as_nanos()).max(1) {
         cluster.advance_time(check_timeouts_interval);
-        cluster.dispatch(PeersCheckTimeoutsInitAction {});
+        cluster.loop_next();
     }
     assert!(cluster.state().peers.get(&peer_id.to_ipv4()).is_some());
 
     cluster.advance_time(check_timeouts_interval);
-    cluster.dispatch(PeersCheckTimeoutsInitAction {});
+    cluster.loop_next();
 
     assert!(cluster.state().peers.get(&peer_id.to_ipv4()).is_none());
     assert!(cluster
@@ -494,12 +493,12 @@ fn test_handshaking_timeout_incoming() {
 
     for _ in 1..(configured_timeout.as_nanos() / check_timeouts_interval.as_nanos()).max(1) {
         cluster.advance_time(check_timeouts_interval);
-        cluster.dispatch(PeersCheckTimeoutsInitAction {});
+        cluster.loop_next();
     }
     assert!(cluster.state().peers.get(&peer_id.to_ipv4()).is_some());
 
     cluster.advance_time(check_timeouts_interval);
-    cluster.dispatch(PeersCheckTimeoutsInitAction {});
+    cluster.loop_next();
 
     assert!(cluster.state().peers.get(&peer_id.to_ipv4()).is_none());
     assert!(cluster
@@ -523,12 +522,12 @@ fn test_handshaking_timeout_outgoing() {
 
     for _ in 1..(configured_timeout.as_nanos() / check_timeouts_interval.as_nanos()).max(1) {
         cluster.advance_time(check_timeouts_interval);
-        cluster.dispatch(PeersCheckTimeoutsInitAction {});
+        cluster.loop_next();
     }
     assert!(cluster.state().peers.get(&peer_id.to_ipv4()).is_some());
 
     cluster.advance_time(check_timeouts_interval);
-    cluster.dispatch(PeersCheckTimeoutsInitAction {});
+    cluster.loop_next();
 
     assert!(cluster.state().peers.get(&peer_id.to_ipv4()).is_none());
     assert!(cluster

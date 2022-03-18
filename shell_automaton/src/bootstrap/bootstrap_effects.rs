@@ -25,28 +25,26 @@ use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
-    BootstrapCheckTimeoutsInitAction, BootstrapError, BootstrapErrorAction,
-    BootstrapFinishedAction, BootstrapFromPeerCurrentHeadAction,
-    BootstrapPeerBlockHeaderGetFinishAction, BootstrapPeerBlockHeaderGetInitAction,
-    BootstrapPeerBlockHeaderGetPendingAction, BootstrapPeerBlockHeaderGetSuccessAction,
-    BootstrapPeerBlockHeaderGetTimeoutAction, BootstrapPeerBlockOperationsGetPendingAction,
-    BootstrapPeerBlockOperationsGetRetryAction, BootstrapPeerBlockOperationsGetSuccessAction,
-    BootstrapPeerBlockOperationsGetTimeoutAction, BootstrapPeersBlockHeadersGetInitAction,
-    BootstrapPeersBlockHeadersGetPendingAction, BootstrapPeersBlockHeadersGetSuccessAction,
-    BootstrapPeersBlockOperationsGetInitAction, BootstrapPeersBlockOperationsGetNextAction,
-    BootstrapPeersBlockOperationsGetNextAllAction, BootstrapPeersBlockOperationsGetPendingAction,
-    BootstrapPeersBlockOperationsGetSuccessAction, BootstrapPeersConnectPendingAction,
-    BootstrapPeersConnectSuccessAction, BootstrapPeersMainBranchFindInitAction,
-    BootstrapPeersMainBranchFindPendingAction, BootstrapPeersMainBranchFindSuccessAction,
-    BootstrapScheduleBlockForApplyAction, BootstrapScheduleBlocksForApplyAction,
-    PeerIntervalCurrentState, PeerIntervalError,
+    BootstrapError, BootstrapErrorAction, BootstrapFinishedAction,
+    BootstrapFromPeerCurrentHeadAction, BootstrapPeerBlockHeaderGetFinishAction,
+    BootstrapPeerBlockHeaderGetInitAction, BootstrapPeerBlockHeaderGetPendingAction,
+    BootstrapPeerBlockHeaderGetSuccessAction, BootstrapPeerBlockHeaderGetTimeoutAction,
+    BootstrapPeerBlockOperationsGetPendingAction, BootstrapPeerBlockOperationsGetRetryAction,
+    BootstrapPeerBlockOperationsGetSuccessAction, BootstrapPeerBlockOperationsGetTimeoutAction,
+    BootstrapPeersBlockHeadersGetInitAction, BootstrapPeersBlockHeadersGetPendingAction,
+    BootstrapPeersBlockHeadersGetSuccessAction, BootstrapPeersBlockOperationsGetInitAction,
+    BootstrapPeersBlockOperationsGetNextAction, BootstrapPeersBlockOperationsGetNextAllAction,
+    BootstrapPeersBlockOperationsGetPendingAction, BootstrapPeersBlockOperationsGetSuccessAction,
+    BootstrapPeersConnectPendingAction, BootstrapPeersConnectSuccessAction,
+    BootstrapPeersMainBranchFindInitAction, BootstrapPeersMainBranchFindPendingAction,
+    BootstrapPeersMainBranchFindSuccessAction, BootstrapScheduleBlockForApplyAction,
+    BootstrapScheduleBlocksForApplyAction, PeerIntervalCurrentState, PeerIntervalError,
 };
 
 pub fn bootstrap_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
     S: Service,
 {
-    store.dispatch(BootstrapCheckTimeoutsInitAction {});
     match &action.action {
         Action::BootstrapInit(_) => {
             store.dispatch(BootstrapPeersConnectPendingAction {});
@@ -233,29 +231,6 @@ where
                 // TODO(zura): log that we dont have peers for getting ops.
                 None => return,
             };
-
-            store.service.statistics().map(|stats| {
-                let level = match &state.bootstrap {
-                    BootstrapState::PeersBlockOperationsGetPending {
-                        last_level, queue, ..
-                    } => *last_level - queue.len() as i32,
-                    _ => return,
-                };
-
-                let time = state.time_as_nanos();
-                if !stats.block_stats_get_all().contains_key(&block_hash) {
-                    stats.block_new(
-                        block_hash.clone(),
-                        level,
-                        None,
-                        validation_pass,
-                        time,
-                        Some(peer),
-                        None,
-                        None,
-                    );
-                }
-            });
 
             request_block_operations(store, peer, block_hash, validation_pass);
         }
@@ -463,8 +438,7 @@ where
                         .filter(|(_, b)| {
                             b.peers
                                 .get(&content.address)
-                                .map(|p| p.is_disconnected())
-                                .unwrap_or(false)
+                                .map_or(false, |p| p.is_disconnected())
                                 && b.peers.iter().all(|(_, p)| !p.is_pending())
                         })
                         .map(|(block_hash, _)| block_hash.clone())
