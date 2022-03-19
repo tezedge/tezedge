@@ -380,6 +380,12 @@ impl OperationStats {
     }
 }
 
+impl Default for OperationStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OperationValidationStats {
     pub started: Option<u64>,

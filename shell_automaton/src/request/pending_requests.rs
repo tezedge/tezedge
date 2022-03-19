@@ -39,6 +39,10 @@ impl<Request> PendingRequests<Request> {
         self.list.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     #[inline]
     pub fn last_added_req_id(&self) -> RequestId {
         self.last_added_req_id
@@ -94,9 +98,15 @@ impl<Request> PendingRequests<Request> {
         Some(removed_req)
     }
 
-    pub fn iter<'a>(&'a self) -> impl 'a + Iterator<Item = (RequestId, &'a Request)> {
+    pub fn iter(&self) -> impl Iterator<Item = (RequestId, &Request)> {
         self.list
             .iter()
             .map(|(locator, req)| (RequestId::new(locator, req.counter), &req.request))
+    }
+}
+
+impl<Request> Default for PendingRequests<Request> {
+    fn default() -> Self {
+        Self::new()
     }
 }

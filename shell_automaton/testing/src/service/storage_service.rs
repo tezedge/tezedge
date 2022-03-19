@@ -27,6 +27,12 @@ impl StorageServiceDummy {
     }
 }
 
+impl Default for StorageServiceDummy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StorageService for StorageServiceDummy {
     #[inline(always)]
     fn request_send(

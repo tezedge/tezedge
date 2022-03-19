@@ -9,7 +9,7 @@ use getset::Getters;
 use tezos_messages::p2p::encoding::block_header::Level;
 
 /// Statistics about applying
-#[derive(Getters, Clone, Debug)]
+#[derive(Getters, Clone, Debug, Default)]
 pub struct ApplyBlockStats {
     /// ID of the last applied block
     #[get = "pub(crate)"]
@@ -23,17 +23,6 @@ pub struct ApplyBlockStats {
     applied_block_lasts_count: u32,
     /// Sum of durations of block validation with protocol from last LogStats run
     applied_block_lasts_sum_validation_timer: BlockValidationTimer,
-}
-
-impl Default for ApplyBlockStats {
-    fn default() -> Self {
-        Self {
-            applied_block_level: None,
-            applied_block_last: None,
-            applied_block_lasts_count: 0,
-            applied_block_lasts_sum_validation_timer: BlockValidationTimer::default(),
-        }
-    }
 }
 
 impl ApplyBlockStats {

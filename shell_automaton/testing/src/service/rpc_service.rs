@@ -16,6 +16,12 @@ impl RpcServiceDummy {
     }
 }
 
+impl Default for RpcServiceDummy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RpcService for RpcServiceDummy {
     fn try_recv(&mut self) -> Result<(RpcRequest, RpcId), RpcRecvError> {
         Err(RpcRecvError::Empty)

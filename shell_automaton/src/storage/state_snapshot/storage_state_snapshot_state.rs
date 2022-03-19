@@ -17,3 +17,9 @@ impl StorageStateSnapshotState {
         }
     }
 }
+
+impl Default for StorageStateSnapshotState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

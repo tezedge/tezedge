@@ -64,3 +64,9 @@ impl PeersCheckTimeoutsState {
         Self::Idle { time: 0 }
     }
 }
+
+impl Default for PeersCheckTimeoutsState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

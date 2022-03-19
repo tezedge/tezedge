@@ -704,3 +704,9 @@ impl BootstrapState {
         }
     }
 }
+
+impl Default for BootstrapState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

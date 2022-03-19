@@ -66,6 +66,12 @@ impl ServiceMocked {
     }
 }
 
+impl Default for ServiceMocked {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TimeService for ServiceMocked {
     fn monotonic_time(&mut self) -> Instant {
         self.time
