@@ -10,11 +10,8 @@ pub fn protocol_runner_spawn_server_effects<S>(store: &mut Store<S>, action: &Ac
 where
     S: Service,
 {
-    match &action.action {
-        Action::ProtocolRunnerSpawnServerInit(_) => {
-            store.service.protocol_runner().spawn_server();
-            store.dispatch(ProtocolRunnerSpawnServerPendingAction {});
-        }
-        _ => {}
+    if let Action::ProtocolRunnerSpawnServerInit(_) = &action.action {
+        store.service.protocol_runner().spawn_server();
+        store.dispatch(ProtocolRunnerSpawnServerPendingAction {});
     }
 }

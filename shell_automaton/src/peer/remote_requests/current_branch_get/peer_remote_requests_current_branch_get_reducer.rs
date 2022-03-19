@@ -80,18 +80,16 @@ pub fn peer_remote_requests_current_branch_get_reducer(state: &mut State, action
                 Some(v) => v,
                 None => return,
             };
-            match &mut peer.remote_requests.current_branch_get {
-                PeerRemoteRequestsCurrentBranchGetState::Pending {
-                    history,
-                    next_block,
-                    ..
-                } => {
-                    next_block.to_success(content.result.clone());
-                    if let Some(block_hash) = content.result.clone() {
-                        history.push(block_hash);
-                    }
+            if let PeerRemoteRequestsCurrentBranchGetState::Pending {
+                history,
+                next_block,
+                ..
+            } = &mut peer.remote_requests.current_branch_get
+            {
+                next_block.to_success(content.result.clone());
+                if let Some(block_hash) = content.result.clone() {
+                    history.push(block_hash);
                 }
-                _ => {}
             }
         }
         Action::PeerRemoteRequestsCurrentBranchGetSuccess(content) => {

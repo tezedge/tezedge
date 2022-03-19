@@ -25,14 +25,13 @@ pub fn peer_binary_message_read_reducer(state: &mut State, action: &ActionWithMe
                         } => binary_message_state,
                         _ => return,
                     },
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
+                    PeerStatus::Handshaked(PeerHandshaked {
+                        message_read:
                             PeerMessageReadState::Pending {
                                 binary_message_read,
-                            } => binary_message_read,
-                            _ => return,
-                        }
-                    }
+                            },
+                        ..
+                    }) => binary_message_read,
                     _ => return,
                 };
 
@@ -60,24 +59,25 @@ pub fn peer_binary_message_read_reducer(state: &mut State, action: &ActionWithMe
                         } => binary_message_state,
                         _ => return,
                     },
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
+                    PeerStatus::Handshaked(PeerHandshaked {
+                        message_read:
                             PeerMessageReadState::Pending {
                                 binary_message_read,
-                            } => binary_message_read,
-                            _ => return,
-                        }
-                    }
+                            },
+                        ..
+                    }) => binary_message_read,
+
                     _ => return,
                 };
 
                 if let PeerBinaryMessageReadState::PendingFirstChunk {
-                                        chunk:
-                                            PeerChunkRead {
-                                                crypto,
-                                                state: PeerChunkReadState::Ready { chunk },
-                                            },
-                                    } = binary_message_state {
+                    chunk:
+                        PeerChunkRead {
+                            crypto,
+                            state: PeerChunkReadState::Ready { chunk },
+                        },
+                } = binary_message_state
+                {
                     if action.size > chunk.len() {
                         *binary_message_state = PeerBinaryMessageReadState::Pending {
                             buffer: chunk.clone(),
@@ -110,14 +110,13 @@ pub fn peer_binary_message_read_reducer(state: &mut State, action: &ActionWithMe
                         } => binary_message_state,
                         _ => return,
                     },
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
+                    PeerStatus::Handshaked(PeerHandshaked {
+                        message_read:
                             PeerMessageReadState::Pending {
                                 binary_message_read,
-                            } => binary_message_read,
-                            _ => return,
-                        }
-                    }
+                            },
+                        ..
+                    }) => binary_message_read,
                     _ => return,
                 };
 

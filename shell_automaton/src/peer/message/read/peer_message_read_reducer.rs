@@ -71,11 +71,8 @@ pub fn peer_message_read_reducer(state: &mut State, action: &ActionWithMeta) {
                 {
                     let read_crypto = match message_read {
                         PeerMessageReadState::Pending {
-                            binary_message_read,
-                        } => match binary_message_read {
-                            PeerBinaryMessageReadState::Ready { crypto, .. } => crypto,
-                            _ => return,
-                        },
+                            binary_message_read: PeerBinaryMessageReadState::Ready { crypto, .. },
+                        } => crypto,
                         _ => return,
                     };
 

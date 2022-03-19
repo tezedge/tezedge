@@ -257,7 +257,7 @@ impl Receive<NetworkChannelMsg> for Monitor {
                 self.process_peer_message(msg, &ctx.system.log())
             }
             NetworkChannelMsg::PeerDisconnected(peer) => {
-                if let Some(_) = self.peer_monitors.remove(&peer) {
+                if self.peer_monitors.remove(&peer).is_some() {
                     ctx.myself.tell(
                         BroadcastSignal::PeerUpdate(PeerConnectionStatus::disconnected(
                             peer.to_string(),

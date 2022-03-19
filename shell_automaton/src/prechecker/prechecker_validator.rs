@@ -96,7 +96,7 @@ impl OperationProtocolData for tezos_messages::protocol::proto_010::operation::O
     }
 
     fn as_json(&self) -> serde_json::Value {
-        serde_json::to_value(self).unwrap_or(serde_json::json!("cannot convert to json"))
+        serde_json::to_value(self).unwrap_or_else(|_| serde_json::json!("cannot convert to json"))
     }
 }
 
@@ -120,7 +120,7 @@ impl OperationProtocolData for tezos_messages::protocol::proto_011::operation::O
     }
 
     fn as_json(&self) -> serde_json::Value {
-        serde_json::to_value(self).unwrap_or(serde_json::json!("cannot convert to json"))
+        serde_json::to_value(self).unwrap_or_else(|_| serde_json::json!("cannot convert to json"))
     }
 }
 
