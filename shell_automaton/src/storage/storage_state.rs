@@ -45,3 +45,9 @@ impl StorageState {
         }
     }
 }
+
+impl Default for StorageState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -37,6 +37,7 @@ where
     s.serialize_some(&x.as_micros())
 }
 
+#[allow(clippy::ptr_arg)]
 pub trait TezedgeDatabaseBackendStore {
     fn put(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error>;
     fn delete(&self, column: &'static str, key: &[u8]) -> Result<(), Error>;

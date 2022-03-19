@@ -55,3 +55,9 @@ impl CurrentHeadState {
         }
     }
 }
+
+impl Default for CurrentHeadState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

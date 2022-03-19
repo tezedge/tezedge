@@ -89,7 +89,7 @@ fn test_run_operations() -> Result<(), anyhow::Error> {
     // assert result json
     assert_json_eq!(
         serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
-        serde_json::from_str::<serde_json::Value>(&test_data::RUN_OPERTION_RESPONSE)?,
+        serde_json::from_str::<serde_json::Value>(test_data::RUN_OPERTION_RESPONSE)?,
     );
 
     Ok(())
@@ -244,7 +244,7 @@ fn test_preapply_operations() -> Result<(), anyhow::Error> {
     // assert result json
     assert_json_eq!(
         serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(&test_data::PREAPPLY_OPERTIONS_RESPONSE)?
+        serde_json::from_str::<serde_json::Value>(test_data::PREAPPLY_OPERTIONS_RESPONSE)?
     );
 
     Ok(())
@@ -279,7 +279,7 @@ fn test_current_level_call() -> Result<(), anyhow::Error> {
 
     assert_json_eq!(
         serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
-        serde_json::from_str::<serde_json::Value>(&test_data::CURRENT_LEVEL_RESPONSE)?,
+        serde_json::from_str::<serde_json::Value>(test_data::CURRENT_LEVEL_RESPONSE)?,
     );
 
     Ok(())
@@ -316,7 +316,7 @@ fn test_minimal_valid_time() -> Result<(), anyhow::Error> {
 
     assert_json_eq!(
         serde_json::from_str::<serde_json::Value>(&extract_body(response)?)?,
-        serde_json::from_str::<serde_json::Value>(&test_data::MINIMAL_VALID_TIME_RESPONSE)?,
+        serde_json::from_str::<serde_json::Value>(test_data::MINIMAL_VALID_TIME_RESPONSE)?,
     );
 
     Ok(())
@@ -443,7 +443,7 @@ fn test_preapply_block() -> Result<(), anyhow::Error> {
     // assert result json
     assert_json_eq!(
         serde_json::from_str::<serde_json::Value>(&response.body)?,
-        serde_json::from_str::<serde_json::Value>(&test_data::PREAPPLY_BLOCK_1_RESPONSE)?,
+        serde_json::from_str::<serde_json::Value>(test_data::PREAPPLY_BLOCK_1_RESPONSE)?,
     );
 
     Ok(())

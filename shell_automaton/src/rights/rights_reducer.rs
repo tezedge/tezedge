@@ -29,24 +29,24 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
             requests.insert(key.clone(), RightsRequest::Init { start: action.id });
         }
         Action::RightsGetBlockHeader(RightsGetBlockHeaderAction { key }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::Init { start } = request {
                     *request = RightsRequest::PendingBlockHeader { start: *start };
                 }
-            });
+            }
         }
         Action::RightsBlockHeaderReady(RightsBlockHeaderReadyAction { key, block_header }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::PendingBlockHeader { start } = request {
                     *request = RightsRequest::BlockHeaderReady {
                         start: *start,
                         block_header: block_header.clone(),
                     };
                 }
-            });
+            }
         }
         Action::RightsGetProtocolHash(RightsGetProtocolHashAction { key }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::BlockHeaderReady {
                     start,
                     block_header,
@@ -57,14 +57,14 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         block_header: block_header.clone(),
                     };
                 }
-            });
+            }
         }
         Action::RightsProtocolHashReady(RightsProtocolHashReadyAction {
             key,
             proto_hash,
             protocol,
         }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::PendingProtocolHash {
                     start,
                     block_header,
@@ -77,10 +77,10 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         protocol: protocol.clone(),
                     };
                 }
-            });
+            }
         }
         Action::RightsGetProtocolConstants(RightsGetProtocolConstantsAction { key }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::ProtocolHashReady {
                     start,
                     block_header,
@@ -95,13 +95,13 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         protocol: protocol.clone(),
                     };
                 }
-            });
+            }
         }
         Action::RightsProtocolConstantsReady(RightsProtocolConstantsReadyAction {
             key,
             constants,
         }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::PendingProtocolConstants {
                     start,
                     block_header,
@@ -117,10 +117,10 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         protocol_constants: constants.clone(),
                     };
                 }
-            });
+            }
         }
         Action::RightsGetCycleEras(RightsGetCycleErasAction { key }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::ProtocolConstantsReady {
                     start,
                     block_header,
@@ -137,10 +137,10 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         protocol_constants: protocol_constants.clone(),
                     };
                 }
-            });
+            }
         }
         Action::RightsCycleErasReady(RightsCycleErasReadyAction { key, cycle_eras }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::PendingCycleEras {
                     start,
                     block_header,
@@ -157,10 +157,10 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         cycle_eras: cycle_eras.clone(),
                     };
                 }
-            });
+            }
         }
         Action::RightsGetCycle(RightsGetCycleAction { key }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::CycleErasReady {
                     start,
                     block_header,
@@ -177,14 +177,14 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         cycle_eras: cycle_eras.clone(),
                     };
                 }
-            });
+            }
         }
         Action::RightsCycleReady(RightsCycleReadyAction {
             key,
             cycle,
             position,
         }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::PendingCycle {
                     start,
                     block_header,
@@ -197,16 +197,16 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         start: *start,
                         protocol: protocol.clone(),
                         protocol_constants: protocol_constants.clone(),
-                        level: key.level().unwrap_or(block_header.level()),
+                        level: key.level().unwrap_or_else(|| block_header.level()),
                         cycle: *cycle,
                         position: *position,
                     };
                 }
-            });
+            }
         }
 
         Action::RightsGetCycleData(RightsGetCycleDataAction { key }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::CycleReady {
                     start,
                     protocol,
@@ -225,10 +225,10 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         position: *position,
                     };
                 }
-            });
+            }
         }
         Action::RightsCycleDataReady(RightsCycleDataReadyAction { key, cycle_data }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::PendingCycleData {
                     start,
                     protocol,
@@ -247,10 +247,10 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         cycle_data: cycle_data.clone(),
                     };
                 }
-            });
+            }
         }
         Action::RightsCalculateEndorsingRights(RightsCalculateAction { key }) => {
-            requests.get_mut(key).map(|request| {
+            if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::CycleDataReady {
                     start,
                     protocol,
@@ -269,7 +269,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         position: *position,
                     };
                 }
-            });
+            }
         }
         Action::RightsBakingReady(RightsBakingReadyAction { key, baking_rights }) => {
             if let Some(RightsRequest::PendingRightsCalculation { .. }) = requests.remove(key) {
@@ -277,10 +277,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 let duration = state.rights.cache.time;
                 cache.retain(|_, (timestamp, _)| action.id.duration_since(*timestamp) < duration);
                 slog::trace!(&state.log, "cached endorsing rights"; "level" => baking_rights.level);
-                cache.insert(
-                    baking_rights.level,
-                    (action.id, baking_rights.clone().into()),
-                );
+                cache.insert(baking_rights.level, (action.id, baking_rights.clone()));
             }
         }
         Action::RightsEndorsingReady(RightsEndorsingReadyAction {
@@ -297,7 +294,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 slog::trace!(&state.log, "cached endorsing rights"; "level" => endorsing_rights.level);
                 cache.insert(
                     endorsing_rights.level,
-                    (action.id, endorsing_rights.clone().into()),
+                    (action.id, endorsing_rights.clone()),
                 );
             }
         }

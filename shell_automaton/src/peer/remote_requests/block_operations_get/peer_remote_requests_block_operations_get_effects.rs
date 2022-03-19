@@ -38,7 +38,7 @@ pub fn peer_remote_requests_block_operations_get_effects<S>(
                 .block_operations_get
                 .queue
                 .iter()
-                .nth(0)
+                .next()
             {
                 Some(v) => v.clone(),
                 None => return,

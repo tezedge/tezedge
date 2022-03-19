@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::ptr_arg)]
+
 use ocaml_interop::*;
 
 pub type ContextKey = OCamlList<String>;
@@ -271,11 +273,11 @@ pub mod tree {
     use super::*;
 
     pub fn empty(cr: &mut OCamlRuntime, ctxt: OCamlRef<TezosFfiContext>) -> BoxRoot<TezosFfiTree> {
-        ffi::tezos_context_tree_empty(cr, &ctxt)
+        ffi::tezos_context_tree_empty(cr, ctxt)
     }
 
     pub fn is_empty(cr: &mut OCamlRuntime, tree: OCamlRef<TezosFfiTree>) -> bool {
-        ffi::tezos_context_tree_is_empty(cr, &tree).to_rust(cr)
+        ffi::tezos_context_tree_is_empty(cr, tree).to_rust(cr)
     }
 
     pub fn mem(cr: &mut OCamlRuntime, tree: OCamlRef<TezosFfiTree>, key: &Vec<String>) -> bool {
@@ -371,8 +373,8 @@ fn test_context_inodes(
         .unwrap()
         .as_secs();
 
-    let mut tezedge_ctxt = context::checkout(cr, &tezedge_index, tezedge_genesis_hash).unwrap();
-    let mut irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_genesis_hash).unwrap();
+    let mut tezedge_ctxt = context::checkout(cr, tezedge_index, tezedge_genesis_hash).unwrap();
+    let mut irmin_ctxt = context::checkout(cr, irmin_index, irmin_genesis_hash).unwrap();
 
     let commit_string = Some("commit".to_string());
 
@@ -408,7 +410,7 @@ fn test_context_inodes(
 
     let tezedge_commit_hash_end =
         context::hash(cr, time as i64, commit_string.clone(), &tezedge_ctxt);
-    let irmin_commit_hash_end = context::hash(cr, time as i64, commit_string.clone(), &irmin_ctxt);
+    let irmin_commit_hash_end = context::hash(cr, time as i64, commit_string, &irmin_ctxt);
     assert_eq!(irmin_commit_hash_end, tezedge_commit_hash_end);
 
     assert_eq!(irmin_commit_hash_init, irmin_commit_hash_end);
@@ -432,13 +434,8 @@ fn test_context_calls(cr: &mut OCamlRuntime) {
 
     let (tezedge_index, tezedge_genesis_hash) =
         context::init_tezedge(cr, genesis.clone(), None).unwrap();
-    let (irmin_index, irmin_genesis_hash) = context::init_irmin(
-        cr,
-        irmin_dir.path().to_str().unwrap(),
-        genesis.clone(),
-        None,
-    )
-    .unwrap();
+    let (irmin_index, irmin_genesis_hash) =
+        context::init_irmin(cr, irmin_dir.path().to_str().unwrap(), genesis, None).unwrap();
 
     let time = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -457,13 +454,13 @@ fn test_context_calls(cr: &mut OCamlRuntime) {
     let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &vec![], "123".as_bytes());
     let tezedge_tree = context::find_tree(cr, &tezedge_ctxt, &vec![]).unwrap();
     let tezedge_tree_hash = tree::hash(cr, &tezedge_tree);
-    let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+    let tezedge_commit_hash = context::commit(cr, time as i64, "commit", &tezedge_ctxt);
 
     let irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_genesis_hash).unwrap();
     let irmin_ctxt = context::add(cr, &irmin_ctxt, &vec![], "123".as_bytes());
     let irmin_tree = context::find_tree(cr, &irmin_ctxt, &vec![]).unwrap();
     let irmin_tree_hash = tree::hash(cr, &irmin_tree);
-    let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+    let irmin_commit_hash = context::commit(cr, time as i64, "commit", &irmin_ctxt);
 
     // Make sure that the hash is correct when the root of the tree is a value (blob)
     assert_eq!(irmin_commit_hash, tezedge_commit_hash);
@@ -487,7 +484,7 @@ fn test_context_calls(cr: &mut OCamlRuntime) {
     );
     let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("some/path4"), "value".as_bytes());
     let tezedge_ctxt_hash = context::hash(cr, time as i64, None, &tezedge_ctxt);
-    let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+    let tezedge_commit_hash = context::commit(cr, time as i64, "commit", &tezedge_ctxt);
 
     let irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_genesis_hash).unwrap();
     let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("empty/value"), "".as_bytes());
@@ -506,7 +503,7 @@ fn test_context_calls(cr: &mut OCamlRuntime) {
     );
     let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("some/path4"), "value".as_bytes());
     let irmin_ctxt_hash = context::hash(cr, time as i64, None, &irmin_ctxt);
-    let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+    let irmin_commit_hash = context::commit(cr, time as i64, "commit", &irmin_ctxt);
 
     assert_eq!(irmin_commit_hash, tezedge_commit_hash);
     assert_eq!(tezedge_ctxt_hash, irmin_ctxt_hash);
@@ -560,8 +557,8 @@ fn test_context_calls(cr: &mut OCamlRuntime) {
     let tezedge_ctxt = context::add_tree(cr, &tezedge_ctxt, &key!("tree"), &tezedge_tree);
     let irmin_ctxt = context::add_tree(cr, &irmin_ctxt, &key!("tree"), &irmin_tree);
 
-    let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
-    let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+    let tezedge_commit_hash = context::commit(cr, time as i64, "commit", &tezedge_ctxt);
+    let irmin_commit_hash = context::commit(cr, time as i64, "commit", &irmin_ctxt);
 
     assert_eq!(tezedge_commit_hash, irmin_commit_hash);
 

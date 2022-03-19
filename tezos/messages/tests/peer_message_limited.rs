@@ -12,7 +12,7 @@ mod message_limit;
 use message_limit::*;
 
 fn get_contents(
-    context: &String,
+    context: &str,
     encoding: &Encoding,
     infos: &mut HashMap<String, Rc<MessageInfo>>,
 ) -> FieldContents {
@@ -54,7 +54,7 @@ fn get_contents(
                 let mut info = MessageInfo::new(name.clone());
                 add_fields(&mut info, &String::from("list element"), encoding, infos);
                 let info = Rc::new(info);
-                infos.insert(name, info.clone());
+                infos.insert(name, info);
                 FieldContents::list(Limit::UpTo(*limit), get_contents(context, encoding, infos))
             }
             _ => FieldContents::list(Limit::UpTo(*limit), get_contents(context, encoding, infos)),
@@ -101,14 +101,14 @@ impl MessageInfo {
         size: Limit,
         contents: FieldContents,
     ) {
-        let contents = contents.into();
+        let contents = contents;
         let name = name.into().into_owned();
         self.fields.push(MessageField {
             name,
             size,
             contents,
         });
-        self.size = self.size + size;
+        self.size += size;
     }
 }
 
@@ -124,16 +124,13 @@ Size: {}
 |:-----|:-----|:---------|",
             self.name, self.size,
         )?;
-        self.fields
-            .iter()
-            .map(|field| {
-                writeln!(
-                    f,
-                    "| {} | {} | {} |",
-                    field.name, field.size, field.contents
-                )
-            })
-            .collect::<Result<_, _>>()?;
+        self.fields.iter().try_for_each(|field| {
+            writeln!(
+                f,
+                "| {} | {} | {} |",
+                field.name, field.size, field.contents
+            )
+        })?;
         Ok(())
     }
 }
@@ -203,7 +200,7 @@ type MessageInfoList = Vec<Rc<MessageInfo>>;
 
 fn add_fields(
     info: &mut MessageInfo,
-    name: &String,
+    name: &str,
     encoding: &Encoding,
     infos: &mut HashMap<String, Rc<MessageInfo>>,
 ) {
@@ -265,7 +262,7 @@ fn get_obj_info(
 
 fn get_single_info(
     name: &str,
-    fields: &Vec<Field>,
+    fields: &[Field],
     infos: &mut HashMap<String, Rc<MessageInfo>>,
 ) -> Rc<MessageInfo> {
     if let Some(info) = infos.get(name) {
@@ -283,7 +280,7 @@ fn get_single_info(
 
 fn get_info(
     name: &str,
-    fields: &Vec<Field>,
+    fields: &[Field],
     infos: &mut HashMap<String, Rc<MessageInfo>>,
 ) -> Rc<MessageInfo> {
     let info = get_single_info(name, fields, infos);
@@ -307,7 +304,7 @@ fn peer_message_response(infos: &mut HashMap<String, Rc<MessageInfo>>) -> Messag
                 let mut tags = tag_map
                     .tags()
                     .collect::<Vec<&tezos_encoding::encoding::Tag>>();
-                tags.sort_by(|a, b| a.get_id().cmp(&b.get_id()));
+                tags.sort_by_key(|a| a.get_id());
                 for tag in tags {
                     let tag_id = format!("{:#04X}", tag.get_id());
 
@@ -351,7 +348,8 @@ fn peer_message_limited() -> Result<(), Error> {
 
     let mut infos = HashMap::new();
 
-    let mut file = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or(".".to_string()));
+    let mut file =
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()));
     file.push("Messages.md");
     let mut file = std::fs::File::create(file)?;
 
@@ -360,22 +358,19 @@ fn peer_message_limited() -> Result<(), Error> {
     [ConnectionMessage::encoding(), MetadataMessage::encoding()]
         .iter()
         .map(|encoding| get_obj_info(encoding, &mut infos))
-        .map(|info| writeln!(file, "{}", info))
-        .collect::<Result<_, _>>()?;
+        .try_for_each(|info| writeln!(file, "{}", info))?;
 
     writeln!(file, "## Distributed DB Messages")?;
     peer_message_response(&mut infos)
         .iter()
-        .map(|info| writeln!(file, "{}", info))
-        .collect::<Result<_, _>>()?;
+        .try_for_each(|info| writeln!(file, "{}", info))?;
 
     writeln!(file, "## Auxiliary Types")?;
     let mut infos = infos.into_iter().map(|(_, v)| v).collect::<Vec<_>>();
     infos.sort_by_key(|info| info.name.to_string());
     infos
         .iter()
-        .map(|info| writeln!(file, "{}", info))
-        .collect::<Result<_, _>>()?;
+        .try_for_each(|info| writeln!(file, "{}", info))?;
 
     Ok(())
 }

@@ -129,7 +129,7 @@ impl std::fmt::Debug for BlockHeader {
     feature = "fuzzing",
     derive(fuzzcheck::DefaultMutator, Serialize, Deserialize)
 )]
-#[derive(Clone, Debug, Eq)]
+#[derive(Clone, Debug, Eq, Default)]
 pub struct EncodingHash(pub Option<Vec<u8>>);
 
 impl PartialEq for EncodingHash {
@@ -144,12 +144,6 @@ impl PartialEq for EncodingHash {
 impl EncodingHash {
     pub fn as_ref(&self) -> Option<&Vec<u8>> {
         self.0.as_ref()
-    }
-}
-
-impl Default for EncodingHash {
-    fn default() -> Self {
-        Self(None)
     }
 }
 

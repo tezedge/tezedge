@@ -14,6 +14,12 @@ impl PrevalidatorServiceDummy {
     }
 }
 
+impl Default for PrevalidatorServiceDummy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PrevalidatorService for PrevalidatorServiceDummy {
     fn try_recv(&mut self) -> Result<ProtocolAction, ()> {
         Err(())

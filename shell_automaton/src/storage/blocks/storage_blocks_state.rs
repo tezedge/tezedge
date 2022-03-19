@@ -17,3 +17,9 @@ impl StorageBlocksState {
         }
     }
 }
+
+impl Default for StorageBlocksState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

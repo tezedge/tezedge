@@ -71,22 +71,22 @@ where
                 };
             } else {
                 match &resp.result {
-                    Ok(result) => match result {
-                        StorageResponseSuccess::StateSnapshotPutSuccess(action_id) => {
+                    Ok(result) => {
+                        if let StorageResponseSuccess::StateSnapshotPutSuccess(action_id) = result {
                             let action_id = *action_id;
                             store.dispatch(StorageStateSnapshotCreateSuccessAction { action_id });
                         }
-                        _ => return,
-                    },
-                    Err(result) => match result {
-                        StorageResponseError::StateSnapshotPutError(action_id, error) => {
+                    }
+                    Err(result) => {
+                        if let StorageResponseError::StateSnapshotPutError(action_id, error) =
+                            result
+                        {
                             store.dispatch(StorageStateSnapshotCreateErrorAction {
                                 action_id: *action_id,
                                 error: error.clone(),
                             });
                         }
-                        _ => return,
-                    },
+                    }
                 };
             }
         }
@@ -95,7 +95,7 @@ where
             use crate::service::statistics_service::{
                 StorageRequestFinished, StorageRequestFinishedStatus,
             };
-            store.service.statistics().map(|stats| {
+            if let Some(stats) = store.service.statistics() {
                 let req = match store.state.get().storage.requests.get(content.req_id) {
                     Some(v) => v,
                     None => return,
@@ -116,7 +116,7 @@ where
                         error: format!("{:?}", content.error),
                     },
                 });
-            });
+            }
             store.dispatch(StorageRequestFinishAction {
                 req_id: content.req_id,
             });
@@ -126,7 +126,7 @@ where
             use crate::service::statistics_service::{
                 StorageRequestFinished, StorageRequestFinishedStatus,
             };
-            store.service.statistics().map(|stats| {
+            if let Some(stats) = store.service.statistics() {
                 let req = match store.state.get().storage.requests.get(content.req_id) {
                     Some(v) => v,
                     None => return,
@@ -145,7 +145,7 @@ where
                     },
                     status: StorageRequestFinishedStatus::Success,
                 });
-            });
+            }
             store.dispatch(StorageRequestFinishAction {
                 req_id: content.req_id,
             });

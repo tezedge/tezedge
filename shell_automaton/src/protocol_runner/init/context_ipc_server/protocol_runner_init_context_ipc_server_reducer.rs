@@ -25,43 +25,37 @@ pub fn protocol_runner_init_context_ipc_server_reducer(state: &mut State, action
                 )));
         }
         Action::ProtocolRunnerInitContextIpcServerPending(content) => {
-            match &mut state.protocol_runner {
-                ProtocolRunnerState::Init(ProtocolRunnerInitState::ContextIpcServer((
-                    _,
-                    state,
-                ))) => {
-                    *state = ProtocolRunnerInitContextIpcServerState::Pending {
-                        token: content.token,
-                    }
+            if let ProtocolRunnerState::Init(ProtocolRunnerInitState::ContextIpcServer((
+                _,
+                state,
+            ))) = &mut state.protocol_runner
+            {
+                *state = ProtocolRunnerInitContextIpcServerState::Pending {
+                    token: content.token,
                 }
-                _ => return,
             }
         }
         Action::ProtocolRunnerInitContextIpcServerError(content) => {
-            match &mut state.protocol_runner {
-                ProtocolRunnerState::Init(ProtocolRunnerInitState::ContextIpcServer((
-                    _,
-                    state,
-                ))) => {
-                    *state = ProtocolRunnerInitContextIpcServerState::Error {
-                        token: content.token,
-                        error: content.error.clone(),
-                    }
+            if let ProtocolRunnerState::Init(ProtocolRunnerInitState::ContextIpcServer((
+                _,
+                state,
+            ))) = &mut state.protocol_runner
+            {
+                *state = ProtocolRunnerInitContextIpcServerState::Error {
+                    token: content.token,
+                    error: content.error.clone(),
                 }
-                _ => return,
             }
         }
         Action::ProtocolRunnerInitContextIpcServerSuccess(content) => {
-            match &mut state.protocol_runner {
-                ProtocolRunnerState::Init(ProtocolRunnerInitState::ContextIpcServer((
-                    _,
-                    state,
-                ))) => {
-                    *state = ProtocolRunnerInitContextIpcServerState::Success {
-                        token: content.token,
-                    }
+            if let ProtocolRunnerState::Init(ProtocolRunnerInitState::ContextIpcServer((
+                _,
+                state,
+            ))) = &mut state.protocol_runner
+            {
+                *state = ProtocolRunnerInitContextIpcServerState::Success {
+                    token: content.token,
                 }
-                _ => return,
             }
         }
         _ => {}

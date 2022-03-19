@@ -108,7 +108,7 @@ impl SignaturePublicKey {
             Ok(public_hash_key)
         } else {
             Err(ConversionError::InvalidHash {
-                hash: hex::encode(hash).to_string(),
+                hash: hex::encode(hash),
             })
         }
     }
@@ -187,7 +187,7 @@ impl SignaturePublicKey {
             }
             SignatureWatermark::Custom(prefix) => {
                 let mut bytes = Vec::with_capacity(prefix.len() + bytes_ref.len());
-                bytes.extend_from_slice(&prefix);
+                bytes.extend_from_slice(prefix);
                 bytes.extend_from_slice(bytes_ref);
                 bytes
             }
@@ -276,7 +276,7 @@ impl SignaturePublicKeyHash {
             Ok(public_hash_key)
         } else {
             Err(ConversionError::InvalidHash {
-                hash: hex::encode(hash).to_string(),
+                hash: hex::encode(hash),
             })
         }
     }
@@ -456,8 +456,8 @@ mod tests {
         );
 
         let result = SignaturePublicKey::from_hex_hash_and_curve(
-            &"b59a30aa9fa3ce235411eacd0050428d72cc4d4ccc6c534c27ce80cef7aa4871",
-            &"ed25519",
+            "b59a30aa9fa3ce235411eacd0050428d72cc4d4ccc6c534c27ce80cef7aa4871",
+            "ed25519",
         )
         .unwrap();
         assert_eq!(
@@ -466,8 +466,8 @@ mod tests {
         );
 
         let result = SignaturePublicKey::from_hex_hash_and_curve(
-            &"0345da8c775e6fa0063983ca599481a832a7b99bcf6721fc00f1e1737acfedf8c5",
-            &"secp256k1",
+            "0345da8c775e6fa0063983ca599481a832a7b99bcf6721fc00f1e1737acfedf8c5",
+            "secp256k1",
         )
         .unwrap();
         assert_eq!(
@@ -476,8 +476,8 @@ mod tests {
         );
 
         let result = SignaturePublicKey::from_hex_hash_and_curve(
-            &"02de449ce8ebe181fa51fc76e723bdd315500bb2bd429fcc8da60a714fb0bc44e4",
-            &"p256",
+            "02de449ce8ebe181fa51fc76e723bdd315500bb2bd429fcc8da60a714fb0bc44e4",
+            "p256",
         )
         .unwrap();
         assert_eq!(
@@ -579,8 +579,8 @@ mod tests {
     #[test]
     fn test_hash_from_hex_hash_and_curve() -> Result<(), anyhow::Error> {
         let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
-            &"2cca28ab019ae2d8c26f4ce4924cad67a2dc6618",
-            &"ed25519",
+            "2cca28ab019ae2d8c26f4ce4924cad67a2dc6618",
+            "ed25519",
         )
         .unwrap();
         assert_eq!(
@@ -589,8 +589,8 @@ mod tests {
         );
 
         let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
-            &"20262e6195b91181f1713c4237c8195096b8adc9",
-            &"secp256k1",
+            "20262e6195b91181f1713c4237c8195096b8adc9",
+            "secp256k1",
         )
         .unwrap();
         assert_eq!(
@@ -599,8 +599,8 @@ mod tests {
         );
 
         let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
-            &"6fde46af0356a0476dae4e4600172dc9309b3aa4",
-            &"p256",
+            "6fde46af0356a0476dae4e4600172dc9309b3aa4",
+            "p256",
         )
         .unwrap();
         assert_eq!(
@@ -609,8 +609,8 @@ mod tests {
         );
 
         let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
-            &"2cca28ab019ae2d8c26f4ce4924cad67a2dc6618",
-            &"invalidcurvetag",
+            "2cca28ab019ae2d8c26f4ce4924cad67a2dc6618",
+            "invalidcurvetag",
         );
         assert_eq!(
             result.unwrap_err(),
@@ -620,8 +620,8 @@ mod tests {
         );
 
         let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
-            &"2cca28a6f4ce4924cad67a2dc6618",
-            &"ed25519",
+            "2cca28a6f4ce4924cad67a2dc6618",
+            "ed25519",
         );
         assert_eq!(
             result.unwrap_err(),
@@ -631,8 +631,8 @@ mod tests {
         );
 
         let result = SignaturePublicKeyHash::from_hex_hash_and_curve(
-            &"56a0476dae4e4600172dc9309b3aa4",
-            &"p256",
+            "56a0476dae4e4600172dc9309b3aa4",
+            "p256",
         );
         assert_eq!(
             result.unwrap_err(),

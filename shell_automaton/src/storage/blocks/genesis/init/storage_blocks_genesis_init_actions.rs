@@ -18,11 +18,10 @@ pub struct StorageBlocksGenesisInitAction {
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
-            StorageBlocksGenesisInitState::Idle => true,
-            StorageBlocksGenesisInitState::Success => true,
-            _ => false,
-        }
+        matches!(
+            &state.storage.blocks.genesis.init,
+            StorageBlocksGenesisInitState::Idle | StorageBlocksGenesisInitState::Success
+        )
     }
 }
 
@@ -32,11 +31,11 @@ pub struct StorageBlocksGenesisInitSuccessAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::CommitResultPut(
                 StorageBlocksGenesisInitCommitResultPutState::Success { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }

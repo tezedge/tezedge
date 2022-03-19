@@ -34,7 +34,6 @@ pub async fn bootstrapped(
         .shell_automaton_sender()
         .request_stream(RpcRequestStream::Bootstrapped)
         .await
-        .ok()
         .expect("state machine should be correct");
     let stream =
         UnboundedReceiverStream::new(stream).map(|v| serde_json::to_string(&v).map_err(From::from));
@@ -87,7 +86,6 @@ pub async fn valid_blocks(
             next_protocol,
         }))
         .await
-        .ok()
         .expect("state machine should be correct");
     let stream =
         UnboundedReceiverStream::new(stream).map(|v| serde_json::to_string(&v).map_err(From::from));
@@ -140,7 +138,6 @@ pub async fn mempool_monitor_operations(
             outdated: outdated == Some("yes"),
         })
         .await
-        .ok()
         .expect("state machine should be correct");
     let stream =
         UnboundedReceiverStream::new(stream).map(|v| serde_json::to_string(&v).map_err(From::from));
@@ -158,7 +155,7 @@ pub async fn blocks(
     let head_param = query
         .get("head")
         .cloned()
-        .unwrap_or(vec!["head".to_string()]);
+        .unwrap_or_else(|| vec!["head".to_string()]);
     let head_param = if head_param.is_empty() {
         vec!["head".to_string()]
     } else {

@@ -44,3 +44,9 @@ impl ShutdownState {
         }
     }
 }
+
+impl Default for ShutdownState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

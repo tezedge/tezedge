@@ -18,7 +18,8 @@ fn can_deserialize_advertise() -> Result<(), Error> {
     assert_eq!(3, message.id().len());
     assert_eq!("[fe80::e828:209d:20e:c0ae]:375", &message.id()[0]);
     assert_eq!("234.123.124.91:9876", &message.id()[1]);
-    Ok(assert_eq!("123.123.124.21:9876", &message.id()[2]))
+    assert_eq!("123.123.124.21:9876", &message.id()[2]);
+    Ok(())
 }
 
 #[test]

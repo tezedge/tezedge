@@ -110,7 +110,7 @@ impl PrevalidatorService for PrevalidatorServiceDefault {
     fn begin_construction_for_prevalidation(&mut self, request: BeginConstructionRequest) {
         // Abort all prevalidation tasks as they are no longer relevant.
         self.tasks.drain().for_each(|(_, task)| task.abort());
-        while let Ok(_) = self.responses.try_recv() {}
+        while self.responses.try_recv().is_ok() {}
         self.connection = Arc::new(Mutex::new(None));
 
         self.spawn(|connection| async move {

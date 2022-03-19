@@ -127,7 +127,7 @@ fn get_remote_file(artifact_name: &str, artifacts: &[Artifact]) -> Option<Remote
         })
 }
 
-fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &PathBuf) {
+fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &Path) {
     // get file: $ curl <remote_url> --output <dest_path>
     Command::new("curl")
         .args(&[
@@ -177,10 +177,7 @@ fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &Pa
     }
 }
 
-fn download_remote_file_and_check_sha256_and_uncompress(
-    remote_file: RemoteFile,
-    dest_path: &PathBuf,
-) {
+fn download_remote_file_and_check_sha256_and_uncompress(remote_file: RemoteFile, dest_path: &Path) {
     let compressed_name = format!("{}.gz", dest_path.to_str().unwrap());
     download_remote_file_and_check_sha256(remote_file, &PathBuf::from(compressed_name.clone()));
     Command::new("gunzip")

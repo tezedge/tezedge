@@ -52,7 +52,7 @@ fn assert_bounded(encoding: &Encoding, unbounded: &mut HashSet<String>) -> bool 
             true
         }
         Encoding::Tup(encodings) => encodings
-            .into_iter()
+            .iter()
             .fold(true, |b, encoding| assert_bounded(encoding, unbounded) && b),
 
         Encoding::Obj(ty, fields) => fields.iter().fold(true, |b, field| {
@@ -67,7 +67,7 @@ fn assert_bounded(encoding: &Encoding, unbounded: &mut HashSet<String>) -> bool 
             if assert_bounded(tag.get_encoding(), unbounded) {
                 b
             } else {
-                unbounded.insert(format!("{}", tag.get_variant()));
+                unbounded.insert(tag.get_variant().to_string());
                 false
             }
         }),

@@ -27,7 +27,6 @@ unsafe fn enable_core_dumps(log: &Logger) {
                 Ok(()) => info!(log, "Core dumps enabled with maximum size."),
                 Err(e) => {
                     error!(log, "Enabling core dumps failed (setrlimit): {}", e);
-                    return;
                 }
             }
         }
@@ -65,9 +64,9 @@ pub fn init_limits(log: &Logger) {
     unsafe {
         // Enable core dumps for debug build
         if cfg!(debug_assertions) {
-            enable_core_dumps(&log);
+            enable_core_dumps(log);
         }
         // Increase open files rlimit to 64k
-        set_file_desc_limit(&log, OPEN_FILES_LIMIT);
+        set_file_desc_limit(log, OPEN_FILES_LIMIT);
     }
 }

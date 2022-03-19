@@ -49,10 +49,9 @@ where
                 Some(v) => v,
                 None => return,
             };
-            store
-                .service
-                .statistics()
-                .map(|s| s.block_load_data_start(&block_hash, action.time_as_nanos()));
+            if let Some(s) = store.service.statistics() {
+                s.block_load_data_start(block_hash, action.time_as_nanos())
+            }
         }
         Action::BlockApplierApplyPrepareDataSuccess(content) => {
             let start_time = match &store.state().block_applier.current {
@@ -63,7 +62,7 @@ where
                 } => time.saturating_sub(*prepare_data_duration),
                 _ => return,
             };
-            store.service().statistics().map(|s| {
+            if let Some(s) = store.service().statistics() {
                 if !s.block_stats_get_all().contains_key(&content.block.hash) {
                     s.block_new(
                         content.block.hash.clone(),
@@ -82,7 +81,7 @@ where
                     content.block.header.level(),
                     action.time_as_nanos(),
                 )
-            });
+            }
 
             store.dispatch(BlockApplierApplyProtocolRunnerApplyInitAction {});
         }
@@ -102,10 +101,9 @@ where
                 _ => return,
             };
 
-            store
-                .service
-                .statistics()
-                .map(|s| s.block_apply_start(&block_hash, action.time_as_nanos()));
+            if let Some(s) = store.service.statistics() {
+                s.block_apply_start(block_hash, action.time_as_nanos())
+            }
 
             store.service.protocol_runner().apply_block((*req).clone());
             store.dispatch(BlockApplierApplyProtocolRunnerApplyPendingAction {});
@@ -162,10 +160,9 @@ where
                     ),
                     _ => return,
                 };
-            store
-                .service
-                .statistics()
-                .map(|s| s.block_apply_end(&block_hash, action.time_as_nanos(), &block_result));
+            if let Some(s) = store.service.statistics() {
+                s.block_apply_end(&block_hash, action.time_as_nanos(), &block_result)
+            }
 
             let storage_req_id = store.state().storage.requests.next_req_id();
             store.dispatch(StorageRequestCreateAction {
@@ -185,20 +182,18 @@ where
                 Some(v) => v,
                 None => return,
             };
-            store
-                .service
-                .statistics()
-                .map(|s| s.block_store_result_start(block_hash, action.time_as_nanos()));
+            if let Some(s) = store.service.statistics() {
+                s.block_store_result_start(block_hash, action.time_as_nanos())
+            }
         }
         Action::BlockApplierApplyStoreApplyResultSuccess(_) => {
             let block_hash = match store.state.get().block_applier.current.block_hash() {
                 Some(v) => v,
                 None => return,
             };
-            store
-                .service
-                .statistics()
-                .map(|s| s.block_store_result_end(block_hash, action.time_as_nanos()));
+            if let Some(s) = store.service.statistics() {
+                s.block_store_result_end(block_hash, action.time_as_nanos())
+            }
             store.dispatch(BlockApplierApplySuccessAction {});
         }
         Action::BlockApplierApplyError(_) => {
@@ -208,7 +203,7 @@ where
                     error,
                     ..
                 } => {
-                    if let Some(rpc_id) = injector_rpc_id.clone() {
+                    if let Some(rpc_id) = *injector_rpc_id {
                         let err_str = format!("{:?}", error);
                         store
                             .service
@@ -233,7 +228,7 @@ where
                         &block.hash,
                         Ok((chain_id.into(), block.clone())),
                     );
-                    if let Some(rpc_id) = injector_rpc_id.clone() {
+                    if let Some(rpc_id) = *injector_rpc_id {
                         store.service.rpc().respond(rpc_id, serde_json::Value::Null);
                     }
                     let new_head = block.clone();
@@ -260,7 +255,7 @@ where
                 }
                 _ => return,
             };
-            if let Some(req_id) = content.response.req_id.clone() {
+            if let Some(req_id) = content.response.req_id {
                 if req_id != expected_req_id {
                     return;
                 }

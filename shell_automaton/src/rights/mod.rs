@@ -157,7 +157,7 @@ mod tests {
         let s: String = serde_json::to_string(&key).unwrap();
         assert_eq!(key, serde_json::from_str(&s).unwrap());
 
-        let key = RightsKey::baking(hash.clone(), None, None);
+        let key = RightsKey::baking(hash, None, None);
         let s: String = serde_json::to_string(&key).unwrap();
         assert_eq!(key, serde_json::from_str(&s).unwrap());
     }
@@ -169,7 +169,7 @@ mod tests {
                 .unwrap(),
             Some(10),
         );
-        let hash_map = HashMap::from([(key.clone(), true)]);
+        let hash_map = HashMap::from([(key, true)]);
         let json = serde_json::to_string(&hash_map).unwrap();
         let deserialized: HashMap<_, _> = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, hash_map);
@@ -179,7 +179,7 @@ mod tests {
                 .unwrap(),
             None,
         );
-        let hash_map = HashMap::from([(key.clone(), true)]);
+        let hash_map = HashMap::from([(key, true)]);
         let json = serde_json::to_string(&hash_map).unwrap();
         let deserialized: HashMap<_, _> = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized, hash_map);

@@ -267,7 +267,7 @@ impl MioService for MioServiceDefault {
         if let Some(server) = server.as_mut() {
             let (mut stream, address) = server
                 .accept()
-                .map_err(|err| PeerConnectionIncomingAcceptError::accept_error(err))?;
+                .map_err(PeerConnectionIncomingAcceptError::accept_error)?;
 
             let peer_entry = peers.vacant_entry();
             let token = mio::Token(peer_entry.key());
@@ -278,9 +278,9 @@ impl MioService for MioServiceDefault {
                     token,
                     mio::Interest::READABLE | mio::Interest::WRITABLE,
                 )
-                .map_err(|err| PeerConnectionIncomingAcceptError::poll_register_error(err))?;
+                .map_err(PeerConnectionIncomingAcceptError::poll_register_error)?;
 
-            let peer = peer_entry.insert(MioPeer::new(address.into(), stream));
+            let peer = peer_entry.insert(MioPeer::new(address, stream));
             let peer_ref_mut = MioPeerRefMut::new(buffer, peer.address, &mut peer.stream);
 
             Ok((PeerToken::new_unchecked(token.0), peer_ref_mut))
@@ -304,7 +304,7 @@ impl MioService for MioServiceDefault {
                     mio::Interest::READABLE | mio::Interest::WRITABLE,
                 )?;
 
-                let peer = MioPeer::new(address.clone(), stream);
+                let peer = MioPeer::new(address, stream);
 
                 peer_entry.insert(peer);
                 Ok(PeerToken::new_unchecked(token.0))

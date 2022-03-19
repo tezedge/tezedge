@@ -24,5 +24,6 @@ fn can_serialize_bootstrap() -> Result<(), Error> {
     let message = PeerMessageResponse::from(PeerMessage::Bootstrap);
     let serialized = hex::encode(message.as_bytes()?);
     let expected = "000000020002";
-    Ok(assert_eq!(expected, &serialized))
+    assert_eq!(expected, &serialized);
+    Ok(())
 }

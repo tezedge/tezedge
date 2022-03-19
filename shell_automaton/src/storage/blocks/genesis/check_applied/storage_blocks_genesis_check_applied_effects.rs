@@ -31,7 +31,7 @@ pub fn storage_blocks_genesis_check_applied_effects<S>(
                 .genesis_block_header_hash
                 .clone();
             store.dispatch(StorageRequestCreateAction {
-                payload: StorageRequestPayload::BlockMetaGet(genesis_hash.into()),
+                payload: StorageRequestPayload::BlockMetaGet(genesis_hash),
                 requestor: StorageRequestor::None,
             });
             store.dispatch(StorageBlocksGenesisCheckAppliedGetMetaPendingAction {});

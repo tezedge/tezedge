@@ -144,12 +144,12 @@ impl TezosEnvironment {
         alternate_networks: Vec<TezosEnvironment>,
     ) -> String {
         let mut selected = selected_network.supported_values();
-        selected.sort();
+        selected.sort_unstable();
         let mut alternate_networks = alternate_networks
             .iter()
             .flat_map(|rn| rn.supported_values())
             .collect::<Vec<_>>();
-        alternate_networks.sort();
+        alternate_networks.sort_unstable();
         format!(
             "\n\n\n\n////////////////////////////////////////// \
             \n//      !!! DEPRECATED TESTNET !!!      //\
@@ -170,9 +170,9 @@ impl TezosEnvironment {
         alternate: TezosEnvironment,
     ) -> String {
         let mut selected = selected.supported_values();
-        selected.sort();
+        selected.sort_unstable();
         let mut alternate_networks = alternate.supported_values();
-        alternate_networks.sort();
+        alternate_networks.sort_unstable();
         format!(
             "\n\n\n\n////////////////////////////////////////// \
             \n//      !!! DEPRECATED {} !!!      //\
@@ -782,7 +782,7 @@ pub fn parse_bootstrap_addr_port(
             }
         }
     } else {
-        if let Some(_) = addr.rfind(']') {
+        if addr.rfind(']').is_some() {
             return Err(AddrParseError(format!(
                 "Invalid value '{}' - missing starting '['",
                 addr
@@ -875,11 +875,10 @@ impl ZcashParams {
         candidates.push(home_dir.join(".zcash-params"));
 
         // data dirs
-        let mut data_dirs = Vec::new();
-        data_dirs.push(match env::var_os("XDG_DATA_HOME") {
+        let mut data_dirs = vec![match env::var_os("XDG_DATA_HOME") {
             Some(xdg_data_home) => PathBuf::from(xdg_data_home),
             None => home_dir.join(".local/share/"),
-        });
+        }];
         data_dirs.extend(
             env::var_os("XDG_DATA_DIRS")
                 .unwrap_or_else(|| OsString::from("/usr/local/share/:/usr/share/"))

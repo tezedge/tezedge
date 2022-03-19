@@ -149,7 +149,7 @@ fn block_on_actors(
         persistent_storage.clone(),
         network_channel.clone(),
         log.clone(),
-        identity.clone(),
+        identity,
         shell_compatibility_version.clone(),
         env.p2p.clone(),
         env.identity.expected_pow,
@@ -295,7 +295,7 @@ async fn handle_signals(log: &Logger) {
     loop {
         tokio::select! {
             sigterm = stream.recv() => {
-                if let Some(_) = sigterm {
+                if sigterm.is_some() {
                     info!(log, "SIGTERM received!");
                     return;
                 }

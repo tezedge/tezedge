@@ -64,17 +64,17 @@ fn test_get_operations() -> Result<(), Error> {
         4,
         operations.len()
     );
-    for i in 0..4 {
+    for (i, operation) in operations.iter().enumerate().take(4) {
         assert_eq!(
             i as i8,
-            operations[i].operations_for_block().validation_pass(),
+            operation.operations_for_block().validation_pass(),
             "Was expecting operation pass {} but found {}",
             i,
-            operations[i].operations_for_block().validation_pass()
+            operation.operations_for_block().validation_pass()
         );
         assert_eq!(
             &block_hash_1,
-            operations[i].operations_for_block().hash(),
+            operation.operations_for_block().hash(),
             "Block hash mismatch"
         );
     }

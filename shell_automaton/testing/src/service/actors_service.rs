@@ -22,6 +22,12 @@ impl ActorsServiceDummy {
     }
 }
 
+impl Default for ActorsServiceDummy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ActorsService for ActorsServiceDummy {
     fn send(&self, _: ActorsMessageTo) {}
 

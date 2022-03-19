@@ -44,7 +44,7 @@ impl EncryptedMessageWriter {
         self.bytes
             .chunks(MAX_ENCRYPTED_CHUNK_SIZE)
             .nth(self.chunk_index)
-            .filter(|x| x.len() > 0)
+            .filter(|x| !x.is_empty())
     }
 
     pub fn write_to<W>(

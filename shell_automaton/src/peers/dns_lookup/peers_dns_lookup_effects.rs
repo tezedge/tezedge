@@ -27,12 +27,9 @@ pub fn peers_dns_lookup_effects<S: Service>(store: &mut Store<S>, action: &Actio
                 Some(v) => v,
                 None => return,
             };
-            match &dns_lookup_state.status {
-                PeersDnsLookupStatus::Success { addresses } => {
-                    let addresses = addresses.clone();
-                    store.dispatch(PeersAddMultiAction { addresses });
-                }
-                _ => {}
+            if let PeersDnsLookupStatus::Success { addresses } = &dns_lookup_state.status {
+                let addresses = addresses.clone();
+                store.dispatch(PeersAddMultiAction { addresses });
             }
             store.dispatch(PeersDnsLookupCleanupAction {});
         }

@@ -600,6 +600,7 @@ impl ProtocolRunnerConnection {
 
     /// Command tezos ocaml code to initialize context and protocol.
     /// CommitGenesisResult is returned only if commit_genesis is set to true
+    #[allow(clippy::too_many_arguments)]
     async fn init_protocol_context(
         &mut self,
         storage: TezosContextStorageConfiguration,

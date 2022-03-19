@@ -9,12 +9,9 @@ pub fn peer_connection_closed_effects<S>(store: &mut Store<S>, action: &ActionWi
 where
     S: Service,
 {
-    match &action.action {
-        Action::PeerConnectionClosed(action) => {
-            store.dispatch(PeersGraylistAddressAction {
-                address: action.address,
-            });
-        }
-        _ => {}
+    if let Action::PeerConnectionClosed(action) = &action.action {
+        store.dispatch(PeersGraylistAddressAction {
+            address: action.address,
+        });
     }
 }

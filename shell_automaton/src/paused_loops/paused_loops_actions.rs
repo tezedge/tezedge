@@ -45,9 +45,6 @@ pub struct PausedLoopsResumeNextSuccessAction {}
 
 impl EnablingCondition<State> for PausedLoopsResumeNextSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.paused_loops.current {
-            PausedLoopCurrent::Init(_) => true,
-            _ => false,
-        }
+        matches!(&state.paused_loops.current, PausedLoopCurrent::Init(_))
     }
 }

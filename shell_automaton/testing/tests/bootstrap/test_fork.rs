@@ -133,7 +133,7 @@ fn test(chain_level: Level, fork_depth: usize, should_accept: bool) {
     assert_eq!(
         peer.read_peer_message(),
         Some(PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(
-            chain_id.clone()
+            chain_id
         )))
     );
 

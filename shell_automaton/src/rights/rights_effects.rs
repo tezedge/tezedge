@@ -115,10 +115,7 @@ where
                         baking_rights,
                     }),
 
-                    Err(err) => store.dispatch(RightsRpcErrorAction {
-                        rpc_id,
-                        error: err.into(),
-                    }),
+                    Err(err) => store.dispatch(RightsRpcErrorAction { rpc_id, error: err }),
                 };
             }
             store.dispatch(RightsRpcPruneAction { key: key.clone() });
@@ -152,10 +149,7 @@ where
                         endorsing_rights,
                     }),
 
-                    Err(err) => store.dispatch(RightsRpcErrorAction {
-                        rpc_id,
-                        error: err.into(),
-                    }),
+                    Err(err) => store.dispatch(RightsRpcErrorAction { rpc_id, error: err }),
                 };
             }
             store.dispatch(RightsRpcPruneAction { key: key.clone() });
@@ -655,7 +649,7 @@ pub enum RightsCalculationError {
     #[error("Signature conversion error: {0}")]
     Conversion(#[from] ConversionError),
     #[error("Error calculating pseudo-random number: `{0}`")]
-    PRNG(#[from] TezosPRNGError),
+    Prng(#[from] TezosPRNGError),
     #[error("Missing protocol constant: `{0}`")]
     MissingProtocolConstant(String),
 }
@@ -713,7 +707,7 @@ fn calculate_endorsing_rights(
     for (slot, delegate) in endorsers_slots.iter().enumerate() {
         endorser_to_slots
             .entry(delegate.clone())
-            .or_insert_with(|| Vec::new())
+            .or_insert_with(Vec::new)
             .push(slot.try_into()?);
     }
     Ok((endorser_to_slots, endorsers_slots))

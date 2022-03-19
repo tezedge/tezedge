@@ -172,8 +172,10 @@ fn make_context_stats_impl(
                 let entry = match map.get_mut(root) {
                     Some(entry) => entry,
                     None => {
-                        let mut stats = QueryStatsWithRange::default();
-                        stats.root = root.to_string();
+                        let stats = QueryStatsWithRange {
+                            root: root.to_string(),
+                            ..Default::default()
+                        };
                         map.insert(root.to_string(), stats);
                         map.get_mut(root).unwrap()
                     }

@@ -155,7 +155,7 @@ impl PeerRemoteRequestsCurrentBranchGetState {
                 next_block,
                 ..
             } => {
-                let next_level = next_block.level().unwrap_or(current_head.level());
+                let next_level = next_block.level().unwrap_or_else(|| current_head.level());
                 history.len() >= MAX_CURRENT_BRANCH_HISTORY_LEN
                     || next_block.is_empty_success()
                     || next_block.is_error()
@@ -203,7 +203,7 @@ impl PeerRemoteRequestsCurrentBranchGetState {
                 next_block,
                 ..
             } => {
-                let level = next_block.level().unwrap_or(current_head.level());
+                let level = next_block.level().unwrap_or_else(|| current_head.level());
                 let step = step.next_step();
                 if level < step {
                     None

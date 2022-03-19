@@ -48,20 +48,17 @@ where
             store.dispatch(ProtocolRunnerReadyAction {});
         }
         Action::ProtocolRunnerReady(_) => {
-            match &store.state.get().protocol_runner {
-                ProtocolRunnerState::Ready(state) => {
-                    if let Some(hash) = state.genesis_commit_hash.as_ref() {
-                        // Init storing of genesis block data, if genesis
-                        // block wasn't committed before.
-                        let genesis_commit_hash = hash.clone();
-                        store.dispatch(StorageBlocksGenesisInitAction {
-                            genesis_commit_hash,
-                        });
-                    }
-                    store.dispatch(CurrentHeadRehydrateInitAction {});
-                    store.dispatch(ProtocolRunnerNotifyStatusAction {});
+            if let ProtocolRunnerState::Ready(state) = &store.state.get().protocol_runner {
+                if let Some(hash) = state.genesis_commit_hash.as_ref() {
+                    // Init storing of genesis block data, if genesis
+                    // block wasn't committed before.
+                    let genesis_commit_hash = hash.clone();
+                    store.dispatch(StorageBlocksGenesisInitAction {
+                        genesis_commit_hash,
+                    });
                 }
-                _ => {}
+                store.dispatch(CurrentHeadRehydrateInitAction {});
+                store.dispatch(ProtocolRunnerNotifyStatusAction {});
             }
         }
         Action::ProtocolRunnerNotifyStatus(_) => {

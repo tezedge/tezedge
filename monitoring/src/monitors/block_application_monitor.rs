@@ -42,14 +42,10 @@ impl ApplicationMonitor {
     }
 
     pub fn snapshot(&mut self) -> BlockApplicationMessage {
-        let last_block = if let Some(block) = &self.last_applied_block {
-            Some(BlockInfo {
-                hash: block.block_hash().to_base58_check(),
-                level: *block.level(),
-            })
-        } else {
-            None
-        };
+        let last_block = self.last_applied_block.as_ref().map(|block| BlockInfo {
+            hash: block.block_hash().to_base58_check(),
+            level: *block.level(),
+        });
 
         let ret = BlockApplicationMessage {
             current_application_speed: self.current_speed(),

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use bytes::Buf;
-use csv;
+
 use hex::FromHex;
 use serde::{Deserialize, Deserializer};
 
@@ -40,13 +40,13 @@ impl BinaryStream {
             self.0.drain(0..chunk_length + CONTENT_LENGTH_FIELD_BYTES);
             return chunk;
         }
-        return Err(BinaryChunkError::IncorrectSizeInformation {
+        Err(BinaryChunkError::IncorrectSizeInformation {
             expected: chunk_length,
             actual: self.0.len() - CONTENT_LENGTH_FIELD_BYTES,
-        });
+        })
     }
 
-    fn add_payload(&mut self, payload: &Vec<u8>) {
+    fn add_payload(&mut self, payload: &[u8]) {
         self.0.extend_from_slice(payload);
     }
 }
@@ -119,12 +119,12 @@ pub fn decode_stream() {
     let mut outgoing = BinaryStream::new();
     let mut incoming = BinaryStream::new();
     let mut decrypted_messages: Vec<Vec<u8>> = vec![];
-    for i in 4..messages.len() {
-        let decrypted_message = match messages[i].direction {
+    for message in messages.iter().skip(4) {
+        let decrypted_message = match message.direction {
             TxRx::Sent => {
-                outgoing.add_payload(&messages[i].message);
+                outgoing.add_payload(&message.message);
                 match outgoing.drain_chunk() {
-                    Ok(chunk) => match precomputed_key.decrypt(&chunk.content(), &local) {
+                    Ok(chunk) => match precomputed_key.decrypt(chunk.content(), &local) {
                         Ok(dm) => {
                             local = local.increment();
                             Ok(dm)
@@ -135,9 +135,9 @@ pub fn decode_stream() {
                 }
             }
             TxRx::Received => {
-                incoming.add_payload(&messages[i].message);
+                incoming.add_payload(&message.message);
                 match incoming.drain_chunk() {
-                    Ok(chunk) => match precomputed_key.decrypt(&chunk.content(), &remote) {
+                    Ok(chunk) => match precomputed_key.decrypt(chunk.content(), &remote) {
                         Ok(dm) => {
                             remote = remote.increment();
                             Ok(dm)
@@ -149,19 +149,16 @@ pub fn decode_stream() {
             }
         };
 
-        match decrypted_message {
-            Ok(dm) => match PeerMessageResponse::from_bytes(dm.to_owned()) {
-                Ok(decoded) => match decoded.as_bytes() {
-                    Ok(_) => decrypted_messages.push(dm),
-                    _ => (),
-                },
-                _ => (),
-            },
-            _ => (),
+        if let Ok(dm) = decrypted_message {
+            if let Ok(decoded) = PeerMessageResponse::from_bytes(dm.to_owned()) {
+                if decoded.as_bytes().is_ok() {
+                    decrypted_messages.push(dm)
+                }
+            }
         }
     }
     assert!(
-        decrypted_messages.len() > 0,
+        !decrypted_messages.is_empty(),
         "could not decrypt any message"
     );
     assert_eq!(

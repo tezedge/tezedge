@@ -27,8 +27,10 @@ fn block_prechecking_possible(state: &State, prev_block: &BlockHash) -> bool {
         .protocol_version_cache
         .next_protocol_versions
         .get(prev_block)
-        .map_or(false, |(_, supported_protocol)| match supported_protocol {
-            SupportedProtocol::Proto010 | SupportedProtocol::Proto011 => true,
-            _ => false,
+        .map_or(false, |(_, supported_protocol)| {
+            matches!(
+                supported_protocol,
+                SupportedProtocol::Proto010 | SupportedProtocol::Proto011
+            )
         })
 }

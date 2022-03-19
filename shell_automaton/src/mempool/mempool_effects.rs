@@ -242,7 +242,7 @@ where
             if let Some(local_head_state) = store.state().mempool.local_head_state.as_ref() {
                 if local_head_state.hash != block.hash {
                     let req = BeginConstructionRequest {
-                        chain_id: chain_id.clone(),
+                        chain_id,
                         predecessor: local_head_state.header.clone(),
                         protocol_data: None,
                         predecessor_block_metadata_hash: local_head_state.metadata_hash.clone(),
@@ -441,10 +441,14 @@ where
         Action::MempoolOperationInject(MempoolOperationInjectAction {
             operation, rpc_id, ..
         }) if store.state().mempool.is_old_endorsement(operation) => {
-            let current_head = match &store.state.get().mempool.local_head_state.as_ref() {
-                Some(v) => Some(&v.hash),
-                _ => None,
-            };
+            let current_head = store
+                .state
+                .get()
+                .mempool
+                .local_head_state
+                .as_ref()
+                .as_ref()
+                .map(|v| &v.hash);
             store.service.rpc().respond(
                 *rpc_id,
                 serde_json::json!({
@@ -587,7 +591,7 @@ where
                 .state()
                 .peers
                 .iter_handshaked()
-                .map(|(a, _)| a.clone())
+                .map(|(a, _)| *a)
                 .collect::<Vec<_>>();
             for address in addresses {
                 store.dispatch(MempoolSendAction {
@@ -604,7 +608,7 @@ where
             let message = Arc::new(PeerMessageResponse::from(message));
             for address in addresses {
                 store.dispatch(PeerMessageWriteInitAction {
-                    address: address.clone(),
+                    address,
                     message: message.clone(),
                 });
             }
@@ -618,7 +622,7 @@ where
                     return;
                 }
             };
-            let peer = match store.state().mempool.peer_state.get(&address) {
+            let peer = match store.state().mempool.peer_state.get(address) {
                 Some(v) => v,
                 None => return,
             };
@@ -630,17 +634,17 @@ where
             }
             let message = CurrentHeadMessage::new(
                 store.state().config.chain_id.clone(),
-                head_state.header.clone(),
+                head_state.header,
                 current_mempool,
             );
             let message = Arc::new(PeerMessageResponse::from(message));
 
             store.dispatch(PeerMessageWriteInitAction {
-                address: address.clone(),
+                address: *address,
                 message,
             });
             store.dispatch(MempoolBroadcastDoneAction {
-                address: address.clone(),
+                address: *address,
                 pending: vec![],
                 known_valid,
                 cleanup_known_valid: true,
@@ -700,7 +704,7 @@ where
                 }
             } else {
                 let seen_operations_default = Default::default();
-                let seen_operations = match store.state().mempool.peer_state.get(&address) {
+                let seen_operations = match store.state().mempool.peer_state.get(address) {
                     Some(v) => &v.seen_operations,
                     None => &seen_operations_default,
                 };
@@ -757,11 +761,11 @@ where
             );
             let message = Arc::new(PeerMessageResponse::from(message));
             store.dispatch(PeerMessageWriteInitAction {
-                address: address.clone(),
+                address: *address,
                 message,
             });
             store.dispatch(MempoolBroadcastDoneAction {
-                address: address.clone(),
+                address: *address,
                 pending,
                 known_valid,
                 cleanup_known_valid: false,

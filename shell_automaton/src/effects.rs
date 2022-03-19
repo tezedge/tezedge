@@ -73,10 +73,9 @@ use crate::storage::{
 use crate::rpc::rpc_effects;
 
 fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
-    store
-        .service
-        .statistics()
-        .map(|stats| stats.action_new(action));
+    if let Some(stats) = store.service.statistics() {
+        stats.action_new(action)
+    }
 
     if !store.state.get().config.record_actions {
         return;

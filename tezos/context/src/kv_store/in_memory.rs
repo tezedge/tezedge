@@ -758,6 +758,7 @@ mod tests {
 
     use super::*;
 
+    #[allow(clippy::same_item_push)]
     #[test]
     fn boxed_or_inlined() {
         let mut vec = Vec::with_capacity(100);

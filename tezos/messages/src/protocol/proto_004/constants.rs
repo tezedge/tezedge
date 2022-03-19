@@ -133,12 +133,12 @@ impl Default for ParametricConstants {
             blocks_per_commitment: Some(32),
             blocks_per_roll_snapshot: Some(256),
             blocks_per_voting_period: Some(32768),
-            time_between_blocks: Some(vec![60 as i64, 75 as i64]),
+            time_between_blocks: Some(vec![60_i64, 75_i64]),
             endorsers_per_block: Some(32),
             hard_gas_limit_per_operation: Some(num_bigint::BigInt::from(800_000).into()),
             hard_gas_limit_per_block: Some(num_bigint::BigInt::from(8_000_000).into()),
             proof_of_work_threshold: Some(70_368_744_177_663),
-            tokens_per_roll: Some(num_bigint::BigInt::from(8_000_000_000 as i64).into()),
+            tokens_per_roll: Some(num_bigint::BigInt::from(8_000_000_000_i64).into()),
             michelson_maximum_type_size: Some(1000),
             seed_nonce_revelation_tip: Some(num_bigint::BigInt::from(125000).into()),
             origination_size: Some(257),
@@ -157,7 +157,7 @@ impl Default for ParametricConstants {
 
             cost_per_byte: Some(num_bigint::BigInt::from(1000).into()),
             hard_storage_limit_per_operation: Some(num_bigint::BigInt::from(60000).into()),
-            test_chain_duration: Some(32768 as i64 * 60 as i64),
+            test_chain_duration: Some(32768_i64 * 60_i64),
         }
     }
 }

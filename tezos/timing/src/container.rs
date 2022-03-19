@@ -33,7 +33,7 @@ impl Deref for InlinedHash {
     fn deref(&self) -> &Self::Target {
         match self {
             InlinedHash::Inlined { array } => &array[..],
-            InlinedHash::Heap(heap) => &heap,
+            InlinedHash::Heap(heap) => heap,
         }
     }
 }
@@ -141,7 +141,7 @@ impl Deref for InlinedString {
     fn deref(&self) -> &Self::Target {
         match self {
             InlinedString::Inlined { length, array } => &array[..*length],
-            InlinedString::Heap(heap) => &heap,
+            InlinedString::Heap(heap) => heap,
         }
     }
 }

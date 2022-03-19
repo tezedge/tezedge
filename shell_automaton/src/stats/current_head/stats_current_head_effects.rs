@@ -33,7 +33,7 @@ where
             injected_timestamp,
         }) => {
             let node_id = store.state.get().config.identity.peer_id.clone();
-            store.service.statistics().map(|s| {
+            if let Some(s) = store.service.statistics() {
                 s.block_new(
                     block_hash.clone(),
                     block_header.level(),
@@ -44,12 +44,12 @@ where
                     Some(node_id),
                     Some(*injected_timestamp),
                 );
-            });
+            }
         }
         Action::StatsCurrentHeadPrecheckInit(StatsCurrentHeadPrecheckInitAction { hash }) => {
-            store.service.statistics().map(|s| {
+            if let Some(s) = store.service.statistics() {
                 s.block_precheck_start(hash, action.time_as_nanos());
-            });
+            }
         }
         Action::CurrentHeadPrecheckSuccess(CurrentHeadPrecheckSuccessAction {
             block_hash,
@@ -57,9 +57,9 @@ where
             priority,
             ..
         }) => {
-            store.service.statistics().map(|s| {
+            if let Some(s) = store.service.statistics() {
                 s.block_precheck_end(block_hash, baker.clone(), *priority, action.time_as_nanos());
-            });
+            }
         }
         Action::PeerMessageWriteInit(PeerMessageWriteInitAction { message, address }) => {
             match message.message() {
@@ -76,11 +76,11 @@ where
                         .state
                         .get()
                         .peers
-                        .get(&address)
+                        .get(address)
                         .and_then(Peer::public_key_hash);
-                    store.service.statistics().map(|s| {
+                    if let Some(s) = store.service.statistics() {
                         s.block_send_start(&block_hash, *address, node_id, action.time_as_nanos());
-                    });
+                    }
 
                     store.dispatch(StatsCurrentHeadPrepareSendAction {
                         address: *address,
@@ -92,9 +92,9 @@ where
                         .state
                         .get()
                         .peers
-                        .get(&address)
+                        .get(address)
                         .and_then(Peer::public_key_hash);
-                    store.service.statistics().map(|s| {
+                    if let Some(s) = store.service.statistics() {
                         s.block_operations_send_start(
                             ops_for_blocks.operations_for_block().block_hash(),
                             action.time_as_nanos(),
@@ -102,7 +102,7 @@ where
                             node_id,
                             ops_for_blocks.operations_for_block().validation_pass(),
                         );
-                    });
+                    }
                     store.dispatch(StatsCurrentHeadPrepareSendAction {
                         address: *address,
                         message: PendingMessage::OperationsForBlocks {
@@ -130,11 +130,11 @@ where
                         .state
                         .get()
                         .peers
-                        .get(&address)
+                        .get(address)
                         .and_then(Peer::public_key_hash);
-                    store.service.statistics().map(|s| {
+                    if let Some(s) = store.service.statistics() {
                         s.block_send_end(block_hash, *address, node_id, action.time_as_nanos());
-                    });
+                    }
                 }
                 Some(PendingMessage::OperationsForBlocks {
                     block_hash,
@@ -144,9 +144,9 @@ where
                         .state
                         .get()
                         .peers
-                        .get(&address)
+                        .get(address)
                         .and_then(Peer::public_key_hash);
-                    store.service.statistics().map(|s| {
+                    if let Some(s) = store.service.statistics() {
                         s.block_operations_send_end(
                             block_hash,
                             action.time_as_nanos(),
@@ -154,7 +154,7 @@ where
                             node_id,
                             *validation_pass,
                         );
-                    });
+                    }
                 }
                 _ => (),
             }

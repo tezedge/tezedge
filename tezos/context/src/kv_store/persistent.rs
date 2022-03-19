@@ -1176,18 +1176,15 @@ mod tests {
             serialize_context_hash(HashId::new(101).unwrap(), 102.into(), &[3; 32]).unwrap();
         commit_index_file.append(bytes).unwrap();
 
-        let bytes = serialize_context_hash(
-            HashId::new(u32::MAX as u64).unwrap(),
-            103.into(),
-            &vec![4; 32],
-        )
-        .unwrap();
+        let bytes =
+            serialize_context_hash(HashId::new(u32::MAX as u64).unwrap(), 103.into(), &[4; 32])
+                .unwrap();
         commit_index_file.append(bytes).unwrap();
 
         let bytes = serialize_context_hash(
             HashId::new(u32::MAX as u64 + 10).unwrap(),
             104.into(),
-            &vec![5; 32],
+            &[5; 32],
         )
         .unwrap();
         commit_index_file.append(bytes).unwrap();

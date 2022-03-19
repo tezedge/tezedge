@@ -48,10 +48,10 @@ fn check_timeout(
                 {
                     return None;
                 }
-            } else {
-                if current_time - peer.handshaked_since < Duration::from_secs(8).as_nanos() as u64 {
-                    return None;
-                }
+            } else if current_time - peer.handshaked_since
+                < Duration::from_secs(8).as_nanos() as u64
+            {
+                return None;
             }
             PeerTimeout::CurrentHeadUpdate
         }
@@ -153,7 +153,7 @@ where
                     }
 
                     for ip in graylist_timeouts {
-                        store.dispatch(PeersGraylistIpRemoveAction { ip: ip.clone() });
+                        store.dispatch(PeersGraylistIpRemoveAction { ip });
                     }
                 }
                 _ => return,

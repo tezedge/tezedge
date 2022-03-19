@@ -26,7 +26,7 @@ impl<'a> std::fmt::Display for FitnessRef<'a> {
         let mut i = self.0.iter();
         if let Some(first) = i.next() {
             write!(f, "{first}", first = hex::encode(first))?;
-            while let Some(next) = i.next() {
+            for next in i {
                 write!(f, "::{next}", next = hex::encode(next))?;
             }
         }
@@ -51,6 +51,7 @@ impl Fitness {
         self.0
     }
 
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.0.len()
     }

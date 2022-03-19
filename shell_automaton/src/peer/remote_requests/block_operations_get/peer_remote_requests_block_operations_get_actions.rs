@@ -77,7 +77,7 @@ impl EnablingCondition<State> for PeerRemoteRequestsBlockOperationsGetPendingAct
             .peers
             .get_handshaked(&self.address)
             .map(|p| &p.remote_requests.block_operations_get)
-            .and_then(|v| v.queue.iter().nth(0).filter(|b| *b == &self.key))
+            .and_then(|v| v.queue.iter().next().filter(|b| *b == &self.key))
             .is_some()
     }
 }
