@@ -66,14 +66,14 @@ where
                         } => binary_message_state,
                         _ => return,
                     },
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
+                    PeerStatus::Handshaked(PeerHandshaked {
+                        message_read:
                             PeerMessageReadState::Pending {
                                 binary_message_read,
-                            } => binary_message_read,
-                            _ => return,
-                        }
-                    }
+                            },
+                        ..
+                    }) => binary_message_read,
+
                     _ => return,
                 };
 
@@ -124,14 +124,13 @@ where
                         } => binary_message_state,
                         _ => return,
                     },
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
+                    PeerStatus::Handshaked(PeerHandshaked {
+                        message_read:
                             PeerMessageReadState::Pending {
                                 binary_message_read,
-                            } => binary_message_read,
-                            _ => return,
-                        }
-                    }
+                            },
+                        ..
+                    }) => binary_message_read,
                     _ => return,
                 };
                 match binary_message_state {

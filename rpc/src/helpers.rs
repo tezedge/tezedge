@@ -519,11 +519,13 @@ fn split_block_id_param(
 /// - `<block>~<level>` - block can be: genesis/head/level/block_hash, e.g.: head~10 returns: the block which is 10 levels in the past from head)
 /// - `<block>-<level>` - block can be: genesis/head/level/block_hash, e.g.: head-10 returns: the block which is 10 levels in the past from head)
 /// - `<block>+<level>` - block can be: genesis/head/level/block_hash, e.g.: block_hash-10 returns: the block which is 10 levels after block_hash)
+#[allow(clippy::comparison_chain)]
 pub(crate) fn parse_block_hash(
     chain_id: &ChainId,
     block_id_param: &str,
     env: &RpcServiceEnvironment,
 ) -> Result<BlockHash, RpcServiceError> {
+    // TODO: this function is huge, would be good to refactor it
     // split header and optional offset (+, -, ~)
     let (block_param, offset_param) = {
         match block_id_param {

@@ -372,17 +372,18 @@ where
             });
         }
         Action::BootstrapFromPeerCurrentHead(content) => {
+            let is_same_address = |p: &&super::PeerIntervalState| {
+                p.current
+                    .peer()
+                    .filter(|addr| *addr == content.peer)
+                    .is_some()
+            };
             if store
                 .state()
                 .bootstrap
                 .peer_intervals()
                 .and_then(|intervals| intervals.last())
-                .filter(|p| {
-                    p.current
-                        .peer()
-                        .filter(|addr| *addr == content.peer)
-                        .is_some()
-                })
+                .filter(is_same_address)
                 .and_then(|p| p.current.block_hash())
                 .filter(|hash| *hash == &content.current_head.hash)
                 .is_some()

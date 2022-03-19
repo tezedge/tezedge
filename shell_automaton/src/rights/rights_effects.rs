@@ -649,7 +649,7 @@ pub enum RightsCalculationError {
     #[error("Signature conversion error: {0}")]
     Conversion(#[from] ConversionError),
     #[error("Error calculating pseudo-random number: `{0}`")]
-    PRNG(#[from] TezosPRNGError),
+    Prng(#[from] TezosPRNGError),
     #[error("Missing protocol constant: `{0}`")]
     MissingProtocolConstant(String),
 }

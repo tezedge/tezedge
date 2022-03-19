@@ -7,6 +7,7 @@
 // to reproduce the same functionality.
 
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::vec;
@@ -541,13 +542,17 @@ pub(crate) async fn get_shell_automaton_actions(
         for result in actions_iter {
             let action = result?;
 
-            if action.id > state.last_action.id() {
-                actions_to_apply.push(action);
-            } else if action.id == state.last_action.id() {
-                actions_to_apply.push(action);
-                break;
-            } else {
-                break;
+            match action.id.cmp(&state.last_action.id()) {
+                Ordering::Greater => {
+                    actions_to_apply.push(action);
+                }
+                Ordering::Equal => {
+                    actions_to_apply.push(action);
+                    break;
+                }
+                Ordering::Less => {
+                    break;
+                }
             }
         }
 
