@@ -77,12 +77,24 @@ impl OperationSimple {
         let c = self.contents.first()?.clone();
 
         match op_kind(&c)? {
-            "preendorsement" => serde_json::from_value(c)
-                .ok()
-                .map(OperationKind::Preendorsement),
-            "endorsement" => serde_json::from_value(c)
-                .ok()
-                .map(OperationKind::Endorsement),
+            "preendorsement" => {
+                let mut c = c;
+                let c_obj = c.as_object_mut()?;
+                c_obj.remove("kind");
+                c_obj.remove("metadata");
+                serde_json::from_value(c)
+                    .ok()
+                    .map(OperationKind::Preendorsement)
+            },
+            "endorsement" => {
+                let mut c = c;
+                let c_obj = c.as_object_mut()?;
+                c_obj.remove("kind");
+                c_obj.remove("metadata");
+                serde_json::from_value(c)
+                    .ok()
+                    .map(OperationKind::Endorsement)
+            },
             "failing_noop" => None,
             "proposals" | "ballot" => Some(OperationKind::Votes),
             "seed_nonce_revelation"
