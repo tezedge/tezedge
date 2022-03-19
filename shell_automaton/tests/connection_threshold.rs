@@ -257,7 +257,7 @@ fn dump_graph(name: &str, graph: state_explorer::Graph<ActionWithMeta, Connected
                         r#"State_{} -> State_{}[label="{}"]"#,
                         i,
                         state,
-                        graph.actions[action].action.as_ref()
+                        graph.actions[action].action.kind()
                     )?;
                 }
             }
