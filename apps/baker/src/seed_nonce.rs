@@ -77,11 +77,13 @@ impl SeedNonceService {
     ) -> Option<impl Iterator<Item=SeedNonceRevelationOperation> + '_> {
         let level = level as u32;
 
-        let range = if level % self.blocks_per_cycle == 2 {
-            let high = (level - 2).max(self.blocks_per_cycle);
-            (high - self.blocks_per_cycle)..high
+        let range = if level % self.blocks_per_cycle == 0 {
+            if level < self.blocks_per_cycle {
+                return None;
+            }
+            (level - self.blocks_per_cycle)..level
         } else {
-            0..0
+            return None;
         };
         if range.is_empty() {
             None

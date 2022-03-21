@@ -300,7 +300,7 @@ fn perform(
                     Err(err) => slog::error!(log, "{err}"),
                 }
             }
-            tb::Action::Propose(block, proposer) => {
+            tb::Action::Propose(block, proposer, repropose) => {
                 // TODO: multiple bakers
                 let _ = proposer;
                 let predecessor_hash = BlockHash(block.pred_hash.to_vec());
@@ -363,7 +363,9 @@ fn perform(
                         op.signature = Some(Signature(vec![0; 64]));
                     }
                 }
-                anon.extend(reveal_ops);
+                if !repropose {
+                    anon.extend(reveal_ops);
+                }
                 let operations = [
                     endorsements.chain(preendorsements).collect::<Vec<_>>(),
                     block.payload.votes_payload,

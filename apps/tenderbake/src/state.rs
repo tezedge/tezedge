@@ -214,7 +214,7 @@ where
                     payload: mem::replace(&mut self.payload, P::EMPTY),
                 };
                 self.closest_timestamp_next_level = None;
-                Some((Box::new(new_block), proposer))
+                Some((Box::new(new_block), proposer, false))
             }
             ClosestRound::ThisLevel {
                 proposer,
@@ -236,11 +236,11 @@ where
                     head.prequorum = None;
                 }
                 self.closest_timestamp_this_level = None;
-                Some((Box::new(head), proposer))
+                Some((Box::new(head), proposer, true))
             }
         };
         block
-            .map(|(head, proposer)| Action::Propose(head, proposer))
+            .map(|(head, proposer, repropose)| Action::Propose(head, proposer, repropose))
             .into_iter()
             .collect()
     }

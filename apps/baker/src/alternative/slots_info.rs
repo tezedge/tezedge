@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, convert::TryInto, mem};
+use std::{collections::BTreeMap, convert::TryInto};
 
 use crypto::hash::ContractTz1Hash;
 use tenderbake as tb;
@@ -11,8 +11,7 @@ pub struct SlotsInfo {
     committee_size: u32,
     ours: Vec<ContractTz1Hash>,
     level: i32,
-    this_level: BTreeMap<ContractTz1Hash, Vec<u16>>,
-    next_level: BTreeMap<ContractTz1Hash, Vec<u16>>,
+    delegates: BTreeMap<i32, BTreeMap<ContractTz1Hash, Vec<u16>>>,
 }
 
 impl SlotsInfo {
@@ -21,8 +20,7 @@ impl SlotsInfo {
             committee_size,
             ours,
             level: 0,
-            this_level: BTreeMap::new(),
-            next_level: BTreeMap::new(),
+            delegates: BTreeMap::new(),
         }
     }
 
@@ -32,28 +30,15 @@ impl SlotsInfo {
 
     pub fn insert(&mut self, level: i32, delegates: BTreeMap<ContractTz1Hash, Vec<u16>>) {
         self.level = level - 1;
-        mem::swap(&mut self.this_level, &mut self.next_level);
-        self.next_level = delegates;
+        self.delegates.insert(level, delegates);
     }
 
     pub fn slots(&self, id: &ContractTz1Hash, level: i32) -> Option<&Vec<u16>> {
-        if level == self.level {
-            self.this_level.get(id)
-        } else if level == self.level + 1 {
-            self.next_level.get(id)
-        } else {
-            None
-        }
+        self.delegates.get(&level)?.get(id)
     }
 
     pub fn validator(&self, level: i32, slot: u16) -> Option<tb::Validator<ContractTz1Hash>> {
-        let i = if level == self.level {
-            &self.this_level
-        } else if level == self.level + 1 {
-            &self.next_level
-        } else {
-            return None;
-        };
+        let i = self.delegates.get(&level)?;
         let (id, s) = i.iter().find(|&(_, v)| v.first() == Some(&slot))?;
         Some(tb::Validator {
             id: id.clone(),

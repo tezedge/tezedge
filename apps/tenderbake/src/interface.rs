@@ -133,7 +133,7 @@ where
         pred_hash: [u8; 32],
         block_id: BlockId,
     },
-    Propose(Box<BlockInfo<Id, P>>, Id),
+    Propose(Box<BlockInfo<Id, P>>, Id, bool),
 }
 
 #[cfg(test)]
