@@ -16,7 +16,7 @@ strum = "0.20"
 strum_macros = "0.20"
 nom = "6.1"
 url = "2.2"
-clap = "3.1"
+clap = { version = "3.1", features = ["derive"] }
 # local dependencies
 crypto = { path = "../../crypto" }
 tezos_encoding = { path = "../encoding" }
