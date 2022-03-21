@@ -8,7 +8,7 @@ use core::{
 };
 
 /// Timestamp as a unix time
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp {
     pub unix_epoch: Duration,
 }
@@ -48,5 +48,76 @@ impl Sub<Duration> for Timestamp {
         Timestamp {
             unix_epoch: self.unix_epoch - rhs,
         }
+    }
+}
+
+pub trait Timing {
+    // what is the duration of the round
+    fn round_duration(&self, round: i32) -> Duration;
+
+    // what is the round at time `now`
+    fn round(&self, now: Timestamp, start_level: Timestamp) -> i32 {
+        let mut round = 0;
+        let mut t = start_level;
+        loop {
+            t = t + self.round_duration(round);
+            if t > now {
+                break round;
+            }
+            round += 1;
+        }
+    }
+
+    // time offset of the round
+    fn offset(&self, round: i32) -> Duration {
+        (0..round).fold(Duration::ZERO, |t, round| t + self.round_duration(round))
+    }
+}
+
+pub struct TimingLinearGrow {
+    pub minimal_block_delay: Duration,
+    pub delay_increment_per_round: Duration,
+}
+
+impl Timing for TimingLinearGrow {
+    /// duration of the given round
+    fn round_duration(&self, round: i32) -> Duration {
+        self.minimal_block_delay + self.delay_increment_per_round * (round as u32)
+    }
+
+    fn round(&self, now: Timestamp, start_this_level: Timestamp) -> i32 {
+        let elapsed = if now < start_this_level {
+            Duration::ZERO
+        } else {
+            now - start_this_level
+        };
+
+        // m := minimal_block_delay
+        // d := delay_increment_per_round
+        // r := round
+        // e := elapsed
+        // duration(r) = m + d * r
+        // e = duration(0) + duration(1) + ... + duration(r - 1)
+        // e = m + (m + d) + (m + d * 2) + ... + (m + d * (r - 1))
+        // e = m * r + d * r * (r - 1) / 2
+        // d * r^2 + (2 * m - d) * r - 2 * e = 0
+
+        let e = elapsed.as_secs_f64();
+        let m = self.minimal_block_delay.as_secs_f64();
+        let r = if self.delay_increment_per_round.is_zero() {
+            e / m
+        } else {
+            let d = self.delay_increment_per_round.as_secs_f64();
+            let p = d - 2.0 * m;
+            (p + libm::sqrt(p * p + 8.0 * d * e)) / (2.0 * d)
+        };
+
+        libm::floor(r) as i32
+    }
+
+    // in linear case we can optimize
+    fn offset(&self, round: i32) -> Duration {
+        self.minimal_block_delay * (round as u32)
+            + self.delay_increment_per_round * (round * (round - 1) / 2) as u32
     }
 }

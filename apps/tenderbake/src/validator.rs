@@ -1,16 +1,18 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use core::fmt;
+use core::{fmt, ops::AddAssign};
+use alloc::collections::BTreeMap;
 
 /// Validator of the proposal, its id and voting power
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Validator<Id> {
+#[derive(Clone)]
+pub struct Validator<Id, Op> {
     pub id: Id,
     pub power: u32,
+    pub operation: Op,
 }
 
-impl<Id> fmt::Display for Validator<Id>
+impl<Id, Op> fmt::Display for Validator<Id, Op>
 where
     Id: fmt::Display,
 {
@@ -19,8 +21,56 @@ where
     }
 }
 
+#[derive(Clone)]
+pub struct Votes<Id, Op> {
+    pub ids: BTreeMap<Id, Op>,
+    pub power: u32,
+}
+
+impl<Id, Op> Default for Votes<Id, Op> {
+    fn default() -> Self {
+        Votes {
+            ids: BTreeMap::default(),
+            power: 0,
+        }
+    }
+}
+
+impl<Id, Op> AddAssign<Validator<Id, Op>> for Votes<Id, Op>
+where
+    Id: Ord,
+{
+    fn add_assign(&mut self, v: Validator<Id, Op>) {
+        if self.ids.insert(v.id, v.operation).is_none() {
+            self.power += v.power;
+        }
+    }
+}
+
+impl<Id, Op> Extend<Validator<Id, Op>> for Votes<Id, Op>
+where
+    Id: Ord,
+{
+    fn extend<T: IntoIterator<Item = Validator<Id, Op>>>(&mut self, iter: T) {
+        for v in iter {
+            *self += v;
+        }
+    }
+}
+
+impl<Id, Op> FromIterator<Validator<Id, Op>> for Votes<Id, Op>
+where
+    Id: Ord,
+{
+    fn from_iter<T: IntoIterator<Item = Validator<Id, Op>>>(iter: T) -> Self {
+        let mut s = Votes::default();
+        s.extend(iter);
+        s
+    }
+}
+
 /// Map that provides a validator for given level and round
-pub trait ValidatorMap {
+pub trait ProposerMap {
     type Id;
 
     /// the closest round where current baker is proposer

@@ -7,6 +7,8 @@ use crypto::hash::ContractTz1Hash;
 use tenderbake as tb;
 use tezos_messages::protocol::proto_012::operation::EndorsementOperation;
 
+use super::event::OperationSimple;
+
 pub struct SlotsInfo {
     committee_size: u32,
     ours: Vec<ContractTz1Hash>,
@@ -37,51 +39,34 @@ impl SlotsInfo {
         self.delegates.get(&level)?.get(id)
     }
 
-    pub fn validator(&self, level: i32, slot: u16) -> Option<tb::Validator<ContractTz1Hash>> {
+    pub fn validator(&self, level: i32, slot: u16, operation: OperationSimple) -> Option<tb::Validator<ContractTz1Hash, OperationSimple>> {
         let i = self.delegates.get(&level)?;
         let (id, s) = i.iter().find(|&(_, v)| v.first() == Some(&slot))?;
         Some(tb::Validator {
             id: id.clone(),
             power: s.len() as u32,
+            operation
         })
     }
 
-    fn block_id(content: &EndorsementOperation) -> tb::BlockId {
+    pub fn block_id(content: &EndorsementOperation) -> tb::BlockId {
         tb::BlockId {
             level: content.level,
             round: content.round,
-            payload_hash: content
-                .block_payload_hash
-                .0
-                .as_slice()
-                .try_into()
-                .expect("payload hash is 32 bytes"),
-            payload_round: content.round,
+            payload_hash: {
+                let c = content
+                    .block_payload_hash
+                    .0
+                    .as_slice()
+                    .try_into()
+                    .expect("payload hash is 32 bytes");
+                tb::PayloadHash(c)
+            },
         }
-    }
-
-    pub fn preendorsement(
-        &self,
-        content: &EndorsementOperation,
-    ) -> Option<tb::Preendorsement<ContractTz1Hash>> {
-        Some(tb::Preendorsement {
-            validator: self.validator(content.level, content.slot)?,
-            block_id: Self::block_id(content),
-        })
-    }
-
-    pub fn endorsement(
-        &self,
-        content: &EndorsementOperation,
-    ) -> Option<tb::Endorsement<ContractTz1Hash>> {
-        Some(tb::Endorsement {
-            validator: self.validator(content.level, content.slot)?,
-            block_id: Self::block_id(content),
-        })
     }
 }
 
-impl tb::ValidatorMap for SlotsInfo {
+impl tb::ProposerMap for SlotsInfo {
     type Id = ContractTz1Hash;
 
     fn proposer(&self, level: i32, round: i32) -> Option<(i32, Self::Id)> {

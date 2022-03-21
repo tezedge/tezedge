@@ -5,8 +5,6 @@ use super::{key::CryptoService, proof_of_work::guess_proof_of_work, seed_nonce::
 
 mod event;
 
-mod block_payload;
-
 mod slots_info;
 
 mod client;
