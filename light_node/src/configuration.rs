@@ -86,11 +86,11 @@ struct CliArgs {
 
     /// A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a space inside double qoutes.
     /// Used according to --network parameter see TezosEnvironment
-    #[clap(long, parse(try_from_str), group = "bootstrap_lookup")]
+    #[clap(long, parse(try_from_str), conflicts_with = "peers", conflicts_with = "private_node")]
     bootstrap_lookup_address: Vec<String>,
 
     /// Disables dns lookup to get the peers to bootstrap the network from
-    #[clap(long, group = "bootstrap_lookup")]
+    #[clap(long, conflicts_with = "bootstrap_lookup_address")]
     disable_bootstrap_lookup: bool,
 
     /// Set the logger target. Possible values: terminal, file
@@ -143,7 +143,7 @@ struct CliArgs {
     disable_peer_graylist: bool,
 
     /// Enable or disable private node. Use peers to set IP addresses of the peers you want to connect to
-    #[clap(long, group = "bootstrap_lookup", requires = "peers")]
+    #[clap(long, conflicts_with = "bootstrap_lookup_address", requires = "peers")]
     private_node: bool,
 
     /// Tezos network to connect to
