@@ -39,7 +39,7 @@ impl SeedNonceService {
         let file_path = base_dir.join(format!("seed_nonce_{baker}.json"));
         let mut s = String::new();
         if file_path.is_file() {
-            File::options().create(true).read(true).open(&file_path)?.read_to_string(&mut s)?;
+            File::open(&file_path)?.read_to_string(&mut s)?;
         }
         let seeds = if !s.is_empty() {
             serde_json::from_str(&s)?
