@@ -12,6 +12,7 @@ use std::time::Duration;
 use std::{collections::HashMap, collections::HashSet, fmt::Debug};
 
 use clap::{App, Arg};
+use reqwest::Url;
 use slog::Logger;
 
 use crypto::hash::BlockHash;
@@ -819,6 +820,100 @@ pub fn parse_config(config_path: PathBuf) -> Vec<OsString> {
     }
 
     args
+}
+
+fn import_snapshot_app() -> App<'static, 'static> {
+    let app = App::new("TezEdge Light Node")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author("TezEdge and the project contributors")
+        .about("Rust implementation of the Tezos node")
+        .setting(clap::AppSettings::AllArgsOverrideSelf)
+        .arg(
+            Arg::with_name("tezos-data-dir")
+                .long("tezos-data-dir")
+                .global(true)
+                .takes_value(true)
+                .value_name("PATH")
+                .help("A directory for Tezos OCaml runtime storage (context/store)")
+                .validator(|v| {
+                    let dir = Path::new(&v);
+                    if dir.exists() {
+                        if dir.is_dir() {
+                            Ok(())
+                        } else {
+                            Err(format!(
+                                "Required tezos data dir '{}' exists, but is not a directory!",
+                                v
+                            ))
+                        }
+                    } else {
+                        // Tezos data dir does not exists, try to create it
+                        if let Err(e) = fs::create_dir_all(dir) {
+                            Err(format!(
+                                "Unable to create required tezos data dir '{}': {} ",
+                                v, e
+                            ))
+                        } else {
+                            Ok(())
+                        }
+                    }
+                }),
+        )
+        .subcommand(
+            clap::SubCommand::with_name("import-snapshot").arg(
+                Arg::with_name("from")
+                    .long("from")
+                    .takes_value(true)
+                    .value_name("PATH")
+                    .required(true)
+                    .help("Url to the snapshot"), // .validator(|v| {
+                                                  //     let dir = Path::new(&v);
+                                                  //     if dir.exists() {
+                                                  //         if dir.is_file() {
+                                                  //             Ok(())
+                                                  //         } else {
+                                                  //             Err(format!("Required '{}' exists, but is not a file!", v))
+                                                  //         }
+                                                  //     } else {
+                                                  //         Err(format!("Required '{}' file does not exist", v))
+                                                  //     }
+                                                  // })
+            ),
+        );
+
+    app
+}
+
+pub struct ImportSnapshot {
+    pub from: Url,
+    pub to: PathBuf,
+}
+
+impl ImportSnapshot {
+    pub fn from_args() -> Option<Self> {
+        let app = import_snapshot_app();
+        let args = app.get_matches();
+
+        args.subcommand_matches("import-snapshot").map(|import| {
+            let from = import
+                .value_of("from")
+                .unwrap()
+                .parse::<Url>()
+                .expect("Provided value cannot be converted to URL");
+
+            let to = args
+                .value_of("tezos-data-dir")
+                .unwrap_or("/tmp/tezedge")
+                .parse::<PathBuf>()
+                .expect("Provided value cannot be converted to path");
+            ImportSnapshot { from, to }
+        })
+    }
+}
+
+pub enum TezedgeEnv {
+    ImportSnapshot(ImportSnapshot),
+    Normal(Environment),
 }
 
 impl Environment {

@@ -17,10 +17,17 @@
 //!     --block 434223 # optional block hash, level or negative offset from head
 //! ```
 
+use flate2::bufread::GzDecoder;
+use futures::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
+use reqwest::Client;
 use std::{
+    fs::File,
+    io::{BufReader, Write},
     path::{Path, PathBuf},
     time::Instant,
 };
+use tar::Archive;
 use tempfile::tempdir_in;
 
 use slog::{info, Logger};
@@ -431,4 +438,61 @@ fn resolve_block_reference(
             .expect("Failed to obtain predecessor")
             .unwrap_or_else(|| head.block_hash().clone()),
     }
+}
+
+pub fn import_snapshot(from: &Path, tezos_data_dir: &Path) {
+    // remove existing data
+    let to_remove = [
+        tezos_data_dir.join("context"),
+        tezos_data_dir.join("bootstrap_db"),
+    ];
+    fs_extra::remove_items(&to_remove).expect("Failed to remove existing data");
+
+    let tar_gz = File::open(from)
+        .unwrap_or_else(|_| panic!("Failed to open snapshot file {}", from.display()));
+
+    let buffered = BufReader::new(tar_gz);
+
+    let tar = GzDecoder::new(buffered);
+    let mut archive = Archive::new(tar);
+
+    archive
+        .unpack(tezos_data_dir)
+        .expect("Failed to unpack snapshot tarball");
+}
+
+pub async fn download_file(client: &Client, url: &str, path: &str) -> Result<(), String> {
+    // Reqwest setup
+    let res = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| format!("Failed to GET from '{}'", &url))?;
+    let total_size = res
+        .content_length()
+        .ok_or(format!("Failed to get content length from '{}'", &url))?;
+
+    // Indicatif setup
+    let pb = ProgressBar::new(total_size);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+        .progress_chars("#>-"));
+    pb.set_message(&format!("Downloading {}", url));
+
+    // download chunks
+    let mut file = File::create(path).map_err(|_| format!("Failed to create file '{}'", path))?;
+    let mut downloaded: u64 = 0;
+    let mut stream = res.bytes_stream();
+
+    while let Some(item) = stream.next().await {
+        let chunk = item.map_err(|_| "Error while downloading file".to_string())?;
+        file.write_all(&chunk)
+            .map_err(|_| "Error while writing to file".to_string())?;
+        let new = std::cmp::min(downloaded + (chunk.len() as u64), total_size);
+        downloaded = new;
+        pb.set_position(new);
+    }
+
+    pb.finish_with_message(&format!("Downloaded {} to {}", url, path));
+    Ok(())
 }
