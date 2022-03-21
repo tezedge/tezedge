@@ -1281,6 +1281,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "filetime"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "975ccf83d8d9d0d84682850a38c8169027be83368805971cc4f238c2b245bc98"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "redox_syscall",
+ "winapi",
+]
+
+[[package]]
 name = "flate2"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2207,8 +2219,9 @@ name = "light-node"
 version = "1.18.0"
 dependencies = [
  "async_ipc",
- "clap 2.34.0",
+ "clap 3.1.6",
  "crypto",
+ "flate2",
  "fs_extra",
  "futures",
  "logging",
@@ -2224,6 +2237,7 @@ dependencies = [
  "slog",
  "storage",
  "strum",
+ "tar",
  "tempfile",
  "tezedge-actor-system",
  "tezos_api",
@@ -3994,7 +4008,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "bytes",
- "clap 2.34.0",
+ "clap 3.1.6",
  "commitlog",
  "criterion",
  "crypto",
@@ -4127,6 +4141,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
+name = "tar"
+version = "0.4.38"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b55807c0344e1e6c04d7c965f5289c39a8d94ae23ed5c0b57aabac549f871c6"
+dependencies = [
+ "filetime",
+ "libc",
+ "xattr",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4216,6 +4241,7 @@ version = "1.18.0"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "clap 3.1.6",
  "crypto",
  "derive_builder",
  "fuzzcheck",
@@ -4277,6 +4303,7 @@ dependencies = [
 name = "tezos_context_api"
 version = "1.18.0"
 dependencies = [
+ "clap 3.1.6",
  "crypto",
  "derive_builder",
  "fuzzcheck",
@@ -5206,6 +5233,15 @@ name = "wyz"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85e60b0d1b5f99db2556934e21937020776a5d31520bf169e851ac44e6420214"
+
+[[package]]
+name = "xattr"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "244c3741f4240ef46274860397c7c74e50eb23624996930e484c16679633a54c"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "zeroize"

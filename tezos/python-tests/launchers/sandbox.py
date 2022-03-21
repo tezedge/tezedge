@@ -164,7 +164,7 @@ class Sandbox:
         if private:
             if node_name == 'light-node':
                 # TODO: FIX THIS IN TEZEDGE
-                params = params + ['--private-node', 'true']
+                params = params + ['--private-node']
             else:
                 params = params + ['--private-mode']
         if node_name == 'light-node':

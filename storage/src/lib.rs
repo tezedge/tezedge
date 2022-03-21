@@ -262,6 +262,12 @@ pub struct StorageInitInfo {
     pub replay: Option<Replay>,
 }
 
+impl StorageInitInfo {
+    pub fn set_replay(&mut self, replay: Option<Replay>) {
+        self.replay = replay;
+    }
+}
+
 /// Resolve main chain id and genesis header from configuration
 pub fn resolve_storage_init_chain_data(
     tezos_env: &TezosEnvironmentConfiguration,
@@ -269,14 +275,13 @@ pub fn resolve_storage_init_chain_data(
     context_storage_configuration: &TezosContextStorageConfiguration,
     patch_context: &Option<PatchContext>,
     context_stats_db_path: &Option<PathBuf>,
-    replay: &Option<Replay>,
     log: &Logger,
 ) -> Result<StorageInitInfo, StorageError> {
     let init_data = StorageInitInfo {
         chain_id: tezos_env.main_chain_id()?,
         genesis_block_header_hash: tezos_env.genesis_header_hash()?,
         patch_context: patch_context.clone(),
-        replay: replay.clone(),
+        replay: None,
         context_stats_db_path: context_stats_db_path.clone(),
     };
 

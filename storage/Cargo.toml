@@ -32,7 +32,7 @@ tezos_messages = { path = "../tezos/messages" }
 tezos_context_api = { path = "../tezos/context-api" }
 
 # Context actions replayer binary and his dependencies
-clap = "2.33"
+clap = { version = "3.1", features = ["derive"] }
 slog-term = "2.9"
 slog-async = "2.6"
 

@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 byte-unit = { version = "4.0", default-features = false }
-clap = { version = "3.0", features = ["derive"] }
+clap = { version = "3.1", features = ["derive"] }
 termcolor = "1.1.2"
 
 # local dependencies

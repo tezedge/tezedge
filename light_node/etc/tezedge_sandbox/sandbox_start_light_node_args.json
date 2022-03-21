@@ -14,10 +14,8 @@
     "db_cfg_max_threads": "4",
     "log_format": "simple",
     "log_level": "info",
-    "ocaml_log_enabled": false,
     "p2p_port": 9732,
     "rpc_port": 18732,
     "websocket_address": "0.0.0.0:4927",
-    "tokio_threads": 0,
-    "enable_testchain": false
+    "tokio_threads": 0
   }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #![cfg_attr(feature = "fuzzing", feature(no_coverage))]
 
+use clap::ArgEnum;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -13,7 +14,7 @@ use tezos_messages::base::rpc_support::{RpcJsonMap, UniversalValue};
 pub const INMEM: &str = "inmem";
 pub const ONDISK: &str = "ondisk";
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone, EnumIter)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone, EnumIter, ArgEnum)]
 pub enum SupportedContextKeyValueStore {
     InMem,
     OnDisk,
