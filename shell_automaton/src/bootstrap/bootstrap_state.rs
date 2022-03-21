@@ -484,6 +484,9 @@ pub enum BootstrapState {
         time: u64,
         timeouts_last_check: Option<u64>,
 
+        last_logged: u64,
+        last_logged_downloaded_count: usize,
+
         /// Level of the last(highest) block in the main_chain.
         main_chain_last_level: Level,
 

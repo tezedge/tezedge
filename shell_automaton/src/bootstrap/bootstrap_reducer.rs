@@ -19,6 +19,7 @@ use super::{
     PeerBlockOperationsGetState, PeerBranch, PeerIntervalCurrentState, PeerIntervalState,
 };
 pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
+    log_stats(state);
     match &action.action {
         Action::BootstrapInit(_) => {
             state.bootstrap = BootstrapState::Init {
@@ -238,6 +239,8 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             state.bootstrap = BootstrapState::PeersBlockHeadersGetPending {
                 time: action.time_as_nanos(),
                 timeouts_last_check: None,
+                last_logged: action.time_as_nanos(),
+                last_logged_downloaded_count: 0,
                 main_chain_last_level: content.current_head.header.level(),
                 main_chain_last_hash: content.current_head.hash.clone(),
                 main_chain: Default::default(),
@@ -329,6 +332,8 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 state.bootstrap = BootstrapState::PeersBlockHeadersGetPending {
                     time: action.time_as_nanos(),
                     timeouts_last_check: None,
+                    last_logged: action.time_as_nanos(),
+                    last_logged_downloaded_count: 0,
                     main_chain_last_level: main_block.0,
                     main_chain_last_hash: main_block.1,
                     main_chain: VecDeque::with_capacity(missing_levels_count.max(0) as usize),
@@ -828,4 +833,58 @@ fn peer_branch_with_level_iter<'a>(
         })
         .take_while(|(level, _)| *level >= 0);
     Some(std::iter::once((branch_current_head_level, branch_current_head_hash)).chain(iter))
+}
+
+pub fn log_stats(state: &mut State) {
+    // log every 2 seconds.
+    const LOG_INTERVAL_S: u64 = 2;
+    const LOG_INTERVAL_NS: u64 = LOG_INTERVAL_S * 1_000_000_000;
+
+    let now = state.time_as_nanos();
+
+    match &mut state.bootstrap {
+        BootstrapState::PeersBlockHeadersGetPending {
+            last_logged,
+            last_logged_downloaded_count,
+            main_chain,
+            main_chain_last_level,
+            peer_intervals,
+            ..
+        } => {
+            if now - *last_logged < LOG_INTERVAL_NS {
+                return;
+            }
+
+            let current_head = match state.current_head.get() {
+                Some(v) => v,
+                None => return,
+            };
+            let total = main_chain_last_level
+                .saturating_sub(current_head.header.level())
+                .max(0) as usize;
+            let downloaded_count = main_chain.len()
+                + peer_intervals
+                    .iter()
+                    .map(|v| v.downloaded.len())
+                    .sum::<usize>();
+            let parallelism = peer_intervals
+                .iter()
+                .filter(|b| b.current.is_pending())
+                .filter_map(|b| b.current.peer())
+                .collect::<BTreeSet<_>>()
+                .len();
+            let left = total.saturating_sub(downloaded_count);
+            let speed = downloaded_count.saturating_sub(*last_logged_downloaded_count)
+                / (LOG_INTERVAL_S as usize);
+
+            slog::info!(&state.log, "Downloading block headers";
+                "progress" => format!("{}/{} (left: {})", downloaded_count, total, left),
+                "speed" => format!("{} h/s", speed),
+                "parallelism" => parallelism);
+
+            *last_logged = now;
+            *last_logged_downloaded_count = downloaded_count;
+        }
+        _ => return,
+    }
 }

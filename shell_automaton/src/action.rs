@@ -201,15 +201,7 @@ where
     }
 }
 
-#[derive(
-    EnumKind,
-    strum_macros::AsRefStr,
-    strum_macros::IntoStaticStr,
-    Serialize,
-    Deserialize,
-    Debug,
-    Clone,
-)]
+#[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
 #[enum_kind(
     ActionKind,
     derive(
