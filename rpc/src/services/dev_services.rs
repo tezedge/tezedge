@@ -6,17 +6,17 @@
 // The timings database, along with the readonly IPC context access could be used
 // to reproduce the same functionality.
 
+use crypto::hash::{ContractKt1Hash, OperationHash};
+use serde::{Deserialize, Serialize};
+use shell_automaton::mempool::{OperationKind, OperationValidationResult};
+use shell_automaton::service::rpc_service::RpcShellAutomatonActionsRaw;
+use shell_automaton::{Action, ActionWithMeta};
+use slog::Logger;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::vec;
-
-use crypto::hash::{ContractKt1Hash, OperationHash};
-use serde::{Deserialize, Serialize};
-use shell_automaton::mempool::{OperationKind, OperationValidationResult};
-use shell_automaton::{Action, ActionWithMeta};
-use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
@@ -492,10 +492,10 @@ pub(crate) async fn shell_automaton_state_closest(
 #[derive(Serialize, Deserialize)]
 pub(crate) struct RpcShellAutomatonAction {
     #[serde(flatten)]
-    action: ActionWithMeta,
-    state: shell_automaton::State,
+    pub action: ActionWithMeta,
+    pub state: shell_automaton::State,
     /// Time between this action and the next one.
-    duration: u64,
+    pub duration: u64,
 }
 
 pub(crate) async fn get_shell_automaton_actions(
@@ -593,6 +593,22 @@ pub(crate) async fn get_shell_automaton_actions(
             .1)
     })
     .await?
+}
+
+pub(crate) async fn get_shell_automaton_actions_raw(
+    env: &RpcServiceEnvironment,
+    cursor: Option<u64>,
+    limit: Option<usize>,
+) -> anyhow::Result<RpcShellAutomatonActionsRaw> {
+    let actions_with_state = get_shell_automaton_actions(&env, cursor, limit).await?;
+
+    Ok(RpcShellAutomatonActionsRaw {
+        actions: actions_with_state
+            .iter()
+            .map(|a| a.action.action.clone())
+            .collect(),
+        initial_state: actions_with_state[0].state.clone(),
+    })
 }
 
 pub(crate) async fn get_shell_automaton_actions_reverse(

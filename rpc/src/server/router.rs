@@ -302,6 +302,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
     routes.handle(
         hash_set![Method::GET],
+        "/dev/shell/automaton/actions_raw",
+        dev_handler::dev_shell_automaton_actions_raw_get,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/dev/shell/automaton/storage/requests",
         dev_handler::dev_shell_automaton_storage_requests_get,
     );

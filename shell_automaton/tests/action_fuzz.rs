@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #![cfg(feature = "fuzzing")]
+#![feature(backtrace)]
+#![feature(alloc_error_hook)]
 #![cfg_attr(test, feature(no_coverage))]
-
+use ::storage::persistent::Encoder;
 use fuzzcheck::{DefaultMutator, SerdeSerializer};
+use once_cell::sync::Lazy;
 use redux_rs::{ActionId, ActionWithMeta, SafetyCondition};
 use serde::{Deserialize, Serialize};
 use shell_automaton::action::{Action, InitAction};
@@ -21,6 +24,12 @@ use shell_automaton::shutdown::ShutdownInitAction;
 use shell_automaton::shutdown::ShutdownPendingAction;
 use shell_automaton::shutdown::ShutdownSuccessAction;
 use shell_automaton::stats::current_head::stats_current_head_actions;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::panic::catch_unwind;
+use std::panic::AssertUnwindSafe;
+use std::sync::RwLock;
 //use shell_automaton::storage::request::StorageRequestSuccessAction;
 use shell_automaton::MioWaitForEventsAction;
 
@@ -165,6 +174,9 @@ use shell_automaton::{
     },
     storage,
 };
+
+pub static FUZZER_ARGS: Lazy<RwLock<Option<fuzzcheck::Arguments>>> =
+    Lazy::new(|| RwLock::new(None));
 
 #[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum AllActionsTest {
@@ -1309,28 +1321,91 @@ fn next_action_id() -> ActionId {
     ActionId::new_unchecked(time_ns + 1)
 }
 
+fn save_state(state: &State) {
+    let args = FUZZER_ARGS.read().unwrap().clone().unwrap();
+    let artifacts_folder = args.artifacts_folder.unwrap();
+    let mut hasher = DefaultHasher::new();
+    let contents = state.encode().unwrap();
+
+    contents.hash(&mut hasher);
+
+    let hash = hasher.finish();
+    let name = format!("{:x}", hash);
+    let path = artifacts_folder.join(&name);
+    println!("Saving state at {:?}", path);
+    std::fs::write(path, &contents).unwrap();
+}
+
 fn reduce_with_state(action: &ActionWithMeta<Action>) -> bool {
+    let prev_hook = std::panic::take_hook();
+
+    std::panic::set_hook(Box::new(move |panic_info| {
+        println!("NEW CRASH {}", panic_info);
+    }));
+
     let mut state = FUZZER_STATE.write().unwrap();
 
-    if state.reset_count != 0 && (state.iteration_count % state.reset_count) == 0 {
+    if state.reset_count != 0 && state.iteration_count == state.reset_count {
         //println!("Resetting state: iteration {}", state.iteration_count);
         state.current_target_state = state.initial_target_state.clone();
+        state.iteration_count = 0;
+    }
+
+    if state.iteration_count == 0 && state.actions.is_some() {
+        let actions = state.actions.as_ref().unwrap().clone();
+
+        if state.action_count >= actions.len() {
+            state.action_count = 0;
+        }
+
+        //println!("replaying {} actions", state.action_count);
+
+        for action in actions.iter().take(state.action_count) {
+            let last_id = state.current_target_state.last_action.time_as_nanos();
+            let action_meta = ActionWithMeta {
+                id: ActionId::new_unchecked(last_id + 1),
+                depth: 0,
+                action: action.clone(),
+            };
+
+            shell_automaton::reducer(&mut state.current_target_state, &action_meta);
+        }
+
+        state.action_count += 1;
     }
 
     state.iteration_count += 1;
 
-    if !is_action_enabled(action.action.clone(), &state.current_target_state) {
-        return true;
-    }
-
-    //println!("{:?}", action);
-    shell_automaton::reducer(&mut state.current_target_state, action);
-    match state.current_target_state.check_safety_condition() {
-        Err(error) => {
-            println!("{:?}", error);
-            false
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        if !is_action_enabled(action.action.clone(), &state.current_target_state) {
+            true
+        } else {
+            //println!("{:?}", action);
+            shell_automaton::reducer(&mut state.current_target_state, action);
+            match state.current_target_state.check_safety_condition() {
+                Err(error) => {
+                    println!("{:?}", error);
+                    false
+                }
+                _ => true,
+            }
         }
-        _ => true,
+    }));
+
+    std::panic::set_hook(prev_hook);
+
+    match result {
+        Ok(result) => {
+            if result == false {
+                save_state(&state.current_target_state);
+            }
+
+            result
+        }
+        Err(err) => {
+            save_state(&state.current_target_state);
+            std::panic::resume_unwind(err)
+        }
     }
 }
 
@@ -1344,106 +1419,28 @@ fn action_test_all(action_test: &AllActionsTest) -> bool {
     reduce_with_state(&action)
 }
 
-fn action_test_control(action_test: &ControlActionTest) -> bool {
-    let action = ActionWithMeta {
-        id: next_action_id(),
-        depth: 0,
-        action: action_test.to_action(),
-    };
-
-    reduce_with_state(&action)
-}
-
-fn action_test_dns(action_test: &PeersDnsLookupActionTest) -> bool {
-    let action = ActionWithMeta {
-        id: next_action_id(),
-        depth: 0,
-        action: action_test.to_action(),
-    };
-
-    reduce_with_state(&action)
-}
-
-fn action_test_peer(action_test: &PeerActionTest) -> bool {
-    let action = ActionWithMeta {
-        id: next_action_id(),
-        depth: 0,
-        action: action_test.to_action(),
-    };
-
-    reduce_with_state(&action)
-}
-
-fn action_test_storage(action_test: &StorageActionTest) -> bool {
-    let action = ActionWithMeta {
-        id: next_action_id(),
-        depth: 0,
-        action: action_test.to_action(),
-    };
-
-    reduce_with_state(&action)
-}
-
 fn is_action_enabled(action: Action, state: &State) -> bool {
     action.is_enabled(state)
+}
+
+pub fn handle_alloc_error(layout: std::alloc::Layout) {
+    let bt = std::backtrace::Backtrace::force_capture();
+    println!("Allocation error {:?}", layout.size());
+    println!("{:?}", bt);
+    //std::process::exit(1)
 }
 
 #[cfg(test)]
 #[test]
 fn test_all() {
-    fuzzcheck::fuzz_test(action_test_all)
+    std::alloc::set_alloc_error_hook(handle_alloc_error);
+
+    let builder = fuzzcheck::fuzz_test(action_test_all)
         .mutator(AllActionsTest::default_mutator())
         .serializer(SerdeSerializer::default())
         .default_sensor_and_pool()
-        .arguments_from_cargo_fuzzcheck()
-        .stop_after_first_test_failure(true)
-        .launch();
-}
+        .arguments_from_cargo_fuzzcheck();
 
-#[cfg(test)]
-#[test]
-fn test_control() {
-    fuzzcheck::fuzz_test(action_test_control)
-        .mutator(ControlActionTest::default_mutator())
-        .serializer(SerdeSerializer::default())
-        .default_sensor_and_pool()
-        .arguments_from_cargo_fuzzcheck()
-        .stop_after_first_test_failure(true)
-        .launch();
-}
-
-#[cfg(test)]
-#[test]
-fn test_dns() {
-    fuzzcheck::fuzz_test(action_test_dns)
-        .mutator(PeersDnsLookupActionTest::default_mutator())
-        .serializer(SerdeSerializer::default())
-        .default_sensor_and_pool()
-        .arguments_from_cargo_fuzzcheck()
-        .stop_after_first_test_failure(true)
-        .launch();
-}
-
-#[cfg(test)]
-#[test]
-fn test_peer() {
-    fuzzcheck::fuzz_test(action_test_peer)
-        .mutator(PeerActionTest::default_mutator())
-        .serializer(SerdeSerializer::default())
-        .default_sensor_and_pool()
-        .arguments_from_cargo_fuzzcheck()
-        .stop_after_first_test_failure(true)
-        .launch();
-}
-
-#[cfg(test)]
-#[test]
-fn test_storage() {
-    fuzzcheck::fuzz_test(action_test_storage)
-        .mutator(StorageActionTest::default_mutator())
-        .serializer(SerdeSerializer::default())
-        .default_sensor_and_pool()
-        .arguments_from_cargo_fuzzcheck()
-        .stop_after_first_test_failure(true)
-        .launch();
+    *FUZZER_ARGS.write().unwrap() = Some(builder.arguments.clone());
+    builder.stop_after_first_test_failure(true).launch();
 }
