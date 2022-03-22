@@ -34,7 +34,7 @@ impl Encoder for DataEntry {
         let mut buf = vec![];
         buf.extend_from_slice(&crc.to_be_bytes());
         buf.extend_from_slice(&content);
-        return buf;
+        buf
     }
 }
 

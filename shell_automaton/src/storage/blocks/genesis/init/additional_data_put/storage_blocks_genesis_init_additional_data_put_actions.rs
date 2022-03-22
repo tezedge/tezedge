@@ -15,12 +15,12 @@ pub struct StorageBlocksGenesisInitAdditionalDataPutInitAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitAdditionalDataPutInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::HeaderPut(
                 StorageBlocksGenesisInitHeaderPutState::Success { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }
 
@@ -30,12 +30,12 @@ pub struct StorageBlocksGenesisInitAdditionalDataPutPendingAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitAdditionalDataPutPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::AdditionalDataPut(
                 StorageBlocksGenesisInitAdditionalDataPutState::Init {},
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }
 
@@ -45,12 +45,12 @@ pub struct StorageBlocksGenesisInitAdditionalDataPutErrorAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitAdditionalDataPutErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::AdditionalDataPut(
                 StorageBlocksGenesisInitAdditionalDataPutState::Pending { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }
 
@@ -60,11 +60,11 @@ pub struct StorageBlocksGenesisInitAdditionalDataPutSuccessAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitAdditionalDataPutSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::AdditionalDataPut(
                 StorageBlocksGenesisInitAdditionalDataPutState::Pending { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }

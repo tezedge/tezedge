@@ -118,8 +118,8 @@ fn init_mocked_storage(number_of_blocks: usize) -> Result<(BlockMetaStorage, Blo
             idx.try_into()?,
             vec![44; 4].try_into()?,
         );
-        storage.put(&block_hash, &v)?;
-        storage.store_predecessors(&block_hash, &v)?;
+        storage.put(block_hash, &v)?;
+        storage.store_predecessors(block_hash, &v)?;
         predecessor = block_hash.clone();
     }
 

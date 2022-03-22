@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::ptr_arg)]
+
 use crate::{
     OCamlApplyBlockExecutionTimestamps, OCamlApplyBlockRequest, OCamlBeginApplicationRequest,
     OCamlBeginConstructionRequest, OCamlBlockHeader, OCamlBlockHeaderShellHeader,

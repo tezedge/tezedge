@@ -509,11 +509,11 @@ impl EnablingCondition<State> for BootstrapErrorAction {
                     BootstrapState::PeersBlockHeadersGetPending { .. }
                 )
             }
-            BootstrapError::BlockApplicationFailed => match &state.bootstrap {
+            BootstrapError::BlockApplicationFailed => matches!(
+                &state.bootstrap,
                 BootstrapState::PeersBlockOperationsGetPending { .. }
-                | BootstrapState::PeersBlockOperationsGetSuccess { .. } => true,
-                _ => false,
-            },
+                    | BootstrapState::PeersBlockOperationsGetSuccess { .. }
+            ),
         }
     }
 }

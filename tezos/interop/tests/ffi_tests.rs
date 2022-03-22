@@ -96,7 +96,7 @@ fn test_assert_encoding_for_protocol_data() {
 
     // check
     assert!(assert_encoding_for_protocol_data(
-        protocol_hash_1.clone().into(),
+        protocol_hash_1.clone(),
         block_header_1.protocol_data().clone().into(),
     )
     .is_ok());

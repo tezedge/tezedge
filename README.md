@@ -136,9 +136,11 @@ for most of the more popular Linux distributions:
 | Debian |  9, 10 |
 | OpenSUSE |  15.1, 15.2 |
 | CentOS |  8 |
-| MacOS |  *experimental* - newer or equal to 10.13 should work |
+| MacOS |  *experimental* - newer or equal to 10.13 should work, Intel and M1 cpus |
 
 If you are missing support for your favorite Linux distribution, please submit a request with the [tezos-opam-builder](https://github.com/tezedge/tezos-opam-builder) project.
+
+To build from source please follow [these instructions](tezos/interop/README.md).
 
 ### Prerequisites installation
 If you want to build from source code, you need to install this before:
@@ -166,7 +168,7 @@ If you want to build from source code, you need to install this before:
     ```
     sudo apt install clang libclang-dev llvm llvm-dev linux-kernel-headers libev-dev
     ```
-    - In OSX, using [Homebrew](https://brew.sh/):
+    - In macOS, using [Homebrew](https://brew.sh/):
     ```
     brew install pkg-config gmp libev libsodium hidapi libffi
     ```
@@ -212,7 +214,7 @@ If you want to build from source code, you need to install this before:
 
 ### Running node with `cargo run`
 
-To run the node manually, you need to first build it from the source code. The path to the Tezos lib must be provided as an environment variable `LD_LIBRARY_PATH`. It is required
+To run the node manually, you need to first build it from the source code. The path to the Tezos lib must be provided as an environment variable `LD_LIBRARY_PATH` (for macOS, `DYLD_LIBRARY_PATH`). It is required
 by the `protocol-runner`. When put together, the node can be run, for example, like this:
 ```
 cargo build --release
@@ -313,7 +315,7 @@ _More about building TezEdge docker images see [here](docker/README.md)._
 #### Run image
 
 ```
-docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.14.0 --network=mainnet --p2p-port 9732 --rpc-port 18732
+docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.18.0 --network=mainnet --p2p-port 9732 --rpc-port 18732
 ```
 _A full description of all arguments can be found in the light_node [README](light_node/README.md) file._
 

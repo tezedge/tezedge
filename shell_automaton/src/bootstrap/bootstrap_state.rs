@@ -183,10 +183,7 @@ impl PeerIntervalCurrentState {
     }
 
     pub fn is_timed_out_or_disconnected(&self) -> bool {
-        match self {
-            Self::TimedOut { .. } | Self::Disconnected { .. } => true,
-            _ => false,
-        }
+        matches!(self, Self::TimedOut { .. } | Self::Disconnected { .. })
     }
 
     /// If we are in pending state and it is timed out.
@@ -255,36 +252,34 @@ impl PeerIntervalCurrentState {
                     block_hash: block_hash.clone(),
                 };
             }
-            _ => return,
+            _ => {}
         }
     }
 
     pub fn to_success(&mut self, time: u64, block: BlockHeaderWithHash) {
         match self {
             Self::Pending { peer, .. } | Self::TimedOut { peer, .. } => {
-                let peer = peer.clone();
+                let peer = *peer;
                 *self = Self::Success { time, peer, block };
             }
-            _ => return,
+            _ => {}
         }
     }
 
     pub fn to_timed_out(&mut self, time: u64) {
-        match self {
-            Self::Pending {
-                peer,
-                block_level,
-                block_hash,
-                ..
-            } => {
-                *self = Self::TimedOut {
-                    time,
-                    peer: *peer,
-                    block_level: *block_level,
-                    block_hash: block_hash.clone(),
-                };
-            }
-            _ => return,
+        if let Self::Pending {
+            peer,
+            block_level,
+            block_hash,
+            ..
+        } = self
+        {
+            *self = Self::TimedOut {
+                time,
+                peer: *peer,
+                block_level: *block_level,
+                block_hash: block_hash.clone(),
+            };
         }
     }
 
@@ -309,7 +304,7 @@ impl PeerIntervalCurrentState {
                     block_hash: block_hash.clone(),
                 };
             }
-            _ => return,
+            _ => {}
         }
     }
 
@@ -488,6 +483,9 @@ pub enum BootstrapState {
     PeersBlockHeadersGetPending {
         time: u64,
         timeouts_last_check: Option<u64>,
+
+        last_logged: u64,
+        last_logged_downloaded_count: usize,
 
         /// Level of the last(highest) block in the main_chain.
         main_chain_last_level: Level,
@@ -707,5 +705,11 @@ impl BootstrapState {
                 .map(|(block_hash, _)| block_hash),
             _ => None,
         }
+    }
+}
+
+impl Default for BootstrapState {
+    fn default() -> Self {
+        Self::new()
     }
 }

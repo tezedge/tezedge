@@ -15,31 +15,28 @@ pub fn protocol_runner_init_context_effects<S>(store: &mut Store<S>, action: &Ac
 where
     S: Service,
 {
-    match &action.action {
-        Action::ProtocolRunnerInitContext(_) => {
-            let state = store.state.get();
-            let apply_genesis = match &state.protocol_runner {
-                ProtocolRunnerState::Init(ProtocolRunnerInitState::Context(
-                    ProtocolRunnerInitContextState::Init { apply_genesis },
-                )) => *apply_genesis,
-                _ => return,
-            };
-            let res = store.service.protocol_runner().init_context(
-                state.config.protocol_runner.storage.clone(),
-                &state.config.protocol_runner.environment,
-                apply_genesis,
-                state.config.protocol_runner.enable_testchain,
-                false,
-                state.config.init_storage_data.patch_context.clone(),
-                state.config.init_storage_data.context_stats_db_path.clone(),
-            );
-            match res {
-                Ok(token) => store.dispatch(ProtocolRunnerInitContextPendingAction { token }),
-                Err(error) => {
-                    store.dispatch(ProtocolRunnerInitContextErrorAction { token: None, error })
-                }
-            };
-        }
-        _ => {}
+    if let Action::ProtocolRunnerInitContext(_) = &action.action {
+        let state = store.state.get();
+        let apply_genesis = match &state.protocol_runner {
+            ProtocolRunnerState::Init(ProtocolRunnerInitState::Context(
+                ProtocolRunnerInitContextState::Init { apply_genesis },
+            )) => *apply_genesis,
+            _ => return,
+        };
+        let res = store.service.protocol_runner().init_context(
+            state.config.protocol_runner.storage.clone(),
+            &state.config.protocol_runner.environment,
+            apply_genesis,
+            state.config.protocol_runner.enable_testchain,
+            false,
+            state.config.init_storage_data.patch_context.clone(),
+            state.config.init_storage_data.context_stats_db_path.clone(),
+        );
+        match res {
+            Ok(token) => store.dispatch(ProtocolRunnerInitContextPendingAction { token }),
+            Err(error) => {
+                store.dispatch(ProtocolRunnerInitContextErrorAction { token: None, error })
+            }
+        };
     }
 }

@@ -28,7 +28,7 @@ fn get_cycle_era(level: Level, cycle_eras: &CycleErasData) -> Result<&CycleEra, 
     cycle_eras
         .iter()
         .find(|era| era.first_level() <= &level)
-        .ok_or_else(|| CycleError::EraNotFound(level))
+        .ok_or(CycleError::EraNotFound(level))
 }
 
 pub type Position = i32;

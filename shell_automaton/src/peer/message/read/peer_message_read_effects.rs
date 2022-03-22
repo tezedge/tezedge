@@ -36,7 +36,7 @@ fn stats_message_received(
     address: SocketAddr,
     action_id: ActionId,
 ) {
-    stats_service.map(|stats| {
+    if let Some(stats) = stats_service {
         let time: u64 = action_id.into();
         let pending_block_header_requests = &state.peers.pending_block_header_requests;
         let node_id = state
@@ -65,7 +65,7 @@ fn stats_message_received(
                             return;
                         }
                         stats.block_new(
-                            b.clone(),
+                            b,
                             block_header.level(),
                             block_header.timestamp().into(),
                             block_header.validation_pass(),
@@ -118,7 +118,7 @@ fn stats_message_received(
             }
             _ => {}
         }
-    });
+    }
 }
 
 pub fn peer_message_read_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)

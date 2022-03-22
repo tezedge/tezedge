@@ -115,7 +115,7 @@ impl ChunkReadBuffer {
 
     /// Take a peek at read chunk, without consuming it or doing any cleanups.
     #[allow(dead_code)]
-    pub fn peek_if_ready<'a>(&'a self) -> Option<BinaryChunkRef<'a>> {
+    pub fn peek_if_ready(&self) -> Option<BinaryChunkRef> {
         if self.is_finished() {
             Some(BinaryChunkRef(&self.buf[..self.expected_len]))
         } else {
@@ -125,7 +125,7 @@ impl ChunkReadBuffer {
 
     /// Take a reference for buffer and allow it's reuse for reading
     /// further chunks to avoid extra allocations.
-    pub fn take_ref_if_ready<'a>(&'a mut self) -> Option<BinaryChunkRef<'a>> {
+    pub fn take_ref_if_ready(&mut self) -> Option<BinaryChunkRef> {
         if !self.is_finished() {
             return None;
         }

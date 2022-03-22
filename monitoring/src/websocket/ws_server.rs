@@ -69,22 +69,20 @@ pub async fn handle_rejection(err: Rejection, log: Logger) -> Result<impl Reply,
             String::from("websocket path not found"),
             StatusCode::NOT_FOUND,
         ))
+    } else if let Some(tcre) = err.find::<MaximumNumberOfConnectionExceededError>() {
+        warn!(log, "Websocket maximum open connection exceeded";
+                   "max_number_of_websocket_connections" => tcre.max_number_of_websocket_connections,
+                   "actual_count" => tcre.actual_count);
+        Ok(warp::reply::with_status(
+            String::from("websocket is temporary unavailable"),
+            StatusCode::SERVICE_UNAVAILABLE,
+        ))
     } else {
-        if let Some(tcre) = err.find::<MaximumNumberOfConnectionExceededError>() {
-            warn!(log, "Websocket maximum open connection exceeded";
-                       "max_number_of_websocket_connections" => tcre.max_number_of_websocket_connections,
-                       "actual_count" => tcre.actual_count);
-            Ok(warp::reply::with_status(
-                String::from("websocket is temporary unavailable"),
-                StatusCode::SERVICE_UNAVAILABLE,
-            ))
-        } else {
-            warn!(log, "Websocket handle error"; "message" => "unhandled error occurred", "detail" => format!("{:?}", err));
-            Ok(warp::reply::with_status(
-                String::from("unhandled error occurred"),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ))
-        }
+        warn!(log, "Websocket handle error"; "message" => "unhandled error occurred", "detail" => format!("{:?}", err));
+        Ok(warp::reply::with_status(
+            String::from("unhandled error occurred"),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ))
     }
 }
 

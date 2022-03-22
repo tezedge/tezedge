@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::mem;
 use std::net::SocketAddr;
 
@@ -55,17 +55,17 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .ops
-                            .insert(v.hash.clone().into(), op);
+                            .insert(v.hash.clone(), op);
                         mempool_state.validated_operations.applied.push(v.clone());
-                        for (_, peer) in &mut mempool_state.peer_state {
+                        for peer in mempool_state.peer_state.values_mut() {
                             if !peer.seen_operations.contains(&v.hash) {
                                 peer.known_valid_to_send.push(v.hash.clone());
                             }
                         }
                         mempool_state
                             .operation_stats
-                            .entry(v.hash.clone().into())
-                            .or_insert_with(|| OperationStats::new())
+                            .entry(v.hash.clone())
+                            .or_insert_with(OperationStats::new)
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(result.validate_operation_started_at),
@@ -93,12 +93,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .refused_ops
-                            .insert(v.hash.clone().into(), op);
+                            .insert(v.hash.clone(), op);
                         mempool_state.validated_operations.refused.push(v.clone());
                         mempool_state
                             .operation_stats
-                            .entry(v.hash.clone().into())
-                            .or_insert_with(|| OperationStats::new())
+                            .entry(v.hash.clone())
+                            .or_insert_with(OperationStats::new)
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(result.validate_operation_started_at),
@@ -126,15 +126,15 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .ops
-                            .insert(v.hash.clone().into(), op);
+                            .insert(v.hash.clone(), op);
                         mempool_state
                             .validated_operations
                             .branch_refused
                             .push(v.clone());
                         mempool_state
                             .operation_stats
-                            .entry(v.hash.clone().into())
-                            .or_insert_with(|| OperationStats::new())
+                            .entry(v.hash.clone())
+                            .or_insert_with(OperationStats::new)
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(result.validate_operation_started_at),
@@ -162,13 +162,13 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .ops
-                            .insert(v.hash.clone().into(), op);
+                            .insert(v.hash.clone(), op);
                         mempool_state
                             .validated_operations
                             .branch_delayed
                             .push(v.clone());
                         if v.is_endorsement.unwrap_or(false) {
-                            for (_, peer) in &mut mempool_state.peer_state {
+                            for peer in mempool_state.peer_state.values_mut() {
                                 if !peer.seen_operations.contains(&v.hash) {
                                     peer.known_valid_to_send.push(v.hash.clone());
                                 }
@@ -176,8 +176,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         }
                         mempool_state
                             .operation_stats
-                            .entry(v.hash.clone().into())
-                            .or_insert_with(|| OperationStats::new())
+                            .entry(v.hash.clone())
+                            .or_insert_with(OperationStats::new)
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(result.validate_operation_started_at),
@@ -205,12 +205,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .refused_ops
-                            .insert(v.hash.clone().into(), op);
+                            .insert(v.hash.clone(), op);
                         mempool_state.validated_operations.outdated.push(v.clone());
                         mempool_state
                             .operation_stats
-                            .entry(v.hash.clone().into())
-                            .or_insert_with(|| OperationStats::new())
+                            .entry(v.hash.clone())
+                            .or_insert_with(OperationStats::new)
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(result.validate_operation_started_at),
@@ -300,7 +300,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             let old_head_state = mempool_state.local_head_state.clone();
             mempool_state.branch_changed = old_head_state
                 .as_ref()
-                .map(|old_head| old_head.hash.ne(&block.header.predecessor()))
+                .map(|old_head| old_head.hash.ne(block.header.predecessor()))
                 .unwrap_or(false);
             mempool_state.local_head_state = Some(HeadState {
                 header: (*block.header).clone(),
@@ -362,7 +362,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .validated_operations
                         .outdated
                         .retain(|v| v.hash.ne(op));
-                    for (_, peer_state) in &mut mempool_state.peer_state {
+                    for peer_state in mempool_state.peer_state.values_mut() {
                         peer_state.seen_operations.remove(op);
                     }
 
@@ -423,7 +423,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .validated_operations
                         .outdated
                         .retain(|v| v.hash.ne(op));
-                    for (_, peer_state) in &mut mempool_state.peer_state {
+                    for peer_state in mempool_state.peer_state.values_mut() {
                         peer_state.seen_operations.remove(op);
                     }
                 }
@@ -454,8 +454,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         }
                     }
                     // insert previously current statuses
-                    let old_state =
-                        mem::replace(&mut mempool_state.operations_state, BTreeMap::new());
+                    let old_state = std::mem::take(&mut mempool_state.operations_state);
                     if let Some(local_head_state) = &mempool_state.local_head_state {
                         mempool_state
                             .old_operations_state
@@ -484,7 +483,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     }
 
                     mempool_state.operations_state.insert(
-                        hash.clone().into(),
+                        hash.clone(),
                         MempoolOperation::received(
                             *timestamp,
                             mempool_state.first_current_head_time,
@@ -544,7 +543,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             mempool_state
                 .pending_operations
-                .insert(operation_hash.into(), operation.clone());
+                .insert(operation_hash, operation.clone());
         }
         Action::MempoolOperationInject(MempoolOperationInjectAction {
             operation,
@@ -561,13 +560,13 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             ops.push(operation_hash.clone());
             mempool_state
                 .injecting_rpc_ids
-                .insert(operation_hash.clone().into(), rpc_id.clone());
+                .insert(operation_hash.clone(), *rpc_id);
             mempool_state
                 .pending_operations
-                .insert(operation_hash.clone().into(), operation.clone());
+                .insert(operation_hash.clone(), operation.clone());
             if let Some(local_head_state) = mempool_state.local_head_state.as_ref() {
                 mempool_state.operations_state.insert(
-                    operation_hash.clone().into(),
+                    operation_hash.clone(),
                     MempoolOperation::injected(
                         local_head_state.header.timestamp().into(),
                         mempool_state.first_current_head_time,
@@ -589,8 +588,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             };
             mempool_state
                 .operation_stats
-                .entry(operation_hash.clone().into())
-                .or_insert(OperationStats::new())
+                .entry(operation_hash.clone())
+                .or_insert_with(OperationStats::new)
                 .received_via_rpc(
                     &pkh,
                     OperationNodeCurrentHeadStats {
@@ -634,7 +633,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .ops
-                            .insert(hash.clone().into(), op);
+                            .insert(hash.clone(), op);
                         mempool_state
                             .validated_operations
                             .applied
@@ -659,8 +658,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .map(|v| v.header.level());
                     mempool_state
                         .operation_stats
-                        .entry(hash.clone().into())
-                        .or_insert_with(|| OperationStats::new())
+                        .entry(hash.clone())
+                        .or_insert_with(OperationStats::new)
                         .validation_finished(
                             action.time_as_nanos(),
                             None,
@@ -675,7 +674,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .refused_ops
-                            .insert(errored.hash.clone().into(), op);
+                            .insert(errored.hash.clone(), op);
                         mempool_state
                             .validated_operations
                             .refused
@@ -701,8 +700,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .map(|v| v.header.level());
                     mempool_state
                         .operation_stats
-                        .entry(hash.clone().into())
-                        .or_insert_with(|| OperationStats::new())
+                        .entry(hash.clone())
+                        .or_insert_with(OperationStats::new)
                         .validation_finished(
                             action.time_as_nanos(),
                             None,
@@ -720,8 +719,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .map(|v| v.header.level());
                     mempool_state
                         .operation_stats
-                        .entry(hash.clone().into())
-                        .or_insert_with(|| OperationStats::new())
+                        .entry(hash.clone())
+                        .or_insert_with(OperationStats::new)
                         .validation_finished(
                             action.time_as_nanos(),
                             None,
@@ -770,7 +769,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 // to validate again with new prevalidator
                 for v in mem::take(&mut mempool_state.validated_operations.branch_refused) {
                     if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
-                        mempool_state.pending_operations.insert(v.hash.into(), op);
+                        mempool_state.pending_operations.insert(v.hash, op);
                     }
                 }
             }
@@ -778,12 +777,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             // put them into `pending_operations` to validate again with new prevalidator
             for v in mem::take(&mut mempool_state.validated_operations.branch_delayed) {
                 if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
-                    mempool_state.pending_operations.insert(v.hash.into(), op);
+                    mempool_state.pending_operations.insert(v.hash, op);
                 }
             }
             for v in mem::take(&mut mempool_state.validated_operations.applied) {
                 if let Some(op) = mempool_state.validated_operations.ops.remove(&v.hash) {
-                    mempool_state.pending_operations.insert(v.hash.into(), op);
+                    mempool_state.pending_operations.insert(v.hash, op);
                 }
             }
         }
@@ -802,7 +801,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state
                 .operation_stats
                 .entry(op_hash)
-                .or_insert(OperationStats::new())
+                .or_insert_with(OperationStats::new)
                 .validation_started(action.time_as_nanos(), current_head_level);
         }
         Action::PeerMessageReadSuccess(content) => {
@@ -834,8 +833,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     for op_hash in op_hash_iter {
                         mempool_state
                             .operation_stats
-                            .entry(op_hash.into())
-                            .or_insert(OperationStats::new())
+                            .entry(op_hash)
+                            .or_insert_with(OperationStats::new)
                             .received_in_current_head(
                                 peer_pkh,
                                 OperationNodeCurrentHeadStats {
@@ -850,8 +849,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     for op_hash in msg.get_operations().iter().cloned() {
                         mempool_state
                             .operation_stats
-                            .entry(op_hash.into())
-                            .or_insert(OperationStats::new())
+                            .entry(op_hash)
+                            .or_insert_with(OperationStats::new)
                             .content_requested_remote(peer_pkh, time);
                     }
                 }
@@ -864,10 +863,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     mempool_state
                         .operation_stats
                         .entry(op_hash)
-                        .or_insert(OperationStats::new())
+                        .or_insert_with(OperationStats::new)
                         .content_received(peer_pkh, time, msg.operation().data().as_ref());
                 }
-                _ => return,
+                _ => {}
             };
         }
         Action::PeerMessageWriteInit(content) => {
@@ -937,8 +936,8 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                 state
                     .mempool
                     .operation_stats
-                    .entry(op_hash.into())
-                    .or_insert(OperationStats::new())
+                    .entry(op_hash)
+                    .or_insert_with(OperationStats::new)
                     .sent_in_current_head(
                         pkh,
                         OperationNodeCurrentHeadStats {
@@ -954,8 +953,8 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                 state
                     .mempool
                     .operation_stats
-                    .entry(op_hash.into())
-                    .or_insert(OperationStats::new())
+                    .entry(op_hash)
+                    .or_insert_with(OperationStats::new)
                     .content_requested(&peer.public_key_hash, time);
             }
         }
@@ -968,11 +967,11 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
             state
                 .mempool
                 .operation_stats
-                .entry(op_hash.into())
-                .or_insert(OperationStats::new())
+                .entry(op_hash)
+                .or_insert_with(OperationStats::new)
                 .content_sent(&peer.public_key_hash, time);
         }
-        _ => return,
+        _ => {}
     };
 }
 

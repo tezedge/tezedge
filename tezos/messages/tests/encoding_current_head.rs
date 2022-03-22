@@ -17,7 +17,8 @@ fn can_serialize_get_current_head_message() -> Result<(), Error> {
         GetCurrentHeadMessage::new(ChainId::try_from(hex::decode("8eceda2f")?)?).into();
     let message_bytes = response.as_bytes().unwrap();
     let expected_writer_result = hex::decode("0000000600138eceda2f").expect("Failed to decode");
-    Ok(assert_eq!(expected_writer_result, message_bytes))
+    assert_eq!(expected_writer_result, message_bytes);
+    Ok(())
 }
 
 #[test]
@@ -51,7 +52,8 @@ fn can_deserialize_get_current_head_message_known_valid() -> Result<(), Error> {
                 &expected_known_valid,
                 mempool.known_valid().get(0).unwrap().as_ref()
             );
-            Ok(assert_eq!(0, mempool.pending().len()))
+            assert_eq!(0, mempool.pending().len());
+            Ok(())
         }
         _ => panic!("Unsupported encoding: {:?}", message),
     }
@@ -91,10 +93,11 @@ fn can_deserialize_get_current_head_message_pending() -> Result<(), Error> {
             );
             let expected_pending =
                 hex::decode("70669010ec4053d96d750daefbcdc1f51ed79f9e29fb16931515eccb84cb6a55")?;
-            Ok(assert_eq!(
+            assert_eq!(
                 &expected_pending,
                 mempool.pending().get(1).unwrap().as_ref()
-            ))
+            );
+            Ok(())
         }
         _ => panic!("Unsupported encoding: {:?}", message),
     }

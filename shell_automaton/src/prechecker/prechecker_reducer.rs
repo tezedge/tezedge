@@ -307,10 +307,9 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             supported_protocol,
             ..
         }) => {
-            prechecker_state
-                .next_protocol
-                .as_mut()
-                .map(|sps| sps.1 = SupportedProtocolState::Ready(supported_protocol.clone()));
+            if let Some(sps) = prechecker_state.next_protocol.as_mut() {
+                sps.1 = SupportedProtocolState::Ready(supported_protocol.clone())
+            }
         }
         Action::PrecheckerPruneOperation(PrecheckerPruneOperationAction { key }) => {
             prechecker_state.operations.remove(key);

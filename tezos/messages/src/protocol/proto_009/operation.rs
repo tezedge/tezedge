@@ -193,7 +193,7 @@ mod tests {
 
     fn read_data(file: &str) -> Result<Vec<u8>> {
         let dir = std::env::var("CARGO_MANIFEST_DIR")
-            .with_context(|| format!("`CARGO_MANIFEST_DIR` is not set"))?;
+            .with_context(|| "`CARGO_MANIFEST_DIR` is not set".to_string())?;
         let path = PathBuf::from(dir)
             .join("resources")
             .join("operations")
@@ -264,7 +264,7 @@ mod tests {
     operation_contents_test!(endorsement, contents, {
         match contents[0] {
             Contents::Endorsement(EndorsementOperation { level }) => assert_eq!(level, 1331),
-            _ => assert!(false, "endorsement expected"),
+            _ => panic!("endorsement expected"),
         }
     });
 
@@ -274,7 +274,7 @@ mod tests {
                 assert_eq!(*level, 1331);
                 assert_eq!(nonce, &[0; 32].into());
             }
-            _ => assert!(false, "seed nonce revelation expected"),
+            _ => panic!("seed nonce revelation expected"),
         }
     });
 
@@ -309,7 +309,7 @@ mod tests {
                 assert_eq!(op1.signature.to_base58_check(), "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ");
                 assert_eq!(op2.signature.to_base58_check(), "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ");
             }
-            _ => assert!(false, "double endorsement evidence expected"),
+            _ => panic!("double endorsement evidence expected"),
         }
     });
 
@@ -358,7 +358,7 @@ mod tests {
                 assert_eq!(hex::encode(&bh2.proof_of_work_nonce), "101895ca00000000");
                 assert_eq!(bh2.signature.to_base58_check(), "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ");
             }
-            _ => assert!(false, "double baking evidence expected"),
+            _ => panic!("double baking evidence expected"),
         }
     });
 
@@ -374,7 +374,7 @@ mod tests {
                     "41f98b15efc63fa893d61d7d6eee4a2ce9427ac4"
                 );
             }
-            _ => assert!(false, "activate account expected"),
+            _ => panic!("activate account expected"),
         }
     });
 
@@ -400,7 +400,7 @@ mod tests {
                     "PscqRYywd243M2eZspXZEJGsRmNchp4ZKfKmoyEZTRHeLQvVGjp"
                 );
             }
-            _ => assert!(false, "proposals expected"),
+            _ => panic!("proposals expected"),
         }
     });
 
@@ -423,7 +423,7 @@ mod tests {
                 );
                 assert!(matches!(*ballot, Ballot::Nay));
             }
-            _ => assert!(false, " expected"),
+            _ => panic!(" expected"),
         }
     });
 
@@ -451,7 +451,7 @@ mod tests {
                 ));
                 assert_eq!(signature.to_base58_check(), "sigbQ5ZNvkjvGssJgoAnUAfY4Wvvg3QZqawBYB1j1VDBNTMBAALnCzRHWzer34bnfmzgHg3EvwdzQKdxgSghB897cono6gbQ");
             }
-            _ => assert!(false, "endorsement with slot expected"),
+            _ => panic!("endorsement with slot expected"),
         }
     });
 
@@ -478,7 +478,7 @@ mod tests {
                     "edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav"
                 );
             }
-            _ => assert!(false, "reveal expected"),
+            _ => panic!("reveal expected"),
         }
     });
 
@@ -509,12 +509,12 @@ mod tests {
                         "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx"
                     ),
                     ContractId::Originated(_) => {
-                        assert!(false, "unexpected implicit destination")
+                        panic!("unexpected implicit destination")
                     }
                 }
                 assert!(parameters.is_none());
             }
-            _ => assert!(false, "transaction expected"),
+            _ => panic!("transaction expected"),
         }
     });
 
@@ -543,12 +543,12 @@ mod tests {
                 match destination {
                     ContractId::Originated(_originated) => (),
                     ContractId::Implicit(_) => {
-                        assert!(false, "unexpected implicit destination")
+                        panic!("unexpected implicit destination")
                     }
                 }
                 assert!(parameters.is_some());
             }
-            _ => assert!(false, "transaction expected"),
+            _ => panic!("transaction expected"),
         }
     });
 
@@ -580,7 +580,7 @@ mod tests {
                     Some("tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx".to_string())
                 );
             }
-            _ => assert!(false, "origination expected"),
+            _ => panic!("origination expected"),
         }
     });
 
@@ -609,7 +609,7 @@ mod tests {
                     Some("tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx".to_string())
                 );
             }
-            _ => assert!(false, "delegation expected"),
+            _ => panic!("delegation expected"),
         }
     });
 
@@ -633,7 +633,7 @@ mod tests {
                 assert_eq!(storage_limit.0, BigInt::from(57024931117_u64));
                 assert!(delegate.is_none());
             }
-            _ => assert!(false, "delegation expected"),
+            _ => panic!("delegation expected"),
         }
     });
 
@@ -650,7 +650,7 @@ mod tests {
                 assert_eq!(gas_limit.0, BigInt::from(9451117));
                 assert_eq!(storage_limit.0, BigInt::from(57024931117_u64));
             }
-            _ => assert!(false, "register_global_constant expected"),
+            _ => panic!("register_global_constant expected"),
         }
     });
     */

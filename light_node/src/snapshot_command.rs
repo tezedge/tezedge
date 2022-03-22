@@ -207,7 +207,7 @@ pub fn snapshot_storage(
                 }
 
                 let block_meta = new_block_meta_storage
-                    .put_block_header_with_applied(&block_header_with_hash, &chain_id, &log)
+                    .put_block_header_with_applied(block_header_with_hash, &chain_id, &log)
                     .expect("Failed to store block header meta to new main storage");
                 new_block_meta_storage
                     .store_predecessors(&block_header_with_hash.hash, &block_meta)
@@ -419,12 +419,13 @@ fn resolve_block_reference(
 ) -> BlockHash {
     match block_reference {
         BlockReference::BlockHash(block_hash) => block_hash,
-        BlockReference::Level(level) => block_storage
-            .get_by_level(level as i32)
-            .unwrap_or_else(|_| panic!("Failed to obtain block at level {}", level))
-            .unwrap_or_else(|| panic!("Failed to obtain block at level {}", level))
-            .hash
-            .clone(),
+        BlockReference::Level(level) => {
+            block_storage
+                .get_by_level(level as i32)
+                .unwrap_or_else(|_| panic!("Failed to obtain block at level {}", level))
+                .unwrap_or_else(|| panic!("Failed to obtain block at level {}", level))
+                .hash
+        }
         BlockReference::OffsetFromHead(offset) => block_meta_storage
             .find_block_at_distance(head.block_hash().clone(), offset)
             .expect("Failed to obtain predecessor")

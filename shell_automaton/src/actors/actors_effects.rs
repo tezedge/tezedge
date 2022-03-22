@@ -9,33 +9,30 @@ use crate::shutdown::ShutdownInitAction;
 use crate::{Action, ActionWithMeta, Store};
 
 pub fn actors_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
-    match &action.action {
-        Action::WakeupEvent(_) => {
-            while let Ok(msg) = store.service.actors().try_recv() {
-                match msg {
-                    ActorsMessageFrom::Shutdown => {
-                        store.dispatch(ShutdownInitAction {});
-                    }
-                    ActorsMessageFrom::P2pInit => {
-                        store.dispatch(PeersInitAction {});
-                    }
-                    ActorsMessageFrom::ApplyBlock {
+    if let Action::WakeupEvent(_) = &action.action {
+        while let Ok(msg) = store.service.actors().try_recv() {
+            match msg {
+                ActorsMessageFrom::Shutdown => {
+                    store.dispatch(ShutdownInitAction {});
+                }
+                ActorsMessageFrom::P2pInit => {
+                    store.dispatch(PeersInitAction {});
+                }
+                ActorsMessageFrom::ApplyBlock {
+                    block_hash,
+                    callback,
+                    ..
+                } => {
+                    store
+                        .service
+                        .actors()
+                        .register_apply_block_callback(block_hash.clone(), callback);
+                    store.dispatch(BlockApplierEnqueueBlockAction {
                         block_hash,
-                        callback,
-                        ..
-                    } => {
-                        store
-                            .service
-                            .actors()
-                            .register_apply_block_callback(block_hash.clone(), callback);
-                        store.dispatch(BlockApplierEnqueueBlockAction {
-                            block_hash,
-                            injector_rpc_id: None,
-                        });
-                    }
+                        injector_rpc_id: None,
+                    });
                 }
             }
         }
-        _ => {}
     }
 }

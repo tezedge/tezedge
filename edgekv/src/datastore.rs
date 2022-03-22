@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::ptr_arg)]
+
 use crate::datastore::DataIndex::Persisted;
 use crate::errors::EdgeKVError;
 use crate::file_ops::{
@@ -170,7 +172,7 @@ impl KeysDir {
                 if let Persisted(entry) = entry {
                     return Some(entry.clone());
                 }
-                return None;
+                None
             }
         }
     }
@@ -200,7 +202,7 @@ impl KeysDir {
         let keys_dir = Self {
             keys: Default::default(),
         };
-        for (_, fp) in file_pairs {
+        for fp in file_pairs.values() {
             fp.fetch_hint_entries(&keys_dir)?;
         }
         Ok(keys_dir)
@@ -215,11 +217,8 @@ impl IndexDir {
     pub fn new(file_pairs: BTreeMap<String, FilePair>) -> Result<IndexDir> {
         let mut indexes = BTreeMap::new();
         for (k, v) in file_pairs {
-            match v.to_index() {
-                Ok(index) => {
-                    indexes.insert(k, index);
-                }
-                Err(_) => {}
+            if let Ok(index) = v.to_index() {
+                indexes.insert(k, index);
             }
         }
 
@@ -341,7 +340,7 @@ impl DataStore {
 
         buffer.insert(key.clone(), value.clone());
         self.keys_dir.partial_insert(key.clone())?;
-        cache.insert(key.clone(), value.clone());
+        cache.insert(key, value);
         Ok(())
     }
 
@@ -556,7 +555,7 @@ impl DataStore {
         }
         active_file.sync()?;
         self.keys_dir.insert_bulk(key_entries)?;
-        fs_extra::remove_items(&vec![buffer_file_path.as_path()])?;
+        fs_extra::remove_items(&[buffer_file_path.as_path()])?;
         if split_active_file {
             self.try_split(&mut active_file)?;
             self.index_dir.insert(active_file.as_file_pair().clone())?;

@@ -54,7 +54,7 @@ pub fn generate_next_block(
 }
 
 pub fn build_expected_history(
-    chain: &Vec<BlockHeaderWithHash>,
+    chain: &[BlockHeaderWithHash],
     node_pkh: CryptoboxPublicKeyHash,
     peer_pkh: CryptoboxPublicKeyHash,
     current_head_level: Level,

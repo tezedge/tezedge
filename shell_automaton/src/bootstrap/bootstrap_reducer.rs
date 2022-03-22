@@ -19,6 +19,7 @@ use super::{
     PeerBlockOperationsGetState, PeerBranch, PeerIntervalCurrentState, PeerIntervalState,
 };
 pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
+    log_stats(state);
     match &action.action {
         Action::BootstrapInit(_) => {
             state.bootstrap = BootstrapState::Init {
@@ -51,7 +52,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 state,
                 peer,
                 branch_level,
-                branch_hash.clone(),
+                branch_hash,
                 &content.history,
             ) {
                 Some(v) => v,
@@ -114,12 +115,13 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                             *level <= *main_chain_last_level - main_chain.len() as Level
                         })
                         .fold(0, |mut index, (block_level, block_hash)| {
-                            while let Some(_) = peer_intervals
+                            while peer_intervals
                                 .iter()
                                 .rev()
                                 .nth(index + 1)
                                 .and_then(|p| p.highest_level())
                                 .filter(|l| block_level <= *l)
+                                .is_some()
                             {
                                 index += 1;
                             }
@@ -202,10 +204,8 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         .get(index as usize)
                         .filter(|b| &b.block_hash == hash)
                         .is_some()
-                } else if main_chain_last_hash == content.current_head.header.predecessor() {
-                    true
                 } else {
-                    false
+                    main_chain_last_hash == content.current_head.header.predecessor()
                 };
                 if is_same_chain {
                     peer_intervals
@@ -239,6 +239,8 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             state.bootstrap = BootstrapState::PeersBlockHeadersGetPending {
                 time: action.time_as_nanos(),
                 timeouts_last_check: None,
+                last_logged: action.time_as_nanos(),
+                last_logged_downloaded_count: 0,
                 main_chain_last_level: content.current_head.header.level(),
                 main_chain_last_hash: content.current_head.hash.clone(),
                 main_chain: Default::default(),
@@ -254,8 +256,10 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 }],
             };
         }
-        Action::BootstrapPeersMainBranchFindSuccess(_) => match &mut state.bootstrap {
-            BootstrapState::PeersMainBranchFindPending { peer_branches, .. } => {
+        Action::BootstrapPeersMainBranchFindSuccess(_) => {
+            if let BootstrapState::PeersMainBranchFindPending { peer_branches, .. } =
+                &mut state.bootstrap
+            {
                 let peer_branches = std::mem::take(peer_branches);
                 if let Some(main_block) = state
                     .bootstrap
@@ -269,8 +273,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     };
                 }
             }
-            _ => {}
-        },
+        }
         Action::BootstrapPeersBlockHeadersGetPending(_) => {
             let current_head = match state.current_head.get() {
                 Some(v) => v,
@@ -329,6 +332,8 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 state.bootstrap = BootstrapState::PeersBlockHeadersGetPending {
                     time: action.time_as_nanos(),
                     timeouts_last_check: None,
+                    last_logged: action.time_as_nanos(),
+                    last_logged_downloaded_count: 0,
                     main_chain_last_level: main_block.0,
                     main_chain_last_hash: main_block.1,
                     main_chain: VecDeque::with_capacity(missing_levels_count.max(0) as usize),
@@ -337,35 +342,28 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
         Action::BootstrapPeerBlockHeaderGetPending(content) => {
-            state
-                .bootstrap
-                .peer_next_interval_mut(content.peer)
-                .map(|(_, p)| p.current.to_pending(action.time_as_nanos(), content.peer));
+            if let Some((_, p)) = state.bootstrap.peer_next_interval_mut(content.peer) {
+                p.current.to_pending(action.time_as_nanos(), content.peer)
+            }
         }
         Action::BootstrapPeerBlockHeaderGetTimeout(content) => {
-            state
-                .bootstrap
-                .peer_interval_mut(content.peer, |p| {
-                    p.current.is_pending_block_hash_eq(&content.block_hash)
-                })
-                .map(|(_, p)| {
-                    p.peers.remove(&content.peer);
-                    p.current.to_timed_out(action.time_as_nanos());
-                });
+            if let Some((_, p)) = state.bootstrap.peer_interval_mut(content.peer, |p| {
+                p.current.is_pending_block_hash_eq(&content.block_hash)
+            }) {
+                p.peers.remove(&content.peer);
+                p.current.to_timed_out(action.time_as_nanos());
+            }
         }
         Action::BootstrapPeerBlockHeaderGetSuccess(content) => {
-            state
-                .bootstrap
-                .peer_interval_mut(content.peer, |p| {
-                    p.current.is_pending_block_level_and_hash_eq(
-                        content.block.header.level(),
-                        &content.block.hash,
-                    )
-                })
-                .map(|(_, p)| {
-                    p.current
-                        .to_success(action.time_as_nanos(), content.block.clone())
-                });
+            if let Some((_, p)) = state.bootstrap.peer_interval_mut(content.peer, |p| {
+                p.current.is_pending_block_level_and_hash_eq(
+                    content.block.header.level(),
+                    &content.block.hash,
+                )
+            }) {
+                p.current
+                    .to_success(action.time_as_nanos(), content.block.clone())
+            }
         }
         Action::BootstrapPeerBlockHeaderGetFinish(content) => {
             let log = &state.log;
@@ -420,9 +418,10 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         }
                     } else if pred_level >= 0 && current_level - 2 == pred_level {
                         let head_pred = state.current_head.get_pred();
-                        if head_pred.map_or(false, |head_pred| {
+                        let is_predecessor = head_pred.map_or(false, |head_pred| {
                             pred_hash == head_pred.header.predecessor()
-                        }) {
+                        });
+                        if is_predecessor {
                             // allow current head predecessor(2 level) reorg (MAX)
                             peer_intervals[index]
                                 .current
@@ -451,7 +450,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         .downloaded
                         .first()
                         .map(|(l, h, ..)| (*l, h))
-                        .or(pred.current.block_level_with_hash().map(|(l, h)| (l, h)))
+                        .or_else(|| pred.current.block_level_with_hash().map(|(l, h)| (l, h)))
                     {
                         Some((pred_level, pred_hash)) => {
                             if pred.current.is_error() {
@@ -502,7 +501,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     let peers = peer_intervals[index]
                         .peers
                         .iter()
-                        .map(|p| *p)
+                        .copied()
                         .collect::<Vec<_>>();
                     let rev_index = peer_intervals.len() - index - 1;
                     peer_intervals
@@ -561,26 +560,27 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
         }
-        Action::BootstrapPeersBlockHeadersGetSuccess(_) => match &mut state.bootstrap {
-            BootstrapState::PeersBlockHeadersGetPending {
+        Action::BootstrapPeersBlockHeadersGetSuccess(_) => {
+            if let BootstrapState::PeersBlockHeadersGetPending {
                 main_chain_last_level,
                 main_chain,
                 ..
-            } => {
+            } = &mut state.bootstrap
+            {
                 state.bootstrap = BootstrapState::PeersBlockHeadersGetSuccess {
                     time: action.time_as_nanos(),
                     chain_last_level: *main_chain_last_level,
                     chain: std::mem::take(main_chain),
                 };
             }
-            _ => {}
-        },
-        Action::BootstrapPeersBlockOperationsGetPending(_) => match &mut state.bootstrap {
-            BootstrapState::PeersBlockHeadersGetSuccess {
+        }
+        Action::BootstrapPeersBlockOperationsGetPending(_) => {
+            if let BootstrapState::PeersBlockHeadersGetSuccess {
                 chain_last_level,
                 chain,
                 ..
-            } => {
+            } = &mut state.bootstrap
+            {
                 state.bootstrap = BootstrapState::PeersBlockOperationsGetPending {
                     time: action.time_as_nanos(),
                     timeouts_last_check: None,
@@ -589,15 +589,15 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     pending: Default::default(),
                 };
             }
-            _ => {}
-        },
-        Action::BootstrapPeerBlockOperationsGetPending(content) => match &mut state.bootstrap {
-            BootstrapState::PeersBlockOperationsGetPending {
+        }
+        Action::BootstrapPeerBlockOperationsGetPending(content) => {
+            if let BootstrapState::PeersBlockOperationsGetPending {
                 queue,
                 pending,
                 last_level,
                 ..
-            } => {
+            } = &mut state.bootstrap
+            {
                 let next_block = match queue.pop_front() {
                     Some(v) => v,
                     None => return,
@@ -605,8 +605,8 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 let next_block_level = *last_level - queue.len() as i32;
 
                 slog::debug!(&state.log, "Scheduled BlockOperationsGet";
-                    "block_level" => next_block_level,
-                    "block_hash" => format!("{:?}", next_block.block_hash));
+                "block_level" => next_block_level,
+                "block_hash" => format!("{:?}", next_block.block_hash));
 
                 pending
                     .entry(next_block.block_hash.clone())
@@ -625,19 +625,23 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         },
                     );
             }
-            _ => {}
-        },
-        Action::BootstrapPeerBlockOperationsGetTimeout(content) => match &mut state.bootstrap {
-            BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
-                pending
+        }
+        Action::BootstrapPeerBlockOperationsGetTimeout(content) => {
+            if let BootstrapState::PeersBlockOperationsGetPending { pending, .. } =
+                &mut state.bootstrap
+            {
+                if let Some(p) = pending
                     .get_mut(&content.block_hash)
                     .and_then(|b| b.peers.get_mut(&content.peer))
-                    .map(|p| p.to_timed_out(action.time_as_nanos()));
+                {
+                    p.to_timed_out(action.time_as_nanos())
+                }
             }
-            _ => {}
-        },
-        Action::BootstrapPeerBlockOperationsGetRetry(content) => match &mut state.bootstrap {
-            BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+        }
+        Action::BootstrapPeerBlockOperationsGetRetry(content) => {
+            if let BootstrapState::PeersBlockOperationsGetPending { pending, .. } =
+                &mut state.bootstrap
+            {
                 let block_state = match pending.get_mut(&content.block_hash) {
                     Some(v) => v,
                     None => return,
@@ -655,11 +659,12 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     .and_modify(|p| *p = peer_state_build())
                     .or_insert_with(peer_state_build);
             }
-            _ => {}
-        },
-        Action::BootstrapPeerBlockOperationsReceived(content) => match &mut state.bootstrap {
-            BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
-                pending
+        }
+        Action::BootstrapPeerBlockOperationsReceived(content) => {
+            if let BootstrapState::PeersBlockOperationsGetPending { pending, .. } =
+                &mut state.bootstrap
+            {
+                if let Some(v) = pending
                     .get_mut(content.message.operations_for_block().block_hash())
                     .and_then(|b| b.peers.get_mut(&content.peer))
                     .and_then(|p| p.pending_operations_mut())
@@ -668,41 +673,43 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                             content.message.operations_for_block().validation_pass() as usize
                         )
                     })
-                    .map(|v| *v = Some(content.message.clone()));
+                {
+                    *v = Some(content.message.clone())
+                }
             }
-            _ => {}
-        },
-        Action::BootstrapPeerBlockOperationsGetSuccess(content) => match &mut state.bootstrap {
-            BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
-                pending
+        }
+        Action::BootstrapPeerBlockOperationsGetSuccess(content) => {
+            if let BootstrapState::PeersBlockOperationsGetPending { pending, .. } =
+                &mut state.bootstrap
+            {
+                if let Some((_, p)) = pending
                     .get_mut(&content.block_hash)
                     .and_then(|b| b.peers.iter_mut().find(|(_, p)| p.is_complete()))
-                    .map(|(_, p)| {
-                        if let Some(ops) = p.pending_operations_mut() {
-                            let operations = ops.drain(..).filter_map(|v| v).collect();
-                            *p = PeerBlockOperationsGetState::Success {
-                                time: action.time_as_nanos(),
-                                operations,
-                            };
-                        }
-                    });
+                {
+                    if let Some(ops) = p.pending_operations_mut() {
+                        let operations = ops.drain(..).flatten().collect();
+                        *p = PeerBlockOperationsGetState::Success {
+                            time: action.time_as_nanos(),
+                            operations,
+                        };
+                    }
+                }
             }
-            _ => {}
-        },
-        Action::BootstrapScheduleBlockForApply(content) => match &mut state.bootstrap {
-            BootstrapState::PeersBlockOperationsGetPending { pending, .. } => {
+        }
+        Action::BootstrapScheduleBlockForApply(content) => {
+            if let BootstrapState::PeersBlockOperationsGetPending { pending, .. } =
+                &mut state.bootstrap
+            {
                 pending.remove(&content.block_hash);
             }
-            _ => {}
-        },
-        Action::BootstrapPeersBlockOperationsGetSuccess(_) => match &mut state.bootstrap {
-            BootstrapState::PeersBlockOperationsGetPending { .. } => {
+        }
+        Action::BootstrapPeersBlockOperationsGetSuccess(_) => {
+            if let BootstrapState::PeersBlockOperationsGetPending { .. } = &mut state.bootstrap {
                 state.bootstrap = BootstrapState::PeersBlockOperationsGetSuccess {
                     time: action.time_as_nanos(),
                 };
             }
-            _ => {}
-        },
+        }
         Action::PeerDisconnected(content) => match &mut state.bootstrap {
             BootstrapState::PeersMainBranchFindPending {
                 peer_branches,
@@ -723,16 +730,15 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                         .peer()
                         .filter(|p| p == &content.address)
                         .is_some()
+                        && (interval.current.is_idle() || interval.current.is_pending())
                     {
-                        if interval.current.is_idle() || interval.current.is_pending() {
-                            if let Some((level, hash)) = interval.current.block_level_with_hash() {
-                                let hash = hash.clone();
-                                interval.current = PeerIntervalCurrentState::Disconnected {
-                                    time: action.time_as_nanos(),
-                                    peer: content.address,
-                                    block_level: level,
-                                    block_hash: hash,
-                                }
+                        if let Some((level, hash)) = interval.current.block_level_with_hash() {
+                            let hash = hash.clone();
+                            interval.current = PeerIntervalCurrentState::Disconnected {
+                                time: action.time_as_nanos(),
+                                peer: content.address,
+                                block_level: level,
+                                block_hash: hash,
                             }
                         }
                     }
@@ -827,4 +833,58 @@ fn peer_branch_with_level_iter<'a>(
         })
         .take_while(|(level, _)| *level >= 0);
     Some(std::iter::once((branch_current_head_level, branch_current_head_hash)).chain(iter))
+}
+
+pub fn log_stats(state: &mut State) {
+    // log every 2 seconds.
+    const LOG_INTERVAL_S: u64 = 2;
+    const LOG_INTERVAL_NS: u64 = LOG_INTERVAL_S * 1_000_000_000;
+
+    let now = state.time_as_nanos();
+
+    match &mut state.bootstrap {
+        BootstrapState::PeersBlockHeadersGetPending {
+            last_logged,
+            last_logged_downloaded_count,
+            main_chain,
+            main_chain_last_level,
+            peer_intervals,
+            ..
+        } => {
+            if now - *last_logged < LOG_INTERVAL_NS {
+                return;
+            }
+
+            let current_head = match state.current_head.get() {
+                Some(v) => v,
+                None => return,
+            };
+            let total = main_chain_last_level
+                .saturating_sub(current_head.header.level())
+                .max(0) as usize;
+            let downloaded_count = main_chain.len()
+                + peer_intervals
+                    .iter()
+                    .map(|v| v.downloaded.len())
+                    .sum::<usize>();
+            let parallelism = peer_intervals
+                .iter()
+                .filter(|b| b.current.is_pending())
+                .filter_map(|b| b.current.peer())
+                .collect::<BTreeSet<_>>()
+                .len();
+            let left = total.saturating_sub(downloaded_count);
+            let speed = downloaded_count.saturating_sub(*last_logged_downloaded_count)
+                / (LOG_INTERVAL_S as usize);
+
+            slog::info!(&state.log, "Downloading block headers";
+                "progress" => format!("{}/{} (left: {})", downloaded_count, total, left),
+                "speed" => format!("{} h/s", speed),
+                "parallelism" => parallelism);
+
+            *last_logged = now;
+            *last_logged_downloaded_count = downloaded_count;
+        }
+        _ => return,
+    }
 }

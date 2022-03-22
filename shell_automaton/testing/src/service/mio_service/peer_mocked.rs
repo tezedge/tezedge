@@ -251,7 +251,7 @@ impl MioPeerStreamMocked {
             .crypto
             .as_mut()
             .expect("missing PeerCrypto for encryption");
-        if self.write_buf.len() == 0 {
+        if self.write_buf.is_empty() {
             return None;
         }
         let mut reader = MessageReadBuffer::new();
@@ -286,7 +286,7 @@ impl Read for MioPeerStreamMocked {
 
         let len = VecDequeReadable::from(&mut self.read_buf).read(&mut buf[..len])?;
 
-        if self.read_buf.len() == 0 {
+        if self.read_buf.is_empty() {
             self.set_read_cond(IOCondition::Limit(0));
         }
 

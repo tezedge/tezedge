@@ -29,10 +29,11 @@ fn can_deserialize_block_header() -> Result<(), Error> {
         "LLoZi3xywrX9swZQgC82m7vj5hmuz6LGAatNq2Muh34oNn71JruZs",
         block_header.operations_hash().to_base58_check()
     );
-    Ok(assert_eq!(
+    assert_eq!(
         "CoUoqw1cVKUUNWyAviph5cdsjDpgeNhH2DGkMtgy7N6kfwnbewvS",
         block_header.context().to_base58_check()
-    ))
+    );
+    Ok(())
 }
 
 #[test]
@@ -46,14 +47,15 @@ fn can_deserialize_get_block_headers() -> Result<(), Error> {
     match message {
         PeerMessage::GetBlockHeaders(message) => {
             assert_eq!(1, message.get_block_headers().len());
-            Ok(assert_eq!(
+            assert_eq!(
                 "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET",
                 message
                     .get_block_headers()
                     .get(0)
                     .unwrap()
                     .to_base58_check()
-            ))
+            );
+            Ok(())
         }
         _ => panic!("Unsupported encoding: {:?}", message),
     }

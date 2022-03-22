@@ -18,13 +18,10 @@ pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::StorageRequestPending(content) => {
             if let Some(req) = state.storage.requests.get_mut(content.req_id) {
-                match &req.status {
-                    StorageRequestStatus::Idle { .. } => {
-                        req.status = StorageRequestStatus::Pending {
-                            time: action.time_as_nanos(),
-                        };
-                    }
-                    _ => return,
+                if let StorageRequestStatus::Idle { .. } = &req.status {
+                    req.status = StorageRequestStatus::Pending {
+                        time: action.time_as_nanos(),
+                    };
                 }
             }
         }
@@ -39,21 +36,18 @@ pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
                             error: content.error.clone(),
                         };
                     }
-                    _ => return,
+                    _ => {}
                 }
             }
         }
         Action::StorageRequestSuccess(content) => {
             if let Some(req) = state.storage.requests.get_mut(content.req_id) {
-                match &req.status {
-                    StorageRequestStatus::Pending { time, .. } => {
-                        req.status = StorageRequestStatus::Success {
-                            time: action.time_as_nanos(),
-                            pending_since: *time,
-                            result: content.result.clone(),
-                        };
-                    }
-                    _ => return,
+                if let StorageRequestStatus::Pending { time, .. } = &req.status {
+                    req.status = StorageRequestStatus::Success {
+                        time: action.time_as_nanos(),
+                        pending_since: *time,
+                        result: content.result.clone(),
+                    };
                 }
             }
         }
@@ -63,7 +57,7 @@ pub fn storage_request_reducer(state: &mut State, action: &ActionWithMeta) {
                     StorageRequestStatus::Error { .. } | StorageRequestStatus::Success { .. } => {
                         state.storage.requests.remove(content.req_id);
                     }
-                    _ => return,
+                    _ => {}
                 }
             }
         }

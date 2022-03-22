@@ -39,6 +39,10 @@ impl<Request> PendingRequests<Request> {
         self.list.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     #[inline]
     pub fn last_added_req_id(&self) -> RequestId {
         self.last_added_req_id
@@ -88,17 +92,21 @@ impl<Request> PendingRequests<Request> {
 
     #[inline]
     pub fn remove(&mut self, id: RequestId) -> Option<Request> {
-        if self.get(id).is_none() {
-            return None;
-        }
+        self.get(id)?;
         let removed_req = self.list.remove(id.locator()).request;
         self.next_index = self.list.vacant_entry().key();
         Some(removed_req)
     }
 
-    pub fn iter<'a>(&'a self) -> impl 'a + Iterator<Item = (RequestId, &'a Request)> {
+    pub fn iter(&self) -> impl Iterator<Item = (RequestId, &Request)> {
         self.list
             .iter()
             .map(|(locator, req)| (RequestId::new(locator, req.counter), &req.request))
+    }
+}
+
+impl<Request> Default for PendingRequests<Request> {
+    fn default() -> Self {
+        Self::new()
     }
 }

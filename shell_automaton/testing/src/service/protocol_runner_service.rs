@@ -32,6 +32,12 @@ impl ProtocolRunnerServiceDummy {
     }
 }
 
+impl Default for ProtocolRunnerServiceDummy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProtocolRunnerService for ProtocolRunnerServiceDummy {
     fn try_recv(&mut self) -> Result<ProtocolRunnerResponse, ResponseTryRecvError> {
         Err(ResponseTryRecvError::Empty)

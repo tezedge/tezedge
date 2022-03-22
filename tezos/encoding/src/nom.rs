@@ -838,7 +838,7 @@ mod test {
         num_bigint::BigUint::from_u64(u64::from_str_radix(s, 16).unwrap()).unwrap()
     }
 
-    fn limit_error<'a>(input: NomInput<'a>, kind: BoundedEncodingKind) -> Err<NomError<'a>> {
+    fn limit_error(input: NomInput, kind: BoundedEncodingKind) -> Err<NomError> {
         Err::Error(DecodeError {
             input,
             kind: DecodeErrorKind::Boundary(kind),

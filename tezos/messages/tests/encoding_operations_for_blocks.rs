@@ -25,7 +25,8 @@ fn can_deserialize_get_operations_for_blocks() -> Result<(), Error> {
                 "BMWmj9CTojf7AnA8ZQFWGkh1cXB6FkST8Ey5coaeHX6cVNAZqA6",
                 operations[0].hash().to_base58_check()
             );
-            Ok(assert_eq!(1, operations[0].validation_pass()))
+            assert_eq!(1, operations[0].validation_pass());
+            Ok(())
         }
         _ => panic!("Unsupported encoding: {:?}", message),
     }
@@ -139,6 +140,7 @@ const RIGHT_BOUNDARY: u8 = 0x0E;
 
 // Returns a byte vector of specified size, with BE encoding of the num
 // as its last 8 bytes
+#[allow(clippy::vec_init_then_push)]
 fn get_hash(num: u64, size: usize) -> Vec<u8> {
     use std::mem::size_of;
     assert!(size >= size_of::<u64>() + 2);
@@ -191,7 +193,7 @@ fn create_operations_for_blocks_encoded(depth: usize) -> Vec<u8> {
 fn create_operations_for_blocks(depth: usize) -> PeerMessageResponse {
     let path = (0..depth)
         .map(|i| get_hash(i as u64, 32))
-        .map(|h| PathItem::left(h))
+        .map(PathItem::left)
         .collect();
     let message = PeerMessage::OperationsForBlocks(OperationsForBlocksMessage::new(
         OperationsForBlock::new(get_hash(0xffffffff_u64, 32).try_into().unwrap(), 0x01),
@@ -246,7 +248,7 @@ fn can_deserialize_operations_for_blocks_no_stack_overflow() -> Result<(), Error
 fn can_serialize_operations_for_blocks_left_deep() -> Result<(), Error> {
     let depth = MAX_PASS_MERKLE_DEPTH;
     let message = create_operations_for_blocks(depth);
-    let encoded = PeerMessageResponse::from(message).as_bytes()?;
+    let encoded = message.as_bytes()?;
     let expected = create_operations_for_blocks_encoded(depth);
     assert_eq!(encoded, expected);
 
@@ -256,7 +258,7 @@ fn can_serialize_operations_for_blocks_left_deep() -> Result<(), Error> {
 #[test]
 fn can_serialize_operations_for_blocks_left_too_deep() -> Result<(), Error> {
     let message = create_operations_for_blocks(MAX_PASS_MERKLE_DEPTH + 1);
-    let result = PeerMessageResponse::from(message).as_bytes();
+    let result = message.as_bytes();
     assert!(result.is_err());
 
     Ok(())

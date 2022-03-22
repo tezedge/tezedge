@@ -66,14 +66,11 @@ pub fn peer_chunk_write_reducer(state: &mut State, action: &ActionWithMeta) {
                     _ => return,
                 };
 
-                match &chunk.state {
-                    PeerChunkWriteState::UnencryptedContent { .. } => {
-                        chunk.state = PeerChunkWriteState::EncryptedContent {
-                            content: action.encrypted_content.clone(),
-                        };
-                        chunk.crypto.increment_nonce();
-                    }
-                    _ => {}
+                if let PeerChunkWriteState::UnencryptedContent { .. } = &chunk.state {
+                    chunk.state = PeerChunkWriteState::EncryptedContent {
+                        content: action.encrypted_content.clone(),
+                    };
+                    chunk.crypto.increment_nonce();
                 };
             }
         }

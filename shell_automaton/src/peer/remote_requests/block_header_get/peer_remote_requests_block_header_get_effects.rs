@@ -32,7 +32,7 @@ pub fn peer_remote_requests_block_header_get_effects<S>(
                 Some(v) => v,
                 None => return,
             };
-            let block_hash = match peer.remote_requests.block_header_get.queue.iter().nth(0) {
+            let block_hash = match peer.remote_requests.block_header_get.queue.iter().next() {
                 Some(v) => v.clone(),
                 None => return,
             };

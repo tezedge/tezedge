@@ -9,12 +9,9 @@ pub fn protocol_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
     S: Service,
 {
-    match &action.action {
-        Action::WakeupEvent(_) => {
-            while let Ok(action) = store.service.prevalidator().try_recv() {
-                store.dispatch(action);
-            }
+    if let Action::WakeupEvent(_) = &action.action {
+        while let Ok(action) = store.service.prevalidator().try_recv() {
+            store.dispatch(action);
         }
-        _ => (),
     }
 }

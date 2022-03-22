@@ -13,10 +13,7 @@ pub struct ShutdownInitAction {}
 
 impl EnablingCondition<State> for ShutdownInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.shutdown {
-            ShutdownState::Idle => true,
-            _ => false,
-        }
+        matches!(&state.shutdown, ShutdownState::Idle)
     }
 }
 
@@ -26,10 +23,7 @@ pub struct ShutdownPendingAction {}
 
 impl EnablingCondition<State> for ShutdownPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.shutdown {
-            ShutdownState::Init { .. } => true,
-            _ => false,
-        }
+        matches!(&state.shutdown, ShutdownState::Init { .. })
     }
 }
 

@@ -74,7 +74,7 @@ impl ShellCompatibilityVersion {
     }
 
     fn select_compatible_version(
-        supported_versions: &Vec<u16>,
+        supported_versions: &[u16],
         requested_version: &u16,
         nack_motive: NackMotive,
     ) -> Result<u16, NackMotive> {

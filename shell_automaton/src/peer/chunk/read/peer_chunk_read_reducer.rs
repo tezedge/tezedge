@@ -33,20 +33,22 @@ pub fn peer_chunk_read_reducer(state: &mut State, action: &ActionWithMeta) {
                         },
                         _ => return,
                     },
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
+                    PeerStatus::Handshaked(PeerHandshaked {
+                        message_read:
                             PeerMessageReadState::Pending {
                                 binary_message_read,
-                            } => match binary_message_read {
-                                PeerBinaryMessageReadState::PendingFirstChunk { chunk }
-                                | PeerBinaryMessageReadState::Pending { chunk, .. } => {
-                                    &mut chunk.state
-                                }
-                                _ => return,
                             },
-                            _ => return,
+                        ..
+                    }) => {
+                        if let PeerBinaryMessageReadState::PendingFirstChunk { chunk }
+                        | PeerBinaryMessageReadState::Pending { chunk, .. } = binary_message_read
+                        {
+                            &mut chunk.state
+                        } else {
+                            return;
                         }
                     }
+
                     _ => return,
                 };
 
@@ -102,14 +104,14 @@ pub fn peer_chunk_read_reducer(state: &mut State, action: &ActionWithMeta) {
                         } => binary_message_state,
                         _ => return,
                     },
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
+                    PeerStatus::Handshaked(PeerHandshaked {
+                        message_read:
                             PeerMessageReadState::Pending {
                                 binary_message_read,
-                            } => binary_message_read,
-                            _ => return,
-                        }
-                    }
+                            },
+                        ..
+                    }) => binary_message_read,
+
                     _ => return,
                 };
 
@@ -159,14 +161,14 @@ pub fn peer_chunk_read_reducer(state: &mut State, action: &ActionWithMeta) {
                         } => binary_message_state,
                         _ => return,
                     },
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
+                    PeerStatus::Handshaked(PeerHandshaked {
+                        message_read:
                             PeerMessageReadState::Pending {
                                 binary_message_read,
-                            } => binary_message_read,
-                            _ => return,
-                        }
-                    }
+                            },
+                        ..
+                    }) => binary_message_read,
+
                     _ => return,
                 };
                 match binary_message_state {

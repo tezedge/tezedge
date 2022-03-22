@@ -96,10 +96,7 @@ impl GenKind {
     }
 
     fn is_valid(&self) -> bool {
-        match self {
-            GenKind::Over => false,
-            _ => true,
-        }
+        !matches!(self, GenKind::Over)
     }
 }
 
@@ -228,10 +225,7 @@ impl EncodedDataGenerator {
     }
 
     fn increase_avail(&mut self, len: usize) {
-        self.avail = match self.avail {
-            Some(avail) => Some(avail + len),
-            _ => None,
-        };
+        self.avail = self.avail.map(|avail| avail + len);
     }
 
     fn size(&mut self, size: usize) -> Vec<u8> {
@@ -255,12 +249,11 @@ impl EncodedDataGenerator {
     }
 
     fn focus_size(&self, max: usize) -> usize {
-        let size = match self.kind {
+        match self.kind {
             GenKind::Min => 0,
             GenKind::Max => max,
             GenKind::Over => max + 1,
-        };
-        size
+        }
     }
 
     fn string_fill_size(&self, max: Option<usize>) -> usize {
@@ -399,7 +392,7 @@ impl EncodedDataGenerator {
         } else {
             while avail > 0 {
                 let elt = self.generate(path, encoding);
-                assert!(elt.len() != 0);
+                assert!(!elt.is_empty());
                 if avail < elt.len() {
                     // restore avail
                     self.avail = Some(avail);
@@ -414,7 +407,7 @@ impl EncodedDataGenerator {
         if self.kind == GenKind::Over {
             self.mode = GenMode::MinNonEmpty;
             let elt = self.generate(path, encoding);
-            assert!(elt.len() != 0);
+            assert!(!elt.is_empty());
             res.extend(elt);
         }
         res
@@ -441,7 +434,7 @@ impl EncodedDataGenerator {
         }
     }
 
-    fn obj_fill(&mut self, path: &Rc<NodePath>, fields: &Vec<Field>) -> Vec<u8> {
+    fn obj_fill(&mut self, path: &Rc<NodePath>, fields: &[Field]) -> Vec<u8> {
         let mut res = Vec::new();
         let self_kind = self.kind;
         if self_kind == GenKind::Over {
@@ -462,7 +455,7 @@ impl EncodedDataGenerator {
         });
         for (i, (field, min_size)) in fields.iter().zip(limits.iter()).enumerate() {
             self.increase_avail(min_size.lower());
-            let path = NodePath::child(&path, NodeKind::Field(field.get_name().clone()));
+            let path = NodePath::child(path, NodeKind::Field(field.get_name().clone()));
             if let Some(ind) = last_var_len_field {
                 if ind == i {
                     self.kind = self_kind;
@@ -473,10 +466,10 @@ impl EncodedDataGenerator {
         res
     }
 
-    fn obj_other(&mut self, path: &Rc<NodePath>, fields: &Vec<Field>) -> Vec<u8> {
+    fn obj_other(&mut self, path: &Rc<NodePath>, fields: &[Field]) -> Vec<u8> {
         let mut res = Vec::new();
         for field in fields {
-            let path = NodePath::child(&path, NodeKind::Field(field.get_name().clone()));
+            let path = NodePath::child(path, NodeKind::Field(field.get_name().clone()));
             self.mode = if self.path.is_child_of(&path) {
                 GenMode::MinNonEmpty
             } else {
@@ -487,7 +480,7 @@ impl EncodedDataGenerator {
         res
     }
 
-    fn obj(&mut self, path: &Rc<NodePath>, fields: &Vec<Field>) -> Vec<u8> {
+    fn obj(&mut self, path: &Rc<NodePath>, fields: &[Field]) -> Vec<u8> {
         match self.mode {
             GenMode::Fill => self.obj_fill(path, fields),
             _ => self.obj_other(path, fields),
@@ -497,31 +490,31 @@ impl EncodedDataGenerator {
     pub fn generate(&mut self, path: &Rc<NodePath>, encoding: &Encoding) -> Vec<u8> {
         let res = match encoding {
             Encoding::Bounded(max, encoding) => {
-                let path = NodePath::child(&path, NodeKind::Bounded(Some(*max)));
+                let path = NodePath::child(path, NodeKind::Bounded(Some(*max)));
                 self.bounded(&path, *max, encoding)
             }
             Encoding::BoundedDynamic(max, encoding) => {
-                let path = NodePath::child(&path, NodeKind::Dynamic(Some(*max)));
+                let path = NodePath::child(path, NodeKind::Dynamic(Some(*max)));
                 self.dynamic(&path, Some(*max), encoding)
             }
             Encoding::BoundedList(max, encoding) => {
-                let path = NodePath::child(&path, NodeKind::List(Some(*max)));
+                let path = NodePath::child(path, NodeKind::List(Some(*max)));
                 self.list(&path, Some(*max), encoding)
             }
             Encoding::BoundedString(max) => {
-                let path = NodePath::child(&path, NodeKind::String(Some(*max)));
+                let path = NodePath::child(path, NodeKind::String(Some(*max)));
                 self.string(&path, Some(*max))
             }
             Encoding::Dynamic(encoding) => {
-                let path = NodePath::child(&path, NodeKind::Dynamic(None));
+                let path = NodePath::child(path, NodeKind::Dynamic(None));
                 self.dynamic(&path, None, encoding)
             }
             Encoding::List(encoding) => {
-                let path = NodePath::child(&path, NodeKind::List(None));
+                let path = NodePath::child(path, NodeKind::List(None));
                 self.list(&path, None, encoding)
             }
             Encoding::String => {
-                let path = NodePath::child(&path, NodeKind::String(None));
+                let path = NodePath::child(path, NodeKind::String(None));
                 self.string(&path, None)
             }
             Encoding::Obj(_, fields) => self.obj(path, fields),

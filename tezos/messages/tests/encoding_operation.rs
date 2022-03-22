@@ -13,5 +13,6 @@ fn can_deserialize() -> Result<(), Error> {
         "BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H",
         operation.branch().to_base58_check()
     );
-    Ok(assert_eq!("000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08", &hex::encode(&operation.data())))
+    assert_eq!("000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08", &hex::encode(&operation.data()));
+    Ok(())
 }

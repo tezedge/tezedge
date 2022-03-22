@@ -324,13 +324,13 @@ pub fn fetch_file_pairs<P: AsRef<Path>>(
             DATA_FILE_EXTENSION => {
                 let file_pair = file_pairs
                     .entry(file_name.to_owned())
-                    .or_insert(FilePair::new(file_name));
+                    .or_insert_with(|| FilePair::new(file_name));
                 file_pair.data_file_path = file_path.to_path_buf();
             }
             HINT_FILE_EXTENSION => {
                 let file_pair = file_pairs
                     .entry(file_name.to_owned())
-                    .or_insert(FilePair::new(file_name));
+                    .or_insert_with(|| FilePair::new(file_name));
                 file_pair.hint_file_path = file_path.to_path_buf();
             }
             BUFFER_FILE_EXTENSION => {

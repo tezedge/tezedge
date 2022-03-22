@@ -37,7 +37,7 @@ where
     fn choose_potential_peers_for_advertise(&mut self, list: &[SocketAddr]) -> Vec<SocketAddr> {
         let len = self.gen_range(1, 80.min(list.len()).max(2));
         if len >= list.len() {
-            list.iter().cloned().collect()
+            list.to_vec()
         } else {
             list.choose_multiple(self, len).cloned().collect()
         }

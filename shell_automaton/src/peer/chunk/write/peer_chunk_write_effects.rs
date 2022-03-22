@@ -27,7 +27,7 @@ where
                             chunk_state: PeerChunkWriteState::UnencryptedContent { content },
                             ..
                         } => {
-                            return match BinaryChunk::from_content(&content) {
+                            return match BinaryChunk::from_content(content) {
                                 Ok(chunk) => {
                                     store.dispatch(PeerChunkWriteCreateChunkAction {
                                         address: action.address,
@@ -58,31 +58,29 @@ where
                     _ => return,
                 };
 
-                match binary_message_state {
-                    PeerBinaryMessageWriteState::Pending {
-                        chunk:
-                            PeerChunkWrite {
-                                crypto,
-                                state: PeerChunkWriteState::UnencryptedContent { content },
-                            },
-                        ..
-                    } => {
-                        match crypto.encrypt(&content) {
-                            Ok(encrypted_content) => {
-                                store.dispatch(PeerChunkWriteEncryptContentAction {
-                                    address: action.address,
-                                    encrypted_content,
-                                });
-                            }
-                            Err(err) => {
-                                store.dispatch(PeerChunkWriteErrorAction {
-                                    address: action.address,
-                                    error: PeerChunkWriteError::from(err),
-                                });
-                            }
-                        };
-                    }
-                    _ => return,
+                if let PeerBinaryMessageWriteState::Pending {
+                    chunk:
+                        PeerChunkWrite {
+                            crypto,
+                            state: PeerChunkWriteState::UnencryptedContent { content },
+                        },
+                    ..
+                } = binary_message_state
+                {
+                    match crypto.encrypt(content) {
+                        Ok(encrypted_content) => {
+                            store.dispatch(PeerChunkWriteEncryptContentAction {
+                                address: action.address,
+                                encrypted_content,
+                            });
+                        }
+                        Err(err) => {
+                            store.dispatch(PeerChunkWriteErrorAction {
+                                address: action.address,
+                                error: PeerChunkWriteError::from(err),
+                            });
+                        }
+                    };
                 };
             }
         }
@@ -106,15 +104,16 @@ where
                     _ => return,
                 };
 
-                match binary_message_state {
-                    PeerBinaryMessageWriteState::Pending {
-                        chunk:
-                            PeerChunkWrite {
-                                state: PeerChunkWriteState::EncryptedContent { content },
-                                ..
-                            },
-                        ..
-                    } => match BinaryChunk::from_content(&content) {
+                if let PeerBinaryMessageWriteState::Pending {
+                    chunk:
+                        PeerChunkWrite {
+                            state: PeerChunkWriteState::EncryptedContent { content },
+                            ..
+                        },
+                    ..
+                } = binary_message_state
+                {
+                    match BinaryChunk::from_content(content) {
                         Ok(chunk) => {
                             store.dispatch(PeerChunkWriteCreateChunkAction {
                                 address: action.address,
@@ -127,8 +126,7 @@ where
                                 error: err.into(),
                             });
                         }
-                    },
-                    _ => {}
+                    }
                 };
             }
         }
@@ -163,22 +161,20 @@ where
                     _ => return,
                 };
 
-                match binary_message_state {
-                    PeerBinaryMessageWriteState::Pending {
-                        chunk:
-                            PeerChunkWrite {
-                                state: PeerChunkWriteState::Pending { .. },
-                                ..
-                            },
-                        ..
-                    } => {
-                        if peer.try_write_loop.can_be_started() {
-                            store.dispatch(PeerTryWriteLoopStartAction {
-                                address: action.address,
-                            });
-                        }
+                if let PeerBinaryMessageWriteState::Pending {
+                    chunk:
+                        PeerChunkWrite {
+                            state: PeerChunkWriteState::Pending { .. },
+                            ..
+                        },
+                    ..
+                } = binary_message_state
+                {
+                    if peer.try_write_loop.can_be_started() {
+                        store.dispatch(PeerTryWriteLoopStartAction {
+                            address: action.address,
+                        });
                     }
-                    _ => {}
                 };
             }
         }
@@ -221,8 +217,8 @@ where
                     }
                     _ => return,
                 };
-                match binary_message_state {
-                    PeerBinaryMessageWriteState::Pending { chunk, .. } => match &chunk.state {
+                if let PeerBinaryMessageWriteState::Pending { chunk, .. } = binary_message_state {
+                    match &chunk.state {
                         PeerChunkWriteState::Pending { .. } => {
                             if peer.try_write_loop.can_be_started() {
                                 store.dispatch(PeerTryWriteLoopStartAction {
@@ -236,8 +232,7 @@ where
                             });
                         }
                         _ => {}
-                    },
-                    _ => {}
+                    }
                 };
             }
         }

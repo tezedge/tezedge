@@ -239,7 +239,7 @@ fn connection_threshold_simulation() {
 fn dump_graph(name: &str, graph: state_explorer::Graph<ActionWithMeta, ConnectedPeers>) {
     std::fs::File::create(name)
         .and_then(|mut f| {
-            writeln!(f, "digraph ConnectionThreshold {}", '{')?;
+            writeln!(f, "digraph ConnectionThreshold {{")?;
             for (i, (state, transitions)) in graph.states_transitions.into_iter().enumerate() {
                 writeln!(
                     f,
@@ -257,11 +257,11 @@ fn dump_graph(name: &str, graph: state_explorer::Graph<ActionWithMeta, Connected
                         r#"State_{} -> State_{}[label="{}"]"#,
                         i,
                         state,
-                        graph.actions[action].action.as_ref()
+                        graph.actions[action].action.kind()
                     )?;
                 }
             }
-            writeln!(f, "{}", '}')?;
+            writeln!(f, "}}")?;
             Ok(())
         })
         .expect("cannot write graph");

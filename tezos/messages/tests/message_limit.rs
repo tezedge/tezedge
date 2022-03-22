@@ -22,18 +22,11 @@ pub struct Limits(usize, Limit);
 
 impl Limit {
     pub fn is_limited(&self) -> bool {
-        match self {
-            Limit::Var => false,
-            _ => true,
-        }
+        !matches!(self, Limit::Var)
     }
 
     pub fn is_variable_length(&self) -> bool {
-        if let Limit::Fixed(_) = self {
-            false
-        } else {
-            true
-        }
+        !matches!(self, Limit::Fixed(_))
     }
 
     pub fn union(self, other: Self) -> Self {
@@ -60,10 +53,7 @@ impl Limit {
 
 impl Limits {
     pub fn is_limited(&self) -> bool {
-        match self.1 {
-            Limit::Var => false,
-            _ => true,
-        }
+        !matches!(self.1, Limit::Var)
     }
 
     pub fn union(self, other: Self) -> Self {

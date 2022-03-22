@@ -28,6 +28,7 @@ const OPERATION_HASH: &str = "7e73e3da041ea251037af062b7bc04b37a5ee38bc7e229e7e2
 const OPERATION: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000000236663bacdca76094fdb73150092659d463fec94eda44ba4db10973a1ad057ef53a5b3239a1b9c383af803fc275465bd28057d68f3cab46adfd5b2452e863ff0a";
 const MAX_OPERATIONS_TTL: i32 = 5;
 
+#[allow(clippy::too_many_arguments)]
 mod tezos_ffi {
     use ocaml_interop::{
         ocaml, OCamlBytes, OCamlFloat, OCamlInt, OCamlInt32, OCamlInt64, OCamlList,

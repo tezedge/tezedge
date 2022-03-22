@@ -71,25 +71,22 @@ pub fn storage_blocks_genesis_init_commit_result_get_effects<S>(
                 _ => return,
             };
 
-            match &content.result {
-                ProtocolRunnerResult::GenesisCommitResultGet((token, result)) => {
-                    if target_token != token {
-                        return;
-                    }
-                    match result {
-                        Ok(result) => {
-                            store.dispatch(StorageBlocksGenesisInitCommitResultGetSuccessAction {
-                                commit_result: result.clone(),
-                            })
-                        }
-                        Err(err) => {
-                            store.dispatch(StorageBlocksGenesisInitCommitResultGetErrorAction {
-                                error: err.clone(),
-                            })
-                        }
-                    };
+            if let ProtocolRunnerResult::GenesisCommitResultGet((token, result)) = &content.result {
+                if target_token != token {
+                    return;
                 }
-                _ => {}
+                match result {
+                    Ok(result) => {
+                        store.dispatch(StorageBlocksGenesisInitCommitResultGetSuccessAction {
+                            commit_result: result.clone(),
+                        })
+                    }
+                    Err(err) => {
+                        store.dispatch(StorageBlocksGenesisInitCommitResultGetErrorAction {
+                            error: err.clone(),
+                        })
+                    }
+                };
             }
         }
         _ => {}

@@ -32,7 +32,8 @@ fn block_header_with_hash_encoded_equals_decoded() -> Result<(), Error> {
     )?;
     let encoded_bytes = expected.encode()?;
     let decoded = BlockHeaderWithHash::decode(&encoded_bytes)?;
-    Ok(assert_eq!(expected, decoded))
+    assert_eq!(expected, decoded);
+    Ok(())
 }
 
 #[test]

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::{collections::HashMap, convert::TryFrom};
 use std::{fs, io};
 
@@ -176,7 +176,7 @@ pub fn load_identity<P: AsRef<Path>>(
 }
 
 /// Stores provided identity into the file specified by path
-pub fn store_identity(path: &PathBuf, identity: &Identity) -> Result<(), IdentityError> {
+pub fn store_identity(path: &Path, identity: &Identity) -> Result<(), IdentityError> {
     let identity_json = identity.as_json()?;
     fs::write(&path, &identity_json).map_err(|e| IdentityError::IoError { reason: e })?;
     Ok(())

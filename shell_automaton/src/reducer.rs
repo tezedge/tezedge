@@ -76,14 +76,11 @@ pub fn applied_actions_count_reducer(state: &mut State, _: &ActionWithMeta) {
 }
 
 pub fn reducer(state: &mut State, action: &ActionWithMeta) {
-    match &action.action {
-        Action::StorageStateSnapshotCreateInit(_) => {
-            // This action shouldn't cause changes in the state, so that in the
-            // effects, we will save exact same state that was before calling
-            // this action.
-            return;
-        }
-        _ => {}
+    if let Action::StorageStateSnapshotCreateInit(_) = &action.action {
+        // This action shouldn't cause changes in the state, so that in the
+        // effects, we will save exact same state that was before calling
+        // this action.
+        return;
     }
 
     chain_reducers!(

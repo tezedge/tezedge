@@ -20,10 +20,11 @@ pub fn shutdown_reducer(state: &mut State, action: &ActionWithMeta) {
                 time: action.time_as_nanos(),
             };
         }
-        Action::ProtocolRunnerShutdownSuccess(_) => match &mut state.shutdown {
-            ShutdownState::Pending(state) => state.protocol_runner_shutdown = true,
-            _ => return,
-        },
+        Action::ProtocolRunnerShutdownSuccess(_) => {
+            if let ShutdownState::Pending(state) = &mut state.shutdown {
+                state.protocol_runner_shutdown = true
+            }
+        }
         _ => {}
     }
 }

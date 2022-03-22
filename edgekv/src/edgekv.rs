@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::ptr_arg)]
+
 use crate::datastore::{DataStore, MergeOperator};
 
 use crate::Result;
@@ -23,11 +25,8 @@ pub struct EdgeKV {
 impl Display for EdgeKV {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut out = String::new();
-        for res in self.iter() {
-            match res {
-                Ok((k, v)) => out.push_str(&format!("{:?} : {:?} \n", k, v)),
-                Err(_) => {}
-            }
+        for (k, v) in self.iter().flatten() {
+            out.push_str(&format!("{:?} : {:?} \n", k, v))
         }
         writeln!(f, "{}", out)
     }
@@ -120,21 +119,21 @@ impl EdgeKV {
         if key.is_empty() {
             return Ok(None);
         }
-        self.store.get(&key)
+        self.store.get(key)
     }
 
     pub fn contains(&self, key: &Vec<u8>) -> Result<bool> {
         if key.is_empty() {
             return Ok(false);
         }
-        self.store.contains(&key)
+        self.store.contains(key)
     }
 
     pub fn delete(&self, key: &Vec<u8>) -> Result<()> {
         if key.is_empty() {
             return Ok(());
         }
-        self.store.delete(&key)
+        self.store.delete(key)
     }
 
     pub fn compact(&self) -> Result<()> {

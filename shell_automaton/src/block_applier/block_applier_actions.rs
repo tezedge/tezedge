@@ -38,12 +38,12 @@ pub struct BlockApplierApplyInitAction {
 
 impl EnablingCondition<State> for BlockApplierApplyInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.block_applier.current {
-            BlockApplierApplyState::Idle { .. } => true,
-            BlockApplierApplyState::Error { .. } => true,
-            BlockApplierApplyState::Success { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.block_applier.current,
+            BlockApplierApplyState::Idle { .. }
+                | BlockApplierApplyState::Error { .. }
+                | BlockApplierApplyState::Success { .. }
+        )
     }
 }
 
@@ -55,10 +55,10 @@ pub struct BlockApplierApplyPrepareDataPendingAction {
 
 impl EnablingCondition<State> for BlockApplierApplyPrepareDataPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.block_applier.current {
-            BlockApplierApplyState::Init { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.block_applier.current,
+            BlockApplierApplyState::Init { .. }
+        )
     }
 }
 
@@ -72,10 +72,10 @@ pub struct BlockApplierApplyPrepareDataSuccessAction {
 
 impl EnablingCondition<State> for BlockApplierApplyPrepareDataSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.block_applier.current {
-            BlockApplierApplyState::PrepareDataPending { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.block_applier.current,
+            BlockApplierApplyState::PrepareDataPending { .. }
+        )
     }
 }
 
@@ -85,10 +85,10 @@ pub struct BlockApplierApplyProtocolRunnerApplyInitAction {}
 
 impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplyInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.block_applier.current {
-            BlockApplierApplyState::PrepareDataSuccess { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.block_applier.current,
+            BlockApplierApplyState::PrepareDataSuccess { .. }
+        )
     }
 }
 
@@ -98,10 +98,10 @@ pub struct BlockApplierApplyProtocolRunnerApplyPendingAction {}
 
 impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplyPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.block_applier.current {
-            BlockApplierApplyState::PrepareDataSuccess { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.block_applier.current,
+            BlockApplierApplyState::PrepareDataSuccess { .. }
+        )
     }
 }
 
@@ -133,10 +133,10 @@ pub struct BlockApplierApplyProtocolRunnerApplySuccessAction {
 
 impl EnablingCondition<State> for BlockApplierApplyProtocolRunnerApplySuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.block_applier.current {
-            BlockApplierApplyState::ProtocolRunnerApplyPending { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.block_applier.current,
+            BlockApplierApplyState::ProtocolRunnerApplyPending { .. }
+        )
     }
 }
 
@@ -148,10 +148,10 @@ pub struct BlockApplierApplyStoreApplyResultPendingAction {
 
 impl EnablingCondition<State> for BlockApplierApplyStoreApplyResultPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.block_applier.current {
-            BlockApplierApplyState::ProtocolRunnerApplySuccess { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.block_applier.current,
+            BlockApplierApplyState::ProtocolRunnerApplySuccess { .. }
+        )
     }
 }
 
@@ -163,10 +163,10 @@ pub struct BlockApplierApplyStoreApplyResultSuccessAction {
 
 impl EnablingCondition<State> for BlockApplierApplyStoreApplyResultSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.block_applier.current {
-            BlockApplierApplyState::StoreApplyResultPending { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.block_applier.current,
+            BlockApplierApplyState::StoreApplyResultPending { .. }
+        )
     }
 }
 
@@ -178,12 +178,12 @@ pub struct BlockApplierApplyErrorAction {
 
 impl EnablingCondition<State> for BlockApplierApplyErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.block_applier.current {
+        matches!(
+            &state.block_applier.current,
             BlockApplierApplyState::PrepareDataPending { .. }
-            | BlockApplierApplyState::ProtocolRunnerApplyPending { .. }
-            | BlockApplierApplyState::StoreApplyResultPending { .. } => true,
-            _ => false,
-        }
+                | BlockApplierApplyState::ProtocolRunnerApplyPending { .. }
+                | BlockApplierApplyState::StoreApplyResultPending { .. }
+        )
     }
 }
 
@@ -193,9 +193,9 @@ pub struct BlockApplierApplySuccessAction {}
 
 impl EnablingCondition<State> for BlockApplierApplySuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.block_applier.current {
-            BlockApplierApplyState::StoreApplyResultSuccess { .. } => true,
-            _ => false,
-        }
+        matches!(
+            &state.block_applier.current,
+            BlockApplierApplyState::StoreApplyResultSuccess { .. }
+        )
     }
 }

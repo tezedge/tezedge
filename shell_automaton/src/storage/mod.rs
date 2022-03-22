@@ -17,6 +17,8 @@ macro_rules! kv_state {
         }
 
         impl State {
+            #[allow(clippy::ptr_arg)]
+            #[allow(clippy::redundant_closure_call)]
             pub(super) fn should_cache(key: &$key, value: &$value) -> bool {
                 ($should_cache)(key, value)
             }

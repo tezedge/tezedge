@@ -95,13 +95,10 @@ impl SlogConfig {
             let initial_value =
                 Box::new(Duplicate::new(drains[0].clone(), drains[1].clone()).fuse());
 
-            // collect the leftover drains
-            let leftover_drains: Vec<Arc<slog_async::Async>> = drains.into_iter().skip(2).collect();
-
-            // fold the drains into one Duplicate struct
+            // collect the leftover drains and fold the drains into one Duplicate struct
             let merged_drains: Box<
                 dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never> + UnwindSafe,
-            > = leftover_drains.into_iter().fold(initial_value, |acc, new| {
+            > = drains.into_iter().skip(2).fold(initial_value, |acc, new| {
                 Box::new(Duplicate::new(Arc::new(acc), new).fuse())
             });
 
@@ -373,7 +370,7 @@ mod tests {
         expected_log_count
     }
 
-    fn count_lines(path: &PathBuf) -> usize {
+    fn count_lines(path: &Path) -> usize {
         use std::io::{prelude::*, BufReader};
 
         let file = File::open(path).unwrap();

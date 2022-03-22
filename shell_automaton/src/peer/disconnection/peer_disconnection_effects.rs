@@ -31,7 +31,7 @@ where
                 PeerStatus::Disconnected => {
                     store.dispatch(PeerDisconnectedAction { address });
                 }
-                _ => return,
+                _ => {}
             };
         }
         Action::PeerDisconnected(action) => {

@@ -17,11 +17,10 @@ pub struct StorageBlocksGenesisInitHeaderPutInitAction {
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitHeaderPutInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
-            StorageBlocksGenesisInitState::Idle => true,
-            StorageBlocksGenesisInitState::Success => true,
-            _ => false,
-        }
+        matches!(
+            &state.storage.blocks.genesis.init,
+            StorageBlocksGenesisInitState::Idle | StorageBlocksGenesisInitState::Success
+        )
     }
 }
 
@@ -31,12 +30,10 @@ pub struct StorageBlocksGenesisInitHeaderPutPendingAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitHeaderPutPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
-            StorageBlocksGenesisInitState::HeaderPut(
-                StorageBlocksGenesisInitHeaderPutState::Init,
-            ) => true,
-            _ => false,
-        }
+        matches!(
+            &state.storage.blocks.genesis.init,
+            StorageBlocksGenesisInitState::HeaderPut(StorageBlocksGenesisInitHeaderPutState::Init,)
+        )
     }
 }
 
@@ -46,12 +43,12 @@ pub struct StorageBlocksGenesisInitHeaderPutErrorAction {}
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitHeaderPutErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::HeaderPut(
                 StorageBlocksGenesisInitHeaderPutState::Pending { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }
 
@@ -63,11 +60,11 @@ pub struct StorageBlocksGenesisInitHeaderPutSuccessAction {
 
 impl EnablingCondition<State> for StorageBlocksGenesisInitHeaderPutSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.storage.blocks.genesis.init {
+        matches!(
+            &state.storage.blocks.genesis.init,
             StorageBlocksGenesisInitState::HeaderPut(
                 StorageBlocksGenesisInitHeaderPutState::Pending { .. },
-            ) => true,
-            _ => false,
-        }
+            )
+        )
     }
 }

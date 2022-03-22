@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 use std::net::SocketAddr;
 use std::time::{Duration, SystemTime};
 
@@ -257,13 +258,13 @@ impl State {
             None => return false,
         };
 
-        if head.header.level() < current_head.header.level() {
-            false
-        } else if head.header.level() == current_head.header.level() {
-            self.is_same_head(head.header.level(), &head.hash)
-                || head.header.fitness() > current_head.header.fitness()
-        } else {
-            true
+        match head.header.level().cmp(&current_head.header.level()) {
+            Ordering::Greater => true,
+            Ordering::Less => false,
+            Ordering::Equal => {
+                self.is_same_head(head.header.level(), &head.hash)
+                    || head.header.fitness() > current_head.header.fitness()
+            }
         }
     }
 

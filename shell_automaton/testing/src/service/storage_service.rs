@@ -27,6 +27,12 @@ impl StorageServiceDummy {
     }
 }
 
+impl Default for StorageServiceDummy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StorageService for StorageServiceDummy {
     #[inline(always)]
     fn request_send(
@@ -41,7 +47,7 @@ impl StorageService for StorageServiceDummy {
     fn response_try_recv(&mut self) -> Result<StorageResponse, ResponseTryRecvError> {
         self.responses
             .pop_front()
-            .map(|resp| Ok(resp))
+            .map(Ok)
             .unwrap_or(Err(ResponseTryRecvError::Empty))
     }
 

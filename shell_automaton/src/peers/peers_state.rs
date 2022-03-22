@@ -62,6 +62,10 @@ impl PeersState {
         self.list.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     #[inline(always)]
     pub fn get(&self, address: &SocketAddr) -> Option<&Peer> {
         self.list.get(address)
@@ -93,10 +97,10 @@ impl PeersState {
 
     /// Returns `Err` if peer's ip is blacklisted/graylisted.
     #[inline(always)]
-    pub(super) fn entry<'a>(
-        &'a mut self,
+    pub(super) fn entry(
+        &mut self,
         address: SocketAddr,
-    ) -> Result<BTreeMapEntry<'a, SocketAddr, Peer>, &'a PeerBlacklistState> {
+    ) -> Result<BTreeMapEntry<SocketAddr, Peer>, &PeerBlacklistState> {
         if let Some(blacklist_state) = self.ip_blacklist.get(&address.ip()) {
             return Err(blacklist_state);
         }
@@ -104,10 +108,10 @@ impl PeersState {
     }
 
     #[inline(always)]
-    pub(super) fn ip_blacklist_entry<'a>(
-        &'a mut self,
+    pub(super) fn ip_blacklist_entry(
+        &mut self,
         ip: IpAddr,
-    ) -> BTreeMapEntry<'a, IpAddr, PeerBlacklistState> {
+    ) -> BTreeMapEntry<IpAddr, PeerBlacklistState> {
         self.ip_blacklist.entry(ip)
     }
 
@@ -117,25 +121,25 @@ impl PeersState {
     }
 
     #[inline(always)]
-    pub fn iter<'a>(&'a self) -> impl 'a + Iterator<Item = (&'a SocketAddr, &'a Peer)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&SocketAddr, &Peer)> {
         self.list.iter()
     }
 
-    pub fn iter_addr<'a>(&'a self) -> impl Iterator<Item = &'a SocketAddr> + 'a {
+    pub fn iter_addr(&self) -> impl Iterator<Item = &SocketAddr> {
         self.list.keys()
     }
 
-    pub fn iter_handshaked<'a>(&'a self) -> impl 'a + Iterator<Item = (&'a SocketAddr, &'a Peer)> {
+    pub fn iter_handshaked(&self) -> impl Iterator<Item = (&SocketAddr, &Peer)> {
         self.list.iter().filter(|(_, p)| p.is_handshaked())
     }
 
     #[inline(always)]
-    pub fn iter_mut<'a>(&'a mut self) -> impl 'a + Iterator<Item = (&'a SocketAddr, &'a mut Peer)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&SocketAddr, &mut Peer)> {
         self.list.iter_mut()
     }
 
     /// Iterator over `Potential` peers.
-    pub fn potential_iter<'a>(&'a self) -> impl 'a + Iterator<Item = SocketAddr> {
+    pub fn potential_iter(&self) -> impl Iterator<Item = SocketAddr> + '_ {
         self.iter()
             .filter(|(_, peer)| matches!(&peer.status, PeerStatus::Potential))
             .map(|(addr, _)| *addr)
@@ -147,7 +151,7 @@ impl PeersState {
     }
 
     /// Iterator over `Connected` peers.
-    pub fn connected_iter<'a>(&'a self) -> impl 'a + Iterator<Item = (&'a SocketAddr, &'a Peer)> {
+    pub fn connected_iter(&self) -> impl Iterator<Item = (&SocketAddr, &Peer)> {
         self.list.iter().filter(|(_, peer)| peer.is_connected())
     }
 
@@ -162,9 +166,7 @@ impl PeersState {
     }
 
     /// Iterator over handshaked peers.
-    pub fn handshaked_iter<'a>(
-        &'a self,
-    ) -> impl 'a + Iterator<Item = (SocketAddr, &'a PeerHandshaked)> {
+    pub fn handshaked_iter(&self) -> impl Iterator<Item = (SocketAddr, &PeerHandshaked)> {
         self.iter()
             .filter_map(|(addr, peer)| peer.status.as_handshaked().map(|p| (*addr, p)))
     }
@@ -180,9 +182,13 @@ impl PeersState {
     }
 
     #[inline(always)]
-    pub fn blacklist_ip_iter<'a>(
-        &'a self,
-    ) -> impl 'a + Iterator<Item = (&'a IpAddr, &'a PeerBlacklistState)> {
+    pub fn blacklist_ip_iter(&self) -> impl Iterator<Item = (&IpAddr, &PeerBlacklistState)> {
         self.ip_blacklist.iter()
+    }
+}
+
+impl Default for PeersState {
+    fn default() -> Self {
+        Self::new()
     }
 }

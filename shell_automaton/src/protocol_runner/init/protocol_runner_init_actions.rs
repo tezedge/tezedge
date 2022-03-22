@@ -17,12 +17,10 @@ pub struct ProtocolRunnerInitAction {}
 
 impl EnablingCondition<State> for ProtocolRunnerInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol_runner {
-            ProtocolRunnerState::SpawnServer(ProtocolRunnerSpawnServerState::Success {
-                ..
-            }) => true,
-            _ => false,
-        }
+        matches!(
+            &state.protocol_runner,
+            ProtocolRunnerState::SpawnServer(ProtocolRunnerSpawnServerState::Success { .. })
+        )
     }
 }
 
@@ -32,12 +30,12 @@ pub struct ProtocolRunnerInitCheckGenesisAppliedAction {}
 
 impl EnablingCondition<State> for ProtocolRunnerInitCheckGenesisAppliedAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol_runner {
+        matches!(
+            &state.protocol_runner,
             ProtocolRunnerState::Init(ProtocolRunnerInitState::Runtime(
                 ProtocolRunnerInitRuntimeState::Success { .. },
-            )) => true,
-            _ => false,
-        }
+            ))
+        )
     }
 }
 
@@ -49,10 +47,10 @@ pub struct ProtocolRunnerInitCheckGenesisAppliedSuccessAction {
 
 impl EnablingCondition<State> for ProtocolRunnerInitCheckGenesisAppliedSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol_runner {
-            ProtocolRunnerState::Init(ProtocolRunnerInitState::CheckGenesisApplied { .. }) => true,
-            _ => false,
-        }
+        matches!(
+            &state.protocol_runner,
+            ProtocolRunnerState::Init(ProtocolRunnerInitState::CheckGenesisApplied { .. })
+        )
     }
 }
 
@@ -62,12 +60,12 @@ pub struct ProtocolRunnerInitSuccessAction {}
 
 impl EnablingCondition<State> for ProtocolRunnerInitSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol_runner {
+        matches!(
+            &state.protocol_runner,
             ProtocolRunnerState::Init(ProtocolRunnerInitState::ContextIpcServer((
                 _,
                 ProtocolRunnerInitContextIpcServerState::Success { .. },
-            ))) => true,
-            _ => false,
-        }
+            )))
+        )
     }
 }

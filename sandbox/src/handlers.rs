@@ -280,101 +280,92 @@ pub async fn handle_rejection(err: Rejection, log: Logger) -> Result<impl Reply,
             StatusCode::NOT_FOUND,
             ErrorMessage::generic(StatusCode::NOT_FOUND, "rpc not found", "".to_string()),
         )
-    } else {
-        if let Some(e) = err.find::<warp::filters::body::BodyDeserializeError>() {
-            // This error happens if the body could not be deserialized correctly
-            let detail = format!("{}", e);
-            error!(log, "Rpc handle error"; "message" => "Request deserialization errror", "detail" => detail.clone());
-            (
+    } else if let Some(e) = err.find::<warp::filters::body::BodyDeserializeError>() {
+        // This error happens if the body could not be deserialized correctly
+        let detail = format!("{}", e);
+        error!(log, "Rpc handle error"; "message" => "Request deserialization errror", "detail" => detail.clone());
+        (
+            StatusCode::BAD_REQUEST,
+            ErrorMessage::generic(
                 StatusCode::BAD_REQUEST,
-                ErrorMessage::generic(
+                "Request deserialization errror",
+                detail,
+            ),
+        )
+    } else if let Some(tcre) = err.find::<TezosClientRunnerError>() {
+        // Tezos client errors
+        match tcre {
+            TezosClientRunnerError::ProtocolParameterError { .. }
+            | TezosClientRunnerError::NonexistantWallet { .. }
+            | TezosClientRunnerError::UnavailableSandboxNodeError
+            | TezosClientRunnerError::IOError { .. }
+            | TezosClientRunnerError::SandboxDataDirNotInitialized { .. }
+            | TezosClientRunnerError::SerdeError { .. } => {
+                let message = format!("{}", tcre);
+                error!(log, "Rpc handle error (tezos-client)"; "message" => message.clone());
+                (
                     StatusCode::BAD_REQUEST,
-                    "Request deserialization errror",
-                    detail,
-                ),
-            )
-        } else if let Some(tcre) = err.find::<TezosClientRunnerError>() {
-            // Tezos client errors
-            match tcre {
-                TezosClientRunnerError::ProtocolParameterError { .. }
-                | TezosClientRunnerError::NonexistantWallet { .. }
-                | TezosClientRunnerError::UnavailableSandboxNodeError
-                | TezosClientRunnerError::IOError { .. }
-                | TezosClientRunnerError::SandboxDataDirNotInitialized { .. }
-                | TezosClientRunnerError::SerdeError { .. } => {
-                    let message = format!("{}", tcre);
-                    error!(log, "Rpc handle error (tezos-client)"; "message" => message.clone());
-                    (
-                        StatusCode::BAD_REQUEST,
-                        ErrorMessage::generic(StatusCode::BAD_REQUEST, &message, "".to_string()),
-                    )
-                }
-                TezosClientRunnerError::CallError { message } => {
-                    error!(log, "Rpc handle error (tezos-client)"; "message" => format!("{:?}", message));
-                    (
-                        StatusCode::from_u16(message.code)
-                            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                        message.clone(),
-                    )
-                }
+                    ErrorMessage::generic(StatusCode::BAD_REQUEST, &message, "".to_string()),
+                )
             }
-        } else if let Some(lnre) = err.find::<LightNodeRunnerError>() {
-            // Light-node errors
-            match lnre {
-                LightNodeRunnerError::JsonParsingError { .. }
-                | LightNodeRunnerError::IOError { .. }
-                | LightNodeRunnerError::ConfigurationMissingValidRpcPort { .. }
-                | LightNodeRunnerError::NodeAlreadyRunning
-                | LightNodeRunnerError::NodeNotRunning { .. } => {
-                    let message = format!("{}", lnre);
-                    error!(log, "Rpc handle error (light-node)"; "message" => message.clone());
-                    (
-                        StatusCode::BAD_REQUEST,
-                        ErrorMessage::generic(StatusCode::BAD_REQUEST, &message, "".to_string()),
-                    )
-                }
-                LightNodeRunnerError::NodeStartupError { reason } => {
-                    match extract_field_name(&reason) {
-                        Some(field_name) => {
-                            let message = format!("{:?}", lnre);
-                            error!(log, "Rpc handle error (light-node startup validation)"; "message" => message.clone(), "field_name" => field_name.clone());
-                            (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                ErrorMessage::validation(
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    reason,
-                                    field_name,
-                                    message,
-                                ),
-                            )
-                        }
-                        None => {
-                            let message = format!("{:?}", lnre);
-                            error!(log, "Rpc handle error (light-node startup)"; "message" => message.clone());
-                            (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                ErrorMessage::generic(
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    reason,
-                                    message,
-                                ),
-                            )
-                        }
-                    }
-                }
+            TezosClientRunnerError::CallError { message } => {
+                error!(log, "Rpc handle error (tezos-client)"; "message" => format!("{:?}", message));
+                (
+                    StatusCode::from_u16(message.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                    message.clone(),
+                )
             }
-        } else {
-            let detail = format!("{:?}", err);
-            error!(log, "Rpc handle error (light-node startup)"; "message" => "unhandled error occurred", "detail" => detail.clone());
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                ErrorMessage::generic(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "unhandled error occurred",
-                    detail,
-                ),
-            )
         }
+    } else if let Some(lnre) = err.find::<LightNodeRunnerError>() {
+        // Light-node errors
+        match lnre {
+            LightNodeRunnerError::JsonParsingError { .. }
+            | LightNodeRunnerError::IOError { .. }
+            | LightNodeRunnerError::ConfigurationMissingValidRpcPort { .. }
+            | LightNodeRunnerError::NodeAlreadyRunning
+            | LightNodeRunnerError::NodeNotRunning { .. } => {
+                let message = format!("{}", lnre);
+                error!(log, "Rpc handle error (light-node)"; "message" => message.clone());
+                (
+                    StatusCode::BAD_REQUEST,
+                    ErrorMessage::generic(StatusCode::BAD_REQUEST, &message, "".to_string()),
+                )
+            }
+            LightNodeRunnerError::NodeStartupError { reason } => match extract_field_name(reason) {
+                Some(field_name) => {
+                    let message = format!("{:?}", lnre);
+                    error!(log, "Rpc handle error (light-node startup validation)"; "message" => message.clone(), "field_name" => field_name.clone());
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        ErrorMessage::validation(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            reason,
+                            field_name,
+                            message,
+                        ),
+                    )
+                }
+                None => {
+                    let message = format!("{:?}", lnre);
+                    error!(log, "Rpc handle error (light-node startup)"; "message" => message.clone());
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        ErrorMessage::generic(StatusCode::INTERNAL_SERVER_ERROR, reason, message),
+                    )
+                }
+            },
+        }
+    } else {
+        let detail = format!("{:?}", err);
+        error!(log, "Rpc handle error (light-node startup)"; "message" => "unhandled error occurred", "detail" => detail.clone());
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorMessage::generic(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "unhandled error occurred",
+                detail,
+            ),
+        )
     };
 
     Ok(warp::reply::with_status(
@@ -390,7 +381,7 @@ fn extract_field_name(message: &str) -> Option<String> {
         .map(|s| s.to_string())
         .collect::<Vec<String>>();
 
-    if field_name.len() < 1 {
+    if field_name.is_empty() {
         None
     } else {
         Some(field_name[0].replace("\'--", ""))
@@ -407,7 +398,7 @@ pub fn resolve_node_from_request(
         .unwrap() // TODO: reject when TE-213 is resolved, since now this should be infallible
         .iter()
         .next()
-        .map(|p| p.clone())
+        .cloned()
 }
 
 fn ensure_node(node_ref: Option<NodeRpcIpPort>) -> Result<NodeRpcIpPort, TezosClientRunnerError> {

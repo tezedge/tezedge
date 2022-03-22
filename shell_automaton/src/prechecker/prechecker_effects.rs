@@ -113,7 +113,7 @@ where
             }) = prechecker_state_operations.get(key)
             {
                 // TODO use proper protocol to parse operation
-                match OperationDecodedContents::parse(&operation_binary_encoding, proto) {
+                match OperationDecodedContents::parse(operation_binary_encoding, proto) {
                     Ok(contents) => {
                         store.dispatch(PrecheckerOperationDecodedAction {
                             key: key.clone(),
@@ -152,7 +152,7 @@ where
                         Some(v) => v,
                         None => return,
                     };
-                    if &current_head.hash == &block {
+                    if current_head.hash == block {
                         store.dispatch(PrecheckerGetEndorsingRightsAction { key: key.clone() });
                     } else if Some(current_head.header.level() + 1) == endorsement_level {
                         store.dispatch(PrecheckerWaitForBlockAppliedAction {
@@ -435,7 +435,7 @@ where
                 let action = PrecheckerPrecheckOperationResponseAction::reject(
                     &key.operation,
                     operation_decoded_contents.clone(),
-                    serde_json::to_string(error).unwrap_or("<unserialized>".to_string()),
+                    serde_json::to_string(error).unwrap_or_else(|_| "<unserialized>".to_string()),
                 );
                 store.dispatch(action);
             }
@@ -531,7 +531,7 @@ where
             ..
         }) => {
             store.dispatch(StorageBlockAdditionalDataGetAction {
-                key: block_hash.clone().into(),
+                key: block_hash.clone(),
             });
         }
         Action::StorageBlockAdditionalDataOk(StorageBlockAdditionalDataOkAction { key, value }) => {
@@ -539,7 +539,7 @@ where
                 Ok(proto) => {
                     store.dispatch(PrecheckerNextBlockProtocolReadyAction {
                         block_hash: key.clone(),
-                        supported_protocol: proto.clone(),
+                        supported_protocol: proto,
                     });
                 }
                 Err(err) => {

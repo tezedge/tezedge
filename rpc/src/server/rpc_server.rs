@@ -139,7 +139,7 @@ pub fn handle_notify_rpc_server_msg(
     match env.state().write() {
         Ok(mut current_head_ref) => {
             current_head_ref.current_head = notification.block.clone();
-            current_head_ref.best_remote_level = notification.best_remote_level.clone();
+            current_head_ref.best_remote_level = notification.best_remote_level;
             current_head_ref.wake_up_all_streams();
         }
         Err(e) => {

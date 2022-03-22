@@ -62,3 +62,9 @@ impl PausedLoopsState {
         self.list.pop_front()
     }
 }
+
+impl Default for PausedLoopsState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

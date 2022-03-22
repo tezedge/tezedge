@@ -66,14 +66,14 @@ where
                         } => binary_message_state,
                         _ => return,
                     },
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
+                    PeerStatus::Handshaked(PeerHandshaked {
+                        message_read:
                             PeerMessageReadState::Pending {
                                 binary_message_read,
-                            } => binary_message_read,
-                            _ => return,
-                        }
-                    }
+                            },
+                        ..
+                    }) => binary_message_read,
+
                     _ => return,
                 };
 
@@ -90,7 +90,7 @@ where
                         }
                         PeerChunkReadState::EncryptedReady {
                             chunk_encrypted: chunk_content_encrypted,
-                        } => match chunk.crypto.decrypt(&chunk_content_encrypted) {
+                        } => match chunk.crypto.decrypt(chunk_content_encrypted) {
                             Ok(decrypted_bytes) => {
                                 store.dispatch(PeerChunkReadDecryptAction {
                                     address: action.address,
@@ -124,26 +124,24 @@ where
                         } => binary_message_state,
                         _ => return,
                     },
-                    PeerStatus::Handshaked(PeerHandshaked { message_read, .. }) => {
-                        match message_read {
+                    PeerStatus::Handshaked(PeerHandshaked {
+                        message_read:
                             PeerMessageReadState::Pending {
                                 binary_message_read,
-                            } => binary_message_read,
-                            _ => return,
-                        }
-                    }
+                            },
+                        ..
+                    }) => binary_message_read,
                     _ => return,
                 };
                 match binary_message_state {
                     PeerBinaryMessageReadState::PendingFirstChunk { chunk }
-                    | PeerBinaryMessageReadState::Pending { chunk, .. } => match &chunk.state {
-                        PeerChunkReadState::Ready { .. } => {
+                    | PeerBinaryMessageReadState::Pending { chunk, .. } => {
+                        if let PeerChunkReadState::Ready { .. } = &chunk.state {
                             store.dispatch(PeerChunkReadReadyAction {
                                 address: action.address,
                             });
                         }
-                        _ => {}
-                    },
+                    }
                     _ => {}
                 };
             }

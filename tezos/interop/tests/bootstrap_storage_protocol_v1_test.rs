@@ -981,7 +981,7 @@ fn test_begin_application_on_empty_storage_with_first_blocks() {
 fn assert_contains_metadata(metadata: &str, expected_attributes: Vec<&str>) {
     expected_attributes
         .iter()
-        .for_each(|expected_attribute| assert_contains(&metadata, expected_attribute));
+        .for_each(|expected_attribute| assert_contains(metadata, expected_attribute));
 }
 
 fn assert_contains(value: &str, attribute: &str) {
@@ -1027,7 +1027,7 @@ fn assert_operation_metadata_hashes(
         panic!("assert_operation_metadata_hashes: Expected Some, but has None")
     }
 
-    let expected_base58_strings = expected_base58_strings.unwrap_or(vec![]);
+    let expected_base58_strings = expected_base58_strings.unwrap_or_default();
     let tested = match tested.as_ref() {
         Some(hashes) => hashes.clone(),
         None => vec![],

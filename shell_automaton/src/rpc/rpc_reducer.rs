@@ -17,7 +17,7 @@ pub fn rpc_reducer(state: &mut crate::State, action: &crate::ActionWithMeta) {
     match &action.action {
         Action::RpcBootstrapped(RpcBootstrappedAction { rpc_id }) => {
             let bootstrapped = &mut state.rpc.bootstrapped;
-            bootstrapped.requests.insert(rpc_id.clone());
+            bootstrapped.requests.insert(*rpc_id);
             if bootstrapped.state.is_none() {
                 if let BlockApplierApplyState::Success { block, .. } = &state.block_applier.current
                 {
@@ -39,7 +39,7 @@ pub fn rpc_reducer(state: &mut crate::State, action: &crate::ActionWithMeta) {
             state.rpc.bootstrapped.state = Some(BootstrapState {
                 json: serde_json::json!({
                     "block": block,
-                    "timestamp": ts_to_rfc3339(*timestamp).unwrap_or("<invalid timestamp>".to_string()),
+                    "timestamp": ts_to_rfc3339(*timestamp).unwrap_or_else(|_| "<invalid timestamp>".to_string()),
                 }),
                 is_bootstrapped: *is_bootstrapped,
             });

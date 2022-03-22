@@ -20,3 +20,9 @@ impl StorageBlocksGenesisState {
         }
     }
 }
+
+impl Default for StorageBlocksGenesisState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

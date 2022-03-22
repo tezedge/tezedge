@@ -80,7 +80,7 @@ impl Serialize for UniversalValue {
             UniversalValue::NumberI64(num) => serializer.serialize_str(num.to_string().as_str()),
             UniversalValue::String(val) => serializer.serialize_str(val.as_str()),
             UniversalValue::TimestampRfc3339(val) => {
-                let timestamp = ts_to_rfc3339(*val).map_err(|err| ser::Error::custom(err))?;
+                let timestamp = ts_to_rfc3339(*val).map_err(ser::Error::custom)?;
                 serializer.serialize_str(timestamp.as_str())
             }
             UniversalValue::List(values) => {

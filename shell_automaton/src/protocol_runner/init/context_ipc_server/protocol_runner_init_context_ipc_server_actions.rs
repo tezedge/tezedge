@@ -21,12 +21,12 @@ pub struct ProtocolRunnerInitContextIpcServerAction {}
 
 impl EnablingCondition<State> for ProtocolRunnerInitContextIpcServerAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol_runner {
+        matches!(
+            &state.protocol_runner,
             ProtocolRunnerState::Init(ProtocolRunnerInitState::Context(
                 ProtocolRunnerInitContextState::Success { .. },
-            )) => true,
-            _ => false,
-        }
+            ))
+        )
     }
 }
 
@@ -38,13 +38,13 @@ pub struct ProtocolRunnerInitContextIpcServerPendingAction {
 
 impl EnablingCondition<State> for ProtocolRunnerInitContextIpcServerPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        match &state.protocol_runner {
+        matches!(
+            &state.protocol_runner,
             ProtocolRunnerState::Init(ProtocolRunnerInitState::ContextIpcServer((
                 _,
                 ProtocolRunnerInitContextIpcServerState::Init { .. },
-            ))) => true,
-            _ => false,
-        }
+            )))
+        )
     }
 }
 
