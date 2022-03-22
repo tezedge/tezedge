@@ -1,6 +1,6 @@
 [package]
 name = "tezos_encoding_derive"
-version = "1.18.1"
+version = "1.19.0"
 authors = ["Alexander Koptelov <alexandre.koptelov@simplestaking.com>"]
 edition = "2021"
 
