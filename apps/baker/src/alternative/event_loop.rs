@@ -77,7 +77,11 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
     client.monitor_heads(&chain_id, WAIT_HEAD_TIMEOUT)?;
 
     let ours = vec![crypto.public_key_hash().clone()];
-    let mut slots_info = SlotsInfo::new(constants.consensus_committee_size, ours);
+    let mut dy = tb::Config {
+        timing,
+        map: SlotsInfo::new(constants.consensus_committee_size, ours),
+        quorum: consensus_threshold,
+    };
     let mut state = tb::Machine::<ContractTz1Hash, OperationSimple>::default();
 
     for event in rx {
@@ -91,9 +95,9 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
                 vec![]
             }
             Ok(Event::Block(block)) => {
-                if block.level > slots_info.level() {
+                if block.level > dy.map.level() {
                     let delegates = client.validators(block.level + 1)?;
-                    slots_info.insert(block.level + 1, delegates);
+                    dy.map.insert(block.level + 1, delegates);
                 }
                 let timestamp = tb::Timestamp {
                     unix_epoch: Duration::from_secs(block.timestamp),
@@ -102,13 +106,13 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
                 let pred_hash = tb::BlockHash(block.predecessor.0.as_slice().try_into().unwrap());
                 slog::info!(log, "Block: {}, pred: {}, {:?}", block.hash, block.predecessor, block.fitness);
                 if let Some(consensus) = block.operations.first() {
-                    slog::info!(log, "Consensus operations: {}", serde_json::to_string(consensus).unwrap());
+                    slog::debug!(log, "Consensus operations: {}", serde_json::to_string(consensus).unwrap());
                 }
                 let proposal = Box::new(tb::Block {
                     pred_hash,
                     level: block.level,
+                    hash: tb::BlockHash(block.hash.0.as_slice().try_into().unwrap()),
                     time_header: tb::TimeHeader {
-                        hash: tb::BlockHash(block.hash.0.as_slice().try_into().unwrap()),
                         round,
                         timestamp,
                     },
@@ -141,7 +145,7 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
                                         votes: {
                                             v.into_iter()
                                                 .filter_map(|(v, op)| {
-                                                    slots_info.validator(level, v.slot, op)
+                                                    dy.map.validator(level, v.slot, op)
                                                 })
                                                 .collect()
                                         },
@@ -153,7 +157,7 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
                                             ops.iter()
                                                 .filter_map(|op| match op.kind()? {
                                                     OperationKind::Endorsement(v) => {
-                                                        slots_info.validator(v.level, v.slot, op.clone())
+                                                        dy.map.validator(v.level, v.slot, op.clone())
                                                     },
                                                     _ => None,
                                                 })
@@ -172,7 +176,7 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
                     slog::error!(log, " .  {}", err);
                 }
                 let event = tb::Event::Proposal(proposal, now);
-                let (new_actions, records) = state.handle(&timing, &slots_info, event);
+                let (new_actions, records) = state.handle(&dy, event);
                 write_log(log, records);
                 new_actions.into_iter().collect()
             }
@@ -182,23 +186,23 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
                     match op.kind() {
                         None => slog::error!(log, " .  unclassified operation {op:?}"),
                         Some(OperationKind::Preendorsement(content)) => {
-                            if let Some(validator) = slots_info.validator(content.level, content.slot, op) {
-                                let event = tb::Event::PreVoted(consensus_threshold, SlotsInfo::block_id(&content), validator, now);
-                                let (new_actions, records) = state.handle(&timing, &slots_info, event);
+                            if let Some(validator) = dy.map.validator(content.level, content.slot, op) {
+                                let event = tb::Event::PreVoted(SlotsInfo::block_id(&content), validator, now);
+                                let (new_actions, records) = state.handle(&dy, event);
                                 write_log(log, records);
                                 actions.extend(new_actions.into_iter());
                             }
                         }
                         Some(OperationKind::Endorsement(content)) => {
-                            if let Some(validator) = slots_info.validator(content.level, content.slot, op) {
-                                let event = tb::Event::Voted(consensus_threshold, SlotsInfo::block_id(&content), validator, now);
-                                let (new_actions, records) = state.handle(&timing, &slots_info, event);
+                            if let Some(validator) = dy.map.validator(content.level, content.slot, op) {
+                                let event = tb::Event::Voted(SlotsInfo::block_id(&content), validator, now);
+                                let (new_actions, records) = state.handle(&dy, event);
                                 write_log(log, records);
                                 actions.extend(new_actions.into_iter());
                             }
                         }
                         Some(_) => {
-                            state.handle(&timing, &slots_info, tb::Event::Operation(op));
+                            state.handle(&dy, tb::Event::Operation(op));
                         }
                     }
                 }
@@ -206,7 +210,7 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
             }
             Ok(Event::Tick) => {
                 let event = tb::Event::Timeout;
-                let (new_actions, records) = state.handle(&timing, &slots_info, event);
+                let (new_actions, records) = state.handle(&dy, event);
                 write_log(log, records);
                 new_actions.into_iter().collect()
             }
@@ -217,7 +221,7 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
             &timer,
             crypto,
             &mut seed_nonce,
-            &slots_info,
+            &dy.map,
             &chain_id,
             proof_of_work_threshold,
             actions,

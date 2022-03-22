@@ -25,8 +25,8 @@ impl fmt::Display for BlockId {
 
 pub enum Event<Id, Op> {
     Proposal(Box<Block<Id, Op>>, Timestamp),
-    PreVoted(u32, BlockId, Validator<Id, Op>, Timestamp),
-    Voted(u32, BlockId, Validator<Id, Op>, Timestamp),
+    PreVoted(BlockId, Validator<Id, Op>, Timestamp),
+    Voted(BlockId, Validator<Id, Op>, Timestamp),
     Operation(Op),
     Timeout,
 }

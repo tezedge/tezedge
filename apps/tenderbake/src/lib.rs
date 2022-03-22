@@ -13,8 +13,11 @@ pub use self::timestamp::{Timestamp, Timing, TimingLinearGrow};
 mod validator;
 pub use self::validator::{Validator, Votes, ProposerMap};
 
+mod timeout;
+pub use self::timeout::{Config, TimeHeader};
+
 mod block;
-pub use self::block::{PayloadHash, BlockHash, PreCertificate, Certificate, Block, Payload, TimeHeader};
+pub use self::block::{PayloadHash, BlockHash, PreCertificate, Certificate, Block, Payload};
 
 mod event;
 pub use self::event::{BlockId, Event, Action, LogRecord, LogLevel};
