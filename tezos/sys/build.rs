@@ -42,7 +42,11 @@ fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
     let platform = current_platform();
 
     let artifact_for_platform = match platform.os_type {
-        OSType::OSX => Some("libtezos-ffi-macos.dylib.gz"),
+        OSType::OSX => match std::env::consts::ARCH {
+            "x86_64" => Some("libtezos-ffi-macos.dylib.gz"),
+            "aarch64" => Some("libtezos-ffi-macos-m1.dylib.gz"),
+            _ => None,
+        },
         OSType::Ubuntu => match platform.version.as_str() {
             "16.04" => Some("libtezos-ffi-ubuntu16.so.gz"),
             "18.04" | "18.10" => Some("libtezos-ffi-ubuntu18.so.gz"),
