@@ -383,7 +383,8 @@ impl RpcClient {
             .into_iter()
             .filter_map(|mut v| {
                 let applied = v.as_object_mut()?.remove("applied")?;
-                debug_assert!(v.as_object_mut()?.get("refused").unwrap().as_array().unwrap().is_empty());
+                let refused = v.as_object_mut()?.get("refused")?.as_array()?;
+                debug_assert!(refused.is_empty(), "refused: {}", serde_json::to_string(refused).unwrap());
                 serde_json::from_value(applied).ok()
             })
             .collect();

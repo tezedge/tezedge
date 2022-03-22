@@ -36,7 +36,6 @@ const WAIT_HEAD_TIMEOUT: Duration = Duration::from_secs(3600 * 24);
 const WAIT_OPERATION_TIMEOUT: Duration = Duration::from_secs(3600);
 
 pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathBuf, baker: &str) -> Result<(), RpcError> {
-
     let (tx, rx) = mpsc::channel();
     let client = RpcClient::new(endpoint, tx.clone());
     let timer = Timer::spawn(tx);
@@ -172,8 +171,15 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
                         }
                     },
                 });
-                if let Err(err) = client.monitor_operations(WAIT_OPERATION_TIMEOUT) {
-                    slog::error!(log, " .  {}", err);
+                // TODO: investigate it
+                let mut tries = 3;
+                while tries > 0 {
+                    tries -= 1;
+                    if let Err(err) = client.monitor_operations(WAIT_OPERATION_TIMEOUT) {
+                        slog::error!(log, " .  {}", err);
+                    } else {
+                        break;
+                    }
                 }
                 let event = tb::Event::Proposal(proposal, now);
                 let (new_actions, records) = state.handle(&dy, event);
