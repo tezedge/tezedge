@@ -1,6 +1,6 @@
 [package]
 name = "db-checker"
-version = "1.18.0"
+version = "1.19.0"
 authors = ["Mambisi <mambisi.zempare@simplestaking.com> <lilbizi96@gmail.com>"]
 edition = "2021"
 
