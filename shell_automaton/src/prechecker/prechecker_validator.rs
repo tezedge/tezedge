@@ -281,8 +281,8 @@ fn validate_inlined_endorsement(
     let verifying = Instant::now();
     match delegate.verify_signature(
         signature,
-        &SignatureWatermark::Endorsement(chain_id.clone()),
-        encoded,
+        SignatureWatermark::Endorsement(chain_id),
+        [encoded.as_ref()],
     ) {
         Ok(true) => (),
         Ok(_) => return Err(EndorsementValidationError::InlinedSignatureMismatch),

@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
-
 use slog::{error, info, Logger};
 
 #[derive(Clone)]
@@ -31,12 +29,9 @@ impl SlackServer {
     pub async fn send_message(&self, text: &str) {
         let client = reqwest::Client::new();
 
-        let mut map = HashMap::new();
-        map.insert("text", text);
-
         let res = client
             .post(&self.monitor_channel_url)
-            .json(&map)
+            .json(&serde_json::json!({ "text": text }))
             .send()
             .await;
 

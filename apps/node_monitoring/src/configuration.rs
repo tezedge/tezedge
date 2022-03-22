@@ -5,6 +5,7 @@ use clap::{App, Arg};
 use std::env;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 
 use crate::node::{Node, NodeStatus, NodeType};
 
@@ -36,6 +37,8 @@ pub struct DeployMonitoringEnvironment {
     pub nodes: Vec<Node>,
 
     pub wait_for_nodes: bool,
+
+    pub delegates: Option<Vec<String>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -228,6 +231,19 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                         Err(format!("Debugger data dir not found at '{}'", v))
                     }
                 }),
+        )
+        .arg(
+            Arg::with_name("delegate")
+                .long("delegate")
+                .takes_value(true)
+                .value_name("PUBLIC-KEY")
+                .help("Delegate to monitor")
+                .validator(|v| {
+                    match SignaturePublicKeyHash::from_b58_hash(&v) {
+                        Ok(_) => Ok(()),
+                        Err(err) => Err(format!("invalid public key: `{err}`")),
+                    }
+                })
         );
     app
 }
@@ -419,6 +435,7 @@ impl DeployMonitoringEnvironment {
             nodes: tezedge_nodes,
             wait_for_nodes: args.is_present("wait-for-nodes"),
             proxy_port,
+            delegates: args.values_of_lossy("delegate"),
         }
     }
 }

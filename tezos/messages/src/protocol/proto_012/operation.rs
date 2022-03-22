@@ -23,12 +23,16 @@ pub use super::super::proto_011::operation::{
 
 use std::convert::TryFrom;
 
-use crypto::hash::{
-    BlockHash, BlockPayloadHash, ContextHash, HashTrait, NonceHash, OperationListListHash,
-    Signature,
+use crypto::{
+    hash::{
+        BlockHash, BlockPayloadHash, ChainId, ContextHash, HashTrait, NonceHash,
+        OperationListListHash, Signature,
+    },
+    CryptoError,
 };
 use tezos_encoding::{
     binary_reader::BinaryReaderError,
+    binary_writer::BinaryWriterError,
     encoding::HasEncoding,
     nom::NomReader,
     types::{Mutez, SizedBytes},
@@ -40,8 +44,11 @@ use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
 use tezos_encoding_derive::BinWriter;
 
 use crate::{
-    base::signature_public_key::SignaturePublicKeyHash,
-    p2p::encoding::{block_header::Level, fitness::Fitness, operation::Operation as P2POperation},
+    base::signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash, SignatureWatermark},
+    p2p::{
+        binary_message::BinaryWrite,
+        encoding::{block_header::Level, fitness::Fitness, operation::Operation as P2POperation},
+    },
     protocol::proto_011::operation::RegisterGlobalConstantOperation,
     Timestamp,
 };
@@ -65,6 +72,36 @@ pub struct Operation {
     #[encoding(reserve = "Signature::hash_size()")]
     pub contents: Vec<Contents>,
     pub signature: Signature,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum OperationVerifyError {
+    #[error("invalid operation contents")]
+    InvalidContents,
+    #[error("cannot encode operation: `{0}`")]
+    ToBytes(#[from] BinaryWriterError),
+    #[error("cryptography error: `{0}`")]
+    Crypto(#[from] CryptoError),
+}
+
+impl Operation {
+    pub fn verify_endorsement(
+        &self,
+        pk: &SignaturePublicKey,
+        chain_id: &ChainId,
+    ) -> Result<bool, OperationVerifyError> {
+        let endorsement = match self.contents.split_first() {
+            Some((Contents::Endorsement(endorsement), [])) => endorsement,
+            _ => return Err(OperationVerifyError::InvalidContents),
+        };
+        let bytes: [&[u8]; 2] = [self.branch.as_ref(), &endorsement.as_bytes()?];
+        let result = pk.verify_signature(
+            &self.signature,
+            SignatureWatermark::Endorsement(chain_id),
+            bytes,
+        )?;
+        Ok(result)
+    }
 }
 
 impl TryFrom<P2POperation> for Operation {
@@ -453,10 +490,10 @@ Preendorsement (tag 20)
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct PreendorsementOperation {
-    slot: u16,
-    level: i32,
-    round: i32,
-    block_payload_hash: BlockPayloadHash,
+    pub slot: u16,
+    pub level: i32,
+    pub round: i32,
+    pub block_payload_hash: BlockPayloadHash,
 }
 
 /**
@@ -483,10 +520,10 @@ Endorsement (tag 21)
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct EndorsementOperation {
-    slot: u16,
-    level: i32,
-    round: i32,
-    block_payload_hash: BlockPayloadHash,
+    pub slot: u16,
+    pub level: i32,
+    pub round: i32,
+    pub block_payload_hash: BlockPayloadHash,
 }
 
 /**

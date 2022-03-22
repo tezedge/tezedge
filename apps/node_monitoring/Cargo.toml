@@ -6,6 +6,7 @@ edition = "2021"
 default-run = "node-monitoring"
 
 [dependencies]
+anyhow = "1"
 cfg-if = "1.0"
 clap = "2.33"
 time = "0.3"
@@ -29,5 +30,7 @@ wait-timeout = "0.2"
 warp = "0.3"
 procfs = "0.9"
 netinfo = { git = "https://github.com/tezedge/netinfo.git", tag = "tezedge-v0.5.1-1" }
+crypto = { path = "../../crypto" }
+tezos_messages = { path = "../../tezos/messages" }
 
 [workspace]
