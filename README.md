@@ -136,7 +136,7 @@ for most of the more popular Linux distributions:
 | Debian |  9, 10 |
 | OpenSUSE |  15.1, 15.2 |
 | CentOS |  8 |
-| MacOS |  *experimental* - newer or equal to 10.13 should work |
+| MacOS |  *experimental* - newer or equal to 10.13 should work, Intel and M1 cpus |
 
 If you are missing support for your favorite Linux distribution, please submit a request with the [tezos-opam-builder](https://github.com/tezedge/tezos-opam-builder) project.
 
