@@ -33,6 +33,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Nothing.
 
+## [1.18.1] - 2022-03-22
+
+### Changed
+
+- For macOS-arm64, use an updated libtezos.
+
 ## [1.18.0] - 2022-03-22
 
 ### Added
@@ -745,7 +751,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.18.0...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.18.1...develop
+[1.18.1]: https://github.com/tezedge/tezedge/releases/v1.18.1
 [1.18.0]: https://github.com/tezedge/tezedge/releases/v1.18.0
 [1.17.0]: https://github.com/tezedge/tezedge/releases/v1.17.0
 [1.16.1]: https://github.com/tezedge/tezedge/releases/v1.16.1
