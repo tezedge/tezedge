@@ -1,6 +1,6 @@
 [package]
 name = "networking"
-version = "1.19.0"
+version = "1.18.1"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2021"
 

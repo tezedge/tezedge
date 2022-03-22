@@ -214,19 +214,21 @@ If you want to build from source code, you need to install this before:
 
 ### Running node with `cargo run`
 
-To run the node manually, you need to first build it from the source code. The path to the Tezos lib must be provided as an environment variable `LD_LIBRARY_PATH` (for macOS, `DYLD_LIBRARY_PATH`). It is required
-by the `protocol-runner`. When put together, the node can be run, for example, like this:
+To run the node manually, you need to first build it from the source code. When put together, the node can be run, for example, like this:
+
 ```
 cargo build --release
-LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --protocol-runner=./target/release/protocol-runner --network=mainnet
+cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --protocol-runner=./target/release/protocol-runner --network=mainnet
 ```
 
 All parameters can also be provided as command line arguments in the same format as in the config file, in which case
 they have a higher priority than the ones in the config file. For example, we can use the default config and change the log file path:
+
 ```
 cargo build --release
-LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --log-file /tmp/logs/tezdge.log --protocol-runner=./target/release/protocol-runner --network=mainnet
+cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --log-file /tmp/logs/tezdge.log --protocol-runner=./target/release/protocol-runner --network=mainnet
 ```
+
 _Full description of all arguments is in the light_node [README](light_node/README.md) file._
 
 ### Running node with `run.sh` script
@@ -315,7 +317,7 @@ _More about building TezEdge docker images see [here](docker/README.md)._
 #### Run image
 
 ```
-docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.18.0 --network=mainnet --p2p-port 9732 --rpc-port 18732
+docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.18.1 --network=mainnet --p2p-port 9732 --rpc-port 18732
 ```
 _A full description of all arguments can be found in the light_node [README](light_node/README.md) file._
 
