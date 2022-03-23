@@ -200,7 +200,7 @@ If you want to build from source code, you need to install this before:
 
     ```
     export SODIUM_USE_PKG_CONFIG=1
-    export DYLD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts # currently needed for macOS
+    export DYLD_LIBRARY_PATH=$(pwd)/tezos/sys/lib_tezos/artifacts # currently needed for macOS
     cargo test --release
     ```
 
