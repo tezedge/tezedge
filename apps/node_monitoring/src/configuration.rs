@@ -64,14 +64,8 @@ impl fmt::Display for AlertThresholds {
 
 #[derive(Clone, Debug)]
 pub struct SlackConfiguration {
-    // slack bot token
-    pub slack_token: String,
-
     // slack channel url
     pub slack_url: String,
-
-    // slack channel name
-    pub slack_channel_name: String,
 }
 
 fn deploy_monitoring_app() -> App<'static, 'static> {
@@ -134,7 +128,7 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .long("slack-channel-name")
                 .takes_value(true)
                 .value_name("SLACK-CHANNEL-NAME")
-                .help("The slack url of the channel to send the messages to"),
+                .help("[DEPRECATED] The slack url of the channel to send the messages to"),
         )
         .arg(
             Arg::with_name("resource-monitor-interval")
@@ -266,22 +260,19 @@ fn validate_required_args(args: &clap::ArgMatches) {
 }
 
 fn check_slack_args(args: &clap::ArgMatches) -> Option<SlackConfiguration> {
-    // if any of the slack args are present, all 3 of them must be present
-    if args.is_present("slack-token")
-        || args.is_present("slack-channel-name")
-        || args.is_present("slack-url")
-    {
-        validate_required_arg(args, "slack-token");
-        validate_required_arg(args, "slack-channel-name");
+    if args.is_present("slack-channel-name") {
+        eprintln!("`slack-channel-name` option is deprecated");
+    }
+    if args.is_present("slack-token") {
+        eprintln!("`slack-channel-name` option is deprecated");
+    }
+
+    // if any of the slack args are present, all 2 of them must be present
+    if args.is_present("slack-url") {
         validate_required_arg(args, "slack-url");
 
         Some(SlackConfiguration {
-            slack_token: args.value_of("slack-token").unwrap_or("").to_string(),
             slack_url: args.value_of("slack-url").unwrap_or("").to_string(),
-            slack_channel_name: args
-                .value_of("slack-channel-name")
-                .unwrap_or("")
-                .to_string(),
         })
     } else {
         None

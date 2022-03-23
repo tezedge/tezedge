@@ -16,6 +16,7 @@ use crate::MEASUREMENTS_MAX_CAPACITY;
 const FE_CAPACITY: usize = 1000;
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct MeasurementOptions {
     tag: Option<String>,
     limit: Option<usize>,

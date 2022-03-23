@@ -9,13 +9,13 @@ use std::hash::Hash;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
-use thiserror::Error;
 use getset::Getters;
 use merge::Merge;
 use netinfo::Netinfo;
 use serde::Serialize;
 use slog::{error, warn, Logger};
 use sysinfo::{System, SystemExt};
+use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::display_info::{NodeInfo, OCamlDiskData, TezedgeDiskData};
@@ -223,12 +223,12 @@ impl ResourceUtilization {
         {
             Some(TezedgeDiskData::new(
                 cmp::max(tezedge_disk1.debugger(), tezedge_disk2.debugger()),
-                cmp::max(tezedge_disk1.context_storage(), tezedge_disk2.context_storage()),
-                cmp::max(tezedge_disk1.block_storage(), tezedge_disk2.block_storage()),
                 cmp::max(
-                    tezedge_disk1.context_stats(),
-                    tezedge_disk2.context_stats(),
+                    tezedge_disk1.context_storage(),
+                    tezedge_disk2.context_storage(),
                 ),
+                cmp::max(tezedge_disk1.block_storage(), tezedge_disk2.block_storage()),
+                cmp::max(tezedge_disk1.context_stats(), tezedge_disk2.context_stats()),
                 cmp::max(tezedge_disk1.main_db(), tezedge_disk2.main_db()),
             ))
         } else {

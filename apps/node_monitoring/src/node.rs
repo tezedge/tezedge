@@ -95,11 +95,8 @@ impl Node {
         let volume_path = self.volume_path.as_path().display();
         if self.node_type == NodeType::Tezedge {
             // context stats DB is optional
-            let context_stats = dir::get_size(&format!(
-                "{}/{}",
-                volume_path, "context-stats-db"
-            ))
-            .unwrap_or(0);
+            let context_stats =
+                dir::get_size(&format!("{}/{}", volume_path, "context-stats-db")).unwrap_or(0);
 
             let debugger = if let Some(debugger_path) = &self.debugger_path {
                 dir::get_size(&format!(

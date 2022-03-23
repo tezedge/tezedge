@@ -45,14 +45,8 @@ async fn main() {
         ..
     } = env.clone();
 
-    let slack_server = slack_configuration.map(|cfg| {
-        slack::SlackServer::new(
-            cfg.slack_url,
-            cfg.slack_token,
-            cfg.slack_channel_name,
-            log.clone(),
-        )
-    });
+    let slack_server =
+        slack_configuration.map(|cfg| slack::SlackServer::new(cfg.slack_url, log.clone()));
 
     let mut storages = Vec::new();
 
@@ -116,12 +110,19 @@ async fn main() {
     if let Some(delegates) = env.delegates {
         for node in env.nodes {
             let node_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), node.port());
-            slog::info!(log, "Using node `{node}` to monitor performance for delegates", node = node.tag());
+            slog::info!(
+                log,
+                "Using node `{node}` to monitor performance for delegates",
+                node = node.tag()
+            );
             let delegates = delegates.clone();
             let log = log.clone();
             let slack = slack_server.clone();
             tokio::spawn(async move {
-                if let Err(err) = DelegatesMonitor::new(node_addr, delegates, slack, log.clone()).run().await {
+                if let Err(err) = DelegatesMonitor::new(node_addr, delegates, slack, log.clone())
+                    .run()
+                    .await
+                {
                     slog::error!(log, "Error in delegates monitor: `{err}`");
                 }
             });
