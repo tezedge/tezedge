@@ -5,16 +5,19 @@ use std::{
     collections::BTreeMap,
     fs::File,
     io::{self, Read},
-    path::PathBuf, mem, convert::TryInto,
+    mem,
+    path::PathBuf, convert::TryInto,
 };
 
 use derive_more::From;
-use tezos_encoding::types::SizedBytes;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use serde::{Serialize, Deserialize};
 
 use crypto::{blake2b, hash::NonceHash};
-use tezos_messages::protocol::{proto_005_2::operation::SeedNonceRevelationOperation, proto_012::operation::Contents};
+use tezos_encoding::types::SizedBytes;
+use tezos_messages::protocol::{
+    proto_005_2::operation::SeedNonceRevelationOperation, proto_012::operation::Contents,
+};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct Nonce(Vec<u8>);
@@ -48,8 +51,7 @@ impl<'de> serde::Deserialize<'de> for Nonce {
                 .map_err(serde::de::Error::custom)
                 .map(Nonce)
         } else {
-            Vec::deserialize(deserializer)
-                .map(Nonce)
+            Vec::deserialize(deserializer).map(Nonce)
         }
     }
 }
@@ -138,7 +140,11 @@ impl SeedNonceService {
         if level % self.blocks_per_commitment == 0 {
             let nonce = Nonce::random(self.nonce_length);
             let hash = NonceHash(blake2b::digest_256(&nonce.0).unwrap());
-            self.nonces.insert(level / self.blocks_per_cycle, level % self.blocks_per_cycle, nonce);
+            self.nonces.insert(
+                level / self.blocks_per_cycle,
+                level % self.blocks_per_cycle,
+                nonce,
+            );
             serde_json::to_writer(File::create(&self.file_path)?, &self.nonces)?;
             Ok(Some(hash))
         } else {
@@ -146,14 +152,13 @@ impl SeedNonceService {
         }
     }
 
-    pub fn reveal_nonce(
-        &mut self,
-        level: i32,
-    ) -> impl Iterator<Item = Contents> + '_ {
+    pub fn reveal_nonce(&mut self, level: i32) -> impl Iterator<Item = Contents> + '_ {
         let level = level as u32;
 
         let cycle = level / self.blocks_per_cycle;
-        self.nonces.take(cycle).into_iter()
+        self.nonces
+            .take(cycle)
+            .into_iter()
             .map(move |(Nonce(nonce), pos)| {
                 Contents::SeedNonceRevelation(SeedNonceRevelationOperation {
                     level: ((cycle - 1) * self.blocks_per_cycle + pos) as i32,
