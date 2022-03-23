@@ -127,18 +127,16 @@ impl DelegatesMonitor {
                     self.log,
                     "Baker `{delegate}` could bake round `{round}` on level `{level}`"
                 );
-                let ok = self
-                    .check_baker(
-                        delegate,
-                        round,
-                        level,
-                        baking_failures.contains(delegate),
-                    )
-                    .await?;
-                if ok {
-                    baking_failures.remove(delegate);
-                } else {
-                    baking_failures.insert(delegate);
+                let block_round = self.get_block_round(level).await?;
+                if round <= block_round {
+                    let ok = self
+                        .check_baker(delegate, round, level, baking_failures.contains(delegate))
+                        .await?;
+                    if ok {
+                        baking_failures.remove(delegate);
+                    } else {
+                        baking_failures.insert(delegate);
+                    }
                 }
             }
             if self.get_endorsing_rights(delegate, hash, level).await? {
@@ -166,6 +164,13 @@ impl DelegatesMonitor {
             }
         }
         Ok(())
+    }
+
+    async fn get_block_round(&self, level: i32) -> anyhow::Result<u16> {
+        node_get::<u16, _>(
+            self.node_addr,
+            format!("/chains/main/blocks/{level}/helpers/round"),
+        ).await
     }
 
     /// For the given block `block`, fetches baking rights for this block level.
@@ -212,15 +217,6 @@ impl DelegatesMonitor {
         level: i32,
         was_failure: bool,
     ) -> anyhow::Result<bool> {
-        let block_round = node_get::<u16, _>(
-            self.node_addr,
-            format!("/chains/main/blocks/{level}/helpers/round"),
-        )
-        .await?;
-        if block_round < round {
-            return Ok(was_failure);
-        }
-
         let metadata = node_get::<Value, _>(
             self.node_addr,
             format!("/chains/main/blocks/{level}/metadata"),
