@@ -187,24 +187,20 @@ If you want to build from source code, you need to install this before:
     ```
 
 2. **Build**
-    ```
-    SODIUM_USE_PKG_CONFIG=1 cargo build --release
-    ```
-    or
+
     ```
     export SODIUM_USE_PKG_CONFIG=1
     cargo build --release
     ```
+
    _The node can built through the `cargo build` or `cargo build --release`, be aware, release build can take
    much longer to compile._
 
 3. **Test**
-    ```
-    SODIUM_USE_PKG_CONFIG=1 cargo test --release
-    ```
-   or
+
     ```
     export SODIUM_USE_PKG_CONFIG=1
+    export DYLD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts # currently needed for macOS
     cargo test --release
     ```
 
