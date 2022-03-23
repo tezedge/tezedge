@@ -1,0 +1,18 @@
+server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+        add_header Access-Control-Allow-Origin *;
+
+        root /var/www/html;
+
+        # Add index.php to the list if you are using PHP
+        index index.html index.htm index.nginx-debian.html;
+
+        server_name _;
+
+        location / {
+                root /snapshots/;
+                autoindex on;
+                autoindex_format json;
+        }
+}

@@ -165,6 +165,7 @@ steps:
     - mkdir -p drone-cache/test_data/tests/resources
     - mkdir -p drone-cache/tests
     - mkdir -p drone-cache/sandbox_files
+    - mkdir -p drone-cache/nginx
     # - mkdir -p $${SANDBOX_ARTIFACTS_PATH}
     # copy binaries
     - cp ./target/release/light-node drone-cache/build_files
@@ -199,6 +200,7 @@ steps:
     - cp ./light_node/etc/drone/assert_cyclic_test_result.sh drone-cache/build_files/ && chmod 755 drone-cache/build_files/assert_cyclic_test_result.sh
     - cp ./light_node/etc/drone/identities/* drone-cache/build_files/identities/
     - cp ./light_node/etc/tezedge/tezedge_drone.config drone-cache/build_files/tezedge/
+    - cp ./light_node/etc/drone/nginx/default drone-cache/nginx/default
     # copy test binaries
     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` drone-cache/tests/rpc_integration_test
     # collect modified python tests stuff
@@ -685,6 +687,130 @@ depends_on:
 
 image_pull_secrets:
   - docker_pull_secret
+
+---
+
+kind: pipeline
+name: corr/import-snapshot
+
+trigger:
+  branch:
+    - master
+    - develop
+
+environment:
+  NETWORK: hangzhounet
+
+depends_on:
+  - build-tezedge-binaries
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: cache
+    temp: {}
+  - name: snapshots
+    host:
+      path: /usr/local/etc/tezedge-ci/snapshots
+
+steps:
+
+- name: prepare-data
+  image: alpine/git
+  user: root
+  commands:
+    - mkdir -p drone-cache
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: nginx-file-server
+  image: nginx
+  detach: true
+  volumes:
+    - name: snapshots
+      path: /snapshots
+  commands:
+    - cp ./drone-cache/nginx/default /etc/nginx/conf.d/default.conf
+    - nginx
+    - sleep infinity
+
+- name: import-snapshot
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  user: root
+  pull: if-not-exists
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    THROTTLING_QUOTA_DISABLE: true
+  volumes:
+    - name: cache
+      path: /cache
+  commands:
+    - sleep 10
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - ./drone-cache/build_files/light-node import-snapshot --from http://nginx-file-server/tezedge_hangzhou_20220322-113544_BMCnDzyT2UASaz7BpM5JT5K7xwzHsv2q1A5LpZm6u4PNJuMmLpC_irmin.full --tezos-data-dir /cache
+
+- name: run-tezedge-from-imported-snapshot
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  user: root
+  pull: if-not-exists
+  volumes:
+    - name: cache
+      path: /cache
+  commands:
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - >
+      ./drone-cache/build_files/light-node
+      --config-file=./drone-cache/build_files/tezedge/tezedge_drone.config
+      --identity-file=./drone-cache/build_files/identities/identity_2.json
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
+      --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
+      --tezos-data-dir=/cache --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=irmin --disable-bootstrap-lookup
+      --log-level debug &
+      echo $! > /var/run/tezedge.pid
+    # this command waits the node to be on level 710058
+    - |
+      sh -c '
+      block=0
+      attempts=0
+      while [ $block -lt 710058 ]; do
+        sleep 5
+        b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
+        block=$${b:-$block}
+        echo "===> Block level $block"
+        if [ $attempts -gt 12 ]; then
+          echo "Failed to bootstrap after a minute."
+          exit 1
+        fi
+        attempts=$(($attempts + 1))
+      done
+      '
+    - echo "Bootstrapped. Killing the node and waiting for 10 seconds."
+    # terminate the node gracefully and wait to allow `valgrind` dump data
+    - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
 ---
 ##############################################################################################################
