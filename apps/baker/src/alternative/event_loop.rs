@@ -3,9 +3,9 @@
 
 use std::{
     convert::TryInto,
+    path::PathBuf,
     sync::mpsc,
     time::{Duration, SystemTime},
-    path::PathBuf,
 };
 
 use reqwest::Url;
@@ -28,14 +28,19 @@ use super::{
     guess_proof_of_work,
     slots_info::SlotsInfo,
     timer::Timer,
-    CryptoService,
-    SeedNonceService,
+    CryptoService, SeedNonceService,
 };
 
 const WAIT_HEAD_TIMEOUT: Duration = Duration::from_secs(3600 * 24);
 const WAIT_OPERATION_TIMEOUT: Duration = Duration::from_secs(3600);
 
-pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathBuf, baker: &str) -> Result<(), RpcError> {
+pub fn run(
+    endpoint: Url,
+    crypto: &CryptoService,
+    log: &Logger,
+    base_dir: &PathBuf,
+    baker: &str,
+) -> Result<(), RpcError> {
     let (tx, rx) = mpsc::channel();
     let client = RpcClient::new(endpoint, tx.clone());
     let timer = Timer::spawn(tx);
@@ -50,7 +55,8 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
         constants.blocks_per_commitment,
         constants.blocks_per_cycle,
         constants.nonce_length,
-    ).unwrap();
+    )
+    .unwrap();
 
     slog::info!(
         log,
@@ -103,28 +109,39 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
                 };
                 let round = block.round;
                 let pred_hash = tb::BlockHash(block.predecessor.0.as_slice().try_into().unwrap());
-                slog::info!(log, "Block: {}, pred: {}, {:?}", block.hash, block.predecessor, block.fitness);
+                slog::info!(
+                    log,
+                    "Block: {}, pred: {}, {:?}",
+                    block.hash,
+                    block.predecessor,
+                    block.fitness
+                );
                 if let Some(consensus) = block.operations.first() {
-                    slog::debug!(log, "Consensus operations: {}", serde_json::to_string(consensus).unwrap());
+                    slog::debug!(
+                        log,
+                        "Consensus operations: {}",
+                        serde_json::to_string(consensus).unwrap()
+                    );
                 }
                 let proposal = Box::new(tb::Block {
                     pred_hash,
                     level: block.level,
                     hash: tb::BlockHash(block.hash.0.as_slice().try_into().unwrap()),
-                    time_header: tb::TimeHeader {
-                        round,
-                        timestamp,
-                    },
+                    time_header: tb::TimeHeader { round, timestamp },
                     payload: {
                         if !block.transition {
                             Some(tb::Payload {
-                                hash: tb::PayloadHash(block.payload_hash.0.as_slice().try_into().unwrap()),
+                                hash: tb::PayloadHash(
+                                    block.payload_hash.0.as_slice().try_into().unwrap(),
+                                ),
                                 payload_round: block.payload_round,
                                 pre_cer: block.operations.first().and_then(|ops| {
                                     let v = ops
                                         .iter()
                                         .filter_map(|op| match op.kind()? {
-                                            OperationKind::Preendorsement(v) => Some((v, op.clone())),
+                                            OperationKind::Preendorsement(v) => {
+                                                Some((v, op.clone()))
+                                            }
                                             _ => None,
                                         })
                                         .collect::<Vec<_>>();
@@ -155,16 +172,21 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
                                         votes: {
                                             ops.iter()
                                                 .filter_map(|op| match op.kind()? {
-                                                    OperationKind::Endorsement(v) => {
-                                                        dy.map.validator(v.level, v.slot, op.clone())
-                                                    },
+                                                    OperationKind::Endorsement(v) => dy
+                                                        .map
+                                                        .validator(v.level, v.slot, op.clone()),
                                                     _ => None,
                                                 })
                                                 .collect()
                                         },
                                     })
                                 }),
-                                operations: block.operations.into_iter().skip(1).flatten().collect(),
+                                operations: block
+                                    .operations
+                                    .into_iter()
+                                    .skip(1)
+                                    .flatten()
+                                    .collect(),
                             })
                         } else {
                             None
@@ -192,16 +214,25 @@ pub fn run(endpoint: Url, crypto: &CryptoService, log: &Logger, base_dir: &PathB
                     match op.kind() {
                         None => slog::error!(log, " .  unclassified operation {op:?}"),
                         Some(OperationKind::Preendorsement(content)) => {
-                            if let Some(validator) = dy.map.validator(content.level, content.slot, op) {
-                                let event = tb::Event::PreVoted(SlotsInfo::block_id(&content), validator, now);
+                            if let Some(validator) =
+                                dy.map.validator(content.level, content.slot, op)
+                            {
+                                let event = tb::Event::PreVoted(
+                                    SlotsInfo::block_id(&content),
+                                    validator,
+                                    now,
+                                );
                                 let (new_actions, records) = state.handle(&dy, event);
                                 write_log(log, records);
                                 actions.extend(new_actions.into_iter());
                             }
                         }
                         Some(OperationKind::Endorsement(content)) => {
-                            if let Some(validator) = dy.map.validator(content.level, content.slot, op) {
-                                let event = tb::Event::Voted(SlotsInfo::block_id(&content), validator, now);
+                            if let Some(validator) =
+                                dy.map.validator(content.level, content.slot, op)
+                            {
+                                let event =
+                                    tb::Event::Voted(SlotsInfo::block_id(&content), validator, now);
                                 let (new_actions, records) = state.handle(&dy, event);
                                 write_log(log, records);
                                 actions.extend(new_actions.into_iter());
@@ -350,12 +381,17 @@ fn perform(
                         contents: vec![{
                             let mut content = serde_json::to_value(&nonce_content).unwrap();
                             let content_obj = content.as_object_mut().unwrap();
-                            content_obj.insert("kind".to_string(), serde_json::Value::String("seed_nonce_revelation".to_string()));
+                            content_obj.insert(
+                                "kind".to_string(),
+                                serde_json::Value::String("seed_nonce_revelation".to_string()),
+                            );
                             content
                         }],
                         signature: Some(Signature(vec![0; 64])),
                         hash: None,
-                        protocol: Some(ProtocolHash::from_base58_check(super::client::PROTOCOL).unwrap()),
+                        protocol: Some(
+                            ProtocolHash::from_base58_check(super::client::PROTOCOL).unwrap(),
+                        ),
                     })
                     .collect();
                 let mut operations = [
@@ -371,7 +407,7 @@ fn perform(
                         }
                         Some(OperationKind::Endorsement(_) | OperationKind::Preendorsement(_)) => {
                             slog::warn!(log, " .  unexpected consensus operation {op:?}");
-                        },
+                        }
                         Some(OperationKind::Votes) => operations[1].push(op),
                         Some(OperationKind::Anonymous) => {
                             let mut op = op;
@@ -379,7 +415,7 @@ fn perform(
                                 op.signature = Some(Signature(vec![0; 64]));
                             }
                             operations[2].push(op)
-                        },
+                        }
                         Some(OperationKind::Managers) => operations[3].push(op),
                     }
                 }
@@ -402,9 +438,7 @@ fn perform(
                 } else {
                     BlockPayloadHash(payload.hash.0.to_vec())
                 };
-                let seed_nonce_hash = seed_nonce
-                    .gen_nonce(block.level)
-                    .unwrap();
+                let seed_nonce_hash = seed_nonce.gen_nonce(block.level).unwrap();
                 let mut protocol_header = ProtocolBlockHeader {
                     payload_hash,
                     payload_round,
@@ -437,7 +471,12 @@ fn perform(
                 header.signature.0.clear();
                 let (data, _) = crypto.sign(0x11, &chain_id, &header).unwrap();
                 match client.inject_block(hex::encode(data), operations) {
-                    Ok(hash) => slog::info!(log, " .  inject block: {}:{}, {hash}", header.level, block.time_header.round),
+                    Ok(hash) => slog::info!(
+                        log,
+                        " .  inject block: {}:{}, {hash}",
+                        header.level,
+                        block.time_header.round
+                    ),
                     Err(err) => slog::error!(log, " .  {err}"),
                 }
             }

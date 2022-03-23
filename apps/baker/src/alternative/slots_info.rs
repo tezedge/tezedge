@@ -39,13 +39,18 @@ impl SlotsInfo {
         self.delegates.get(&level)?.get(id)
     }
 
-    pub fn validator(&self, level: i32, slot: u16, operation: OperationSimple) -> Option<tb::Validator<ContractTz1Hash, OperationSimple>> {
+    pub fn validator(
+        &self,
+        level: i32,
+        slot: u16,
+        operation: OperationSimple,
+    ) -> Option<tb::Validator<ContractTz1Hash, OperationSimple>> {
         let i = self.delegates.get(&level)?;
         let (id, s) = i.iter().find(|&(_, v)| v.first() == Some(&slot))?;
         Some(tb::Validator {
             id: id.clone(),
             power: s.len() as u32,
-            operation
+            operation,
         })
     }
 

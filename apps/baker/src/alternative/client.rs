@@ -167,7 +167,8 @@ impl RpcClient {
 
             let s = format!("chains/main/blocks/{}/protocols", header.hash);
             let url = this.endpoint.join(&s).expect("valid url");
-            let Protocols { protocol } = this.single_response_blocking(&url, None, Some(timeout))?;
+            let Protocols { protocol } =
+                this.single_response_blocking(&url, None, Some(timeout))?;
 
             let transition = protocol.to_base58_check() != PROTOCOL;
 
@@ -384,7 +385,11 @@ impl RpcClient {
             .filter_map(|mut v| {
                 let applied = v.as_object_mut()?.remove("applied")?;
                 let refused = v.as_object_mut()?.get("refused")?.as_array()?;
-                debug_assert!(refused.is_empty(), "refused: {}", serde_json::to_string(refused).unwrap());
+                debug_assert!(
+                    refused.is_empty(),
+                    "refused: {}",
+                    serde_json::to_string(refused).unwrap()
+                );
                 serde_json::from_value(applied).ok()
             })
             .collect();
@@ -511,7 +516,9 @@ impl RpcClient {
 fn read_error(response: &mut impl io::Read, status: StatusCode) -> Result<(), RpcErrorInner> {
     let mut buf = [0; 0x1000];
     io::Read::read(response, &mut buf)?;
-    let err = str::from_utf8(&buf)?.trim_end_matches('\0').trim_end_matches('\n');
+    let err = str::from_utf8(&buf)?
+        .trim_end_matches('\0')
+        .trim_end_matches('\n');
     Err(RpcErrorInner::NodeError(err.to_string(), status))
 }
 

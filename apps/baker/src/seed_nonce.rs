@@ -61,7 +61,9 @@ impl SeedNonceService {
     ) -> Result<Option<NonceHash>, SeedPersistanceError> {
         let level = level as u32;
         if level % self.blocks_per_commitment == 0 {
-            let vec = (0..self.nonce_length).map(|_| rand::random()).collect::<Vec<u8>>();
+            let vec = (0..self.nonce_length)
+                .map(|_| rand::random())
+                .collect::<Vec<u8>>();
             let hash = NonceHash(blake2b::digest_256(&vec).unwrap());
             self.seeds.insert(level, vec);
             serde_json::to_writer(File::create(&self.file_path)?, &self.seeds)?;
@@ -74,7 +76,7 @@ impl SeedNonceService {
     pub fn reveal_nonce(
         &mut self,
         level: i32,
-    ) -> Option<impl Iterator<Item=SeedNonceRevelationOperation> + '_> {
+    ) -> Option<impl Iterator<Item = SeedNonceRevelationOperation> + '_> {
         let level = level as u32;
 
         let range = if level % self.blocks_per_cycle == 0 {
@@ -88,7 +90,8 @@ impl SeedNonceService {
         if range.is_empty() {
             None
         } else {
-            let it = self.seeds
+            let it = self
+                .seeds
                 .range(range)
                 .map(|(level, nonce)| SeedNonceRevelationOperation {
                     level: *level as i32,

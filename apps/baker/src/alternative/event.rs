@@ -85,7 +85,7 @@ impl OperationSimple {
                 serde_json::from_value(c)
                     .ok()
                     .map(OperationKind::Preendorsement)
-            },
+            }
             "endorsement" => {
                 let mut c = c;
                 let c_obj = c.as_object_mut()?;
@@ -94,7 +94,7 @@ impl OperationSimple {
                 serde_json::from_value(c)
                     .ok()
                     .map(OperationKind::Endorsement)
-            },
+            }
             "failing_noop" => None,
             "proposals" | "ballot" => Some(OperationKind::Votes),
             "seed_nonce_revelation"
