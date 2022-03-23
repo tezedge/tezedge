@@ -11,11 +11,11 @@ use std::{
 use reqwest::Url;
 use slog::Logger;
 
-use crypto::{
-    hash::{BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, Signature, ProtocolHash, OperationListHash},
+use crypto::hash::{
+    BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, OperationListHash, Signature,
 };
 use tenderbake as tb;
-use tezos_encoding::types::SizedBytes;
+use tezos_encoding::{enc::BinWriter, types::SizedBytes};
 use tezos_messages::protocol::proto_012::operation::{
     InlinedEndorsement, InlinedEndorsementMempoolContents, InlinedEndorsementMempoolContentsEndorsementVariant, InlinedPreendorsementContents, InlinedPreendorsementVariant, InlinedPreendorsement,
 };
@@ -103,6 +103,21 @@ pub fn run(
                 if block.level > dy.map.level() {
                     let delegates = client.validators(block.level + 1)?;
                     dy.map.insert(block.level + 1, delegates);
+                }
+                let reveal_ops = seed_nonce
+                    .reveal_nonce(block.level)
+                    .into_iter()
+                    .map(|content| {
+                        let mut bytes = block.predecessor.0.clone();
+                        content.bin_write(&mut bytes).unwrap();
+                        bytes.extend_from_slice(&[0; 64]);
+                        hex::encode(bytes)
+                    });
+                for op_hex in reveal_ops {
+                    match client.inject_operation(&chain_id, op_hex) {
+                        Ok(hash) => slog::info!(log, " .  inject nonce_reveal: {hash}"),
+                        Err(err) => slog::error!(log, " .  {err}"),
+                    }
                 }
                 let timestamp = tb::Timestamp {
                     unix_epoch: Duration::from_secs(block.timestamp),
@@ -353,7 +368,7 @@ fn perform(
                     Err(err) => slog::error!(log, " .  {err}"),
                 }
             }
-            tb::Action::Propose(block, proposer, repropose) => {
+            tb::Action::Propose(block, proposer, _repropose) => {
                 // TODO: multiple bakers
                 let _ = proposer;
                 let payload = match block.payload {
@@ -372,32 +387,10 @@ fn perform(
                     .map(|q| q.votes.ids.into_values())
                     .into_iter()
                     .flatten();
-                let reveal_ops = seed_nonce
-                    .reveal_nonce(block.level)
-                    .into_iter()
-                    .flatten()
-                    .map(|nonce_content| OperationSimple {
-                        branch: predecessor_hash.clone(),
-                        contents: vec![{
-                            let mut content = serde_json::to_value(&nonce_content).unwrap();
-                            let content_obj = content.as_object_mut().unwrap();
-                            content_obj.insert(
-                                "kind".to_string(),
-                                serde_json::Value::String("seed_nonce_revelation".to_string()),
-                            );
-                            content
-                        }],
-                        signature: Some(Signature(vec![0; 64])),
-                        hash: None,
-                        protocol: Some(
-                            ProtocolHash::from_base58_check(super::client::PROTOCOL).unwrap(),
-                        ),
-                    })
-                    .collect();
                 let mut operations = [
                     endorsements.chain(preendorsements).collect::<Vec<_>>(),
                     vec![],
-                    if repropose { vec![] } else { reveal_ops },
+                    vec![],
                     vec![],
                 ];
                 for op in payload.operations {
