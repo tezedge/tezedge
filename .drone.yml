@@ -5692,7 +5692,7 @@ steps:
 # This pipeline bootstraps a tezedge node to 1000 and measures time this takes
 ##############################################################################################################
 kind: pipeline
-name: perf/bootstrap-time-009-florence
+name: perf/bootstrap-time-012-ithaca
 
 trigger:
   branch:
@@ -5770,7 +5770,7 @@ steps:
         - 'drone-cache-old' # <- builds a cache from this directory
 
   - name: octez-bootstrap-node
-    image: tezos/tezos:v9-release
+    image: tezos/tezos:v12-release
     detach: true
     environment:
       TEZOS_NODE_DIR: /home/tezos/data
@@ -5778,9 +5778,9 @@ steps:
       - name: snapshots
         path: /snapshots
     commands:
-      - tezos-node config init --network florencenet
+      - tezos-node config init --network ithacanet
       - cp light_node/etc/drone/identities/identity_1.json $${TEZOS_NODE_DIR}/identity.json
-      - tezos-node snapshot import /snapshots/octez-009-florence-$${BLOCK_LEVEL}.snapshot
+      - tezos-node snapshot import /snapshots/octez-012-ithacanet-$${BLOCK_LEVEL}.snapshot
       - tezos-node run --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
 
   - name: bootstrapping-octez-bootstrap-node
@@ -5792,14 +5792,14 @@ steps:
       - refs/pull/*/head
 
   - name: octez-node
-    image: tezos/tezos:v9-release
+    image: tezos/tezos:v12-release
     user: root
     environment:
       TEZOS_NODE_DIR: /tmp/tezos/data
     commands:
       - apk add curl jq perl
       - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
-      - tezos-node config init --network florencenet
+      - tezos-node config init --network ithacanet
       - cp light_node/etc/drone/identities/identity_2.json $${TEZOS_NODE_DIR}/identity.json
       - tezos-node run --no-bootstrap-peers --peer $${OCTEZ_IP}:9732 --rpc-addr 0.0.0.0:8732 &
       # this command waits the node to be on level higher than 0
@@ -5838,7 +5838,7 @@ steps:
       - export LD_LIBRARY_PATH=drone-cache/build_files/ffi
       - >
         drone-cache/build_files/light-node --protocol-runner ./drone-cache/build_files/protocol-runner
-        --network florencenet --peers $${OCTEZ_IP}:9732
+        --network ithacanet --peers $${OCTEZ_IP}:9732
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
@@ -5881,7 +5881,7 @@ steps:
       - export LD_LIBRARY_PATH=drone-cache-old
       - >
         drone-cache-old/light-node --protocol-runner ./drone-cache-old/protocol-runner
-        --network florencenet --peers $${OCTEZ_IP}:9732
+        --network ithacanet --peers $${OCTEZ_IP}:9732
         --config-file ./drone-cache-old/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
@@ -6756,4 +6756,4 @@ depends_on:
   - corr/indexer-tzkt-octez-009-florence
   - corr/indexer-tzkt-tezedge-009-florence
   - perf/memory-allocation-bootstrap-009-florence
-  - perf/bootstrap-time-009-florence
+  - perf/bootstrap-time-012-ithaca
