@@ -3,7 +3,7 @@
 
 //! Monitors delegate related activities (baking/endorsing) on a particular node
 
-use std::{collections::HashMap, net::SocketAddr};
+use std::{collections::HashSet, net::SocketAddr};
 
 use anyhow::Result;
 use crypto::hash::BlockHash;
@@ -78,8 +78,8 @@ impl DelegatesMonitor {
             tx,
         ));
         let mut last_level = 0;
-        let mut baking_failures = HashMap::new();
-        let mut endorsing_failures = HashMap::new();
+        let mut baking_failures = HashSet::new();
+        let mut endorsing_failures = HashSet::new();
         while let Some(head_res) = rx.recv().await {
             let (hash, header) = match head_res {
                 Ok(Head { hash, header }) => (hash, header),
@@ -117,8 +117,8 @@ impl DelegatesMonitor {
         &'a self,
         hash: &BlockHash,
         level: i32,
-        baking_failures: &mut HashMap<&'a String, bool>,
-        endorsing_failures: &mut HashMap<&'a String, bool>,
+        baking_failures: &mut HashSet<&'a String>,
+        endorsing_failures: &mut HashSet<&'a String>,
     ) -> anyhow::Result<()> {
         let mut operations = None;
         for delegate in &self.delegates {
@@ -132,10 +132,14 @@ impl DelegatesMonitor {
                         delegate,
                         round,
                         level,
-                        *baking_failures.get(delegate).unwrap_or(&false),
+                        baking_failures.contains(delegate),
                     )
                     .await?;
-                baking_failures.insert(delegate, !ok);
+                if ok {
+                    baking_failures.remove(delegate);
+                } else {
+                    baking_failures.insert(delegate);
+                }
             }
             if self.get_endorsing_rights(delegate, hash, level).await? {
                 slog::debug!(
@@ -151,10 +155,14 @@ impl DelegatesMonitor {
                         delegate,
                         level,
                         operations,
-                        *endorsing_failures.get(delegate).unwrap_or(&false),
+                        endorsing_failures.contains(delegate),
                     )
                     .await?;
-                endorsing_failures.insert(delegate, !ok);
+                if ok {
+                    endorsing_failures.remove(delegate);
+                } else {
+                    endorsing_failures.insert(delegate);
+                }
             }
         }
         Ok(())
