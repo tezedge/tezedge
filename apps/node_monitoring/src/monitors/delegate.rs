@@ -45,18 +45,6 @@ pub struct Head {
     header: BlockHeader,
 }
 
-pub struct DelegateRightsForBlock {
-    /// If the delegate is eligible for baking the block with this level (e.g. current head).
-    baker_rights: Option<i32>,
-    /// If the delegate is eligible for endorsing the block with this level (e.g. the current head's predecessor).
-    endorser_rights: Option<i32>,
-}
-
-pub struct DelegateFailures {
-    baking: bool,
-    endorsing: bool,
-}
-
 pub struct DelegatesMonitor {
     node_addr: SocketAddr,
     delegates: Vec<String>,
@@ -79,13 +67,19 @@ impl DelegatesMonitor {
         }
     }
     pub async fn run(self) -> anyhow::Result<()> {
+        slog::info!(self.log, "Waiting for the node to be bootstrapped...");
+        node_null_monitor(self.node_addr, "/monitor/bootstrapped").await?;
+        slog::info!(self.log, "The node is bootstrapped.");
+
         let (tx, mut rx) = channel(1);
         tokio::spawn(node_monitor::<Head, _>(
             self.node_addr,
             "/monitor/heads/main",
             tx,
         ));
-        let mut failures = DelegateFailures { baking: false, endorsing: false };
+        let mut last_level = 0;
+        let mut baking_failures = HashMap::new();
+        let mut endorsing_failures = HashMap::new();
         while let Some(head_res) = rx.recv().await {
             let (hash, header) = match head_res {
                 Ok(Head { hash, header }) => (hash, header),
@@ -95,12 +89,25 @@ impl DelegatesMonitor {
                 }
             };
 
-            slog::debug!(self.log, "new head: `{hash}`");
-            if let Err(err) = self.check_block(&hash, &header, &mut failures).await {
-                slog::warn!(
-                    self.log,
-                    "error checking delegates for block `{hash}`: `{err}`"
-                );
+            let level = header.level();
+            slog::debug!(self.log, "new head `{hash}` at level `{level}`");
+
+            if level - 2 > last_level {
+                last_level = level - 2;
+                if let Err(err) = self
+                    .check_block(
+                        &hash,
+                        last_level,
+                        &mut baking_failures,
+                        &mut endorsing_failures,
+                    )
+                    .await
+                {
+                    slog::warn!(
+                        self.log,
+                        "error checking delegates for block `{hash}`: `{err}`"
+                    );
+                }
             }
         }
         Ok(())
@@ -109,91 +116,81 @@ impl DelegatesMonitor {
     async fn check_block<'a>(
         &'a self,
         hash: &BlockHash,
-        header: &BlockHeader,
-        failures: &mut DelegateFailures,
+        level: i32,
+        baking_failures: &mut HashMap<&'a String, bool>,
+        endorsing_failures: &mut HashMap<&'a String, bool>,
     ) -> anyhow::Result<()> {
-        let rights = self
-            .fetch_rights_for_delegates(&hash, header.level())
-            .await?;
         let mut operations = None;
-        for (
-            delegate,
-            DelegateRightsForBlock {
-                baker_rights,
-                endorser_rights,
-            },
-        ) in rights
-        {
-            if let Some(level) = baker_rights {
-                self.check_baker(delegate, &hash, level, &mut failures.baking).await?
+        for delegate in &self.delegates {
+            if let Some(round) = self.get_baking_rights(delegate, hash, level).await? {
+                slog::debug!(
+                    self.log,
+                    "Baker `{delegate}` could bake round `{round}` on level `{level}`"
+                );
+                let ok = self
+                    .check_baker(
+                        delegate,
+                        round,
+                        level,
+                        *baking_failures.get(delegate).unwrap_or(&false),
+                    )
+                    .await?;
+                baking_failures.insert(delegate, !ok);
             }
-            if let Some(level) = endorser_rights {
+            if self.get_endorsing_rights(delegate, hash, level).await? {
+                slog::debug!(
+                    self.log,
+                    "Baker `{delegate}` could endorse block on level `{level}`"
+                );
                 let operations = match &operations {
                     Some(ops) => ops,
-                    None => operations.insert(self.get_operations(hash).await?),
+                    None => operations.insert(self.get_operations(level).await?),
                 };
-                self.check_operation(delegate, &hash, level, operations, &mut failures.endorsing)
+                let ok = self
+                    .check_operation(
+                        delegate,
+                        level,
+                        operations,
+                        *endorsing_failures.get(delegate).unwrap_or(&false),
+                    )
                     .await?;
+                endorsing_failures.insert(delegate, !ok);
             }
         }
         Ok(())
     }
 
-    async fn fetch_rights_for_delegates<'a>(
-        &'a self,
-        block: &BlockHash,
-        level: i32,
-    ) -> anyhow::Result<HashMap<&'a str, DelegateRightsForBlock>> {
-        let mut rights = HashMap::new();
-        for delegate in &self.delegates {
-            let next = self.fetch_rights(delegate, block, level).await?;
-            rights.insert(delegate.as_str(), next);
-        }
-        Ok(rights)
-    }
-
-    /// For the given block `block`, fetches baking rights for this block level
-    /// and endorsing rights for the previous block.
-    async fn fetch_rights(
+    /// For the given block `block`, fetches baking rights for this block level.
+    async fn get_baking_rights(
         &self,
         delegate: &str,
         block: &BlockHash,
         level: i32,
-    ) -> anyhow::Result<DelegateRightsForBlock> {
-        let baker_rights = {
-            let rights: Vec<BakingRights> = node_get(
+    ) -> anyhow::Result<Option<u16>> {
+        let round = node_get::<Vec<BakingRights>, _>(
                 self.node_addr,
                 format!(
-                    "/chains/main/blocks/{block}/helpers/baking_rights?level={level}&delegate={delegate}&max_round=0"
+                    "/chains/main/blocks/{block}/helpers/baking_rights?level={level}&delegate={delegate}&max_round=4"
                 ),
             )
-            .await?;
-            if rights.len() > 0 {
-                Some(level)
-            } else {
-                None
-            }
-        };
-        let endorser_rights = {
-            if let Some(level) = level.checked_sub(1) {
-                let rights: Vec<EndorsingRights> = node_get(
-                    self.node_addr,
-                    format!("/chains/main/blocks/{block}/helpers/endorsing_rights?level={level}&delegate={delegate}"),
-                )
-                .await?;
-                if rights.len() > 0 {
-                    Some(level)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        };
-        Ok(DelegateRightsForBlock {
-            baker_rights,
-            endorser_rights,
-        })
+            .await?.into_iter().next().map(|r| r.round);
+        Ok(round)
+    }
+
+    /// For the given block `block`, fetches endorsing rights for this block level.
+    async fn get_endorsing_rights(
+        &self,
+        delegate: &str,
+        block: &BlockHash,
+        level: i32,
+    ) -> anyhow::Result<bool> {
+        let has_endorsing_rights =
+            node_get::<Vec<EndorsingRights>, _>(
+                self.node_addr,
+                format!("/chains/main/blocks/{block}/helpers/endorsing_rights?level={level}&delegate={delegate}"),
+            )
+            .await?.into_iter().next().map_or(false, |_| true);
+        Ok(has_endorsing_rights)
     }
 
     fn get_baker(value: &Value) -> Option<&str> {
@@ -203,26 +200,39 @@ impl DelegatesMonitor {
     async fn check_baker(
         &self,
         delegate: &str,
-        hash: &BlockHash,
+        round: u16,
         level: i32,
-        failure: &mut bool,
-    ) -> anyhow::Result<()> {
-        slog::debug!(self.log, "checking that `{hash}` is signed by baker");
+        was_failure: bool,
+    ) -> anyhow::Result<bool> {
+        let block_round = node_get::<u16, _>(
+            self.node_addr,
+            format!("/chains/main/blocks/{level}/helpers/round"),
+        )
+        .await?;
+        if block_round < round {
+            return Ok(was_failure);
+        }
+
         let metadata = node_get::<Value, _>(
             self.node_addr,
-            format!("/chains/main/blocks/{hash}/metadata"),
+            format!("/chains/main/blocks/{level}/metadata"),
         )
         .await?;
         let baker = Self::get_baker(&metadata)
             .ok_or(anyhow::format_err!("cannot fetch baker from metadata"))?;
         if baker != delegate {
-            self.report_error(format!("Lost `{delegate}`'s block at level `{level}`",));
-            *failure = true;
-        } else if *failure {
-            self.report_recover(format!("`{delegate}` baked block at level `{level}` after failure",));
-            *failure = false;
+            self.report_error(format!(
+                "Lost `{delegate}`'s block at level `{level}`, round `{round}`",
+            ));
+            Ok(false)
+        } else {
+            if was_failure {
+                self.report_recover(format!(
+                    "`{delegate}` baked block at level `{level}` after failure",
+                ));
+            }
+            Ok(true)
         }
-        Ok(())
     }
 
     fn get_operation_contents(value: &Value) -> Option<&Vec<Value>> {
@@ -245,13 +255,12 @@ impl DelegatesMonitor {
     async fn check_operation(
         &self,
         delegate: &str,
-        hash: &BlockHash,
         level: i32,
         operations: &Vec<Value>,
-        failure: &mut bool,
-    ) -> anyhow::Result<()> {
+        was_failure: bool,
+    ) -> anyhow::Result<bool> {
         for operation in operations {
-            slog::debug!(
+            slog::trace!(
                 self.log,
                 "checking {delegate} against operation {operation:?}"
             );
@@ -273,32 +282,31 @@ impl DelegatesMonitor {
                         anyhow::format_err!("cannot get delegate from operation contents metadata"),
                     )?
                 {
-                    if *failure {
-                        self.report_recover(format!("`{delegate}` endorsed block on level `{level}` in block `{hash}` after failure"));
-                        *failure = false;
+                    if was_failure {
+                        self.report_recover(format!(
+                            "`{delegate}` endorsed block on level `{level}` after failure"
+                        ));
                     }
-                    return Ok(());
+                    return Ok(true);
                 }
             }
         }
         self.report_error(format!(
-            "Missed `{delegate}`'s endorsement for level `{level}` in block `{hash}`"
+            "Missed `{delegate}`'s endorsement for level `{level}`"
         ));
-        *failure = true;
 
-        Ok(())
+        Ok(false)
     }
 
-    async fn get_operations(&self, hash: &BlockHash) -> anyhow::Result<Vec<Value>> {
-        let operations = node_get::<Vec<_>, _>(
+    async fn get_operations(&self, level: i32) -> anyhow::Result<Vec<Value>> {
+        node_get::<Vec<_>, _>(
             self.node_addr,
-            format!("/chains/main/blocks/{hash}/operations"),
+            format!("/chains/main/blocks/{level}/operations"),
         )
-        .await?;
-        operations
-            .into_iter()
-            .next()
-            .ok_or(anyhow::format_err!("Empty operations list"))
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(anyhow::format_err!("Empty operations list"))
     }
 
     fn report_recover(&self, message: String) {
@@ -306,7 +314,9 @@ impl DelegatesMonitor {
         if let Some(slack) = &self.slack {
             let slack = slack.clone();
             tokio::spawn(async move {
-                slack.send_message(&format!(":white_check_mark: {message}")).await;
+                slack
+                    .send_message(&format!(":white_check_mark: {message}"))
+                    .await;
             });
         }
     }
@@ -361,5 +371,19 @@ where
         let value = serde_json::from_value(json);
         sender.send(value).await?;
     }
+    Ok(())
+}
+
+pub async fn node_null_monitor<S>(address: SocketAddr, path: S) -> anyhow::Result<()>
+where
+    S: AsRef<str>,
+{
+    let mut res = reqwest::get(format!(
+        "http://{address}{path}",
+        address = address.to_string(),
+        path = path.as_ref()
+    ))
+    .await?;
+    while res.chunk().await?.is_some() {}
     Ok(())
 }
