@@ -822,6 +822,16 @@ pub fn parse_config(config_path: PathBuf) -> Vec<OsString> {
     args
 }
 
+pub fn merge_args(config_path: PathBuf) -> Vec<OsString> {
+    let mut merged_args = parse_config(config_path);
+    let mut cli_args = env::args_os();
+    if let Some(bin) = cli_args.next() {
+        merged_args.insert(0, bin);
+    }
+    merged_args.extend(cli_args);
+    merged_args
+}
+
 fn import_snapshot_app() -> App<'static, 'static> {
     let app = App::new("TezEdge Light Node")
         .version(env!("CARGO_PKG_VERSION"))
@@ -931,19 +941,21 @@ impl Environment {
                 .parse::<PathBuf>()
                 .expect("Provided config-file cannot be converted to path");
 
-            let mut merged_args = parse_config(config_path);
-
-            let mut cli_args = env::args_os();
-            if let Some(bin) = cli_args.next() {
-                merged_args.insert(0, bin);
-            }
-            merged_args.extend(cli_args);
+            let merged_args = merge_args(config_path);
 
             args = app.get_matches_from(merged_args);
         }
-        // Otherwise use only cli arguments that are already parsed
+        // Otherwise
         else {
-            args = temp_args;
+            // Default to the default config file
+            let default_config_file_path = Path::new("./light_node/etc/tezedge/tezedge.config");
+            if default_config_file_path.exists() {
+                let merged_args = merge_args(default_config_file_path.to_path_buf());
+                args = app.get_matches_from(merged_args);
+            // When the default config file is not found, use only the cli args
+            } else {
+                args = temp_args;
+            }
         }
 
         // Validates required flags of args
