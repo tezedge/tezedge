@@ -4,10 +4,12 @@
 use core::{fmt, ops::AddAssign};
 use alloc::collections::BTreeMap;
 
-/// Validator of the proposal, its id and voting power
+/// Represents a pre-vote or vote
 #[derive(Clone)]
 pub struct Validator<Id, Op> {
+    // id of the validator
     pub id: Id,
+    // voting power (stake)
     pub power: u32,
     pub operation: Op,
 }
@@ -69,10 +71,10 @@ where
     }
 }
 
-/// Map that provides a validator for given level and round
+/// Map that provides a proposer for given level and round
 pub trait ProposerMap {
     type Id;
 
-    /// the closest round where current baker is proposer
+    /// the closest round where we have proposer
     fn proposer(&self, level: i32, round: i32) -> Option<(i32, Self::Id)>;
 }

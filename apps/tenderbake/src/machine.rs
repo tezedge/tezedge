@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-#![allow(dead_code)]
-
 use core::{mem, cmp::Ordering, time::Duration};
 use alloc::{boxed::Box, vec::Vec, collections::BTreeMap};
 
@@ -28,8 +26,7 @@ impl<L, Id, Op> Pair<L, Id, Op> {
     where
         F: FnOnce(L) -> Lp,
     {
-        let Pair(_0, _1) = self;
-        Pair(f(_0), _1)
+        Pair(f(self.0), self.1)
     }
 }
 
@@ -275,7 +272,10 @@ where
                 log.push(LogRecord::NoPredecessor);
                 return Transition::next_level(log, config, block, now).map_left(Err);
             }
-            Some(v) => v.clone(),
+            Some(v) => {
+                log.push(LogRecord::Predecessor { round: v.round, timestamp: v.timestamp });
+                v.clone()
+            },
         };
 
         let payload = if let Some(v) = block.payload {
@@ -419,7 +419,10 @@ where
                 log.push(LogRecord::NoPredecessor);
                 return Transition::next_level(log, config, block, now).map_left(Err);
             }
-            Some(v) => v.clone(),
+            Some(v) => {
+                log.push(LogRecord::Predecessor { round: v.round, timestamp: v.timestamp });
+                v.clone()
+            },
         };
 
         let current_round = pred_time_header.round_local_coord(&config.timing, now);
@@ -438,7 +441,7 @@ where
             self_.payload_hash = payload.hash;
             self_.payload_round = payload.payload_round;
             self_.operations = payload.operations;
-            self_.cer = payload.cer.clone();
+            self_.cer = payload.cer;
             self_.new_operations.clear();
 
             let mut actions = ArrayVec::default();
@@ -665,13 +668,7 @@ impl<Id> Transition<Id> {
         {
             let mut actions = ArrayVec::default();
             let new_block = Block {
-                pred_hash: self
-                    .time_headers
-                    .iter()
-                    .next()
-                    .expect("invariant")
-                    .0
-                    .clone(),
+                pred_hash: self.hash.clone(),
                 hash: BlockHash([0; 32]),
                 level: self.level + 1,
                 time_header: TimeHeader { round, timestamp },

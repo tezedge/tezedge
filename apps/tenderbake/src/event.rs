@@ -10,17 +10,11 @@ use super::{
     block::{PayloadHash, BlockHash, Block},
 };
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub struct BlockId {
     pub level: i32,
     pub round: i32,
     pub payload_hash: PayloadHash,
-}
-
-impl fmt::Display for BlockId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.level, self.round)
-    }
 }
 
 pub enum Event<Id, Op> {
@@ -52,6 +46,10 @@ pub enum LogRecord {
     },
 
     NoPredecessor,
+    Predecessor {
+        round: i32,
+        timestamp: Timestamp,
+    },
     TwoTransitionsInRow,
     UnexpectedLevel {
         current: i32,
@@ -129,6 +127,9 @@ impl fmt::Display for LogRecord {
             }
             LogRecord::NoPredecessor => {
                 write!(f, " .  not empty state, but proposal has no predecessor")
+            }
+            LogRecord::Predecessor { round, timestamp } => {
+                write!(f, " .  predecessor round {round}, {timestamp}")
             }
             LogRecord::TwoTransitionsInRow => {
                 write!(f, " .  two block in row are not tenderbake")
