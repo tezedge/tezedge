@@ -631,7 +631,7 @@ impl BootstrapState {
 
     pub fn peer_next_interval(&self, peer: SocketAddr) -> Option<(usize, &PeerIntervalState)> {
         self.peer_intervals().and_then(|intervals| {
-            intervals.iter().enumerate().rev().find(|(_, p)| {
+            intervals.iter().enumerate().find(|(_, p)| {
                 (p.current.is_idle() || p.current.is_timed_out_or_disconnected())
                     && p.peers.contains(&peer)
             })
