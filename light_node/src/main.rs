@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use configuration::TezedgeEnv;
 use reqwest::Client;
 use slog::{error, info, warn, Logger};
 use tezedge_actor_system::actors::*;
@@ -494,31 +495,40 @@ fn main() {
     set_gcov_handler();
 
     match parse_environment() {
-        configuration::TezedgeEnv::ImportSnapshot(env) => {
+        TezedgeEnv::ImportSnapshot(env) => {
+            snapshot_command::verify_snapshot_target_directory(&env.to);
+
             // create tokio runtime
             let tokio_runtime =
                 create_tokio_runtime_default().expect("Failed to create tokio runtime");
+
             let url = env.from.clone();
             if let Some(file_name) = url.path_segments().map(|segments| segments.last().unwrap()) {
-                tokio_runtime.block_on(async move {
-                    snapshot_command::download_file(
-                        &Client::new(),
-                        env.from.as_str(),
-                        &format!("/tmp/{}", file_name),
-                    )
-                    .await
-                    .unwrap();
-                });
-                println!("Importing snapshot...");
-                snapshot_command::import_snapshot(
-                    Path::new(&format!("/tmp/{}", file_name)),
-                    &env.to,
-                );
-            }
+                let file_path_string = format!("/tmp/{}", file_name);
+                let file_path = Path::new(&file_path_string);
 
-            // snapshot_command::import_snapshot(&env.from, &env.to);
+                // Check whether the file that we want to download already exists, if not download it
+                // TODO: This does not include partially downloaded file. Solution should come later with the included manifest
+                if file_path.exists() {
+                    println!("Snapshot file already exists. Continuing");
+                } else {
+                    tokio_runtime.block_on(async {
+                        snapshot_command::download_file(
+                            &Client::new(),
+                            env.from.as_str(),
+                            file_path,
+                        )
+                        .await
+                        .unwrap_or_else(|_| panic!("Download failed"));
+                    });
+                }
+
+                println!("Importing snapshot...");
+                snapshot_command::import_snapshot(file_path, &env.to);
+                println!("Snapshot imported successfully!");
+            }
         }
-        configuration::TezedgeEnv::Normal(env) => {
+        TezedgeEnv::Normal(env) => {
             // Creates loggers
             let log = match env.create_logger() {
                 Ok(log) => log,

@@ -440,14 +440,8 @@ fn resolve_block_reference(
     }
 }
 
+/// Import a snapshot
 pub fn import_snapshot(from: &Path, tezos_data_dir: &Path) {
-    // remove existing data
-    let to_remove = [
-        tezos_data_dir.join("context"),
-        tezos_data_dir.join("bootstrap_db"),
-    ];
-    fs_extra::remove_items(&to_remove).expect("Failed to remove existing data");
-
     let tar_gz = File::open(from)
         .unwrap_or_else(|_| panic!("Failed to open snapshot file {}", from.display()));
 
@@ -461,7 +455,8 @@ pub fn import_snapshot(from: &Path, tezos_data_dir: &Path) {
         .expect("Failed to unpack snapshot tarball");
 }
 
-pub async fn download_file(client: &Client, url: &str, path: &str) -> Result<(), String> {
+/// Download a file from the url to the supplied path
+pub async fn download_file(client: &Client, url: &str, path: &Path) -> Result<(), String> {
     // Reqwest setup
     let res = client
         .get(url)
@@ -480,7 +475,8 @@ pub async fn download_file(client: &Client, url: &str, path: &str) -> Result<(),
     pb.set_message(&format!("Downloading {}", url));
 
     // download chunks
-    let mut file = File::create(path).map_err(|_| format!("Failed to create file '{}'", path))?;
+    let mut file =
+        File::create(path).map_err(|_| format!("Failed to create file '{}'", path.display()))?;
     let mut downloaded: u64 = 0;
     let mut stream = res.bytes_stream();
 
@@ -493,6 +489,28 @@ pub async fn download_file(client: &Client, url: &str, path: &str) -> Result<(),
         pb.set_position(new);
     }
 
-    pb.finish_with_message(&format!("Downloaded {} to {}", url, path));
+    pb.finish_with_message(&format!("Downloaded {} to {}", url, path.display()));
     Ok(())
+}
+
+/// Verifies whether the snasphot can be imported to the supplied path
+pub fn verify_snapshot_target_directory(tezos_data_dir: &Path) {
+    // Verify that the direcotry exists and is empty, create the directory if it does not exist
+    if tezos_data_dir.exists() {
+        match tezos_data_dir.read_dir() {
+            Ok(mut entries) => {
+                if entries.next().is_some() {
+                    panic!("It seems a tezedge database already exists at {}. If you wish to continue please move/remove the directory contenst and restart the command.", tezos_data_dir.display())
+                }
+            }
+            Err(e) => panic!("Failed to read directory: {}", e),
+        }
+    } else {
+        fs_extra::dir::create_all(tezos_data_dir, false).unwrap_or_else(|_| {
+            panic!(
+                "Faled to create direcotry at path {}",
+                tezos_data_dir.display()
+            )
+        });
+    }
 }
