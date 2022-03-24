@@ -67,11 +67,19 @@ pub struct MempoolState {
 
 impl MempoolState {
     /// Is endorsement for already applied block or not.
-    pub fn is_old_endorsement(&self, operation: &Operation) -> bool {
-        OperationKind::from_operation_content_raw(operation.data().as_ref()).is_endorsement()
-            && self
-                .last_predecessor_blocks
-                .contains_key(operation.branch())
+    pub fn is_old_consensus_operation(&self, chain_name: &str, operation: &Operation) -> bool {
+        if !OperationKind::from_operation_content_raw(chain_name, operation.data().as_ref())
+            .is_consensus_operation()
+        {
+            return false;
+        }
+        let level = match self.last_predecessor_blocks.get(operation.branch()) {
+            Some(v) => *v,
+            None => return false,
+        };
+
+        let current_head_level = self.local_head_state.as_ref().map(|b| b.header.level());
+        current_head_level.map_or(false, |head_level| head_level < level + 1)
     }
 }
 
@@ -226,13 +234,14 @@ impl OperationStats {
 
     pub fn received_via_rpc(
         &mut self,
+        chain_name: &str,
         self_pkh: &CryptoboxPublicKeyHash,
         stats: OperationNodeCurrentHeadStats,
         op_content: &[u8],
         injected_timestamp: &u64,
     ) {
         self.injected(injected_timestamp);
-        self.set_kind_with(|| OperationKind::from_operation_content_raw(op_content));
+        self.set_kind_with(|| OperationKind::from_operation_content_raw(chain_name, op_content));
         self.min_time = Some(
             self.min_time
                 .map_or(stats.time, |time| time.min(stats.time)),
@@ -324,11 +333,12 @@ impl OperationStats {
 
     pub fn content_received(
         &mut self,
+        chain_name: &str,
         node_pkh: &CryptoboxPublicKeyHash,
         time: u64,
         op_content: &[u8],
     ) {
-        self.set_kind_with(|| OperationKind::from_operation_content_raw(op_content));
+        self.set_kind_with(|| OperationKind::from_operation_content_raw(chain_name, op_content));
         self.min_time = Some(self.min_time.map_or(time, |t| t.min(time)));
 
         if let Some(node_stats) = self.nodes.get_mut(node_pkh) {
@@ -440,37 +450,73 @@ pub struct OperationNodeCurrentHeadStats {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum OperationKind {
-    Endorsement,
     SeedNonceRevelation,
-    DoubleEndorsement,
-    DoubleBaking,
-    Activation,
+    DoubleEndorsementEvidence,
+    DoubleBakingEvidence,
+    ActivateAccount,
     Proposals,
     Ballot,
-    EndorsementWithSlot,
+    DoublePreendorsementEvidence,
     FailingNoop,
+    Preendorsement,
+    Endorsement,
     Reveal,
     Transaction,
     Origination,
     Delegation,
-    RegisterConstant,
+    RegisterGlobalConstant,
+    SetDepositsLimit,
+
+    /// Legacy! Used in Hangzhou, not in Ithaca.
+    EndorsementWithSlot,
+
     Unknown,
 }
 
 impl OperationKind {
-    pub fn from_operation_content_raw(bytes: &[u8]) -> Self {
+    pub fn from_operation_content_raw(chain_name: &str, bytes: &[u8]) -> Self {
         bytes
             .get(0)
-            .map_or(Self::Unknown, |tag| Self::from_tag(*tag))
+            .map_or(Self::Unknown, |tag| Self::from_tag(chain_name, *tag))
     }
 
-    pub fn from_tag(tag: u8) -> Self {
+    pub fn from_tag(chain_name: &str, tag: u8) -> Self {
+        if chain_name.contains("HANGZHOU") {
+            Self::from_tag_hangzhou(tag)
+        } else {
+            Self::from_tag_ithaca(tag)
+        }
+    }
+
+    pub fn from_tag_ithaca(tag: u8) -> Self {
+        match tag {
+            1 => Self::SeedNonceRevelation,
+            2 => Self::DoubleEndorsementEvidence,
+            3 => Self::DoubleBakingEvidence,
+            4 => Self::ActivateAccount,
+            5 => Self::Proposals,
+            6 => Self::Ballot,
+            7 => Self::DoublePreendorsementEvidence,
+            17 => Self::FailingNoop,
+            20 => Self::Preendorsement,
+            21 => Self::Endorsement,
+            107 => Self::Reveal,
+            108 => Self::Transaction,
+            109 => Self::Origination,
+            110 => Self::Delegation,
+            111 => Self::RegisterGlobalConstant,
+            112 => Self::SetDepositsLimit,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn from_tag_hangzhou(tag: u8) -> Self {
         match tag {
             0 => Self::Endorsement,
             1 => Self::SeedNonceRevelation,
-            2 => Self::DoubleEndorsement,
-            3 => Self::DoubleBaking,
-            4 => Self::Activation,
+            2 => Self::DoubleEndorsementEvidence,
+            3 => Self::DoubleBakingEvidence,
+            4 => Self::ActivateAccount,
             5 => Self::Proposals,
             6 => Self::Ballot,
             10 => Self::EndorsementWithSlot,
@@ -479,13 +525,16 @@ impl OperationKind {
             108 => Self::Transaction,
             109 => Self::Origination,
             110 => Self::Delegation,
-            111 => Self::RegisterConstant,
+            111 => Self::RegisterGlobalConstant,
             _ => Self::Unknown,
         }
     }
 
-    pub fn is_endorsement(&self) -> bool {
-        matches!(self, Self::Endorsement | Self::EndorsementWithSlot)
+    pub fn is_consensus_operation(&self) -> bool {
+        matches!(
+            self,
+            Self::Preendorsement | Self::Endorsement | Self::EndorsementWithSlot
+        )
     }
 }
 

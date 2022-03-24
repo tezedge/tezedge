@@ -220,6 +220,11 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         );
                     }
                     RpcRequest::GetMempooEndrosementsStats { channel } => {
+                        let chain_name = store
+                            .state()
+                            .config
+                            .shell_compatibility_version
+                            .chain_name();
                         let stats = store
                             .state()
                             .mempool
@@ -227,8 +232,11 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .ops
                             .iter()
                             .filter(|(_, op)| {
-                                OperationKind::from_operation_content_raw(op.data().as_ref())
-                                    .is_endorsement()
+                                OperationKind::from_operation_content_raw(
+                                    chain_name,
+                                    op.data().as_ref(),
+                                )
+                                .is_consensus_operation()
                             })
                             .map(|(op_hash, _)| op_hash.clone())
                             .filter_map(|op| {

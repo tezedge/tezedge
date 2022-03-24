@@ -44,6 +44,10 @@ impl ShellCompatibilityVersion {
         }
     }
 
+    pub fn chain_name(&self) -> &str {
+        self.version.chain_name()
+    }
+
     /// Returns Ok(version), if version is compatible, returns calculated compatible version for later use (NetworkVersion can contains feature support).
     /// Return Err(NackMotive), if something is wrong
     pub fn choose_compatible_version(

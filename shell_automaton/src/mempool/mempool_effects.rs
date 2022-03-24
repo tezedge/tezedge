@@ -46,6 +46,10 @@ use super::{
     monitored_operation::{MempoolOperations, MonitoredOperation},
 };
 
+fn chain_name(state: &State) -> &str {
+    state.config.shell_compatibility_version.chain_name()
+}
+
 pub fn mempool_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithMeta)
 where
     S: Service,
@@ -434,13 +438,21 @@ where
             });
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
-            if store.state().mempool.is_old_endorsement(operation) =>
+            if store
+                .state()
+                .mempool
+                .is_old_consensus_operation(chain_name(store.state()), operation) =>
         {
+
             // TODO store rejected endorsement for diagnosis?
         }
         Action::MempoolOperationInject(MempoolOperationInjectAction {
             operation, rpc_id, ..
-        }) if store.state().mempool.is_old_endorsement(operation) => {
+        }) if store
+            .state()
+            .mempool
+            .is_old_consensus_operation(chain_name(store.state()), operation) =>
+        {
             let current_head = store
                 .state
                 .get()

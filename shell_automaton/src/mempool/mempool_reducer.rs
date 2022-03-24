@@ -384,6 +384,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             // Remove old endorsement operations.
             let range = start_level..end_level;
+            let chain_name = state.config.shell_compatibility_version.chain_name();
             for (_, ops) in mempool_state.level_to_operation.range(range) {
                 for op in ops {
                     let is_endorsement = mempool_state
@@ -392,8 +393,13 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .get(op)
                         .or_else(|| mempool_state.pending_operations.get(op))
                         .or_else(|| mempool_state.validated_operations.refused_ops.get(op))
-                        .map(|op| OperationKind::from_operation_content_raw(op.data().as_ref()))
-                        .filter(|op_kind| op_kind.is_endorsement())
+                        .map(|op| {
+                            OperationKind::from_operation_content_raw(
+                                chain_name,
+                                op.data().as_ref(),
+                            )
+                        })
+                        .filter(|op_kind| op_kind.is_consensus_operation())
                         .is_some();
 
                     if !is_endorsement {
@@ -528,8 +534,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 // TODO(vlad): received operation, but we did not requested it, what should we do?
             }
 
+            let chain_name = state.config.shell_compatibility_version.chain_name();
             // ignore endorsement operation if its for the past block.
-            if mempool_state.is_old_endorsement(operation) {
+            if mempool_state.is_old_consensus_operation(chain_name, operation) {
                 if let Some(level) = mempool_state
                     .last_predecessor_blocks
                     .get(operation.branch())
@@ -586,11 +593,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 Ok(v) => v,
                 Err(_) => return,
             };
+
+            let chain_name = state.config.shell_compatibility_version.chain_name();
             mempool_state
                 .operation_stats
                 .entry(operation_hash.clone())
                 .or_insert_with(OperationStats::new)
                 .received_via_rpc(
+                    chain_name,
                     &pkh,
                     OperationNodeCurrentHeadStats {
                         time: action.time_as_nanos(),
@@ -860,11 +870,17 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         Err(_) => return,
                     };
 
+                    let chain_name = state.config.shell_compatibility_version.chain_name();
                     mempool_state
                         .operation_stats
                         .entry(op_hash)
                         .or_insert_with(OperationStats::new)
-                        .content_received(peer_pkh, time, msg.operation().data().as_ref());
+                        .content_received(
+                            chain_name,
+                            peer_pkh,
+                            time,
+                            msg.operation().data().as_ref(),
+                        );
                 }
                 _ => {}
             };
