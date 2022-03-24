@@ -13,9 +13,9 @@ use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::block_applier::BlockApplierApplyState;
 use crate::mempool::OperationKind;
+use crate::mempool::PrevalidatorAction;
 use crate::peers::remove::PeersRemoveAction;
 use crate::prechecker::PrecheckerState;
-use crate::protocol::ProtocolAction;
 use crate::{Action, ActionWithMeta, State};
 
 use super::{
@@ -37,14 +37,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
     let mempool_state = &mut state.mempool;
 
     match &action.action {
-        Action::Protocol(act) => match act {
-            ProtocolAction::PrevalidatorReady(prevalidator) => {
+        Action::Prevalidator(act) => match act {
+            PrevalidatorAction::PrevalidatorReady(prevalidator) => {
                 mempool_state.prevalidator = Some(prevalidator.clone());
                 if let Some(local_head_state) = mempool_state.local_head_state.as_mut() {
                     local_head_state.prevalidator_ready = true;
                 }
             }
-            ProtocolAction::OperationValidated(result) => {
+            PrevalidatorAction::OperationValidated(result) => {
                 let current_head_level = mempool_state
                     .local_head_state
                     .as_ref()
