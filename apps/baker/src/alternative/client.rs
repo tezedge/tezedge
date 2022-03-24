@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, convert::TryInto, io, str, sync::mpsc, thread, 
 
 use chrono::{DateTime, ParseError, Utc};
 use derive_more::From;
-use reqwest::{blocking::Client, StatusCode, Url};
+use reqwest::{blocking::{Client, ClientBuilder}, StatusCode, Url};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 
@@ -71,7 +71,7 @@ impl RpcClient {
         RpcClient {
             tx,
             endpoint,
-            inner: Client::new(),
+            inner: ClientBuilder::new().timeout(None).build().expect("client should created"),
         }
     }
 
