@@ -271,6 +271,32 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 mempool_state.validated_operations.ops.remove(&op);
             }
 
+            if let Some(local_head_state) = &mempool_state.local_head_state {
+                let local_header = &local_head_state.header;
+                let new_header = &block.header;
+                if new_header.fitness() < local_header.fitness() {
+                    slog::info!(
+                        &state.log,
+                        "Block `{new_block}` has non-increasing fitness `{new_fitness}` comparing to `{local_fitness}`, ignoring it",
+                        new_block = block.hash.to_base58_check(),
+                        new_fitness = new_header.fitness().to_string(),
+                        local_fitness = local_header.fitness().to_string();
+                        "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check())
+                    );
+                    return;
+                } else if local_header.level() == new_header.level()
+                    && local_header.predecessor() == new_header.predecessor()
+                {
+                    slog::info!(
+                        &state.log,
+                        "Block `{new_block}` applied on the same level, ignoring it",
+                        new_block = block.hash.to_base58_check();
+                        "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check())
+                    );
+                    return;
+                }
+            }
+
             // TODO currently supported protocols cache is mainained in the prechecker part
             if should_skip_block_with_retry(&state.prechecker, &block.hash, retry) {
                 slog::info!(
