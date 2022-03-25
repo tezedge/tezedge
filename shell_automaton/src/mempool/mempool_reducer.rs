@@ -274,26 +274,17 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             if let Some(local_head_state) = &mempool_state.local_head_state {
                 let local_header = &local_head_state.header;
                 let new_header = &block.header;
-                if new_header.fitness() < local_header.fitness() {
-                    slog::info!(
+                if new_header.fitness() <= local_header.fitness() {
+                    slog::warn!(
                         &state.log,
-                        "Block `{new_block}` has non-increasing fitness `{new_fitness}` comparing to `{local_fitness}`, ignoring it",
+                        "Block `{new_block}` at level `{new_level}` has non-increasing fitness `{new_fitness}`",
                         new_block = block.hash.to_base58_check(),
-                        new_fitness = new_header.fitness().to_string(),
-                        local_fitness = local_header.fitness().to_string();
-                        "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check())
+                        new_level = new_header.level(),
+                        new_fitness = new_header.fitness().to_string();
+                        "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check()),
+                        "level" => local_header.level(),
+                        "fitness" => local_header.fitness().to_string(),
                     );
-                    return;
-                } else if local_header.level() == new_header.level()
-                    && local_header.predecessor() == new_header.predecessor()
-                {
-                    slog::info!(
-                        &state.log,
-                        "Block `{new_block}` applied on the same level, ignoring it",
-                        new_block = block.hash.to_base58_check();
-                        "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check())
-                    );
-                    return;
                 }
             }
 
