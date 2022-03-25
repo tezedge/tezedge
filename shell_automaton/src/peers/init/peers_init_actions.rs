@@ -12,6 +12,6 @@ pub struct PeersInitAction {}
 
 impl EnablingCondition<State> for PeersInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state.peers.is_empty()
+        state.peers.potential_iter().next().is_none()
     }
 }

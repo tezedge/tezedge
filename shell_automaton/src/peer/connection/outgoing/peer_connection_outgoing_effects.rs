@@ -3,6 +3,7 @@
 
 use crate::peer::handshaking::PeerHandshakingInitAction;
 use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::init::PeersInitAction;
 use crate::service::{MioService, RandomnessService, Service};
 use crate::{Action, ActionWithMeta, Store};
 
@@ -19,6 +20,11 @@ where
         Action::PeerConnectionOutgoingRandomInit(_) => {
             let state = store.state.get();
             let potential_peers = state.peers.potential_iter().collect::<Vec<_>>();
+
+            if potential_peers.is_empty() {
+                store.dispatch(PeersInitAction {});
+                return;
+            }
 
             if state.peers.connected_len() >= state.config.peers_connected_max {
                 return;
