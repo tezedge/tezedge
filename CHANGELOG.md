@@ -23,7 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
-- Nothing.
+- Different current head on the same level not being broadcasted after
+  block application finishes.
 
 ### Security
 
