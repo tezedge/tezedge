@@ -310,25 +310,32 @@ where
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
             store.dispatch(BootstrapPeersBlockOperationsGetSuccessAction {});
         }
+        Action::BlockApplierApplySuccess(_) => {
+            store.dispatch(BootstrapErrorAction {
+                error: BootstrapError::BlockInjectedDuringBootstap,
+            });
+        }
         Action::CurrentHeadUpdate(_) => {
             store.dispatch(BootstrapScheduleBlocksForApplyAction {});
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
             store.dispatch(BootstrapFinishedAction {});
         }
         Action::BlockApplierApplyError(_) => {
-            match &store.state().block_applier.current {
+            let failed = match &store.state().block_applier.current {
                 BlockApplierApplyState::Error {
                     injector_rpc_id, ..
-                } => {
-                    if injector_rpc_id.is_some() {
-                        return;
-                    }
-                }
-                _ => return,
+                } => injector_rpc_id.is_none(),
+                _ => false,
+            };
+            if failed {
+                store.dispatch(BootstrapErrorAction {
+                    error: BootstrapError::BlockApplicationFailed,
+                });
+            } else {
+                store.dispatch(BootstrapScheduleBlocksForApplyAction {});
+                store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
+                store.dispatch(BootstrapFinishedAction {});
             }
-            store.dispatch(BootstrapErrorAction {
-                error: BootstrapError::BlockApplicationFailed,
-            });
         }
         Action::BootstrapPeerBlockHeaderGetTimeout(_) => {
             request_block_headers_from_available_peers(store);

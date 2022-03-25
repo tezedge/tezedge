@@ -181,6 +181,7 @@ impl EnablingCondition<State> for BlockApplierApplyErrorAction {
         matches!(
             &state.block_applier.current,
             BlockApplierApplyState::PrepareDataPending { .. }
+                | BlockApplierApplyState::PrepareDataSuccess { .. }
                 | BlockApplierApplyState::ProtocolRunnerApplyPending { .. }
                 | BlockApplierApplyState::StoreApplyResultPending { .. }
         )

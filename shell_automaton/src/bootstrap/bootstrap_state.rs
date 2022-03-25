@@ -441,6 +441,8 @@ pub enum BootstrapError {
         peers: Vec<SocketAddr>,
     },
     BlockApplicationFailed,
+    /// Block injected during bootstrap process.
+    BlockInjectedDuringBootstap,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

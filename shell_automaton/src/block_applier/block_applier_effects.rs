@@ -54,14 +54,24 @@ where
             }
         }
         Action::BlockApplierApplyPrepareDataSuccess(content) => {
-            let start_time = match &store.state().block_applier.current {
+            let (start_time, is_injected) = match &store.state().block_applier.current {
                 BlockApplierApplyState::PrepareDataSuccess {
                     time,
                     prepare_data_duration,
+                    injector_rpc_id,
                     ..
-                } => time.saturating_sub(*prepare_data_duration),
+                } => (
+                    time.saturating_sub(*prepare_data_duration),
+                    injector_rpc_id.is_some(),
+                ),
                 _ => return,
             };
+            if is_injected && !store.state().can_accept_new_head(&content.block) {
+                store.dispatch(BlockApplierApplyErrorAction {
+                    error: BlockApplierApplyError::RejectedInjectedBlock,
+                });
+                return;
+            }
             if let Some(s) = store.service().statistics() {
                 if !s.block_stats_get_all().contains_key(&content.block.hash) {
                     s.block_new(
