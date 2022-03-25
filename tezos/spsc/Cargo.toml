@@ -1,6 +1,6 @@
 [package]
 name = "tezos_spsc"
-version = "1.19.0"
+version = "1.20.0"
 authors = ["Sebastien Chapuis <sebastien@chapu.is>"]
 edition = "2021"
 
