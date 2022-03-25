@@ -31,7 +31,7 @@ services:
       - "11001:11001/udp"  # debugger syslog port for tezos node
 
   tezedge-node:
-    image: tezedge/tezedge:v1.18.1-frame-pointers-enabled
+    image: tezedge/tezedge:v1.19.0-frame-pointers-enabled
     pid: host
     network_mode: host
     environment:
@@ -77,7 +77,7 @@ services:
   monitoring:
     privileged: true
     network_mode: host
-    image: tezedge/node-monitoring:v1.18.1
+    image: tezedge/node-monitoring:v1.19.0
     pid: "host"
     command: ["--tezedge-nodes", "tezedge:18732:/tmp/tezedge", "--ocaml-nodes", "ocaml:18733:/var/run/tezos/node", "--debugger-path", "/tmp/debugger", "--wait-for-nodes", "--rpc-port", "38732"]
     volumes:
