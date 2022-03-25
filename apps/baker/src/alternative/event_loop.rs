@@ -31,7 +31,6 @@ use super::{
     CryptoService, SeedNonceService,
 };
 
-const WAIT_HEAD_TIMEOUT: Duration = Duration::from_secs(3600 * 24);
 const WAIT_OPERATION_TIMEOUT: Duration = Duration::from_secs(3600);
 
 pub fn run(
@@ -79,7 +78,7 @@ pub fn run(
             .to_be_bytes(),
     );
 
-    client.monitor_heads(&chain_id, WAIT_HEAD_TIMEOUT)?;
+    client.monitor_heads(&chain_id)?;
 
     let ours = vec![crypto.public_key_hash().clone()];
     let mut dy = tb::Config {

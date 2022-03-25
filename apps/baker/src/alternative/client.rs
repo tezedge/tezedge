@@ -137,7 +137,7 @@ impl RpcClient {
         Ok(validators)
     }
 
-    pub fn monitor_heads(&self, chain_id: &ChainId, timeout: Duration) -> Result<(), RpcError> {
+    pub fn monitor_heads(&self, chain_id: &ChainId) -> Result<(), RpcError> {
         let s = format!("monitor/heads/{chain_id}");
         let mut url = self.endpoint.join(&s).expect("valid constant url");
         url.query_pairs_mut().append_pair("next_protocol", PROTOCOL);
@@ -157,7 +157,7 @@ impl RpcClient {
         }
 
         let this = self.clone();
-        self.multiple_responses::<BlockHeaderJsonGeneric, _>(&url, Some(timeout), move |header| {
+        self.multiple_responses::<BlockHeaderJsonGeneric, _>(&url, None, move |header| {
             let timestamp = convert_timestamp(&header.timestamp)?;
 
             #[derive(Deserialize)]
@@ -168,7 +168,7 @@ impl RpcClient {
             let s = format!("chains/main/blocks/{}/protocols", header.hash);
             let url = this.endpoint.join(&s).expect("valid url");
             let Protocols { protocol } =
-                this.single_response_blocking(&url, None, Some(timeout))?;
+                this.single_response_blocking(&url, None, Some(Duration::from_secs(30)))?;
 
             let transition = protocol.to_base58_check() != PROTOCOL;
 
@@ -190,7 +190,7 @@ impl RpcClient {
             } else {
                 let s = format!("chains/main/blocks/{}/operations", header.hash);
                 let url = this.endpoint.join(&s).expect("valid url");
-                this.single_response_blocking(&url, None, Some(timeout))?
+                this.single_response_blocking(&url, None, Some(Duration::from_secs(30)))?
             };
 
             Ok(Event::Block(Block {
