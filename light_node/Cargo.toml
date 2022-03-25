@@ -1,6 +1,6 @@
 [package]
 name = "light-node"
-version = "1.18.1"
+version = "1.19.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2021"
 default-run = "light-node"
@@ -20,6 +20,11 @@ tokio = { version = "1.12", features = ["rt-multi-thread", "signal"] }
 nix = "0.23"
 num_cpus = "1.13"
 tempfile = "3"
+flate2 = "1"
+tar = "0.4"
+reqwest = { version = "0.11", features = ["stream"] }
+futures-util = "0.3"
+indicatif = "0.15"
 # Local dependencies
 crypto = { path = "../crypto" }
 logging = { path = "../logging" }

@@ -17,10 +17,17 @@
 //!     --block 434223 # optional block hash, level or negative offset from head
 //! ```
 
+use flate2::bufread::GzDecoder;
+use futures::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
+use reqwest::Client;
 use std::{
+    fs::File,
+    io::{BufReader, Write},
     path::{Path, PathBuf},
     time::Instant,
 };
+use tar::Archive;
 use tempfile::tempdir_in;
 
 use slog::{info, Logger};
@@ -430,5 +437,80 @@ fn resolve_block_reference(
             .find_block_at_distance(head.block_hash().clone(), offset)
             .expect("Failed to obtain predecessor")
             .unwrap_or_else(|| head.block_hash().clone()),
+    }
+}
+
+/// Import a snapshot
+pub fn import_snapshot(from: &Path, tezos_data_dir: &Path) {
+    let tar_gz = File::open(from)
+        .unwrap_or_else(|_| panic!("Failed to open snapshot file {}", from.display()));
+
+    let buffered = BufReader::new(tar_gz);
+
+    let tar = GzDecoder::new(buffered);
+    let mut archive = Archive::new(tar);
+
+    archive
+        .unpack(tezos_data_dir)
+        .expect("Failed to unpack snapshot tarball");
+}
+
+/// Download a file from the url to the supplied path
+pub async fn download_file(client: &Client, url: &str, path: &Path) -> Result<(), String> {
+    // Reqwest setup
+    let res = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| format!("Failed to GET from '{}'", &url))?;
+    let total_size = res
+        .content_length()
+        .ok_or(format!("Failed to get content length from '{}'", &url))?;
+
+    // Indicatif setup
+    let pb = ProgressBar::new(total_size);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+        .progress_chars("#>-"));
+    pb.set_message(&format!("Downloading {}", url));
+
+    // download chunks
+    let mut file =
+        File::create(path).map_err(|_| format!("Failed to create file '{}'", path.display()))?;
+    let mut downloaded: u64 = 0;
+    let mut stream = res.bytes_stream();
+
+    while let Some(item) = stream.next().await {
+        let chunk = item.map_err(|_| "Error while downloading file".to_string())?;
+        file.write_all(&chunk)
+            .map_err(|_| "Error while writing to file".to_string())?;
+        let new = std::cmp::min(downloaded + (chunk.len() as u64), total_size);
+        downloaded = new;
+        pb.set_position(new);
+    }
+
+    pb.finish_with_message(&format!("Downloaded {} to {}", url, path.display()));
+    Ok(())
+}
+
+/// Verifies whether the snasphot can be imported to the supplied path
+pub fn verify_snapshot_target_directory(tezos_data_dir: &Path) {
+    // Verify that the direcotry exists and is empty, create the directory if it does not exist
+    if tezos_data_dir.exists() {
+        match tezos_data_dir.read_dir() {
+            Ok(mut entries) => {
+                if entries.next().is_some() {
+                    panic!("It seems a tezedge database already exists at {}. If you wish to continue please move/remove the directory contenst and restart the command.", tezos_data_dir.display())
+                }
+            }
+            Err(e) => panic!("Failed to read directory: {}", e),
+        }
+    } else {
+        fs_extra::dir::create_all(tezos_data_dir, false).unwrap_or_else(|_| {
+            panic!(
+                "Faled to create direcotry at path {}",
+                tezos_data_dir.display()
+            )
+        });
     }
 }

@@ -3,7 +3,7 @@ version: "3"
 services:
 
   node:
-    image: tezedge/tezedge:v1.18.1
+    image: tezedge/tezedge:v1.19.0
     command: ["--network=mainnet", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=${TEZOS_CONTEXT_STORAGE:-irmin}"]
     hostname: node
     ports:

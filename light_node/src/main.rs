@@ -3,9 +3,13 @@
 // NOTE: unsafe cannot be forbidden right now because of code in systems.rs
 // #![forbid(unsafe_code)]
 
+use std::ffi::OsString;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use configuration::TezedgeEnv;
+use reqwest::Client;
 use slog::{error, info, warn, Logger};
 use tezedge_actor_system::actors::*;
 
@@ -63,6 +67,14 @@ fn create_tokio_runtime(
     if env.tokio_threads > 0 {
         builder.worker_threads(env.tokio_threads);
     }
+    // build runtime
+    builder.build()
+}
+
+fn create_tokio_runtime_default() -> std::io::Result<tokio::runtime::Runtime> {
+    // use threaded work staling scheduler
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+    builder.enable_all();
     // build runtime
     builder.build()
 }
@@ -482,123 +494,171 @@ fn main() {
     #[cfg(dyncov)]
     set_gcov_handler();
 
-    // Parses config + cli args
-    let env = crate::configuration::Environment::from_args();
+    match parse_environment() {
+        TezedgeEnv::ImportSnapshot(env) => {
+            snapshot_command::verify_snapshot_target_directory(&env.to);
 
-    // Creates loggers
-    let log = match env.create_logger() {
-        Ok(log) => log,
-        Err(e) => panic!(
-            "Error while creating loggers, check '--log' argument, reason: {:?}",
-            e
-        ),
-    };
-    // let _ = log;
-    // let log = Logger::root(slog::Discard, slog::o!());
+            // create tokio runtime
+            let tokio_runtime =
+                create_tokio_runtime_default().expect("Failed to create tokio runtime");
 
-    // Enable core dumps and increase open files limit
-    system::init_limits(&log);
+            let url = env.from.clone();
+            if let Some(file_name) = url.path_segments().map(|segments| segments.last().unwrap()) {
+                let file_path_string = format!("/tmp/{}", file_name);
+                let file_path = Path::new(&file_path_string);
 
-    // log configuration
-    info!(
-        log,
-        "Loaded configuration";
-        "cfg" => &env
-    );
-
-    // check deprecated networks
-    info!(
-        log,
-        "Configured network {:?} -> {}",
-        env.tezos_network.supported_values(),
-        env.tezos_network_config.version
-    );
-    check_deprecated_network(&env, &log);
-
-    // create/initialize databases
-    info!(log, "Loading databases...");
-    let instant = Instant::now();
-
-    {
-        let persistent_storage = initialize_persistent_storage(&env, &log);
-
-        match resolve_storage_init_chain_data(
-            &env.tezos_network_config,
-            &env.storage.db_path,
-            &env.storage.context_storage_configuration,
-            &env.storage.patch_context,
-            &env.storage.context_stats_db_path,
-            &env.replay,
-            &log,
-        ) {
-            Ok(init_storage_data) => {
-                let blocks_replay = env
-                    .replay
-                    .as_ref()
-                    .map(|replay| collect_replayed_blocks(&persistent_storage, replay, &log));
-
-                info!(
-                    log,
-                    "Databases loaded successfully {} ms",
-                    instant.elapsed().as_millis()
-                );
-
-                if let Some(snapshot) = &env.snapshot {
-                    let target_block = snapshot.block.clone();
-                    let target_path = snapshot.target_path.clone();
-                    snapshot_storage(
-                        env,
-                        persistent_storage,
-                        init_storage_data,
-                        target_block,
-                        target_path,
-                        log,
-                    )
+                // Check whether the file that we want to download already exists, if not download it
+                // TODO: This does not include partially downloaded file. Solution should come later with the included manifest
+                if file_path.exists() {
+                    println!("Snapshot file already exists. Continuing");
                 } else {
-                    // Validate zcash-params
-                    info!(log, "Checking zcash-params for sapling...");
-                    if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
-                        let description = env.ffi.zcash_param.description("'--init-sapling-spend-params-file=<spend-file-path>' / '--init-sapling-output-params-file=<output-file-path'");
-                        error!(log, "Failed to validate zcash-params required for sapling support"; "description" => description.clone(), "reason" => format!("{}", e));
-                        panic!("Failed to validate zcash-params required for sapling support, reason: {}, description: {}",
-                               e, description);
-                    }
+                    tokio_runtime.block_on(async {
+                        snapshot_command::download_file(
+                            &Client::new(),
+                            env.from.as_str(),
+                            file_path,
+                        )
+                        .await
+                        .unwrap_or_else(|_| panic!("Download failed"));
+                    });
+                }
 
-                    // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
-                    info!(log, "Loading identity...");
-                    let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
-                        Ok(identity) => {
-                            info!(log, "Identity loaded from file";
-                       "file" => env.identity.identity_json_file_path.as_path().display().to_string(),
-                       "peer_id" => identity.peer_id.to_base58_check());
-                            if env.validate_cfg_identity_and_stop {
-                                info!(log, "Configuration and identity is ok!");
-                                return;
+                println!("Importing snapshot...");
+                snapshot_command::import_snapshot(file_path, &env.to);
+                println!("Snapshot imported successfully!");
+            }
+        }
+        TezedgeEnv::Normal(env) => {
+            // Creates loggers
+            let log = match env.create_logger() {
+                Ok(log) => log,
+                Err(e) => panic!(
+                    "Error while creating loggers, check '--log' argument, reason: {:?}",
+                    e
+                ),
+            };
+            // let _ = log;
+            // let log = Logger::root(slog::Discard, slog::o!());
+
+            // Enable core dumps and increase open files limit
+            system::init_limits(&log);
+
+            // log configuration
+            info!(
+                log,
+                "Loaded configuration";
+                "cfg" => &env
+            );
+
+            // check deprecated networks
+            info!(
+                log,
+                "Configured network {:?} -> {}",
+                env.tezos_network.supported_values(),
+                env.tezos_network_config.version
+            );
+            check_deprecated_network(&env, &log);
+
+            // create/initialize databases
+            info!(log, "Loading databases...");
+            let instant = Instant::now();
+
+            {
+                let persistent_storage = initialize_persistent_storage(&env, &log);
+
+                match resolve_storage_init_chain_data(
+                    &env.tezos_network_config,
+                    &env.storage.db_path,
+                    &env.storage.context_storage_configuration,
+                    &env.storage.patch_context,
+                    &env.storage.context_stats_db_path,
+                    &env.replay,
+                    &log,
+                ) {
+                    Ok(init_storage_data) => {
+                        let blocks_replay = env.replay.as_ref().map(|replay| {
+                            collect_replayed_blocks(&persistent_storage, replay, &log)
+                        });
+
+                        info!(
+                            log,
+                            "Databases loaded successfully {} ms",
+                            instant.elapsed().as_millis()
+                        );
+
+                        if let Some(snapshot) = &env.snapshot {
+                            let target_block = snapshot.block.clone();
+                            let target_path = snapshot.target_path.clone();
+                            snapshot_storage(
+                                env,
+                                persistent_storage,
+                                init_storage_data,
+                                target_block,
+                                target_path,
+                                log,
+                            )
+                        } else {
+                            // Validate zcash-params
+                            info!(log, "Checking zcash-params for sapling...");
+                            if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
+                                let description = env.ffi.zcash_param.description("'--init-sapling-spend-params-file=<spend-file-path>' / '--init-sapling-output-params-file=<output-file-path'");
+                                error!(log, "Failed to validate zcash-params required for sapling support"; "description" => description.clone(), "reason" => format!("{}", e));
+                                panic!("Failed to validate zcash-params required for sapling support, reason: {}, description: {}",
+                                    e, description);
                             }
-                            identity
-                        }
-                        Err(e) => {
-                            error!(log, "Failed to load identity"; "reason" => format!("{}", e), "file" => env.identity.identity_json_file_path.as_path().display().to_string());
-                            panic!(
-                                "Failed to load identity: {}",
-                                env.identity.identity_json_file_path.as_path().display()
-                            );
-                        }
-                    };
 
-                    block_on_actors(
-                        env,
-                        init_storage_data,
-                        Arc::new(tezos_identity),
-                        persistent_storage,
-                        blocks_replay,
-                        log,
-                    )
+                            // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
+                            info!(log, "Loading identity...");
+                            let tezos_identity = match identity::ensure_identity(
+                                &env.identity,
+                                &log,
+                            ) {
+                                Ok(identity) => {
+                                    info!(log, "Identity loaded from file";
+                            "file" => env.identity.identity_json_file_path.as_path().display().to_string(),
+                            "peer_id" => identity.peer_id.to_base58_check());
+                                    if env.validate_cfg_identity_and_stop {
+                                        info!(log, "Configuration and identity is ok!");
+                                        return;
+                                    }
+                                    identity
+                                }
+                                Err(e) => {
+                                    error!(log, "Failed to load identity"; "reason" => format!("{}", e), "file" => env.identity.identity_json_file_path.as_path().display().to_string());
+                                    panic!(
+                                        "Failed to load identity: {}",
+                                        env.identity.identity_json_file_path.as_path().display()
+                                    );
+                                }
+                            };
+
+                            block_on_actors(
+                                env,
+                                init_storage_data,
+                                Arc::new(tezos_identity),
+                                persistent_storage,
+                                blocks_replay,
+                                log,
+                            )
+                        }
+                    }
+                    Err(e) => panic!("Failed to resolve init storage chain data, reason: {}", e),
                 }
             }
-            Err(e) => panic!("Failed to resolve init storage chain data, reason: {}", e),
         }
     }
+}
+
+fn parse_environment() -> configuration::TezedgeEnv {
+    let mut args = std::env::args_os();
+    if let Some(subcommand) = args.nth(1) {
+        if subcommand.eq(&OsString::from("import-snapshot")) {
+            if let Some(snapshot_import_env) = crate::configuration::ImportSnapshot::from_args() {
+                return configuration::TezedgeEnv::ImportSnapshot(snapshot_import_env);
+            }
+        }
+    }
+    configuration::TezedgeEnv::Normal(crate::configuration::Environment::from_args())
 }
 
 // TODO: needs to take a path and other stuff, not just env?

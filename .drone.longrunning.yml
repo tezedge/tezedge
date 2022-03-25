@@ -95,6 +95,193 @@ trigger:
   event: push
 
 ---
+##############################################################################################################
+# This pipeline tests the import-snapshot subcommand with both types of context snapshots directly from the 
+# deployed snapshot server
+##############################################################################################################
+kind: pipeline
+name: corr/import-latest-snapshot
+
+trigger:
+  branch: develop
+  event: push
+
+environment:
+  NETWORK: hangzhou
+  SNAPSHOT_SERVER: http://162.55.241.136/
+  SNAPSHOT_IRMIN_FULL_PATH: testnet/irmin/full/
+  SNAPSHOT_TEZEDGE_FULL_PATH: testnet/tezedge/full/
+
+
+depends_on:
+  - build-tezedge-binaries
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: cache
+    temp: {}
+
+steps:
+
+- name: prepare-data
+  image: alpine/git
+  user: root
+  commands:
+    - mkdir -p drone-cache
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.165.82
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: import-snapshot-with-irmin-context
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  user: root
+  pull: if-not-exists
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    THROTTLING_QUOTA_DISABLE: true
+  volumes:
+    - name: cache
+      path: /cache
+  commands:
+    - LATEST_SNAPSHOT=$(curl -s "$${SNAPSHOT_SERVER}$${SNAPSHOT_IRMIN_FULL_PATH}" | jq .[-1].name | tr -d '"')
+    - ./drone-cache/build_files/light-node import-snapshot --from $${SNAPSHOT_SERVER}$${SNAPSHOT_IRMIN_FULL_PATH}$LATEST_SNAPSHOT --tezos-data-dir /cache
+    - echo $LATEST_SNAPSHOT | awk '{split($0,a,"_"); print a[4]}' > /cache/block_hash
+
+- name: run-restored-with-irmin-context
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  user: root
+  pull: if-not-exists
+  volumes:
+    - name: cache
+      path: /cache
+  commands:
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - BLOCK_HASH=$(cat /cache/block_hash)
+    - LEVEL_TO_CHECK=$(curl https://api.$${NETWORK}.tzstats.com/explorer/block/$BLOCK_HASH | jq .height | awk '{print $1+10}')
+    - >
+      ./drone-cache/build_files/light-node
+      --config-file=./drone-cache/build_files/tezedge/tezedge_drone.config
+      --identity-file=./drone-cache/build_files/identities/identity_2.json
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
+      --peer-thresh-low=1 --peer-thresh-high=10 --network "$${NETWORK}"
+      --tezos-data-dir=/cache --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=irmin
+      --log-level debug --context-integrity-check true &
+      echo $! > /var/run/tezedge.pid
+    # this command waits the node to be on level LEVEL_TO_CHECK
+    - |
+      sh -c '
+      block=0
+      attempts=0
+      while [ $block -lt $LEVEL_TO_CHECK ]; do
+        sleep 5
+        b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
+        block=$${b:-$block}
+        echo "===> Block level $block"
+        if [ $attempts -gt 12 ]; then
+          echo "Failed to bootstrap after a minute."
+          exit 1
+        fi
+        attempts=$(($attempts + 1))
+      done
+      '
+    - echo "Bootstrapped. Killing the node and waiting for 10 seconds."
+    # terminate the node gracefully and wait to allow `valgrind` dump data
+    - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
+
+- name: cleanup-cached-tezedge-data
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  user: root
+  pull: if-not-exists
+  volumes:
+    - name: cache
+      path: /cache
+  commands:
+    - rm -rf /cache/*
+
+- name: import-snapshot-with-tezedge-context
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  user: root
+  pull: if-not-exists
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    THROTTLING_QUOTA_DISABLE: true
+  volumes:
+    - name: cache
+      path: /cache
+  commands:
+    - LATEST_SNAPSHOT=$(curl -s "$${SNAPSHOT_SERVER}$${SNAPSHOT_TEZEDGE_FULL_PATH}" | jq .[-1].name | tr -d '"')
+    - ./drone-cache/build_files/light-node import-snapshot --from $${SNAPSHOT_SERVER}$${SNAPSHOT_TEZEDGE_FULL_PATH}$LATEST_SNAPSHOT --tezos-data-dir /cache
+    - echo $LATEST_SNAPSHOT | awk '{split($0,a,"_"); print a[4]}' > /cache/block_hash
+
+- name: run-restored-with-tezedge-context
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  user: root
+  pull: if-not-exists
+  volumes:
+    - name: cache
+      path: /cache
+  commands:
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - BLOCK_HASH=$(cat /cache/block_hash)
+    - LEVEL_TO_CHECK=$(curl https://api.$${NETWORK}.tzstats.com/explorer/block/$BLOCK_HASH | jq .height | awk '{print $1+10}')
+    - >
+      ./drone-cache/build_files/light-node
+      --config-file=./drone-cache/build_files/tezedge/tezedge_drone.config
+      --identity-file=./drone-cache/build_files/identities/identity_2.json
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
+      --peer-thresh-low=1 --peer-thresh-high=10 --network "$${NETWORK}"
+      --tezos-data-dir=/cache --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=tezedge
+      --log-level debug --context-integrity-check true &
+      echo $! > /var/run/tezedge.pid
+    # this command waits the node to be on level LEVEL_TO_CHECK
+    - |
+      sh -c '
+      block=0
+      attempts=0
+      while [ $block -lt $LEVEL_TO_CHECK ]; do
+        sleep 5
+        b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
+        block=$${b:-$block}
+        echo "===> Block level $block"
+        if [ $attempts -gt 12 ]; then
+          echo "Failed to bootstrap after a minute."
+          exit 1
+        fi
+        attempts=$(($attempts + 1))
+      done
+      '
+    - echo "Bootstrapped. Killing the node and waiting for 10 seconds."
+    # terminate the node gracefully and wait to allow `valgrind` dump data
+    - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
+
+---
 ###################################################################################################################
 # This pipeline runs a long running RPC call comparison test that compares tezedge results with octez, ensuring the
 # data the RPC returns is correct
