@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- Import snapshot subcommand for importing snapshots from a remote file server
+- Nothing.
 
 ### Changed
 
@@ -32,6 +32,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Performance
 
 - Nothing.
+
+## [1.18.3] - 2022-03-25
+
+### Added
+
+- Import snapshot subcommand for importing snapshots from a remote file server.
+
+### Changed
+
+- The --config-file argument now defaults to the default config file.
 
 ## [1.18.1] - 2022-03-22
 
@@ -751,7 +761,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.18.1...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.18.3...develop
+[1.18.3]: https://github.com/tezedge/tezedge/releases/v1.18.3
 [1.18.1]: https://github.com/tezedge/tezedge/releases/v1.18.1
 [1.18.0]: https://github.com/tezedge/tezedge/releases/v1.18.0
 [1.17.0]: https://github.com/tezedge/tezedge/releases/v1.17.0

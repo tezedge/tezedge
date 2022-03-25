@@ -1,6 +1,6 @@
 [package]
 name = "tezos_identity"
-version = "1.19.0"
+version = "1.18.3"
 authors = ["Branislav Kontur <branislav.kontur@viablesystems.io>"]
 edition = "2021"
 

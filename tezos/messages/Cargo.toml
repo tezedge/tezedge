@@ -1,6 +1,6 @@
 [package]
 name = "tezos_messages"
-version = "1.19.0"
+version = "1.18.3"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2021"
 
