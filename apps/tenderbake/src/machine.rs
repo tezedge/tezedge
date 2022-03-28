@@ -4,7 +4,10 @@
 use core::{mem, cmp::Ordering, time::Duration};
 use alloc::{boxed::Box, vec::Vec, collections::BTreeMap};
 
-use arrayvec::ArrayVec;
+// arrayvec is unsafe inside
+// use arrayvec::ArrayVec;
+// bounded array
+type ArrayVec<T> = Vec<T>;
 
 use super::{
     timestamp::{Timestamp, Timing},
@@ -19,7 +22,7 @@ pub struct Machine<Id, Op, const DELAY_MS: u64> {
     inner: Option<Result<Initialized<Id, Op, DELAY_MS>, Transition<Id>>>,
 }
 
-struct Pair<L, Id, Op>(L, ArrayVec<Action<Id, Op>, 2>);
+struct Pair<L, Id, Op>(L, ArrayVec<Action<Id, Op>>);
 
 impl<L, Id, Op> Pair<L, Id, Op> {
     fn map_left<F, Lp>(self, f: F) -> Pair<Lp, Id, Op>
@@ -101,7 +104,7 @@ where
         &mut self,
         config: &Config<T, P>,
         event: Event<Id, Op>,
-    ) -> (ArrayVec<Action<Id, Op>, 2>, ArrayVec<LogRecord, 10>)
+    ) -> (ArrayVec<Action<Id, Op>>, ArrayVec<LogRecord>)
     where
         T: Timing,
         P: ProposerMap<Id = Id>,
@@ -210,7 +213,7 @@ where
     Id: Clone + Ord,
 {
     fn next_level<T, P, Op>(
-        log: &mut ArrayVec<LogRecord, 10>,
+        log: &mut ArrayVec<LogRecord>,
         config: &Config<T, P>,
         block: Block<Id, Op>,
         now: Timestamp,
@@ -258,7 +261,7 @@ where
 {
     fn next_level<T, P>(
         pred_time_headers: BTreeMap<BlockHash, TimeHeader<true>>,
-        log: &mut ArrayVec<LogRecord, 10>,
+        log: &mut ArrayVec<LogRecord>,
         config: &Config<T, P>,
         block: Block<Id, Op>,
         now: Timestamp,
@@ -369,7 +372,7 @@ where
 
     fn next_round<T, P>(
         self_: Initialized<Id, Op, DELAY_MS>,
-        log: &mut ArrayVec<LogRecord, 10>,
+        log: &mut ArrayVec<LogRecord>,
         config: &Config<T, P>,
         block: Block<Id, Op>,
         now: Timestamp,
@@ -516,7 +519,7 @@ where
 
     fn pre_voted<T, P>(
         self,
-        log: &mut ArrayVec<LogRecord, 10>,
+        log: &mut ArrayVec<LogRecord>,
         config: &Config<T, P>,
         block_id: BlockId,
         validator: Validator<Id, Op>,
@@ -584,7 +587,7 @@ where
 
     fn voted<T, P>(
         self,
-        log: &mut ArrayVec<LogRecord, 10>,
+        log: &mut ArrayVec<LogRecord>,
         config: &Config<T, P>,
         block_id: BlockId,
         validator: Validator<Id, Op>,
@@ -643,7 +646,7 @@ where
 }
 
 impl<Id> Transition<Id> {
-    fn timeout<Op>(&mut self, log: &mut ArrayVec<LogRecord, 10>) -> ArrayVec<Action<Id, Op>, 2> {
+    fn timeout<Op>(&mut self, log: &mut ArrayVec<LogRecord>) -> ArrayVec<Action<Id, Op>> {
         if let Some(Timeout {
             proposer,
             round,
@@ -682,7 +685,7 @@ where
     Id: Clone + Ord,
     Op: Clone,
 {
-    fn timeout(&mut self, log: &mut ArrayVec<LogRecord, 10>) -> ArrayVec<Action<Id, Op>, 2> {
+    fn timeout(&mut self, log: &mut ArrayVec<LogRecord>) -> ArrayVec<Action<Id, Op>> {
         let (
             this,
             Timeout {
