@@ -1,14 +1,16 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use storage::persistent::SchemaError;
+
+use crate::Action;
+use crypto::hash::{BlockHash, ChainId, OperationHash};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
     thread,
     time::Instant,
 };
-
-use crypto::hash::{BlockHash, ChainId, OperationHash};
 use storage::shell_automaton_action_meta_storage::ShellAutomatonActionsStats;
 use tezos_messages::p2p::encoding::{
     block_header::{BlockHeader, Level},
@@ -243,5 +245,23 @@ impl RpcService for RpcServiceDefault {
             }
             None => drop(self.outgoing_streams.remove(&call_id)),
         }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RpcShellAutomatonActionsRaw {
+    pub actions: Vec<Action>,
+    pub initial_state: State,
+}
+
+impl storage::persistent::Encoder for RpcShellAutomatonActionsRaw {
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        rmp_serde::to_vec(self).map_err(|_| SchemaError::EncodeError)
+    }
+}
+
+impl storage::persistent::Decoder for RpcShellAutomatonActionsRaw {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        rmp_serde::from_slice(bytes).map_err(|err| SchemaError::DecodeError)
     }
 }

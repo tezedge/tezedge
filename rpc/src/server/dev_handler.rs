@@ -1,6 +1,5 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-
 use crate::helpers::{parse_block_hash, parse_chain_id, RpcServiceError, MAIN_CHAIN_ID};
 use crate::result_option_to_json_response;
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
@@ -10,6 +9,7 @@ use anyhow::format_err;
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
 use crypto::PublicKeyWithHash;
 use hyper::{Body, Request, Response};
+use shell_automaton::service::rpc_service::RpcShellAutomatonActionsRaw;
 use shell_automaton::service::{BlockApplyStats, BlockPeerStats};
 use slog::warn;
 use std::net::SocketAddr;
@@ -296,6 +296,33 @@ pub async fn dev_shell_automaton_state_raw_get(
 ) -> ServiceResult {
     let state = dev_services::get_shell_automaton_state_current(&env).await?;
     let contents = state.encode()?;
+
+    Ok(Response::builder()
+        .header(hyper::header::CONTENT_TYPE, "application/octet-stream")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+        .header(
+            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+            "GET, POST, OPTIONS, PUT",
+        )
+        .body(Body::from(contents))?)
+}
+
+pub async fn dev_shell_automaton_actions_raw_get(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let actions = dev_services::get_shell_automaton_actions_raw(
+        &env,
+        query.get_u64("cursor"),
+        query.get_usize("limit"),
+    )
+    .await?;
+
+    let contents = actions.encode()?;
 
     Ok(Response::builder()
         .header(hyper::header::CONTENT_TYPE, "application/octet-stream")

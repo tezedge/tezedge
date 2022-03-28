@@ -287,7 +287,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             } = &mut state.bootstrap
             {
                 let main_block = (main_block.header.level(), main_block.hash.clone());
-                let missing_levels_count = main_block.0 - current_head.header.level();
+                let missing_levels_count = main_block.0.saturating_sub(current_head.header.level());
 
                 let peer_intervals = std::mem::take(peer_branches)
                     .into_iter()
@@ -336,7 +336,9 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     last_logged_downloaded_count: 0,
                     main_chain_last_level: main_block.0,
                     main_chain_last_hash: main_block.1,
-                    main_chain: VecDeque::with_capacity(missing_levels_count.max(0) as usize),
+                    main_chain: VecDeque::with_capacity(
+                        missing_levels_count.max(0).min(10_000_000) as usize,
+                    ),
                     peer_intervals,
                 };
             }
