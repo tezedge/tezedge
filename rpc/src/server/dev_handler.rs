@@ -1,5 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+
 use crate::helpers::{parse_block_hash, parse_chain_id, RpcServiceError, MAIN_CHAIN_ID};
 use crate::result_option_to_json_response;
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
@@ -9,7 +10,6 @@ use anyhow::format_err;
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
 use crypto::PublicKeyWithHash;
 use hyper::{Body, Request, Response};
-use shell_automaton::service::rpc_service::RpcShellAutomatonActionsRaw;
 use shell_automaton::service::{BlockApplyStats, BlockPeerStats};
 use slog::warn;
 use std::net::SocketAddr;

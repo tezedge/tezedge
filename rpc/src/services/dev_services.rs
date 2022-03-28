@@ -600,7 +600,7 @@ pub(crate) async fn get_shell_automaton_actions_raw(
     cursor: Option<u64>,
     limit: Option<usize>,
 ) -> anyhow::Result<RpcShellAutomatonActionsRaw> {
-    let actions_with_state = get_shell_automaton_actions(&env, cursor, limit).await?;
+    let actions_with_state = get_shell_automaton_actions(env, cursor, limit).await?;
 
     Ok(RpcShellAutomatonActionsRaw {
         actions: actions_with_state
