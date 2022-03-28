@@ -474,31 +474,15 @@ where
                 }
                 _ => (),
             };
+            self_.inner_ = VotesState::Collecting { incomplete: Votes::default() };
 
-            self_.timeout_next_level = match &self_.inner_ {
-                VotesState::Done { ref hash, .. } => self_
-                    .this_time_headers
-                    .get(hash)
-                    .expect("invariant")
-                    .calculate(config, now, self_.level),
-                VotesState::Collecting { .. } => None,
-            };
-            self_.timeout_this_level = pred_time_header.calculate(config, now, block.level);
-
-            let delay = Duration::from_millis(DELAY_MS);
-            let t = match (&self_.timeout_this_level, &self_.timeout_next_level) {
-                (Some(ref this), Some(ref next)) => {
-                    if this.timestamp < next.timestamp {
-                        Some(this.timestamp + delay)
-                    } else {
-                        Some(next.timestamp)
-                    }
-                }
-                (Some(ref this), None) => Some(this.timestamp + delay),
-                (None, Some(ref next)) => Some(next.timestamp),
-                _ => None,
-            };
-            actions.extend(t.map(Action::ScheduleTimeout).into_iter());
+            self_.timeout_next_level = None;
+            let timeout = pred_time_header.calculate(config, now, block.level);
+            if let Some(ref timeout) = &timeout {
+                let delay = Duration::from_millis(DELAY_MS);
+                actions.push(Action::ScheduleTimeout(timeout.timestamp + delay));
+            }
+            self_.timeout_this_level = timeout;
 
             let will_pre_vote = accept_and_pre_vote
                 && match &self_.locked {
