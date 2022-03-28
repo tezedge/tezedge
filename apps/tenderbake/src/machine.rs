@@ -644,8 +644,10 @@ where
         let mut self_ = self;
         let votes = match &mut self_.inner_ {
             VotesState::Collecting { ref mut incomplete } => incomplete,
-            VotesState::Done { ref mut cer, .. } => {
-                cer.votes += validator;
+            VotesState::Done { ref mut cer, ref hash } => {
+                if self_.hash.eq(hash) {
+                    cer.votes += validator;
+                }
                 return Pair(self_, ArrayVec::default());
             }
         };
