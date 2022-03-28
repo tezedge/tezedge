@@ -262,6 +262,6 @@ impl storage::persistent::Encoder for RpcShellAutomatonActionsRaw {
 
 impl storage::persistent::Decoder for RpcShellAutomatonActionsRaw {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        rmp_serde::from_slice(bytes).map_err(|err| SchemaError::DecodeError)
+        rmp_serde::from_slice(bytes).map_err(|_err| SchemaError::DecodeError)
     }
 }

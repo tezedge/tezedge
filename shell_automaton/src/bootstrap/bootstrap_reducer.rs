@@ -844,49 +844,47 @@ pub fn log_stats(state: &mut State) {
 
     let now = state.time_as_nanos();
 
-    match &mut state.bootstrap {
-        BootstrapState::PeersBlockHeadersGetPending {
-            last_logged,
-            last_logged_downloaded_count,
-            main_chain,
-            main_chain_last_level,
-            peer_intervals,
-            ..
-        } => {
-            if now - *last_logged < LOG_INTERVAL_NS {
-                return;
-            }
-
-            let current_head = match state.current_head.get() {
-                Some(v) => v,
-                None => return,
-            };
-            let total = main_chain_last_level
-                .saturating_sub(current_head.header.level())
-                .max(0) as usize;
-            let downloaded_count = main_chain.len()
-                + peer_intervals
-                    .iter()
-                    .map(|v| v.downloaded.len())
-                    .sum::<usize>();
-            let parallelism = peer_intervals
-                .iter()
-                .filter(|b| b.current.is_pending())
-                .filter_map(|b| b.current.peer())
-                .collect::<BTreeSet<_>>()
-                .len();
-            let left = total.saturating_sub(downloaded_count);
-            let speed = downloaded_count.saturating_sub(*last_logged_downloaded_count)
-                / (LOG_INTERVAL_S as usize);
-
-            slog::info!(&state.log, "Downloading block headers";
-                "progress" => format!("{}/{} (left: {})", downloaded_count, total, left),
-                "speed" => format!("{} h/s", speed),
-                "parallelism" => parallelism);
-
-            *last_logged = now;
-            *last_logged_downloaded_count = downloaded_count;
+    if let BootstrapState::PeersBlockHeadersGetPending {
+        last_logged,
+        last_logged_downloaded_count,
+        main_chain,
+        main_chain_last_level,
+        peer_intervals,
+        ..
+    } = &mut state.bootstrap
+    {
+        if now - *last_logged < LOG_INTERVAL_NS {
+            return;
         }
-        _ => return,
+
+        let current_head = match state.current_head.get() {
+            Some(v) => v,
+            None => return,
+        };
+        let total = main_chain_last_level
+            .saturating_sub(current_head.header.level())
+            .max(0) as usize;
+        let downloaded_count = main_chain.len()
+            + peer_intervals
+                .iter()
+                .map(|v| v.downloaded.len())
+                .sum::<usize>();
+        let parallelism = peer_intervals
+            .iter()
+            .filter(|b| b.current.is_pending())
+            .filter_map(|b| b.current.peer())
+            .collect::<BTreeSet<_>>()
+            .len();
+        let left = total.saturating_sub(downloaded_count);
+        let speed = downloaded_count.saturating_sub(*last_logged_downloaded_count)
+            / (LOG_INTERVAL_S as usize);
+
+        slog::info!(&state.log, "Downloading block headers";
+            "progress" => format!("{}/{} (left: {})", downloaded_count, total, left),
+            "speed" => format!("{} h/s", speed),
+            "parallelism" => parallelism);
+
+        *last_logged = now;
+        *last_logged_downloaded_count = downloaded_count;
     }
 }
