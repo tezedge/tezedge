@@ -162,8 +162,8 @@ impl fmt::Display for LogRecord {
                 }
                 Ok(())
             }
-            LogRecord::PreVote => write!(f, " .  pre vote"),
-            LogRecord::Vote => write!(f, " .  vote"),
+            LogRecord::PreVote => write!(f, " .  cast preendorsement"),
+            LogRecord::Vote => write!(f, " .  cast endorsement"),
             LogRecord::HavePreCertificate { payload_round } => {
                 write!(f, " .  obtained pre certificate at {payload_round}")
             }
