@@ -86,7 +86,7 @@ pub fn run(
         map: SlotsInfo::new(constants.consensus_committee_size, ours),
         quorum: consensus_threshold,
     };
-    let mut state = tb::Machine::<ContractTz1Hash, OperationSimple>::default();
+    let mut state = tb::Machine::<ContractTz1Hash, OperationSimple, 200>::default();
 
     for event in rx {
         let unix_epoch = SystemTime::now()

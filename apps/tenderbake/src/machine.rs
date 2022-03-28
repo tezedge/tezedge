@@ -15,7 +15,7 @@ use super::{
 };
 
 /// The state machine. Aims to contain only possible states.
-pub struct Machine<Id, Op, const DELAY_MS: u64 = 200> {
+pub struct Machine<Id, Op, const DELAY_MS: u64> {
     inner: Option<Result<Initialized<Id, Op, DELAY_MS>, Transition<Id>>>,
 }
 
