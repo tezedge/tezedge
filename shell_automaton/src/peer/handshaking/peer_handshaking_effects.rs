@@ -528,7 +528,14 @@ where
                             };
                         }
                         // TODO: use potential peers in nack message.
-                        AckMessage::Nack(_) => {}
+                        AckMessage::Nack(info) => match info.motive() {
+                            NackMotive::AlreadyConnected => {
+                                store.dispatch(PeerDisconnectAction {
+                                    address: action.address,
+                                });
+                            }
+                            _ => {}
+                        },
                         AckMessage::NackV0 => {}
                     }
                     // peer nacked us so we should graylist him.
