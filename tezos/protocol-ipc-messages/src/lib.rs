@@ -51,6 +51,7 @@ pub enum ProtocolMessage {
     ContextGetTreeByPrefix(ContextGetTreeByPrefixRequest),
     DumpContext(DumpContextRequest),
     RestoreContext(RestoreContextRequest),
+    Ping,
     ShutdownCall,
 }
 
@@ -156,6 +157,8 @@ pub enum NodeMessage {
 
     // TODO: generic error response instead with error types?
     IpcResponseEncodingFailure(String),
+
+    PingResult,
 
     ShutdownResult,
 }

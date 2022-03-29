@@ -574,6 +574,7 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::ContextGetTreeByPrefix(req: OCamlContextGetTreeByPrefixRequest),
         ProtocolMessage::DumpContext(req: OCamlDumpContextRequest),
         ProtocolMessage::RestoreContext(req: OCamlRestoreContextRequest),
+        ProtocolMessage::Ping,
         ProtocolMessage::ShutdownCall,
     }
 }

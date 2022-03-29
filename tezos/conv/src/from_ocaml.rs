@@ -400,6 +400,8 @@ impl_from_ocaml_polymorphic_variant! {
 
         IpcResponseEncodingFailure(message: String) => NodeMessage::IpcResponseEncodingFailure(message),
 
+        PingResult => NodeMessage::PingResult,
+
         ShutdownResult => NodeMessage::ShutdownResult,
     }
 }

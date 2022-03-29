@@ -249,6 +249,7 @@ impl ProtocolRunnerServiceDefault {
             ProtocolMessage::ContextGetTreeByPrefix(_) => unimplemented!(),
             ProtocolMessage::DumpContext(_) => unimplemented!(),
             ProtocolMessage::RestoreContext(_) => unimplemented!(),
+            ProtocolMessage::Ping => unimplemented!(),
             ProtocolMessage::ShutdownCall => unimplemented!(),
             ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata(_) => todo!(),
         }
@@ -468,10 +469,9 @@ impl ProtocolRunnerServiceDefault {
 
             // Shut down the child process if we exit the loop and it is still up
             if let Some(mut child) = std::mem::take(&mut child_process_handle) {
-                // TODO: if this fails, it should be logged somewhere
-                Self::terminate_or_kill(&mut child, "Protocol Runner Service loop ended".into())
-                    .await
-                    .ok();
+                if let Err(err) = Self::terminate_or_kill(&mut child, "Protocol Runner Service loop ended".into()).await {
+                    slog::warn!(log, "Failure when shutting down the protocol runner subprocess"; "error" => err);
+                }
             }
         });
     }

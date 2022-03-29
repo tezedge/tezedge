@@ -71,16 +71,16 @@ impl<S: Serialize> IpcSender<S> {
             .write_all(&msg_len_buf)
             .await
             .map_err(|err| IpcError::SendError {
-                reason: err.to_string(),
+                reason: format!("{err} (during msg_len_buf write)"),
             })?;
         self.0
             .write_all(&msg_buf)
             .await
             .map_err(|err| IpcError::SendError {
-                reason: err.to_string(),
+                reason: format!("{err} (during msg_buf write)"),
             })?;
         self.0.flush().await.map_err(|err| IpcError::SendError {
-            reason: err.to_string(),
+            reason: format!("{err} (during flush)"),
         })
     }
 }
