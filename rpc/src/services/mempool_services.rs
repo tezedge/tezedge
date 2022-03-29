@@ -58,7 +58,7 @@ pub async fn inject_operation(
     is_async: bool,
     chain_id: ChainId,
     operation_data: &str,
-    env: &RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> Result<String, RpcServiceError> {
     info!(env.log(),
           "Operation injection requested";
@@ -91,39 +91,51 @@ pub async fn inject_operation(
         })?;
     let operation_hash_b58check_string = operation_hash.to_base58_check();
 
-    let result = tokio::time::timeout(INJECT_OPERATION_WAIT_TIMEOUT, receiver).await;
-    match result {
-        Ok(Ok(serde_json::Value::Null)) => (),
-        Ok(Ok(serde_json::Value::String(reason))) => {
-            return Err(RpcServiceError::UnexpectedError { reason });
-        }
-        Ok(Ok(resp)) => {
-            return Err(RpcServiceError::UnexpectedError {
+    let join_handle = tokio::task::spawn(async move {
+        let result = tokio::time::timeout(INJECT_OPERATION_WAIT_TIMEOUT, receiver).await;
+        let result = match result {
+            Ok(Ok(serde_json::Value::Null)) => Ok(operation_hash_b58check_string.clone()),
+            Ok(Ok(serde_json::Value::String(reason))) => {
+                Err(RpcServiceError::UnexpectedError { reason })
+            }
+            Ok(Ok(resp)) => Err(RpcServiceError::UnexpectedError {
                 reason: resp.to_string(),
-            });
-        }
-        Ok(Err(err)) => {
-            warn!(
-                env.log(),
-                "Operation injection. State machine failed to respond: {}", err
-            );
-            return Err(RpcServiceError::UnexpectedError {
+            }),
+            Ok(Err(err)) => {
+                warn!(
+                    env.log(),
+                    "Operation injection. State machine failed to respond: {}", err
+                );
+                Err(RpcServiceError::UnexpectedError {
+                    reason: err.to_string(),
+                })
+            }
+            Err(elapsed) => {
+                warn!(env.log(), "Operation injection timeout"; "elapsed" => elapsed.to_string());
+                Err(RpcServiceError::UnexpectedError {
+                    reason: "timeout".to_string(),
+                })
+            }
+        };
+
+        info!(env.log(), "Operation injected";
+            "operation_hash" => &operation_hash_b58check_string,
+            "elapsed" => format!("{:?}", start_request.elapsed()));
+
+        result
+    });
+
+    // Don't wait for injection to complete if `is_async` is enabled
+    if is_async {
+        Ok(operation_hash.to_base58_check())
+    } else {
+        match join_handle.await {
+            Err(err) => Err(RpcServiceError::UnexpectedError {
                 reason: err.to_string(),
-            });
-        }
-        Err(elapsed) => {
-            warn!(env.log(), "Operation injection timeout"; "elapsed" => elapsed.to_string());
-            return Err(RpcServiceError::UnexpectedError {
-                reason: "timeout".to_string(),
-            });
+            }),
+            Ok(result) => result,
         }
     }
-
-    info!(env.log(), "Operation injected";
-        "operation_hash" => &operation_hash_b58check_string,
-        "elapsed" => format!("{:?}", start_request.elapsed()));
-
-    Ok(operation_hash_b58check_string)
 }
 
 pub async fn inject_block(
