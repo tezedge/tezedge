@@ -1690,7 +1690,6 @@ defs:
       - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
       - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/$${PYTHON_TEST}
-    failure: ignore # TODO: remove once everything has been fixed
 
 steps:
 
@@ -1875,6 +1874,7 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake_long_dynamic_bake.py
+  failure: ignore # TODO: remove once everything has been fixed
 
 - name: tenderbake-long-bakers-restart-test
   <<: *python-test
