@@ -151,15 +151,7 @@ pub const OPERATION_MAX_SIZE: usize = 128 * 1024;
 pub const PROTOCOL_MAX_SIZE: usize = 2 * 1024 * 1024;
 
 /// Mempool maximum operations number
-///
-/// OCaml refs:
-///
-/// `mempool_max_operations` in
-/// [lib_shell/distributed_db_message.ml:142](https://gitlab.com/tezedge/tezos/-/blob/3c6f7c0126472693cd2cd5208e5301aae9283dde/src/lib_shell/distributed_db_message.ml#L142)
-/// ```ocaml
-///   let mempool_max_operations = ref (Some 4000)
-/// ```
-pub const MEMPOOL_MAX_OPERATIONS: usize = 4000;
+pub const MEMPOOL_MAX_OPERATIONS: usize = 10000;
 
 /// Mempool encoding maximum size
 ///

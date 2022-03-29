@@ -9,7 +9,7 @@ use crate::peer::chunk::read::{
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::message::read::PeerMessageReadState;
 use crate::peer::{PeerHandshaked, PeerStatus, PeerTryReadLoopStartAction};
-use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 pub fn peer_chunk_read_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -149,6 +149,7 @@ where
         Action::PeerChunkReadError(action) => {
             store.dispatch(PeersGraylistAddressAction {
                 address: action.address,
+                reason: PeerGraylistReason::ChunkReadError,
             });
         }
         _ => {}

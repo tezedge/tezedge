@@ -22,7 +22,7 @@ use crate::peer::remote_requests::block_operations_get::PeerRemoteRequestsBlockO
 use crate::peer::remote_requests::current_branch_get::PeerRemoteRequestsCurrentBranchGetInitAction;
 use crate::peer::{Peer, PeerCurrentHeadUpdateAction};
 use crate::peers::add::multi::PeersAddMultiAction;
-use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::service::actors_service::{ActorsMessageTo, ActorsService};
 use crate::service::{RandomnessService, Service, StatisticsService};
 use crate::{Action, ActionId, ActionWithMeta, State, Store};
@@ -193,18 +193,9 @@ where
                         // TODO: log
                         return;
                     }
-                    if !store.dispatch(PeerRemoteRequestsCurrentBranchGetInitAction {
+                    store.dispatch(PeerRemoteRequestsCurrentBranchGetInitAction {
                         address: content.address,
-                    }) {
-                        let state = store.state();
-                        let current = state
-                            .peers
-                            .get_handshaked(&content.address)
-                            .map(|p| &p.remote_requests.current_branch_get);
-                        slog::debug!(&state.log, "Peer - Too many GetCurrentBranch requests!";
-                                    "peer" => format!("{}", content.address),
-                                    "current" => format!("{:?}", current));
-                    }
+                    });
                 }
                 PeerMessage::CurrentHead(msg) => {
                     if msg.chain_id() != &store.state().config.chain_id {
@@ -278,9 +269,6 @@ where
                                 "peer_pkh" => format!("{:?}", state.peer_public_key_hash_b58check(content.address)),
                                 "block_header" => format!("{:?}", msg.block_header()),
                                 "error" => format!("{:?}", err));
-                            store.dispatch(PeersGraylistAddressAction {
-                                address: content.address,
-                            });
                             return;
                         }
                     };
@@ -295,6 +283,7 @@ where
                                 "expected_level" => format!("{:?}", p.current.block_level()));
                             store.dispatch(PeersGraylistAddressAction {
                                 address: content.address,
+                                reason: PeerGraylistReason::RequestedBlockHeaderLevelMismatch,
                             });
                             return;
                         }
@@ -335,6 +324,7 @@ where
         Action::PeerMessageReadError(content) => {
             store.dispatch(PeersGraylistAddressAction {
                 address: content.address,
+                reason: PeerGraylistReason::MessageReadError,
             });
         }
         _ => {}

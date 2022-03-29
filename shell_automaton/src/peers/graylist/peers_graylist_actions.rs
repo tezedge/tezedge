@@ -4,16 +4,46 @@
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, SocketAddr};
 
-use crate::{EnablingCondition, State};
+use crate::{peer::message::write::PeerMessageWriteError, EnablingCondition, State};
 
 #[cfg(feature = "fuzzing")]
 use crate::fuzzing::net::{IpAddrMutator, SocketAddrMutator};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PeerGraylistReason {
+    ConnectionIncomingError,
+    ConnectionOutgoingError,
+
+    BinaryMessageReadError,
+    BinaryMessageWriteError,
+
+    ChunkReadError,
+    ChunkWriteError,
+
+    NackReceived,
+    NackSent,
+
+    HandshakeError,
+
+    MessageReadError,
+    MessageWriteError(PeerMessageWriteError),
+
+    RequestedBlockHeaderLevelMismatch,
+
+    BootstrapBlockHeaderInconsistentChain,
+    BootstrapCementedBlockReorg,
+
+    ConnectionClosed,
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistAddressAction {
     #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
+
+    pub reason: PeerGraylistReason,
 }
 
 impl EnablingCondition<State> for PeersGraylistAddressAction {

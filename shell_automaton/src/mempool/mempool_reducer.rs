@@ -275,16 +275,16 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 let local_header = &local_head_state.header;
                 let new_header = &block.header;
                 if new_header.fitness() <= local_header.fitness() {
-                    slog::warn!(
+                    slog::debug!(
                         &state.log,
-                        "Block `{new_block}` at level `{new_level}` has non-increasing fitness `{new_fitness}`",
-                        new_block = block.hash.to_base58_check(),
-                        new_level = new_header.level(),
-                        new_fitness = new_header.fitness().to_string();
+                        // "Ignoring applied block in mempool with lower fitness";
+                        "Applied block in mempool with lower fitness";
                         "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check()),
-                        "level" => local_header.level(),
-                        "fitness" => local_header.fitness().to_string(),
+                        "head_level" => local_header.level(),
+                        "head_fitness" => local_header.fitness().to_string(),
+                        "new_head" => format!("{:?}", block),
                     );
+                    // return;
                 }
             }
 

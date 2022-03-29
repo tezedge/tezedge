@@ -27,7 +27,7 @@ use crate::peer::handshaking::{
 use crate::peer::message::read::PeerMessageReadInitAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peer::{PeerCrypto, PeerStatus};
-use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::{ActorsService, RandomnessService, Service};
 use crate::{ActionWithMeta, Store};
@@ -534,6 +534,7 @@ where
                     // peer nacked us so we should graylist him.
                     store.dispatch(PeersGraylistAddressAction {
                         address: action.address,
+                        reason: PeerGraylistReason::NackReceived,
                     });
                 }
             }
@@ -556,6 +557,7 @@ where
                         }
                         store.dispatch(PeersGraylistAddressAction {
                             address: action.address,
+                            reason: PeerGraylistReason::NackSent,
                         });
                         return;
                     }
@@ -589,6 +591,7 @@ where
         Action::PeerHandshakingError(action) => {
             store.dispatch(PeersGraylistAddressAction {
                 address: action.address,
+                reason: PeerGraylistReason::HandshakeError,
             });
         }
         _ => {}

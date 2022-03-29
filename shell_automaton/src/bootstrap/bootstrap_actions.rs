@@ -515,7 +515,12 @@ impl EnablingCondition<State> for BootstrapErrorAction {
                     | BootstrapState::PeersBlockOperationsGetSuccess { .. }
             ),
             BootstrapError::BlockInjectedDuringBootstap => {
-                state.block_applier.current.injector_rpc_id().is_some()
+                matches!(
+                    state.bootstrap,
+                    BootstrapState::PeersMainBranchFindSuccess { .. }
+                        | BootstrapState::PeersBlockHeadersGetPending { .. }
+                        | BootstrapState::PeersBlockOperationsGetPending { .. }
+                ) && state.block_applier.current.injector_rpc_id().is_some()
             }
         }
     }

@@ -23,12 +23,7 @@ pub struct PeerRemoteRequestsCurrentBranchGetInitAction {
 
 impl EnablingCondition<State> for PeerRemoteRequestsCurrentBranchGetInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state
-            .peers
-            .get_handshaked(&self.address)
-            .map(|p| &p.remote_requests.current_branch_get)
-            .filter(|v| !v.is_pending())
-            .is_some()
+        state.peers.get_handshaked(&self.address).is_some()
     }
 }
 

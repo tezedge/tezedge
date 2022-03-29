@@ -19,7 +19,6 @@ use tezos_messages::p2p::{
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
-use crate::protocol::ProtocolAction;
 use crate::{block_applier::BlockApplierApplyState, current_head_precheck::CurrentHeadState};
 use crate::{
     current_head_precheck::CurrentHeadPrecheckSuccessAction,
@@ -34,6 +33,10 @@ use crate::{
         PrecheckerSetNextBlockProtocolAction,
     },
     rights::Slot,
+};
+use crate::{
+    peer::remote_requests::current_branch_get::PeerRemoteRequestsCurrentBranchGetInitAction,
+    protocol::ProtocolAction,
 };
 use crate::{
     service::{PrevalidatorService, RpcService},
