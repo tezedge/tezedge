@@ -142,7 +142,7 @@ pub async fn inject_block(
     is_async: bool,
     chain_id: ChainId,
     injection_data: &str,
-    env: &RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> Result<String, RpcServiceError> {
     let block_with_op: InjectedBlockWithOperations = serde_json::from_str(injection_data)?;
 
@@ -154,83 +154,95 @@ pub async fn inject_block(
         })?
         .try_into()?;
     let block_hash_b58check_string = header.hash.to_base58_check();
+    let block_hash_b58check_string_for_async = block_hash_b58check_string.clone();
     info!(env.log(),
           "Block injection requested";
-          "block_hash" => block_hash_b58check_string.clone(),
+          "block_hash" => &block_hash_b58check_string,
           "chain_id" => chain_id.to_base58_check(),
           "is_async" => is_async,
     );
 
-    // special case for block on level 1 - has 0 validation passes
-    let validation_passes: Option<Vec<Vec<Operation>>> = if header.header.validation_pass() > 0 {
-        Some(
-            block_with_op
-                .operations
-                .into_iter()
-                .map(|validation_pass| {
-                    validation_pass
-                        .into_iter()
-                        .map(|op| op.try_into())
-                        .collect::<Result<_, _>>()
-                })
-                .collect::<Result<_, _>>()
+    let join_handle = tokio::task::spawn(async move {
+        // special case for block on level 1 - has 0 validation passes
+        let validation_passes: Option<Vec<Vec<Operation>>> = if header.header.validation_pass() > 0
+        {
+            Some(
+                block_with_op
+                    .operations
+                    .into_iter()
+                    .map(|validation_pass| {
+                        validation_pass
+                            .into_iter()
+                            .map(|op| op.try_into())
+                            .collect::<Result<_, _>>()
+                    })
+                    .collect::<Result<_, _>>()
+                    .map_err(|e| RpcServiceError::UnexpectedError {
+                        reason: format!("{}", e),
+                    })?,
+            )
+        } else {
+            None
+        };
+
+        // compute the paths for each validation passes
+        let paths = if let Some(vps) = validation_passes.as_ref() {
+            let mut connection = env.tezos_protocol_api().readable_connection().await?;
+
+            let response = connection
+                .compute_path(vps.try_into()?)
+                .await
                 .map_err(|e| RpcServiceError::UnexpectedError {
                     reason: format!("{}", e),
-                })?,
+                })?;
+            Some(response.operations_hashes_path)
+        } else {
+            None
+        };
+
+        let start_async = Instant::now();
+
+        let result = process_injected_block(
+            &env,
+            chain_id.clone(),
+            header,
+            validation_passes,
+            paths,
+            start_request,
         )
-    } else {
-        None
-    };
+        .await;
 
-    // compute the paths for each validation passes
-    let paths = if let Some(vps) = validation_passes.as_ref() {
-        let mut connection = env.tezos_protocol_api().readable_connection().await?;
-
-        let response = connection
-            .compute_path(vps.try_into()?)
-            .await
-            .map_err(|e| RpcServiceError::UnexpectedError {
-                reason: format!("{}", e),
-            })?;
-        Some(response.operations_hashes_path)
-    } else {
-        None
-    };
-
-    let start_async = Instant::now();
-
-    let result = process_injected_block(
-        env,
-        chain_id.clone(),
-        header,
-        validation_passes,
-        paths,
-        start_request,
-    )
-    .await;
-
-    match result {
-        Ok(_) => {
-            info!(env.log(),
-                    "Block injected";
-                    "block_hash" => block_hash_b58check_string.clone(),
-                    "chain_id" => chain_id.to_base58_check(),
-                    "elapsed" => format!("{:?}", start_request.elapsed()),
-                    "elapsed_async" => format!("{:?}", start_async.elapsed()),
-            );
-        }
-        Err(e) => {
-            return Err(RpcServiceError::UnexpectedError {
+        match result {
+            Ok(_) => {
+                info!(env.log(),
+                        "Block injected";
+                        "block_hash" => block_hash_b58check_string.clone(),
+                        "chain_id" => chain_id.to_base58_check(),
+                        "elapsed" => format!("{:?}", start_request.elapsed()),
+                        "elapsed_async" => format!("{:?}", start_async.elapsed()),
+                );
+                Ok(block_hash_b58check_string)
+            }
+            Err(e) => Err(RpcServiceError::UnexpectedError {
                 reason: format!(
                     "Block injection error received, block_hash: {}, reason: {}!",
-                    &block_hash_b58check_string, e.reason
+                    block_hash_b58check_string, e.reason
                 ),
-            });
+            }),
+        }
+    });
+
+    // Don't wait for injection to complete if `is_async` is enabled
+    if is_async {
+        Ok(block_hash_b58check_string_for_async)
+    } else {
+        match join_handle.await {
+            Err(err) => Err(RpcServiceError::UnexpectedError {
+                reason: err.to_string(),
+            }),
+            Ok(result) => result,
         }
     }
-
-    // return the block hash to the caller
-    Ok(block_hash_b58check_string)
 }
 
 #[derive(Debug)]
