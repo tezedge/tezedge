@@ -6,6 +6,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 
 use monitors::delegate::DelegatesMonitor;
+use monitors::statistics::StatisticsMonitor;
 use slog::{error, info, Drain, Level, Logger};
 use tokio::signal;
 use tokio::time::{sleep, Duration};
@@ -32,6 +33,60 @@ const PROCESS_LOOKUP_INTERVAL: Duration = Duration::from_secs(10);
 
 #[tokio::main]
 async fn main() {
+    let env = configuration::DeployMonitoringEnvironment::from_args();
+
+    // create an slog logger
+    let log = create_logger(env.log_level);
+
+    let DeployMonitoringEnvironment {
+        slack_configuration,
+        tezedge_alert_thresholds,
+        ocaml_alert_thresholds,
+        resource_monitor_interval,
+        ..
+    } = env.clone();
+
+    let slack_server =
+        slack_configuration.map(|cfg| slack::SlackServer::new(cfg.slack_url, log.clone()));
+
+    if let Some(delegates) = env.delegates {
+        for node in env.nodes {
+            // let node_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), node.port());
+            // slog::info!(
+            //     log,
+            //     "Using node `{node}` to monitor performance for delegates",
+            //     node = node.tag()
+            // );
+            // let delegates = delegates.clone();
+            // let log = log.clone();
+            // let slack = slack_server.clone();
+            // tokio::spawn(async move {
+            //     if let Err(err) = DelegatesMonitor::new(node_addr, delegates, slack, log.clone())
+            //         .run()
+            //         .await
+            //     {
+            //         slog::error!(log, "Error in delegates monitor: `{err}`");
+            //     }
+            // });
+            let log = log.clone();
+            tokio::spawn(async move {
+                if let Err(err) = StatisticsMonitor::new(node).run().await {
+                    slog::error!(log, "Error in statistics monitor: `{err}`");
+                }
+            });
+        }
+    }
+
+    // wait for SIGINT
+    signal::ctrl_c()
+        .await
+        .expect("Failed to listen for ctrl-c event");
+    info!(log, "Ctrl-c or SIGINT received!");
+
+}
+
+#[tokio::main]
+async fn main_suspended() {
     let env = configuration::DeployMonitoringEnvironment::from_args();
 
     // create an slog logger
@@ -109,21 +164,27 @@ async fn main() {
 
     if let Some(delegates) = env.delegates {
         for node in env.nodes {
-            let node_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), node.port());
-            slog::info!(
-                log,
-                "Using node `{node}` to monitor performance for delegates",
-                node = node.tag()
-            );
-            let delegates = delegates.clone();
+            // let node_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), node.port());
+            // slog::info!(
+            //     log,
+            //     "Using node `{node}` to monitor performance for delegates",
+            //     node = node.tag()
+            // );
+            // let delegates = delegates.clone();
+            // let log = log.clone();
+            // let slack = slack_server.clone();
+            // tokio::spawn(async move {
+            //     if let Err(err) = DelegatesMonitor::new(node_addr, delegates, slack, log.clone())
+            //         .run()
+            //         .await
+            //     {
+            //         slog::error!(log, "Error in delegates monitor: `{err}`");
+            //     }
+            // });
             let log = log.clone();
-            let slack = slack_server.clone();
             tokio::spawn(async move {
-                if let Err(err) = DelegatesMonitor::new(node_addr, delegates, slack, log.clone())
-                    .run()
-                    .await
-                {
-                    slog::error!(log, "Error in delegates monitor: `{err}`");
+                if let Err(err) = StatisticsMonitor::new(node).run().await {
+                    slog::error!(log, "Error in statistics monitor: `{err}`");
                 }
             });
         }

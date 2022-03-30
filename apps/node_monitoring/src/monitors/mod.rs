@@ -4,3 +4,4 @@
 pub mod alerts;
 pub mod delegate;
 pub mod resource;
+pub mod statistics;
