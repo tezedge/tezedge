@@ -29,6 +29,7 @@ pub struct BlockApplyStats {
     pub level: Level,
     pub block_timestamp: i64,
     pub validation_pass: u8,
+    pub round: Option<i32>,
 
     pub receive_timestamp: u64,
 
@@ -294,6 +295,7 @@ impl StatisticsService {
         level: Level,
         block_timestamp: i64,
         validation_pass: u8,
+        round: Option<i32>,
         receive_timestamp: u64,
         peer: Option<SocketAddr>,
         node_id: Option<CryptoboxPublicKeyHash>,
@@ -307,6 +309,7 @@ impl StatisticsService {
             level,
             block_timestamp,
             validation_pass,
+            round,
             receive_timestamp,
             injected: injected_timestamp,
             ..Default::default()

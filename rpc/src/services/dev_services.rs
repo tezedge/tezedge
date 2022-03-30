@@ -814,6 +814,7 @@ pub struct BlockStats {
     block_first_seen: u64,
 
     block_level: Level,
+    block_round: Option<i32>,
 
     /// Time(ns) since block_first_seen in current head.
     data_ready: Option<u64>,
@@ -860,6 +861,7 @@ pub(crate) async fn get_shell_automaton_block_stats_graph(
             BlockStats {
                 block_first_seen,
                 block_level: stats.level,
+                block_round: stats.round,
                 data_ready: times_sub(stats.load_data_start, Some(data_ready_start)),
                 load_data: times_sub(stats.load_data_end, stats.load_data_start),
                 apply_block: times_sub(stats.apply_block_end, stats.apply_block_start),
@@ -869,7 +871,11 @@ pub(crate) async fn get_shell_automaton_block_stats_graph(
         })
         .collect::<Vec<_>>();
 
-    result.sort_by_key(|v| v.block_level);
+    result.sort_by(|a, b| {
+        a.block_level
+            .cmp(&b.block_level)
+            .then(a.block_round.cmp(&b.block_round))
+    });
     // take last/newest `limit` block stats.
     result = result.into_iter().rev().take(limit).rev().collect();
 

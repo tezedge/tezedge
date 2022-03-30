@@ -39,6 +39,7 @@ where
                     block_header.level(),
                     block_header.timestamp().into(),
                     block_header.validation_pass(),
+                    block_header.fitness().round(),
                     action.time_as_nanos(),
                     None,
                     Some(node_id),

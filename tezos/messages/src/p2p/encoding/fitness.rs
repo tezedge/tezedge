@@ -59,6 +59,15 @@ impl Fitness {
     pub fn as_hex_vec(&self) -> Vec<String> {
         FitnessRef(&self.0).as_hex_vec()
     }
+
+    pub fn round(&self) -> Option<i32> {
+        self.0.get(4).and_then(|bytes| {
+            if bytes.len() != 4 {
+                return None;
+            }
+            Some(i32::from_be_bytes(bytes[0..4].try_into().unwrap()))
+        })
+    }
 }
 
 impl AsRef<FitnessInner> for Fitness {
