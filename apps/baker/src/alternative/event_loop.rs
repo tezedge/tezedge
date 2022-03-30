@@ -462,14 +462,26 @@ fn perform(
                 slog::info!(log, "{:?}", header);
                 header.signature.0.clear();
                 let (data, _) = crypto.sign(0x11, &chain_id, &header).unwrap();
-                match client.inject_block(hex::encode(data), operations) {
+
+                let valid_operations = operations
+                    .iter()
+                    .filter_map(|v| {
+                        let applied = v.as_object()?.get("applied")?.clone();
+                        serde_json::from_value(applied).ok()
+                    })
+                    .collect();
+    
+                match client.inject_block(hex::encode(data), valid_operations) {
                     Ok(hash) => slog::info!(
                         log,
                         " .  inject block: {}:{}, {hash}",
                         header.level,
                         block.time_header.round
                     ),
-                    Err(err) => slog::error!(log, " .  {err}"),
+                    Err(err) => {
+                        slog::error!(log, " .  {err}");
+                        slog::error!(log, " .  {}", serde_json::to_string(&operations).unwrap());
+                    },
                 }
             }
         }

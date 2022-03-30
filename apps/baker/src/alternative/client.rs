@@ -253,7 +253,7 @@ impl RpcClient {
         predecessor_hash: BlockHash,
         timestamp: i64,
         mut operations: [Vec<OperationSimple>; 4],
-    ) -> Result<(FullHeader, Vec<Vec<DecodedOperation>>), RpcError> {
+    ) -> Result<(FullHeader, Vec<serde_json::Value>), RpcError> {
         #[derive(Serialize)]
         struct BlockData {
             protocol_data: serde_json::Value,
@@ -380,19 +380,6 @@ impl RpcClient {
             liquidity_baking_escape_vote,
             signature: Signature(vec![0; 64]),
         };
-        let operations = operations
-            .into_iter()
-            .filter_map(|mut v| {
-                let applied = v.as_object_mut()?.remove("applied")?;
-                let refused = v.as_object_mut()?.get("refused")?.as_array()?;
-                debug_assert!(
-                    refused.is_empty(),
-                    "refused: {}",
-                    serde_json::to_string(refused).unwrap()
-                );
-                serde_json::from_value(applied).ok()
-            })
-            .collect();
 
         Ok((full_block_header, operations))
     }
