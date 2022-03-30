@@ -115,4 +115,13 @@ impl GetOperationsMessage {
             get_operations: operations,
         }
     }
+
+    /// Creates possibly multiple messages for provided operations,
+    /// respecting the limit for operations per message.
+    pub fn from_operations(operations: Vec<OperationHash>) -> Vec<Self> {
+        operations
+            .chunks(GET_OPERATIONS_MAX_LENGTH)
+            .map(|chunk| Self::new(chunk.to_vec()))
+            .collect()
+    }
 }
