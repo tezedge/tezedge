@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::peer::handshaking::PeerHandshakingInitAction;
-use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::service::{MioService, RandomnessService, Service};
 use crate::{Action, ActionWithMeta, Store};
 
@@ -51,6 +51,7 @@ where
         Action::PeerConnectionOutgoingError(action) => {
             store.dispatch(PeersGraylistAddressAction {
                 address: action.address,
+                reason: PeerGraylistReason::ConnectionOutgoingError,
             });
         }
         _ => {}

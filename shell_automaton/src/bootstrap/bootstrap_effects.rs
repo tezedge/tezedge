@@ -17,7 +17,7 @@ use tezos_messages::p2p::encoding::prelude::GetCurrentBranchMessage;
 use crate::block_applier::{BlockApplierApplyState, BlockApplierEnqueueBlockAction};
 use crate::bootstrap::BootstrapState;
 use crate::peer::message::write::PeerMessageWriteInitAction;
-use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::storage_service::StorageRequestPayload;
 use crate::service::{ActorsService, RandomnessService};
@@ -184,7 +184,11 @@ where
                         PeerIntervalError::NextIntervalsPredecessorHashMismatch => {
                             let peers = interval.peers.iter().cloned().collect::<Vec<_>>();
                             for address in peers {
-                                store.dispatch(PeersGraylistAddressAction { address });
+                                store.dispatch(PeersGraylistAddressAction {
+                                    address,
+                                    reason:
+                                        PeerGraylistReason::BootstrapBlockHeaderInconsistentChain,
+                                });
                             }
                             break;
                         }
@@ -342,7 +346,10 @@ where
         Action::BootstrapError(content) => {
             if let BootstrapError::CementedBlockReorg { peers, .. } = &content.error {
                 for address in peers.iter().cloned() {
-                    store.dispatch(PeersGraylistAddressAction { address });
+                    store.dispatch(PeersGraylistAddressAction {
+                        address,
+                        reason: PeerGraylistReason::BootstrapCementedBlockReorg,
+                    });
                 }
             }
             store.dispatch(BootstrapFinishedAction {});
