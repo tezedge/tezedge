@@ -84,6 +84,7 @@ enum VotesState<Id, Op> {
         incomplete: Votes<Id, Op>,
     },
     Done {
+        round: i32,
         hash: BlockHash,
         cer: Certificate<Id, Op>,
     },
@@ -616,7 +617,7 @@ where
     }
 
     fn voted<T, P>(
-        self,
+        mut self,
         log: &mut ArrayVec<LogRecord>,
         config: &Config<T, P>,
         block_id: BlockId,
@@ -633,6 +634,14 @@ where
             .expect("invariant");
         let current_round = pred_time_header.round_local_coord(&config.timing, now);
 
+        // if we have elected block, and the vote is late, let's include it anyway
+        if let VotesState::Done { ref round, ref mut cer, .. } = &mut self.inner_ {
+            if round.eq(&block_id.round) {
+                cer.votes += validator;
+            }
+            return Pair(self, ArrayVec::default());
+        }
+
         if block_id.level != self.level
             || block_id.payload_hash != self.payload_hash.clone()
             || block_id.round != self.this_time_header.round
@@ -641,14 +650,13 @@ where
             return Pair(self, ArrayVec::default());
         }
 
-        let mut self_ = self;
-        let votes = match &mut self_.inner_ {
+        let votes = match &mut self.inner_ {
             VotesState::Collecting { ref mut incomplete } => incomplete,
-            VotesState::Done { ref mut cer, ref hash } => {
-                if self_.hash.eq(hash) {
+            VotesState::Done { ref mut cer, ref hash, .. } => {
+                if self.hash.eq(hash) {
                     cer.votes += validator;
                 }
-                return Pair(self_, ArrayVec::default());
+                return Pair(self, ArrayVec::default());
             }
         };
 
@@ -657,23 +665,24 @@ where
         let mut actions = ArrayVec::default();
         if votes.power >= config.quorum {
             log.push(LogRecord::HaveCertificate);
-            self_.inner_ = VotesState::Done {
-                hash: self_.hash.clone(),
+            self.inner_ = VotesState::Done {
+                hash: self.hash.clone(),
+                round: block_id.round,
                 cer: Certificate {
                     votes: mem::take(votes),
                 },
             };
-            self_.timeout_next_level = self_.this_time_header.calculate(config, now, self_.level);
+            self.timeout_next_level = self.this_time_header.calculate(config, now, self.level);
 
-            if let Some(ref n) = &self_.timeout_next_level {
+            if let Some(ref n) = &self.timeout_next_level {
                 let timestamp = n.timestamp;
-                match &self_.timeout_this_level {
+                match &self.timeout_this_level {
                     Some(ref t) if t.timestamp < timestamp => (),
                     _ => actions.push(Action::ScheduleTimeout(timestamp)),
                 }
             }
         }
-        Pair(self_, actions)
+        Pair(self, actions)
     }
 }
 
@@ -775,7 +784,7 @@ where
         } else {
             self.timeout_next_level = None;
             match &self.inner_ {
-                VotesState::Done { cer, hash } => Block {
+                VotesState::Done { cer, hash, .. } => Block {
                     pred_hash: hash.clone(),
                     hash: BlockHash([0; 32]),
                     level: self.level + 1,
