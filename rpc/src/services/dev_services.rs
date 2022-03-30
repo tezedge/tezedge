@@ -925,12 +925,17 @@ pub(crate) async fn get_shell_automaton_endorsements_status(
 
 pub(crate) async fn get_shell_automaton_stats_current_head(
     level: i32,
+    round: Option<i32>,
     env: &RpcServiceEnvironment,
 ) -> anyhow::Result<Vec<(BlockHash, shell_automaton::service::BlockApplyStats)>> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     let _ = env
         .shell_automaton_sender()
-        .send(RpcShellAutomatonMsg::GetStatsCurrentHeadStats { channel: tx, level })
+        .send(RpcShellAutomatonMsg::GetStatsCurrentHeadStats {
+            channel: tx,
+            level,
+            round,
+        })
         .await?;
     let response = rx.await?;
     Ok(response)

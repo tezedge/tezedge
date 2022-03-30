@@ -120,6 +120,7 @@ pub enum RpcRequest {
     GetStatsCurrentHeadStats {
         channel: oneshot::Sender<Vec<(BlockHash, BlockApplyStats)>>,
         level: Level,
+        round: Option<i32>,
     },
 }
 

@@ -539,8 +539,9 @@ pub async fn dev_shell_automaton_stats_current_head_application(
         .get_str("level")
         .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `level`"))
         .and_then(|str| Ok(str.parse()?))?;
+    let round = query.get_str("round").and_then(|str| str.parse().ok());
 
-    let stats = dev_services::get_shell_automaton_stats_current_head(level, &env).await?;
+    let stats = dev_services::get_shell_automaton_stats_current_head(level, round, &env).await?;
     let base_time = stats
         .iter()
         .min_by_key(|(_, v)| v.receive_timestamp)
@@ -656,8 +657,9 @@ pub async fn dev_shell_automaton_stats_current_head_peers(
         .get_str("level")
         .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `level`"))
         .and_then(|str| Ok(str.parse()?))?;
+    let round = query.get_str("round").and_then(|str| str.parse().ok());
 
-    let stats = dev_services::get_shell_automaton_stats_current_head(level, &env).await?;
+    let stats = dev_services::get_shell_automaton_stats_current_head(level, round, &env).await?;
     let base_time = stats
         .iter()
         .min_by_key(|(_, v)| v.receive_timestamp)
