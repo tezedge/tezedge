@@ -1,9 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fmt::Display;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::{
     collections::{HashMap, HashSet},
@@ -337,6 +339,17 @@ pub trait HasSingleValue {
     {
         self.get_str(key)
             .map(T::from_b58check)
+            .transpose()
+            .map_err(|err| anyhow::anyhow!("{err}"))
+    }
+
+    fn get_parsed<T>(&self, key: &str) -> Result<Option<T>>
+    where
+        T: FromStr,
+        T::Err: Display,
+    {
+        self.get_str(key)
+            .map(|s| s.parse::<T>())
             .transpose()
             .map_err(|err| anyhow::anyhow!("{err}"))
     }

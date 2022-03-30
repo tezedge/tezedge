@@ -6,7 +6,7 @@
 // The timings database, along with the readonly IPC context access could be used
 // to reproduce the same functionality.
 
-use crypto::hash::{ContractKt1Hash, OperationHash};
+use crypto::hash::{BlockPayloadHash, ContractKt1Hash, OperationHash};
 use serde::{Deserialize, Serialize};
 use shell_automaton::mempool::{OperationKind, OperationValidationResult};
 use shell_automaton::service::rpc_service::RpcShellAutomatonActionsRaw;
@@ -910,16 +910,77 @@ pub(crate) async fn get_shell_automaton_endorsing_rights(
     Ok(response)
 }
 
+fn adjust_times(base_time: u64, value: &mut serde_json::Value) -> anyhow::Result<()> {
+    let obj = value
+        .as_object_mut()
+        .ok_or(anyhow::format_err!("object expected"))?;
+    obj.iter_mut().for_each(|(_, v)| {
+        if let Some(v) = v.as_object_mut() {
+            v.iter_mut().for_each(|(k, v)| {
+                if k.ends_with("_time") {
+                    if let Some(t) = v.as_i64() {
+                        *v = serde_json::json!(t - (base_time as i64));
+                    }
+                }
+            })
+        }
+    });
+    Ok(())
+}
+
 pub(crate) async fn get_shell_automaton_endorsements_status(
     block_hash: Option<BlockHash>,
+    payload_hash: Option<BlockPayloadHash>,
+    level: Option<i32>,
+    round: Option<i32>,
+    base_time: Option<u64>,
     env: &RpcServiceEnvironment,
 ) -> anyhow::Result<serde_json::Value> {
+    use shell_automaton::mempool::mempool_actions::ConsensusOperationMatcher;
+    let matcher = match (block_hash, payload_hash, level, round) {
+        (Some(block_hash), None, None, None) => {
+            ConsensusOperationMatcher::endorsement_branch(block_hash)
+        }
+        (None, None, Some(level), round) => {
+            ConsensusOperationMatcher::endorsement_level_round(level, round)
+        }
+        _ => anyhow::bail!("Either `block_hash` or `level`+`round` should be specified"),
+    };
     let rx = env
         .shell_automaton_sender()
-        .send(RpcShellAutomatonMsg::GetEndorsementsStatus { block_hash })
+        .send(RpcShellAutomatonMsg::GetEndorsementsStatus { matcher })
         .await?;
 
-    let response = rx.await?;
+    let mut response = rx.await?;
+    if let Some(base_time) = base_time {
+        adjust_times(base_time, &mut response)?;
+    }
+    Ok(response)
+}
+
+pub(crate) async fn get_shell_automaton_preendorsements_status(
+    payload_hash: Option<BlockPayloadHash>,
+    level: Option<i32>,
+    round: Option<i32>,
+    base_time: Option<u64>,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<serde_json::Value> {
+    use shell_automaton::mempool::mempool_actions::ConsensusOperationMatcher;
+    let matcher = match (payload_hash, level, round) {
+        (None, Some(level), round) => {
+            ConsensusOperationMatcher::preendorsement_level_round(level, round)
+        }
+        _ => anyhow::bail!("`level`+`round` should be specified"),
+    };
+    let rx = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetEndorsementsStatus { matcher })
+        .await?;
+
+    let mut response = rx.await?;
+    if let Some(base_time) = base_time {
+        adjust_times(base_time, &mut response)?;
+    }
     Ok(response)
 }
 

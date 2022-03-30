@@ -10,14 +10,17 @@ use std::{
 use crypto::{
     base58::FromBase58CheckError,
     blake2b::Blake2bError,
-    hash::{BlockHash, FromBytesError, OperationHash, Signature},
+    hash::{BlockHash, BlockPayloadHash, FromBytesError, OperationHash, ProtocolHash, Signature},
 };
 use redux_rs::ActionId;
 use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
 use tezos_messages::{
     p2p::{
         binary_message::BinaryRead,
-        encoding::{block_header::Level, operation::Operation},
+        encoding::{
+            block_header::{BlockHeader, Level},
+            operation::Operation,
+        },
     },
     protocol::{SupportedProtocol, UnsupportedProtocolError},
 };
@@ -67,8 +70,9 @@ impl std::fmt::Display for Key {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct PrecheckerState {
     pub operations: HashMap<Key, PrecheckerOperation>,
-    pub protocol_version_cache: ProtocolVersionCache,
-    pub next_protocol: Option<(u8, SupportedProtocolState)>,
+    pub blocks_cache: BTreeMap<BlockHash, (ActionId, BlockHeader)>,
+    pub proto_cache: BTreeMap<u8, ProtocolHash>,
+    pub protocol_cache: BTreeMap<BlockHash, (ActionId, ProtocolHash, ProtocolHash)>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -122,6 +126,7 @@ pub struct PrevalidatorEndorsementWithSlotOperation {
 pub enum OperationDecodedContents {
     Proto010(tezos_messages::protocol::proto_010::operation::Operation),
     Proto011(tezos_messages::protocol::proto_011::operation::Operation),
+    Proto012(tezos_messages::protocol::proto_012::operation::Operation),
 }
 
 impl OperationDecodedContents {
@@ -129,6 +134,7 @@ impl OperationDecodedContents {
         match self {
             OperationDecodedContents::Proto010(operation) => operation.endorsement_level(),
             OperationDecodedContents::Proto011(operation) => operation.endorsement_level(),
+            OperationDecodedContents::Proto012(operation) => operation.endorsement_level(),
         }
     }
 }
@@ -144,8 +150,6 @@ pub struct PrecheckerOperation {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, strum_macros::AsRefStr)]
 pub enum PrecheckerOperationState {
     Init,
-    PendingProtocolVersion,
-    ProtocolVersionReady,
     PendingContentDecoding,
     DecodedContentReady {
         operation_decoded_contents: OperationDecodedContents,
@@ -203,6 +207,8 @@ pub enum PrecheckerResponseError {
     Protocol(#[from] UnsupportedProtocolError),
     #[error("Storage error: {0}")]
     Storage(#[from] BlockAdditionalDataStorageError),
+    #[error("Error: `{0}`")]
+    Other(#[from] PrecheckerError),
 }
 
 impl From<BinaryWriterError> for PrecheckerResponseError {
@@ -214,12 +220,16 @@ impl From<BinaryWriterError> for PrecheckerResponseError {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum PrecheckerError {
+    #[error("Missing block header for operation `{0}`")]
+    MissingBlockHeader(BlockHash),
+    #[error("Missing protocol for block `{0}`")]
+    MissingProtocol(BlockHash),
+    #[error("Unsupported protocol: `{0}`")]
+    UnsupportedProtocol(#[from] UnsupportedProtocolError),
     #[error("Error decoding protocol specific operation contents: {0}")]
     OperationContentsDecode(#[from] BinaryReaderError),
     #[error("Error getting endorsing rights: {0}")]
     EndorsingRights(#[from] RightsError),
-    #[error("Unknown protocol: {0}")]
-    Protocol(#[from] UnsupportedProtocolError),
     #[error("Storage error: {0}")]
     Storage(#[from] BlockAdditionalDataStorageError),
 }
@@ -248,10 +258,15 @@ impl OperationDecodedContents {
             SupportedProtocol::Proto011 => Self::Proto011(
                 tezos_messages::protocol::proto_011::operation::Operation::from_bytes(encoded)?,
             ),
+            SupportedProtocol::Proto012 => Self::Proto012(
+                tezos_messages::protocol::proto_012::operation::Operation::from_bytes(encoded)?,
+            ),
             _ => {
-                return Err(PrecheckerError::Protocol(UnsupportedProtocolError {
-                    protocol: proto.protocol_hash(),
-                }));
+                return Err(PrecheckerError::UnsupportedProtocol(
+                    UnsupportedProtocolError {
+                        protocol: proto.protocol_hash(),
+                    },
+                ));
             }
         })
     }
@@ -260,54 +275,49 @@ impl OperationDecodedContents {
         match self {
             OperationDecodedContents::Proto010(op) => &op.branch,
             OperationDecodedContents::Proto011(op) => &op.branch,
+            OperationDecodedContents::Proto012(op) => &op.branch,
         }
     }
 
-    pub(super) fn is_endorsement(&self) -> bool {
+    #[allow(unused)]
+    pub(crate) fn payload(&self) -> Option<&BlockPayloadHash> {
         match self {
-            OperationDecodedContents::Proto010(operation) if operation.contents.len() == 1 => {
-                matches!(
-                operation.contents[0],
-                tezos_messages::protocol::proto_010::operation::Contents::Endorsement(_)
-                    | tezos_messages::protocol::proto_010::operation::Contents::EndorsementWithSlot(
-                        _
-                    )
-            )
-            }
-            OperationDecodedContents::Proto011(operation) if operation.contents.len() == 1 => {
-                matches!(
-                operation.contents[0],
-                tezos_messages::protocol::proto_011::operation::Contents::Endorsement(_)
-                    | tezos_messages::protocol::proto_011::operation::Contents::EndorsementWithSlot(
-                        _
-                    )
-            )
-            }
+            OperationDecodedContents::Proto012(op) => op.payload(),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn level_round(&self) -> Option<(i32, i32)> {
+        match self {
+            OperationDecodedContents::Proto012(op) => op.level_round(),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn is_endorsement(&self) -> bool {
+        match self {
+            OperationDecodedContents::Proto010(operation) => operation.is_endorsement(),
+            OperationDecodedContents::Proto011(operation) => operation.is_endorsement(),
+            OperationDecodedContents::Proto012(operation) => operation.is_endorsement(),
+        }
+    }
+
+    pub(crate) fn is_preendorsement(&self) -> bool {
+        match self {
+            OperationDecodedContents::Proto012(operation) => operation.is_preendorsement(),
             _ => false,
         }
     }
 
     pub(crate) fn endorsement_slot(&self) -> Option<Slot> {
         match self {
-            OperationDecodedContents::Proto010(operation) if operation.contents.len() == 1 => {
-                use tezos_messages::protocol::proto_010::operation::*;
-                match operation.contents[0] {
-                    Contents::EndorsementWithSlot(EndorsementWithSlotOperation {
-                        slot, ..
-                    }) => Some(slot),
-                    _ => None,
-                }
+            OperationDecodedContents::Proto010(operation) => {
+                operation.as_endorsement().map(|e| e.slot)
             }
-            OperationDecodedContents::Proto011(operation) if operation.contents.len() == 1 => {
-                use tezos_messages::protocol::proto_011::operation::*;
-                match operation.contents[0] {
-                    Contents::EndorsementWithSlot(EndorsementWithSlotOperation {
-                        slot, ..
-                    }) => Some(slot),
-                    _ => None,
-                }
+            OperationDecodedContents::Proto011(operation) => {
+                operation.as_endorsement().map(|e| e.slot)
             }
-            _ => None,
+            OperationDecodedContents::Proto012(operation) => operation.slot(),
         }
     }
 
@@ -315,6 +325,7 @@ impl OperationDecodedContents {
         match self {
             OperationDecodedContents::Proto010(operation) => operation.as_json(),
             OperationDecodedContents::Proto011(operation) => operation.as_json(),
+            OperationDecodedContents::Proto012(operation) => operation.as_json(),
         }
     }
 }

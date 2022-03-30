@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::OperationHash;
 use redux_rs::Store;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -19,24 +20,18 @@ use tezos_messages::p2p::{
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
-use crate::{block_applier::BlockApplierApplyState, current_head_precheck::CurrentHeadState};
 use crate::{
-    current_head_precheck::CurrentHeadPrecheckSuccessAction,
+    block_applier::BlockApplierApplyState,
+    current_head_precheck::{CurrentHeadPrecheckSuccessAction, CurrentHeadState},
+    mempool::{mempool_state::OperationState, PrevalidatorAction},
     peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
-    prechecker::prechecker_actions::{PrecheckerApplied, PrecheckerErrored},
-};
-use crate::{
-    mempool::mempool_state::OperationState,
     prechecker::prechecker_actions::{
-        PrecheckerPrecacheEndorsingRightsAction, PrecheckerPrecheckOperationRequestAction,
-        PrecheckerPrecheckOperationResponse, PrecheckerPrecheckOperationResponseAction,
-        PrecheckerSetNextBlockProtocolAction,
+        PrecheckerApplied, PrecheckerErrored, PrecheckerPrecheckBlockAction,
+        PrecheckerPrecheckOperationRequestAction, PrecheckerPrecheckOperationResponse,
+        PrecheckerPrecheckOperationResponseAction,
     },
     rights::Slot,
-};
-use crate::{mempool::PrevalidatorAction, service::protocol_runner_service::ProtocolRunnerResult};
-use crate::{
-    service::{ProtocolRunnerService, RpcService},
+    service::{protocol_runner_service::ProtocolRunnerResult, ProtocolRunnerService, RpcService},
     Action, ActionWithMeta, Service, State,
 };
 
@@ -44,6 +39,7 @@ use super::{
     mempool_actions::MempoolRpcEndorsementsStatusGetAction,
     mempool_actions::*,
     monitored_operation::{MempoolOperations, MonitoredOperation},
+    MempoolOperation, OperationKind,
 };
 
 pub fn mempool_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithMeta)
@@ -246,11 +242,8 @@ where
                     store.dispatch(MempoolRecvDoneAction {
                         address: *address,
                         block_hash,
-                        prev_block_hash: current_head.current_block_header().predecessor().clone(),
+                        block_header: current_head.current_block_header().clone(),
                         message,
-                        level: current_head.current_block_header().level(),
-                        timestamp: current_head.current_block_header().timestamp().into(),
-                        proto: current_head.current_block_header().proto(),
                     });
                 }
                 PeerMessage::Operation(ref op) => {
@@ -405,30 +398,33 @@ where
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
-            prev_block_hash,
-            proto,
-            level,
+            block_hash,
+            block_header,
             ..
         }) => {
+            store.dispatch(PrecheckerPrecheckBlockAction {
+                block_hash: block_hash.clone(),
+                block_header: block_header.clone(),
+            });
+            // TODO enable this when rights calculation is implemented
+            // let prev_block_hash = block_header.predecessor();
+            // let level = block_header.level();
             // Ask prechecker to precache endorsing rights for new level, using latest applied block
-            if store.state().mempool.first_current_head
-                && crate::prechecker::prechecking_enabled(store.state(), prev_block_hash)
-            {
-                if let Some(current_head) = store
-                    .state
-                    .get()
-                    .mempool
-                    .local_head_state
-                    .as_ref()
-                    .map(|lhs| lhs.hash.clone())
-                {
-                    store.dispatch(PrecheckerPrecacheEndorsingRightsAction {
-                        current_head,
-                        level: *level,
-                    });
-                }
-                store.dispatch(PrecheckerSetNextBlockProtocolAction { proto: *proto });
-            }
+            // if crate::prechecker::prechecking_enabled(store.state(), prev_block_hash) {
+            //     if let Some(current_head) = store
+            //         .state
+            //         .get()
+            //         .mempool
+            //         .local_head_state
+            //         .as_ref()
+            //         .map(|lhs| lhs.hash.clone())
+            //     {
+            //         store.dispatch(PrecheckerPrecacheEndorsingRightsAction {
+            //             current_head,
+            //             level,
+            //         });
+            //     }
+            // }
             if let Some(peer) = store.state().mempool.peer_state.get(address) {
                 if !peer.requesting_full_content.is_empty() {
                     store.dispatch(MempoolGetOperationsAction { address: *address });
@@ -453,7 +449,13 @@ where
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
-            if crate::prechecker::prechecking_enabled(store.state(), operation.branch()) {
+            let is_consensus_operation = matches!(
+                OperationKind::from_operation_content_raw(operation.data().as_ref()),
+                OperationKind::Preendorsement | OperationKind::Endorsement
+            );
+            if is_consensus_operation
+                && crate::prechecker::prechecking_enabled(store.state(), operation.branch())
+            {
                 store.dispatch(PrecheckerPrecheckOperationRequestAction {
                     operation: operation.clone(),
                 });
@@ -773,43 +775,49 @@ where
 
         Action::MempoolRpcEndorsementsStatusGet(MempoolRpcEndorsementsStatusGetAction {
             rpc_id,
-            block_hash: _,
+            matcher,
         }) => {
-            #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-            struct OpStatus {
-                state: OperationState,
-                broadcast: bool,
-                slot: Slot,
-                #[serde(flatten)]
-                times: HashMap<String, i64>,
-            }
-
-            let status = store
-                .state
-                .get()
-                .mempool
-                .operations_state
-                .iter()
-                .filter_map(|(op, state)| {
-                    if let Some(slot) = state.endorsement_slot() {
-                        let mut times = state.times.clone();
-                        if let Some(t) = times.get("received_contents_time").cloned() {
-                            times.insert("received_time".to_string(), t);
-                        }
-                        let status = OpStatus {
-                            state: state.state,
-                            broadcast: state.broadcast,
-                            slot,
-                            times: state.times.clone(),
-                        };
-                        Some((op.clone(), status))
-                    } else {
-                        None
-                    }
-                })
-                .collect::<BTreeMap<_, _>>();
+            let status = collect_operations(&store.state().mempool.operations_state, matcher);
             store.service.rpc().respond(*rpc_id, status);
         }
         _ => (),
     }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+struct OpStatus {
+    state: OperationState,
+    broadcast: bool,
+    slot: Option<Slot>,
+    #[serde(flatten)]
+    operation: Option<serde_json::Value>,
+    #[serde(flatten)]
+    times: HashMap<String, u64>,
+}
+
+fn collect_operations<M>(
+    operations_state: &BTreeMap<OperationHash, MempoolOperation>,
+    matcher: &M,
+) -> BTreeMap<OperationHash, OpStatus>
+where
+    M: MempoolOperationMatcher,
+{
+    operations_state
+        .iter()
+        .filter(|(_, state)| matcher.matches(state))
+        .map(|(op, state)| {
+            let mut times = state.times.clone();
+            if let Some(t) = times.get("received_contents_time").cloned() {
+                times.insert("received_time".to_string(), t);
+            }
+            let status = OpStatus {
+                state: state.state,
+                broadcast: state.broadcast,
+                slot: state.endorsement_slot(),
+                operation: state.as_json(),
+                times: state.times.clone(),
+            };
+            (op.clone(), status)
+        })
+        .collect::<BTreeMap<_, _>>()
 }

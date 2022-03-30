@@ -24,13 +24,12 @@ use crate::State;
 fn block_prechecking_possible(state: &State, prev_block: &BlockHash) -> bool {
     state
         .prechecker
-        .protocol_version_cache
-        .next_protocol_versions
+        .protocol_cache
         .get(prev_block)
-        .map_or(false, |(_, supported_protocol)| {
+        .map_or(false, |(_, _, next_protocol)| {
             matches!(
-                supported_protocol,
-                SupportedProtocol::Proto010 | SupportedProtocol::Proto011
+                SupportedProtocol::try_from(next_protocol),
+                Ok(SupportedProtocol::Proto010) | Ok(SupportedProtocol::Proto011)
             )
         })
 }

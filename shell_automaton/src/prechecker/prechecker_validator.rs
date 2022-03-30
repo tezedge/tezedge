@@ -52,6 +52,8 @@ pub enum EndorsementValidationError {
     InlinedSignatureMismatch,
     #[error("Cannot serialize as JSON")]
     JsonSerialization(String),
+    #[error("Unsupported protocol: `{0}`")]
+    UnsupportedProtocol(String),
 }
 
 impl From<serde_json::Error> for EndorsementValidationError {
@@ -124,6 +126,24 @@ impl OperationProtocolData for tezos_messages::protocol::proto_011::operation::O
     }
 }
 
+impl OperationProtocolData for tezos_messages::protocol::proto_012::operation::Operation {
+    fn endorsement_level(&self) -> Option<Level> {
+        use tezos_messages::protocol::proto_012::operation::*;
+        if self.contents.len() != 1 {
+            return None;
+        }
+        match &self.contents[0] {
+            Contents::Endorsement(EndorsementOperation { level, .. })
+            | Contents::Preendorsement(PreendorsementOperation { level, .. }) => Some(*level),
+            _ => None,
+        }
+    }
+
+    fn as_json(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or_else(|_| serde_json::json!("cannot convert to json"))
+    }
+}
+
 pub(super) trait EndorsementValidator {
     fn validate_endorsement(
         &self,
@@ -148,6 +168,14 @@ impl EndorsementValidator for OperationDecodedContents {
             }
             OperationDecodedContents::Proto011(operation) => {
                 validate_endorsement_011_hangzhou(operation, chain_id, block_hash, rights, log)
+            }
+            OperationDecodedContents::Proto012(_) => {
+                return Err(Refused {
+                    decoded_contents: self.clone(),
+                    error: EndorsementValidationError::UnsupportedProtocol(
+                        "012_Psithaca".to_string(),
+                    ),
+                });
             }
         };
         match result {

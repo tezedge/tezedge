@@ -66,6 +66,21 @@ impl TryFrom<P2POperation> for Operation {
     }
 }
 
+impl Operation {
+    pub fn is_endorsement(&self) -> bool {
+        self.as_endorsement().is_some()
+    }
+
+    pub fn as_endorsement(&self) -> Option<&EndorsementWithSlotOperation> {
+        if let Some((Contents::EndorsementWithSlot(endorsement), [])) = self.contents.split_first()
+        {
+            Some(endorsement)
+        } else {
+            None
+        }
+    }
+}
+
 /// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]

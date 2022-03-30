@@ -446,12 +446,43 @@ pub async fn dev_shell_automaton_endorsements_status(
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    let block_hash = query
-        .get_str("block")
-        .map(BlockHash::from_base58_check)
-        .transpose()?;
+    let block_hash = query.get_hash("block_hash")?;
+    let payload_hash = query.get_hash("payload_hash")?;
+    let level = query.get_parsed("level")?;
+    let round = query.get_parsed("round")?;
+    let base_time = query.get_parsed("base_time")?;
     make_json_response(
-        &dev_services::get_shell_automaton_endorsements_status(block_hash, &env).await?,
+        &dev_services::get_shell_automaton_endorsements_status(
+            block_hash,
+            payload_hash,
+            level,
+            round,
+            base_time,
+            &env,
+        )
+        .await?,
+    )
+}
+
+pub async fn dev_shell_automaton_preendorsements_status(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let payload_hash = query.get_hash("payload_hash")?;
+    let level = query.get_parsed("level")?;
+    let round = query.get_parsed("round")?;
+    let base_time = query.get_parsed("base_time")?;
+    make_json_response(
+        &dev_services::get_shell_automaton_preendorsements_status(
+            payload_hash,
+            level,
+            round,
+            base_time,
+            &env,
+        )
+        .await?,
     )
 }
 
@@ -503,6 +534,10 @@ fn application_stats(hash: BlockHash, stats: BlockApplyStats, base_time: u64) ->
 
         "baker": stats.baker.and_then(|baker| baker.pk_hash().ok()).map(|pkh| pkh.to_string_representation()),
         "baker_priority": stats.priority,
+
+        "round": stats.round,
+        "payload_hash": stats.payload_hash,
+        "payload_round": stats.payload_round,
 
         "precheck_start": as_delta_or(stats.precheck_start),
         "precheck_end": as_delta_or(stats.precheck_end),

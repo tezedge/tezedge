@@ -353,6 +353,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
     routes.handle(
         hash_set![Method::GET],
+        "/dev/shell/automaton/preendorsements_status",
+        dev_handler::dev_shell_automaton_preendorsements_status,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/dev/shell/automaton/stats/current_head",
         dev_handler::dev_shell_automaton_stats_current_head_peers,
     );

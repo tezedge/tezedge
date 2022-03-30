@@ -230,9 +230,8 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             rpc_id,
                         });
                     }
-                    RpcRequest::GetEndorsementsStatus { block_hash } => {
-                        store
-                            .dispatch(MempoolRpcEndorsementsStatusGetAction { rpc_id, block_hash });
+                    RpcRequest::GetEndorsementsStatus { matcher } => {
+                        store.dispatch(MempoolRpcEndorsementsStatusGetAction { rpc_id, matcher });
                     }
 
                     RpcRequest::GetStatsCurrentHeadStats {

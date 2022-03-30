@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet},
     net::SocketAddr,
 };
 
@@ -59,17 +59,7 @@ pub struct MempoolState {
 
     pub operation_stats: OperationsStats,
 
-    pub old_operations_state: VecDeque<(Level, BTreeMap<OperationHash, MempoolOperation>)>,
     pub operations_state: BTreeMap<OperationHash, MempoolOperation>,
-
-    /// Hash of the latest applied block
-    pub latest_current_head: Option<BlockHash>,
-
-    /// First current_head for the current level.
-    pub first_current_head: bool,
-
-    /// Timestamp of the first latest CurrentHead message
-    pub first_current_head_time: u64,
 }
 
 impl MempoolState {
@@ -528,63 +518,34 @@ impl OperationKind {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperation {
-    pub block_timestamp: i64,
-    pub first_current_head: i64,
+    pub level: Level,
     pub state: OperationState,
     pub broadcast: bool,
     pub operation_decoded_contents: Option<OperationDecodedContents>,
     #[serde(flatten)]
-    pub times: HashMap<String, i64>,
+    pub times: HashMap<String, u64>,
 }
 
 impl MempoolOperation {
-    fn time_offset_from(action: &ActionWithMeta, base: i64) -> i64 {
-        action.time_as_nanos() as i64 - base
-    }
-
-    fn time_offset(&self, action: &ActionWithMeta) -> i64 {
-        Self::time_offset_from(action, self.first_current_head)
-    }
-
-    pub(super) fn received(
-        mut block_timestamp: i64,
-        first_current_head: u64,
-        action: &ActionWithMeta,
-    ) -> Self {
+    pub(super) fn received(level: Level, action: &ActionWithMeta) -> Self {
         let state = OperationState::ReceivedHash;
-        block_timestamp *= 1_000_000_000;
-        let first_current_head = first_current_head as i64;
         Self {
-            block_timestamp,
-            first_current_head,
+            level,
             operation_decoded_contents: None,
             state,
             broadcast: false,
-            times: HashMap::from([(
-                state.time_name(),
-                Self::time_offset_from(action, first_current_head),
-            )]),
+            times: HashMap::from([(state.time_name(), action.time_as_nanos())]),
         }
     }
 
-    pub(super) fn injected(
-        mut block_timestamp: i64,
-        first_current_head: u64,
-        action: &ActionWithMeta,
-    ) -> Self {
+    pub(super) fn injected(level: Level, action: &ActionWithMeta) -> Self {
         let state = OperationState::ReceivedContents; // TODO use separate id
-        block_timestamp *= 1_000_000_000;
-        let first_current_head = first_current_head as i64;
         Self {
-            block_timestamp,
-            first_current_head,
+            level,
             operation_decoded_contents: None,
             state,
             broadcast: false,
-            times: HashMap::from([(
-                state.time_name(),
-                Self::time_offset_from(action, first_current_head),
-            )]),
+            times: HashMap::from([(state.time_name(), action.time_as_nanos())]),
         }
     }
 
@@ -595,7 +556,7 @@ impl MempoolOperation {
     ) -> Self {
         let state = OperationState::Decoded;
         let mut times = self.times.clone();
-        times.insert(state.time_name(), self.time_offset(action));
+        times.insert(state.time_name(), action.time_as_nanos());
         Self {
             times,
             state,
@@ -606,7 +567,7 @@ impl MempoolOperation {
 
     pub(super) fn next_state(&self, state: OperationState, action: &ActionWithMeta) -> Self {
         let mut times = self.times.clone();
-        times.insert(state.time_name(), self.time_offset(action));
+        times.insert(state.time_name(), action.time_as_nanos());
         Self {
             times,
             state,
@@ -617,7 +578,7 @@ impl MempoolOperation {
     pub(super) fn broadcast(&self, action: &ActionWithMeta) -> Self {
         let mut times = self.times.clone();
         if !self.broadcast {
-            times.insert("broadcast_time".to_string(), self.time_offset(action));
+            times.insert("broadcast_time".to_string(), action.time_as_nanos());
         }
         Self {
             times,
@@ -628,6 +589,12 @@ impl MempoolOperation {
 
     pub(super) fn endorsement_slot(&self) -> Option<Slot> {
         self.operation_decoded_contents.as_ref()?.endorsement_slot()
+    }
+
+    pub(super) fn as_json(&self) -> Option<serde_json::Value> {
+        self.operation_decoded_contents
+            .as_ref()
+            .map(OperationDecodedContents::as_json)
     }
 }
 
