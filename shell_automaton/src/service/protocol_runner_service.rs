@@ -342,8 +342,6 @@ impl ProtocolRunnerServiceDefault {
     }
 
     fn run(mut channel: ProtocolRunnerResponder, mut api: ProtocolRunnerApi, log: Logger) {
-        // TODO:
-        //   - pool connections
         api.tokio_runtime.clone().block_on(async move {
             let mut child_process_handle: Option<Child> = None;
             let mut tezos_runtime_configuration = None;
@@ -418,9 +416,9 @@ impl ProtocolRunnerServiceDefault {
                         continue;
                     }
                     ProtocolRunnerRequest::Message(v) => {
-                        // Keep these around to be able to properly reinitialize the protocol
-                        // runner after a restart
                         match &v.1 {
+                            // Keep these around to be able to properly reinitialize the protocol
+                            // runner after a restart
                             ProtocolMessage::ChangeRuntimeConfigurationCall(cfg) => {
                                 tezos_runtime_configuration = Some(cfg.clone());
                             }

@@ -24,12 +24,20 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
 
     // apply block 1 and block 2
     let last_block = apply_blocks_1_2(&chain_id, genesis_block_header);
+    let predecessor_hash = last_block
+        .hash()
+        .as_ref()
+        .unwrap()
+        .as_slice()
+        .try_into()
+        .unwrap();
 
     // let's initialize prevalidator for current head
     let prevalidator = apply_encoded_message(
         ProtocolMessage::BeginConstructionForPrevalidationCall(BeginConstructionRequest {
             chain_id: chain_id.clone(),
             predecessor: last_block,
+            predecessor_hash,
             protocol_data: None,
             predecessor_block_metadata_hash: None,
             predecessor_ops_metadata_hash: None,

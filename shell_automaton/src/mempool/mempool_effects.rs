@@ -77,7 +77,22 @@ where
                 store.dispatch(PrevalidatorAction::PrevalidatorReady(res.clone()));
             }
             ProtocolRunnerResult::ValidateOperation((_token, Ok(res))) => {
-                store.dispatch(PrevalidatorAction::OperationValidated(res.clone()));
+                // If the predecessor hash doesn't match, this is an outdated request
+                // and it must be ignored.
+                if let Some(local_head_state) = &store.state().mempool.local_head_state {
+                    if res.prevalidator.predecessor == local_head_state.hash {
+                        store.dispatch(PrevalidatorAction::OperationValidated(res.clone()));
+                    } else {
+                        slog::debug!(&store.state().log, "Got stale operation validation result";
+                            "validated_for" => res.prevalidator.predecessor.to_base58_check(),
+                            "current_mempool_head" => local_head_state.header.predecessor().to_base58_check());
+                    }
+                } else {
+                    slog::debug!(
+                        &store.state().log,
+                        "Got operation validation result, but there is no mempool.local_head_state"
+                    );
+                }
             }
             _ => (),
         },
@@ -279,6 +294,7 @@ where
                     let req = BeginConstructionRequest {
                         chain_id,
                         predecessor: local_head_state.header.clone(),
+                        predecessor_hash: local_head_state.hash.clone(),
                         protocol_data: None,
                         predecessor_block_metadata_hash: local_head_state.metadata_hash.clone(),
                         predecessor_ops_metadata_hash: local_head_state.ops_metadata_hash.clone(),
@@ -295,6 +311,7 @@ where
                 let req = BeginConstructionRequest {
                     chain_id,
                     predecessor: (*block.header).clone(),
+                    predecessor_hash: block.hash.clone(),
                     protocol_data: None,
                     predecessor_block_metadata_hash: apply_result.block_metadata_hash.clone(),
                     predecessor_ops_metadata_hash: apply_result.ops_metadata_hash.clone(),

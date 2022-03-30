@@ -91,6 +91,7 @@ mod tezos_ffi {
             begin_construction_request: OCamlBeginConstructionRequest,
             chain_id: OCamlChainId,
             predecessor: OCamlBlockHeader,
+            predecessor_hash: OCamlBlockHash,
             protocol_data: Option<OCamlBytes>,
         ) -> bool;
         pub fn construct_and_compare_validate_operation_request(
@@ -123,6 +124,7 @@ mod tezos_ffi {
             chain_id: OCamlChainId,
             protocol: OCamlProtocolHash,
             context_fitness: Option<OCamlList<OCamlBytes>>,
+            predecessor: OCamlBlockHash,
         ) -> bool;
     }
 }
@@ -393,9 +395,18 @@ fn test_apply_block_response_conv() {
 #[test]
 #[serial]
 fn test_begin_construction_request_conv() {
+    let predecessor = BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap();
+    let predecessor_hash = predecessor
+        .hash()
+        .as_ref()
+        .unwrap()
+        .as_slice()
+        .try_into()
+        .unwrap();
     let begin_construction_request = BeginConstructionRequest {
         chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
-        predecessor: BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap(),
+        predecessor,
+        predecessor_hash,
         protocol_data: Some(vec![1, 2, 3, 4, 5, 6, 7, 8]),
         predecessor_block_metadata_hash: None,
         predecessor_ops_metadata_hash: None,
@@ -405,6 +416,7 @@ fn test_begin_construction_request_conv() {
         let chain_id = begin_construction_request.chain_id.to_boxroot(rt);
         let predecessor =
             FfiBlockHeader::from(&begin_construction_request.predecessor).to_boxroot(rt);
+        let predecessor_hash = begin_construction_request.predecessor_hash.to_boxroot(rt);
         let protocol_data = begin_construction_request.protocol_data.to_boxroot(rt);
         let begin_construction_request = begin_construction_request.to_boxroot(rt);
 
@@ -413,6 +425,7 @@ fn test_begin_construction_request_conv() {
             &begin_construction_request,
             &chain_id,
             &predecessor,
+            &predecessor_hash,
             &protocol_data,
         )
         .to_rust(rt)
@@ -435,6 +448,8 @@ fn test_validate_operation_request_conv() {
         chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
         protocol: get_protocol_hash(&[1, 2, 3, 4, 5, 6, 7, 8, 9]),
         context_fitness: Some(vec![vec![0, 1], vec![0, 0, 1, 2, 3, 4, 5]]),
+        predecessor: BlockHash::try_from("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")
+            .unwrap(),
     };
     let operations = ApplyBlockRequest::convert_operations(block_operations_from_hex(
         HEADER_HASH,
@@ -562,12 +577,15 @@ fn test_validate_prevalidator_wrapper_conv() {
         chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
         protocol: get_protocol_hash(&[1, 2, 3, 4, 5, 6, 7, 8, 9]),
         context_fitness: Some(vec![vec![0, 0], vec![0, 0, 1, 2, 3, 4, 5]]),
+        predecessor: BlockHash::try_from("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")
+            .unwrap(),
     };
 
     let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
         let chain_id = prevalidator_wrapper.chain_id.to_boxroot(rt);
         let protocol = prevalidator_wrapper.protocol.to_boxroot(rt);
         let context_fitness = prevalidator_wrapper.context_fitness.to_boxroot(rt);
+        let predecessor = prevalidator_wrapper.predecessor.to_boxroot(rt);
         let prevalidator_wrapper = prevalidator_wrapper.to_boxroot(rt);
         tezos_ffi::construct_and_compare_prevalidator_wrapper(
             rt,
@@ -575,6 +593,7 @@ fn test_validate_prevalidator_wrapper_conv() {
             &chain_id,
             &protocol,
             &context_fitness,
+            &predecessor,
         )
         .to_rust(rt)
     })

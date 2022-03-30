@@ -308,6 +308,7 @@ impl_to_ocaml_record! {
     BeginConstructionRequest => OCamlBeginConstructionRequest {
         chain_id: OCamlChainId,
         predecessor: OCamlBlockHeader => FfiBlockHeader::from(predecessor),
+        predecessor_hash: OCamlBlockHash,
         protocol_data: Option<OCamlBytes>,
         predecessor_block_metadata_hash: Option<OCamlBlockMetadataHash>,
         predecessor_ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
@@ -319,6 +320,7 @@ impl_to_ocaml_record! {
         chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
         context_fitness: Option<OCamlList<OCamlBytes>>,
+        predecessor: OCamlBlockHash,
     }
 }
 

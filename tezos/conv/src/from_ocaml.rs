@@ -190,6 +190,7 @@ impl_from_ocaml_record! {
         chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
         context_fitness: Option<OCamlList<OCamlBytes>>,
+        predecessor: OCamlBlockHash,
     }
 }
 
