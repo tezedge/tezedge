@@ -745,6 +745,7 @@ mod tests {
 
         let node_info = NodeInfo::new(
             126,
+            0,
             String::default(),
             String::default(),
             1,
@@ -838,6 +839,7 @@ mod tests {
         let initial_time: i64 = 1617296614;
         let node_info = NodeInfo::new(
             126,
+            0,
             String::default(),
             String::default(),
             1,
