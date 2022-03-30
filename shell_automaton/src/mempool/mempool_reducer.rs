@@ -57,11 +57,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .ops
                             .insert(v.hash.clone(), op);
                         mempool_state.validated_operations.applied.push(v.clone());
-                        for peer in mempool_state.peer_state.values_mut() {
-                            if !peer.seen_operations.contains(&v.hash) {
-                                peer.known_valid_to_send.push(v.hash.clone());
-                            }
-                        }
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -167,13 +162,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .validated_operations
                             .branch_delayed
                             .push(v.clone());
-                        if v.is_endorsement.unwrap_or(false) {
-                            for peer in mempool_state.peer_state.values_mut() {
-                                if !peer.seen_operations.contains(&v.hash) {
-                                    peer.known_valid_to_send.push(v.hash.clone());
-                                }
-                            }
-                        }
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -739,15 +727,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             address,
             known_valid,
             pending,
-            cleanup_known_valid,
         }) => {
             let peer = mempool_state.peer_state.entry(*address).or_default();
 
             peer.seen_operations.extend(known_valid.iter().cloned());
             peer.seen_operations.extend(pending.iter().cloned());
-            if *cleanup_known_valid {
-                peer.known_valid_to_send.clear();
-            }
             for hash in known_valid {
                 if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
                     match operation_state {

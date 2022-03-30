@@ -86,8 +86,27 @@ where
                 }
                 ProtocolAction::OperationValidated(response) => {
                     let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
+
                     for address in addresses {
-                        store.dispatch(MempoolSendValidatedAction { address });
+                        let state = store.state();
+                        let applied_iter = response.result.applied.iter();
+                        let applied_to_send_iter = applied_iter.map(|v| &v.hash);
+
+                        let branch_delayed_iter = response.result.branch_delayed.iter();
+                        let consensus_ops_branch_delayed_iter = branch_delayed_iter
+                            .filter(|v| v.is_endorsement.unwrap_or(false))
+                            .map(|v| &v.hash);
+
+                        let known_valid = applied_to_send_iter
+                            .chain(consensus_ops_branch_delayed_iter)
+                            .filter(|hash| !state.mempool.has_peer_seen_op(address, hash))
+                            .cloned()
+                            .collect();
+
+                        store.dispatch(MempoolSendValidatedAction {
+                            address,
+                            known_valid,
+                        });
                     }
                     // respond
                     let ids = store.state().mempool.injected_rpc_ids.clone();
@@ -613,7 +632,10 @@ where
                 });
             }
         }
-        Action::MempoolSendValidated(MempoolSendValidatedAction { address }) => {
+        Action::MempoolSendValidated(MempoolSendValidatedAction {
+            address,
+            known_valid,
+        }) => {
             let head_state = match store.state().mempool.local_head_state.clone() {
                 Some(v) => v,
                 None => {
@@ -622,12 +644,7 @@ where
                     return;
                 }
             };
-            let peer = match store.state().mempool.peer_state.get(address) {
-                Some(v) => v,
-                None => return,
-            };
 
-            let known_valid = peer.known_valid_to_send.clone();
             let current_mempool = Mempool::new(known_valid.clone(), vec![]);
             if current_mempool.is_empty() {
                 return;
@@ -646,8 +663,7 @@ where
             store.dispatch(MempoolBroadcastDoneAction {
                 address: *address,
                 pending: vec![],
-                known_valid,
-                cleanup_known_valid: true,
+                known_valid: known_valid.clone(),
             });
         }
         Action::MempoolSend(MempoolSendAction {
@@ -768,7 +784,6 @@ where
                 address: *address,
                 pending,
                 known_valid,
-                cleanup_known_valid: false,
             });
         }
         Action::CurrentHeadPrecheckSuccess(CurrentHeadPrecheckSuccessAction {

@@ -181,6 +181,7 @@ impl EnablingCondition<State> for MempoolSendAction {
 pub struct MempoolSendValidatedAction {
     #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
+    pub known_valid: Vec<OperationHash>,
 }
 
 impl EnablingCondition<State> for MempoolSendValidatedAction {
@@ -237,7 +238,6 @@ pub struct MempoolBroadcastDoneAction {
     pub address: SocketAddr,
     pub known_valid: Vec<OperationHash>,
     pub pending: Vec<OperationHash>,
-    pub cleanup_known_valid: bool,
 }
 
 impl EnablingCondition<State> for MempoolBroadcastDoneAction {
