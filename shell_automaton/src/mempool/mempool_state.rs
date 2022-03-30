@@ -67,11 +67,19 @@ pub struct MempoolState {
 
 impl MempoolState {
     /// Is endorsement for already applied block or not.
-    pub fn is_old_endorsement(&self, operation: &Operation) -> bool {
-        OperationKind::from_operation_content_raw(operation.data().as_ref()).is_endorsement()
-            && self
-                .last_predecessor_blocks
-                .contains_key(operation.branch())
+    pub fn is_old_consensus_operation(&self, operation: &Operation) -> bool {
+        if !OperationKind::from_operation_content_raw(operation.data().as_ref())
+            .is_consensus_operation()
+        {
+            return false;
+        }
+        let level = match self.last_predecessor_blocks.get(operation.branch()) {
+            Some(v) => *v,
+            None => return false,
+        };
+
+        let current_head_level = self.local_head_state.as_ref().map(|b| b.header.level());
+        current_head_level.map_or(false, |head_level| head_level < level + 1)
     }
 }
 
@@ -440,20 +448,26 @@ pub struct OperationNodeCurrentHeadStats {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum OperationKind {
-    Endorsement,
     SeedNonceRevelation,
-    DoubleEndorsement,
-    DoubleBaking,
-    Activation,
+    DoubleEndorsementEvidence,
+    DoubleBakingEvidence,
+    ActivateAccount,
     Proposals,
     Ballot,
-    EndorsementWithSlot,
+    DoublePreendorsementEvidence,
     FailingNoop,
+    Preendorsement,
+    Endorsement,
     Reveal,
     Transaction,
     Origination,
     Delegation,
-    RegisterConstant,
+    RegisterGlobalConstant,
+    SetDepositsLimit,
+
+    /// Legacy! Used in Hangzhou, not in Ithaca.
+    EndorsementWithSlot,
+
     Unknown,
 }
 
@@ -465,12 +479,38 @@ impl OperationKind {
     }
 
     pub fn from_tag(tag: u8) -> Self {
+        Self::from_tag_ithaca(tag)
+    }
+
+    pub fn from_tag_ithaca(tag: u8) -> Self {
+        match tag {
+            1 => Self::SeedNonceRevelation,
+            2 => Self::DoubleEndorsementEvidence,
+            3 => Self::DoubleBakingEvidence,
+            4 => Self::ActivateAccount,
+            5 => Self::Proposals,
+            6 => Self::Ballot,
+            7 => Self::DoublePreendorsementEvidence,
+            17 => Self::FailingNoop,
+            20 => Self::Preendorsement,
+            21 => Self::Endorsement,
+            107 => Self::Reveal,
+            108 => Self::Transaction,
+            109 => Self::Origination,
+            110 => Self::Delegation,
+            111 => Self::RegisterGlobalConstant,
+            112 => Self::SetDepositsLimit,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn from_tag_hangzhou(tag: u8) -> Self {
         match tag {
             0 => Self::Endorsement,
             1 => Self::SeedNonceRevelation,
-            2 => Self::DoubleEndorsement,
-            3 => Self::DoubleBaking,
-            4 => Self::Activation,
+            2 => Self::DoubleEndorsementEvidence,
+            3 => Self::DoubleBakingEvidence,
+            4 => Self::ActivateAccount,
             5 => Self::Proposals,
             6 => Self::Ballot,
             10 => Self::EndorsementWithSlot,
@@ -479,13 +519,16 @@ impl OperationKind {
             108 => Self::Transaction,
             109 => Self::Origination,
             110 => Self::Delegation,
-            111 => Self::RegisterConstant,
+            111 => Self::RegisterGlobalConstant,
             _ => Self::Unknown,
         }
     }
 
-    pub fn is_endorsement(&self) -> bool {
-        matches!(self, Self::Endorsement | Self::EndorsementWithSlot)
+    pub fn is_consensus_operation(&self) -> bool {
+        matches!(
+            self,
+            Self::Preendorsement | Self::Endorsement | Self::EndorsementWithSlot
+        )
     }
 }
 

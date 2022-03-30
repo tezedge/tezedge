@@ -228,7 +228,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .iter()
                             .filter(|(_, op)| {
                                 OperationKind::from_operation_content_raw(op.data().as_ref())
-                                    .is_endorsement()
+                                    .is_consensus_operation()
                             })
                             .map(|(op_hash, _)| op_hash.clone())
                             .filter_map(|op| {

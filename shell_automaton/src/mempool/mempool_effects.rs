@@ -434,13 +434,13 @@ where
             });
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
-            if store.state().mempool.is_old_endorsement(operation) =>
+            if store.state().mempool.is_old_consensus_operation(operation) =>
         {
             // TODO store rejected endorsement for diagnosis?
         }
         Action::MempoolOperationInject(MempoolOperationInjectAction {
             operation, rpc_id, ..
-        }) if store.state().mempool.is_old_endorsement(operation) => {
+        }) if store.state().mempool.is_old_consensus_operation(operation) => {
             let current_head = store
                 .state
                 .get()
