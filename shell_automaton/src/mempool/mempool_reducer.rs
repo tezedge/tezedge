@@ -393,7 +393,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .or_else(|| mempool_state.pending_operations.get(op))
                         .or_else(|| mempool_state.validated_operations.refused_ops.get(op))
                         .map(|op| OperationKind::from_operation_content_raw(op.data().as_ref()))
-                        .filter(|op_kind| op_kind.is_endorsement())
+                        .filter(|op_kind| op_kind.is_consensus_operation())
                         .is_some();
 
                     if !is_endorsement {
@@ -529,7 +529,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
 
             // ignore endorsement operation if its for the past block.
-            if mempool_state.is_old_endorsement(operation) {
+            if mempool_state.is_old_consensus_operation(operation) {
                 if let Some(level) = mempool_state
                     .last_predecessor_blocks
                     .get(operation.branch())
@@ -586,6 +586,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 Ok(v) => v,
                 Err(_) => return,
             };
+
             mempool_state
                 .operation_stats
                 .entry(operation_hash.clone())
