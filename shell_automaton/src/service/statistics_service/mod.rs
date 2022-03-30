@@ -29,6 +29,7 @@ pub struct BlockApplyStats {
     pub level: Level,
     pub block_timestamp: i64,
     pub validation_pass: u8,
+    pub round: Option<i32>,
 
     pub receive_timestamp: u64,
 
@@ -253,12 +254,17 @@ impl StatisticsService {
         &self.blocks_apply
     }
 
-    pub fn block_stats_get_by_level(&self, level: Level) -> Vec<(BlockHash, BlockApplyStats)> {
+    pub fn block_stats_get_by_level(
+        &self,
+        level: Level,
+        round: Option<i32>,
+    ) -> Vec<(BlockHash, BlockApplyStats)> {
         match self.levels.binary_search_by_key(&level, |(l, _)| *l) {
             Ok(idx) => self.levels[idx]
                 .1
                 .iter()
                 .filter_map(|h| self.blocks_apply.get(h).map(|s| (h.clone(), s.clone())))
+                .filter(|(_, s)| round.map_or(true, |round| s.round.map_or(false, |r| round == r)))
                 .collect(),
             Err(_) => Vec::new(),
         }
@@ -294,6 +300,7 @@ impl StatisticsService {
         level: Level,
         block_timestamp: i64,
         validation_pass: u8,
+        round: Option<i32>,
         receive_timestamp: u64,
         peer: Option<SocketAddr>,
         node_id: Option<CryptoboxPublicKeyHash>,
@@ -307,6 +314,7 @@ impl StatisticsService {
             level,
             block_timestamp,
             validation_pass,
+            round,
             receive_timestamp,
             injected: injected_timestamp,
             ..Default::default()

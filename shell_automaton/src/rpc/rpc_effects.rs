@@ -211,12 +211,16 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .dispatch(MempoolRpcEndorsementsStatusGetAction { rpc_id, block_hash });
                     }
 
-                    RpcRequest::GetStatsCurrentHeadStats { channel, level } => {
+                    RpcRequest::GetStatsCurrentHeadStats {
+                        channel,
+                        level,
+                        round,
+                    } => {
                         let _ = channel.send(
                             store
                                 .service
                                 .statistics()
-                                .map_or(Vec::new(), |s| s.block_stats_get_by_level(level)),
+                                .map_or(Vec::new(), |s| s.block_stats_get_by_level(level, round)),
                         );
                     }
                     RpcRequest::GetMempooEndrosementsStats { channel } => {
