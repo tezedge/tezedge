@@ -1,16 +1,18 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use super::{key::CryptoService, proof_of_work::guess_proof_of_work, seed_nonce::SeedNonceService};
+use super::{key::CryptoService, proof_of_work::guess_proof_of_work};
 
-mod event;
+pub mod event;
 
 mod slots_info;
 
-mod client;
+pub mod client;
 
-mod timer;
+pub mod timer;
 
 mod event_loop;
+
+mod seed_nonce;
 
 pub use self::event_loop::run;

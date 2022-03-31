@@ -23,12 +23,13 @@ use tezos_messages::protocol::proto_012::operation::{
 use crate::alternative::event::OperationSimple;
 
 use super::{
-    client::{RpcClient, RpcError},
-    event::{Event, OperationKind, ProtocolBlockHeader},
+    client::{RpcClient, RpcError, ProtocolBlockHeader},
+    event::{Event, OperationKind},
     guess_proof_of_work,
     slots_info::SlotsInfo,
     timer::Timer,
-    CryptoService, SeedNonceService,
+    seed_nonce::SeedNonceService,
+    CryptoService,
 };
 
 const WAIT_OPERATION_TIMEOUT: Duration = Duration::from_secs(3600);
@@ -62,21 +63,12 @@ pub fn run(
         "committee size: {}",
         constants.consensus_committee_size
     );
-    slog::info!(log, "pow threshold: {}", constants.proof_of_work_threshold);
-    let consensus_threshold = 2 * (constants.consensus_committee_size / 3) + 1;
+    slog::info!(log, "pow threshold: {:x}", constants.proof_of_work_threshold);
     let timing = tb::TimingLinearGrow {
-        minimal_block_delay: Duration::from_secs(constants.minimal_block_delay.parse().unwrap()),
-        delay_increment_per_round: Duration::from_secs(
-            constants.delay_increment_per_round.parse().unwrap(),
-        ),
+        minimal_block_delay: constants.minimal_block_delay,
+        delay_increment_per_round: constants.delay_increment_per_round,
     };
-    let proof_of_work_threshold = u64::from_be_bytes(
-        constants
-            .proof_of_work_threshold
-            .parse::<i64>()
-            .unwrap()
-            .to_be_bytes(),
-    );
+    let proof_of_work_threshold = constants.proof_of_work_threshold;
 
     client.monitor_heads(&chain_id)?;
 
@@ -84,7 +76,7 @@ pub fn run(
     let mut dy = tb::Config {
         timing,
         map: SlotsInfo::new(constants.consensus_committee_size, ours),
-        quorum: consensus_threshold,
+        quorum: 2 * (constants.consensus_committee_size / 3) + 1,
     };
     let mut state = tb::Machine::<ContractTz1Hash, OperationSimple, 200>::default();
 

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, convert::TryInto, io, str, sync::mpsc, thread, time::Duration};
+use std::{collections::BTreeMap, convert::TryInto, io, str, sync::mpsc, thread, time::Duration, num::ParseIntError};
 
 use chrono::{DateTime, ParseError, Utc};
 use derive_more::From;
@@ -11,15 +11,16 @@ use thiserror::Error;
 
 use crypto::hash::{
     BlockHash, BlockPayloadHash, ChainId, ContextHash, ContractTz1Hash, OperationHash,
-    OperationListListHash, ProtocolHash, Signature,
+    OperationListListHash, ProtocolHash, Signature, NonceHash,
 };
-use tezos_encoding::binary_reader::BinaryReaderError;
+use tezos_encoding::{binary_reader::BinaryReaderError, types::SizedBytes};
 use tezos_messages::{
     p2p::{binary_message::BinaryRead, encoding::operation::DecodedOperation},
     protocol::proto_012::operation::FullHeader,
 };
+use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
 
-use super::event::{Block, Constants, Event, OperationSimple, ProtocolBlockHeader};
+use super::event::{Block, OperationSimple, Event};
 
 pub const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
@@ -58,12 +59,36 @@ pub enum RpcErrorInner {
     Nom(BinaryReaderError),
     #[error("utf8: {_0}")]
     Utf8(str::Utf8Error),
+    #[error("parse: {_0}, {_1}")]
+    IntParse(ParseIntError, String),
     #[error("chrono: {_0}")]
     Chrono(ParseError),
     #[error("node: {_0}")]
     NodeError(String, StatusCode),
     #[error("invalid fitness")]
     InvalidFitness,
+}
+
+// signature watermark: 0x11 | chain_id
+#[derive(BinWriter, HasEncoding, NomReader, Serialize, Clone, Debug)]
+pub struct ProtocolBlockHeader {
+    pub payload_hash: BlockPayloadHash,
+    pub payload_round: i32,
+    pub proof_of_work_nonce: SizedBytes<8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_nonce_hash: Option<NonceHash>,
+    pub liquidity_baking_escape_vote: bool,
+    pub signature: Signature,
+}
+
+pub struct Constants {
+    pub nonce_length: usize,
+    pub blocks_per_cycle: u32,
+    pub blocks_per_commitment: u32,
+    pub consensus_committee_size: u32,
+    pub proof_of_work_threshold: u64,
+    pub minimal_block_delay: Duration,
+    pub delay_increment_per_round: Duration,
 }
 
 impl RpcClient {
@@ -105,12 +130,47 @@ impl RpcClient {
     }
 
     pub fn get_constants(&self) -> Result<Constants, RpcError> {
+        #[derive(Deserialize, Debug)]
+        pub struct ConstantsInner {
+            nonce_length: usize,
+            blocks_per_cycle: u32,
+            blocks_per_commitment: u32,
+            consensus_committee_size: u32,
+            minimal_block_delay: String,
+            delay_increment_per_round: String,
+            proof_of_work_threshold: String,
+        }
+
         let url = self
             .endpoint
             .join("chains/main/blocks/head/context/constants")
             .expect("valid constant url");
-        self.single_response_blocking(&url, None, None)
-            .map_err(|inner| RpcError::WithContext { url, inner })
+        let ConstantsInner { nonce_length, blocks_per_cycle, blocks_per_commitment, consensus_committee_size, minimal_block_delay, delay_increment_per_round, proof_of_work_threshold } = self.single_response_blocking::<ConstantsInner>(&url, None, None)
+            .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
+
+        Ok(Constants {
+            nonce_length,
+            blocks_per_cycle,
+            blocks_per_commitment,
+            consensus_committee_size,
+            proof_of_work_threshold: u64::from_be_bytes(
+                proof_of_work_threshold
+                    .parse::<i64>()
+                    .map_err(|err| RpcErrorInner::IntParse(err, "pow threshold".to_string()))
+                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?
+                    .to_be_bytes(),
+            ),
+            minimal_block_delay: Duration::from_secs(
+                minimal_block_delay.parse()
+                    .map_err(|err| RpcErrorInner::IntParse(err, "minimal block delay".to_string()))
+                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?,
+            ),
+            delay_increment_per_round: Duration::from_secs(
+                delay_increment_per_round.parse()
+                    .map_err(|err| RpcErrorInner::IntParse(err, "delay increment".to_string()))
+                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?,
+            ),
+        })
     }
 
     pub fn validators(&self, level: i32) -> Result<BTreeMap<ContractTz1Hash, Vec<u16>>, RpcError> {
@@ -142,6 +202,7 @@ impl RpcClient {
         let mut url = self.endpoint.join(&s).expect("valid constant url");
         url.query_pairs_mut().append_pair("next_protocol", PROTOCOL);
 
+        #[allow(dead_code)]
         #[derive(Deserialize)]
         struct BlockHeaderJsonGeneric {
             hash: BlockHash,
@@ -196,13 +257,9 @@ impl RpcClient {
             Ok(Event::Block(Block {
                 hash: header.hash,
                 level: header.level,
-                proto: header.proto,
                 predecessor: header.predecessor,
                 timestamp,
-                validation_pass: header.validation_pass,
-                operations_hash: header.operations_hash,
                 fitness: header.fitness,
-                context: header.context,
                 payload_hash,
                 payload_round,
                 round,

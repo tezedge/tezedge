@@ -5,9 +5,9 @@ mod command_line;
 mod key;
 mod logger;
 mod proof_of_work;
-mod seed_nonce;
 
 mod alternative;
+// mod machine;
 
 fn main() {
     use self::{

@@ -6,34 +6,9 @@ use std::{fmt, str};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{
-    BlockHash, BlockPayloadHash, ContextHash, NonceHash, OperationHash,
-    OperationListListHash, ProtocolHash, Signature,
+    BlockHash, BlockPayloadHash, OperationHash, ProtocolHash, Signature,
 };
-use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader, types::SizedBytes};
 use tezos_messages::protocol::proto_012::operation::EndorsementOperation;
-
-// signature watermark: 0x11 | chain_id
-#[derive(BinWriter, HasEncoding, NomReader, Serialize, Clone, Debug)]
-pub struct ProtocolBlockHeader {
-    pub payload_hash: BlockPayloadHash,
-    pub payload_round: i32,
-    pub proof_of_work_nonce: SizedBytes<8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub seed_nonce_hash: Option<NonceHash>,
-    pub liquidity_baking_escape_vote: bool,
-    pub signature: Signature,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Constants {
-    pub nonce_length: usize,
-    pub blocks_per_cycle: u32,
-    pub consensus_committee_size: u32,
-    pub minimal_block_delay: String,
-    pub delay_increment_per_round: String,
-    pub blocks_per_commitment: u32,
-    pub proof_of_work_threshold: String,
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OperationSimple {
@@ -110,13 +85,9 @@ impl OperationSimple {
 pub struct Block {
     pub hash: BlockHash,
     pub level: i32,
-    pub proto: u8,
     pub predecessor: BlockHash,
     pub timestamp: u64,
-    pub validation_pass: u8,
-    pub operations_hash: OperationListListHash,
     pub fitness: Vec<String>,
-    pub context: ContextHash,
     pub payload_hash: BlockPayloadHash,
     pub payload_round: i32,
     pub round: i32,
