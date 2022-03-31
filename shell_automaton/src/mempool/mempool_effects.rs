@@ -453,31 +453,6 @@ where
             });
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
-            if store.state().mempool.is_old_consensus_operation(operation) =>
-        {
-            // TODO store rejected endorsement for diagnosis?
-        }
-        Action::MempoolOperationInject(MempoolOperationInjectAction {
-            operation, rpc_id, ..
-        }) if store.state().mempool.is_old_consensus_operation(operation) => {
-            let current_head = store
-                .state
-                .get()
-                .mempool
-                .local_head_state
-                .as_ref()
-                .as_ref()
-                .map(|v| &v.hash);
-            store.service.rpc().respond(
-                *rpc_id,
-                serde_json::json!({
-                    "error": "Endorsement branch is too old",
-                    "endorsement_branch": operation.branch(),
-                    "current_head": current_head,
-                }),
-            );
-        }
-        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
             if crate::prechecker::prechecking_enabled(store.state(), operation.branch()) {
                 store.dispatch(PrecheckerPrecheckOperationRequestAction {

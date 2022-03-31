@@ -516,19 +516,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 // TODO(vlad): received operation, but we did not requested it, what should we do?
             }
 
-            // ignore endorsement operation if its for the past block.
-            if mempool_state.is_old_consensus_operation(operation) {
-                if let Some(level) = mempool_state
-                    .last_predecessor_blocks
-                    .get(operation.branch())
-                {
-                    if let Some(ops) = mempool_state.level_to_operation.get_mut(level) {
-                        ops.retain(|op| op.ne(&operation_hash));
-                    }
-                    return;
-                }
-            }
-
             mempool_state
                 .pending_operations
                 .insert(operation_hash, operation.clone());
