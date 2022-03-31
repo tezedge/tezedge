@@ -1,17 +1,12 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::process::ExitStatus;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use std::{os::unix::prelude::ExitStatusExt, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use nix::{
-    sys::signal::{self, Signal},
-    unistd::Pid,
-};
 use slog::Logger;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{
@@ -20,19 +15,16 @@ use tezos_api::ffi::{
     ValidateOperationRequest, ValidateOperationResponse,
 };
 use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
-use tezos_protocol_ipc_client::{
-    ProtocolRunnerApi, ProtocolRunnerConnection, ProtocolRunnerError, ProtocolServiceError,
-};
+use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerError, ProtocolServiceError};
 use tezos_protocol_ipc_messages::{
     GenesisResultDataParams, InitProtocolContextParams, ProtocolMessage,
 };
-use tokio::process::Child;
 
 use crate::protocol_runner::ProtocolRunnerToken;
 
+use super::protocol_runner_service_worker::ProtocolRunnerServiceWorker;
 use super::service_async_channel::{
-    worker_channel, ResponseTryRecvError, ServiceWorkerAsyncRequester, ServiceWorkerAsyncResponder,
-    ServiceWorkerAsyncResponderSender,
+    worker_channel, ResponseTryRecvError, ServiceWorkerAsyncRequester,
 };
 
 pub type ProtocolRunnerResponse = ProtocolRunnerResult;
@@ -107,9 +99,6 @@ impl ProtocolRunnerResult {
 
 pub type ProtocolRunnerRequester =
     ServiceWorkerAsyncRequester<ProtocolRunnerRequest, ProtocolRunnerResponse>;
-pub type ProtocolRunnerResponder =
-    ServiceWorkerAsyncResponder<ProtocolRunnerRequest, ProtocolRunnerResponse>;
-pub type ProtocolRunnerResponderSender = ServiceWorkerAsyncResponderSender<ProtocolRunnerResponse>;
 
 pub trait ProtocolRunnerService {
     /// Try to receive/read queued message, if there is any.
@@ -176,304 +165,6 @@ pub struct ProtocolRunnerServiceDefault {
 }
 
 impl ProtocolRunnerServiceDefault {
-    async fn handle_protocol_message(
-        channel: ProtocolRunnerResponderSender,
-        mut conn: ProtocolRunnerConnection,
-        (token, req): (ProtocolRunnerToken, ProtocolMessage),
-    ) {
-        match req {
-            ProtocolMessage::ChangeRuntimeConfigurationCall(config) => {
-                let res = conn.change_runtime_configuration(config).await;
-                let _ = channel
-                    .send(ProtocolRunnerResult::InitRuntime((token, res)))
-                    .await;
-            }
-            ProtocolMessage::InitProtocolContextCall(params) => {
-                let res = conn.init_protocol_context_raw(params).await;
-                let _ = channel
-                    .send(ProtocolRunnerResult::InitContext((token, res)))
-                    .await;
-            }
-            ProtocolMessage::InitProtocolContextIpcServer(cfg) => {
-                let res = conn.init_context_ipc_server_raw(cfg).await;
-                let _ = channel
-                    .send(ProtocolRunnerResult::InitContextIpcServer((token, res)))
-                    .await;
-            }
-            ProtocolMessage::GenesisResultDataCall(params) => {
-                let res = conn.genesis_result_data_raw(params).await;
-                let _ = channel
-                    .send(ProtocolRunnerResult::GenesisCommitResultGet((token, res)))
-                    .await;
-            }
-            ProtocolMessage::ApplyBlockCall(req) => {
-                let res = conn.apply_block(req).await;
-                // TODO: here, if the result is an error, we want to retry
-                let _ = channel
-                    .send(ProtocolRunnerResult::ApplyBlock((token, res)))
-                    .await;
-            }
-            ProtocolMessage::BeginConstructionForPrevalidationCall(req) => {
-                let res = conn.begin_construction_for_prevalidation(req).await;
-                let _ = channel
-                    .send(ProtocolRunnerResult::BeginConstruction((token, res)))
-                    .await;
-            }
-            ProtocolMessage::ValidateOperationForPrevalidationCall(req) => {
-                let res = conn.validate_operation_for_prevalidation(req).await;
-                let _ = channel
-                    .send(ProtocolRunnerResult::ValidateOperation((token, res)))
-                    .await;
-            }
-            ProtocolMessage::BeginConstructionForMempoolCall(req) => {
-                let res = conn.begin_construction_for_mempool(req).await;
-                let _ = channel
-                    .send(ProtocolRunnerResult::BeginConstruction((token, res)))
-                    .await;
-            }
-            ProtocolMessage::ValidateOperationForMempoolCall(req) => {
-                let res = conn.validate_operation_for_mempool(req).await;
-                let _ = channel
-                    .send(ProtocolRunnerResult::ValidateOperation((token, res)))
-                    .await;
-            }
-            ProtocolMessage::AssertEncodingForProtocolDataCall(_, _) => unimplemented!(),
-            ProtocolMessage::BeginApplicationCall(_) => unimplemented!(),
-            ProtocolMessage::ProtocolRpcCall(_) => unimplemented!(),
-            ProtocolMessage::HelpersPreapplyOperationsCall(_) => unimplemented!(),
-            ProtocolMessage::HelpersPreapplyBlockCall(_) => unimplemented!(),
-            ProtocolMessage::ComputePathCall(_) => unimplemented!(),
-            ProtocolMessage::JsonEncodeApplyBlockResultMetadata(_) => unimplemented!(),
-            ProtocolMessage::ContextGetKeyFromHistory(_) => unimplemented!(),
-            ProtocolMessage::ContextGetKeyValuesByPrefix(_) => unimplemented!(),
-            ProtocolMessage::ContextGetTreeByPrefix(_) => unimplemented!(),
-            ProtocolMessage::DumpContext(_) => unimplemented!(),
-            ProtocolMessage::RestoreContext(_) => unimplemented!(),
-            ProtocolMessage::Ping => unimplemented!(),
-            ProtocolMessage::ShutdownCall => unimplemented!(),
-            ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata(_) => todo!(),
-        }
-    }
-
-    /// Will try to shutdown the children process, first with a SIGINT, and then with a SIGKILL
-    async fn terminate_or_kill(
-        process: &mut Child,
-        reason: String,
-    ) -> Result<(), ProtocolRunnerError> {
-        // try to send SIGINT (ctrl-c)
-        if let Some(pid) = process.id() {
-            let pid = Pid::from_raw(pid as i32);
-            match signal::kill(pid, Signal::SIGINT) {
-                Ok(_) => Ok(()),
-                Err(sigint_error) => {
-                    // (fallback) if SIGINT failed, we just kill process
-                    match process.kill().await {
-                        Ok(_) => Ok(()),
-                        Err(kill_error) => Err(ProtocolRunnerError::TerminateError {
-                            reason: format!(
-                                "Reason for termination: {}, sigint_error: {}, kill_error: {}",
-                                reason, sigint_error, kill_error
-                            ),
-                        }),
-                    }
-                }
-            }
-        } else {
-            Ok(())
-        }
-    }
-
-    async fn restart_protocol_runner(
-        api: &mut ProtocolRunnerApi,
-        child_process_handle: &mut Option<Child>,
-        exit_result: &Result<ExitStatus, std::io::Error>,
-        tezos_runtime_configuration: &Option<TezosRuntimeConfiguration>,
-        init_protocol_context_params: &Option<InitProtocolContextParams>,
-        init_protocol_context_ipc_cfg: &Option<TezosContextStorageConfiguration>,
-        log: &Logger,
-    ) {
-        let exit_status = exit_result.as_ref().unwrap();
-
-        // We assume we can always restart here (and the node is not shutting down)
-        // because otherwise `child_process_handle` would be `None` because of
-        // how the `ShutdownServer` handle takes the value out of it.
-        if let Some(code) = exit_status.code() {
-            slog::warn!(log, "Child process exited"; "code" => code);
-        } else {
-            slog::warn!(log, "Child process was terminated by signal"; "signal" => exit_status.signal());
-        }
-
-        child_process_handle.take();
-
-        slog::info!(log, "Restarting child process...");
-
-        match api.start(None).await {
-            Ok(child) => {
-                slog::info!(log, "Child process restarted sucessfully");
-                child_process_handle.replace(child);
-
-                // TODO: remove these unwraps, handle such failures more gracefully
-
-                let mut conn = api.connect().await.unwrap();
-
-                if let Some(config) = &tezos_runtime_configuration {
-                    slog::info!(log, "Restoring runtime configuration...");
-                    conn.change_runtime_configuration(config.clone())
-                        .await
-                        .unwrap();
-                }
-
-                if let Some(params) = &init_protocol_context_params {
-                    slog::info!(log, "Re-initializing context...");
-                    conn.init_protocol_context_raw(params.clone())
-                        .await
-                        .unwrap();
-                }
-
-                if let Some(cfg) = &init_protocol_context_ipc_cfg {
-                    slog::info!(log, "Re-initializing context IPC server");
-                    conn.init_context_ipc_server_raw(cfg.clone()).await.unwrap();
-                }
-            }
-            Err(err) => {
-                slog::warn!(log, "Attempt to restart child process failed"; "reason" => err)
-            }
-        };
-    }
-
-    fn run(mut channel: ProtocolRunnerResponder, mut api: ProtocolRunnerApi, log: Logger) {
-        api.tokio_runtime.clone().block_on(async move {
-            let mut child_process_handle: Option<Child> = None;
-            let mut tezos_runtime_configuration = None;
-            let mut init_protocol_context_params = None;
-            let mut init_protocol_context_ipc_cfg = None;
-
-            loop {
-                let result = if let Some(child) = &mut child_process_handle {
-                    tokio::select! {
-                        biased;
-
-                        exit_result = child.wait() => {
-                            Self::restart_protocol_runner(
-                                &mut api,
-                                &mut child_process_handle,
-                                &exit_result,
-                                &tezos_runtime_configuration,
-                                &init_protocol_context_params,
-                                &init_protocol_context_ipc_cfg,
-                                &log,
-                            )
-                            .await;
-
-                            Err(exit_result)
-                        }
-                        req = channel.recv() => Ok(req)
-                    }
-                } else {
-                    Ok(channel.recv().await)
-                };
-
-                let req = match result {
-                    Ok(Ok(req)) => req,
-                    Ok(Err(_)) => {
-                        // No more messages, exit the loop
-                        break;
-                    }
-                    Err(_) => {
-                        // Had to restart protocol runner, continue
-                        continue;
-                    }
-                };
-
-                let sender = channel.sender();
-                let (token, req) = match req {
-                    ProtocolRunnerRequest::SpawnServer(()) => {
-                        let start_result = match api.start(None).await {
-                            Ok(child) => {
-                                child_process_handle = Some(child);
-                                Ok(())
-                            }
-                            Err(err) => Err(err),
-                        };
-
-                        sender
-                            .send(ProtocolRunnerResult::SpawnServer(start_result))
-                            .await
-                            .unwrap();
-                        continue;
-                    }
-                    ProtocolRunnerRequest::ShutdownServer(()) => {
-                        let result = if let Some(mut child) = child_process_handle.take() {
-                            Self::terminate_or_kill(&mut child, "Shutdown requested".into()).await
-                        } else {
-                            Ok(())
-                        };
-                        // TODO: maybe be explicit the protocol runner not being up when we try to shut it down?
-                        sender
-                            .send(ProtocolRunnerResult::ShutdownServer(result))
-                            .await
-                            .unwrap();
-                        continue;
-                    }
-                    ProtocolRunnerRequest::Message(v) => {
-                        match &v.1 {
-                            // Keep these around to be able to properly reinitialize the protocol
-                            // runner after a restart
-                            ProtocolMessage::ChangeRuntimeConfigurationCall(cfg) => {
-                                tezos_runtime_configuration = Some(cfg.clone());
-                            }
-                            ProtocolMessage::InitProtocolContextCall(params) => {
-                                init_protocol_context_params = Some(params.clone());
-                            }
-                            ProtocolMessage::InitProtocolContextIpcServer(cfg) => {
-                                init_protocol_context_ipc_cfg = Some(cfg.clone());
-                            }
-                            _ => (),
-                        }
-                        v
-                    }
-                };
-
-                let conn = match api.connect().await {
-                    Ok(v) => v,
-                    Err(err) => {
-                        let _ = channel
-                            .send(match req {
-                                ProtocolMessage::ChangeRuntimeConfigurationCall(_) => {
-                                    ProtocolRunnerResult::InitRuntime((token, Err(err.into())))
-                                }
-                                ProtocolMessage::InitProtocolContextCall(_) => {
-                                    ProtocolRunnerResult::InitContext((token, Err(err.into())))
-                                }
-                                ProtocolMessage::InitProtocolContextIpcServer(_) => {
-                                    ProtocolRunnerResult::InitContextIpcServer((
-                                        token,
-                                        Err(err.into()),
-                                    ))
-                                }
-                                ProtocolMessage::ApplyBlockCall(_) => {
-                                    ProtocolRunnerResult::ApplyBlock((token, Err(err.into())))
-                                }
-                                _ => unimplemented!(),
-                            })
-                            .await
-                            .ok();
-                        continue;
-                    }
-                };
-
-                tokio::spawn(Self::handle_protocol_message(sender, conn, (token, req)));
-            }
-
-            // Shut down the child process if we exit the loop and it is still up
-            if let Some(mut child) = std::mem::take(&mut child_process_handle) {
-                if let Err(err) = Self::terminate_or_kill(&mut child, "Protocol Runner Service loop ended".into()).await {
-                    slog::warn!(log, "Failure when shutting down the protocol runner subprocess"; "error" => err);
-                }
-            }
-        });
-    }
-
     pub fn new(
         api: ProtocolRunnerApi,
         mio_waker: Arc<mio::Waker>,
@@ -482,7 +173,8 @@ impl ProtocolRunnerServiceDefault {
         log: Logger,
     ) -> Self {
         let (c1, c2) = worker_channel(mio_waker, bound);
-        thread::spawn(|| Self::run(c2, api, log));
+        let worker = ProtocolRunnerServiceWorker::new(api, c2, log);
+        thread::spawn(move || worker.run());
 
         Self {
             channel: c1,
