@@ -19,7 +19,6 @@ use tezos_messages::p2p::{
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
-use crate::protocol::ProtocolAction;
 use crate::{block_applier::BlockApplierApplyState, current_head_precheck::CurrentHeadState};
 use crate::{
     current_head_precheck::CurrentHeadPrecheckSuccessAction,
@@ -35,8 +34,9 @@ use crate::{
     },
     rights::Slot,
 };
+use crate::{mempool::PrevalidatorAction, service::protocol_runner_service::ProtocolRunnerResult};
 use crate::{
-    service::{PrevalidatorService, RpcService},
+    service::{ProtocolRunnerService, RpcService},
     Action, ActionWithMeta, Service, State,
 };
 
@@ -68,6 +68,34 @@ where
         return;
     }
     match &action.action {
+        Action::ProtocolRunnerResponse(resp) => match &resp.result {
+            ProtocolRunnerResult::BeginConstruction((_token, Err(err)))
+            | ProtocolRunnerResult::ValidateOperation((_token, Err(err))) => {
+                store.dispatch(PrevalidatorAction::Error(err.to_string()));
+            }
+            ProtocolRunnerResult::BeginConstruction((_token, Ok(res))) => {
+                store.dispatch(PrevalidatorAction::PrevalidatorReady(res.clone()));
+            }
+            ProtocolRunnerResult::ValidateOperation((_token, Ok(res))) => {
+                // If the predecessor hash doesn't match, this is an outdated request
+                // and it must be ignored.
+                if let Some(local_head_state) = &store.state().mempool.local_head_state {
+                    if res.prevalidator.predecessor == local_head_state.hash {
+                        store.dispatch(PrevalidatorAction::OperationValidated(res.clone()));
+                    } else {
+                        slog::debug!(&store.state().log, "Got stale operation validation result";
+                            "validated_for" => res.prevalidator.predecessor.to_base58_check(),
+                            "current_mempool_head" => local_head_state.header.predecessor().to_base58_check());
+                    }
+                } else {
+                    slog::debug!(
+                        &store.state().log,
+                        "Got operation validation result, but there is no mempool.local_head_state"
+                    );
+                }
+            }
+            _ => (),
+        },
         Action::MempoolFlush(MempoolFlushAction {}) => {
             let mempool_state = &store.state().mempool;
             let ops = mempool_state
@@ -79,12 +107,12 @@ where
                 store.dispatch(MempoolValidateStartAction { operation });
             }
         }
-        Action::Protocol(act) => {
+        Action::Prevalidator(act) => {
             match act {
-                ProtocolAction::PrevalidatorReady(_) => {
+                PrevalidatorAction::PrevalidatorReady(_) => {
                     store.dispatch(MempoolFlushAction {});
                 }
-                ProtocolAction::OperationValidated(response) => {
+                PrevalidatorAction::OperationValidated(response) => {
                     let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
 
                     for address in addresses {
@@ -121,7 +149,7 @@ where
                     for stream in streams {
                         let ops = &store.state().mempool.validated_operations.ops;
                         let refused_ops = &store.state().mempool.validated_operations.refused_ops;
-                        // `ProtocolAction::OperationValidated` action can happens only
+                        // `PrevalidatorAction::OperationValidated` action can happens only
                         // if we have a prevalidator
                         let prevalidator = match store.state().mempool.prevalidator.as_ref() {
                             Some(v) => v,
@@ -180,7 +208,10 @@ where
                         }
                     }
                 }
-                _ => {}
+                PrevalidatorAction::PrevalidatorForMempoolReady(_) => (), // TODO?
+                PrevalidatorAction::Error(err) => {
+                    slog::warn!(&store.state().log, "Prevalidator error: {}", err)
+                }
             }
         }
         Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { message, address }) => {
@@ -263,6 +294,7 @@ where
                     let req = BeginConstructionRequest {
                         chain_id,
                         predecessor: local_head_state.header.clone(),
+                        predecessor_hash: local_head_state.hash.clone(),
                         protocol_data: None,
                         predecessor_block_metadata_hash: local_head_state.metadata_hash.clone(),
                         predecessor_ops_metadata_hash: local_head_state.ops_metadata_hash.clone(),
@@ -279,6 +311,7 @@ where
                 let req = BeginConstructionRequest {
                     chain_id,
                     predecessor: (*block.header).clone(),
+                    predecessor_hash: block.hash.clone(),
                     protocol_data: None,
                     predecessor_block_metadata_hash: apply_result.block_metadata_hash.clone(),
                     predecessor_ops_metadata_hash: apply_result.ops_metadata_hash.clone(),

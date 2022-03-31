@@ -58,8 +58,6 @@ pub mod actors;
 #[cfg(feature = "fuzzing")]
 pub mod fuzzing;
 
-pub mod protocol;
-
 pub mod rights;
 
 pub mod prechecker;

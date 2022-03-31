@@ -16,17 +16,24 @@ pub struct ProtocolRunnerReadyState {
 
 #[derive(From, Serialize, Deserialize, Debug, Clone)]
 pub enum ProtocolRunnerState {
+    /// Protocol runner not started yet
     Idle,
 
+    /// Spawning protocol runner process
     #[from]
     SpawnServer(ProtocolRunnerSpawnServerState),
 
+    /// Initializing protocol runner
     #[from]
     Init(ProtocolRunnerInitState),
 
+    /// Protocol runner intialized and ready
     #[from]
     Ready(ProtocolRunnerReadyState),
 
+    /// Shutdown issued and in progress
     ShutdownPending,
+
+    /// Shutdown successfully completed
     ShutdownSuccess,
 }

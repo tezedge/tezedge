@@ -5,6 +5,7 @@ mod mempool_state;
 pub use self::mempool_state::*;
 
 pub mod mempool_actions;
+pub use self::mempool_actions::*;
 
 mod mempool_reducer;
 pub use self::mempool_reducer::mempool_reducer;

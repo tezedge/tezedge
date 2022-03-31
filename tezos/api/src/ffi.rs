@@ -148,6 +148,7 @@ pub struct PrevalidatorWrapper {
     pub chain_id: ChainId,
     pub protocol: ProtocolHash,
     pub context_fitness: Option<FitnessInner>,
+    pub predecessor: BlockHash,
 }
 
 impl fmt::Debug for PrevalidatorWrapper {
@@ -182,6 +183,7 @@ pub struct BeginApplicationResponse {
 pub struct BeginConstructionRequest {
     pub chain_id: ChainId,
     pub predecessor: BlockHeader,
+    pub predecessor_hash: BlockHash,
     pub protocol_data: Option<Vec<u8>>,
     pub predecessor_block_metadata_hash: Option<BlockMetadataHash>,
     pub predecessor_ops_metadata_hash: Option<OperationMetadataListListHash>,

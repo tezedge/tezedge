@@ -308,6 +308,7 @@ impl_to_ocaml_record! {
     BeginConstructionRequest => OCamlBeginConstructionRequest {
         chain_id: OCamlChainId,
         predecessor: OCamlBlockHeader => FfiBlockHeader::from(predecessor),
+        predecessor_hash: OCamlBlockHash,
         protocol_data: Option<OCamlBytes>,
         predecessor_block_metadata_hash: Option<OCamlBlockMetadataHash>,
         predecessor_ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
@@ -319,6 +320,7 @@ impl_to_ocaml_record! {
         chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
         context_fitness: Option<OCamlList<OCamlBytes>>,
+        predecessor: OCamlBlockHash,
     }
 }
 
@@ -413,7 +415,6 @@ impl_to_ocaml_record! {
         commit_genesis: bool,
         enable_testchain: bool,
         readonly: bool,
-        //turn_off_context_raw_inspector: bool,
         patch_context: Option<OCamlPatchContext>,
         context_stats_db_path: Option<String> =>
             context_stats_db_path.clone().map(|path| path.to_string_lossy().to_string()),
@@ -575,6 +576,7 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::ContextGetTreeByPrefix(req: OCamlContextGetTreeByPrefixRequest),
         ProtocolMessage::DumpContext(req: OCamlDumpContextRequest),
         ProtocolMessage::RestoreContext(req: OCamlRestoreContextRequest),
+        ProtocolMessage::Ping,
         ProtocolMessage::ShutdownCall,
     }
 }

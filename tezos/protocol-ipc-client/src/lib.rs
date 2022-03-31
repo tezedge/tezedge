@@ -355,6 +355,7 @@ impl ProtocolRunnerConnection {
     const COMPUTE_PATH_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
     const JSON_ENCODE_DATA_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
     const ASSERT_ENCODING_FOR_PROTOCOL_DATA_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
+    const PING_TIMEOUT: Duration = Duration::from_secs(1);
 
     /// Apply block
     pub async fn apply_block(
@@ -624,7 +625,6 @@ impl ProtocolRunnerConnection {
             commit_genesis,
             enable_testchain,
             readonly,
-            turn_off_context_raw_inspector: true, // TODO - TE-261: remove later, new context doesn't use it
             patch_context,
             context_stats_db_path,
         };
@@ -642,6 +642,16 @@ impl ProtocolRunnerConnection {
             InitProtocolContextResult(result),
             OcamlStorageInitError,
             Some(Self::INIT_PROTOCOL_CONTEXT_TIMEOUT),
+        )
+    }
+
+    /// Ping the protocol runner
+    pub async fn ping(&mut self) -> Result<(), ProtocolServiceError> {
+        handle_request!(
+            self.io,
+            Ping,
+            PingResult => Ok(()),
+            Some(Self::PING_TIMEOUT),
         )
     }
 

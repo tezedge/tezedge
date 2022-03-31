@@ -153,7 +153,6 @@ fn prepare_protocol_context(
         patch_context: None,
         context_stats_db_path: None,
         genesis_max_operations_ttl: cfg.genesis_additional_data().unwrap().max_operations_ttl,
-        turn_off_context_raw_inspector: true, // TODO - TE-261: remove later, new context doesn't use it
     };
 
     let result =

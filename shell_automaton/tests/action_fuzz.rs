@@ -15,9 +15,9 @@ use shell_automaton::block_applier;
 use shell_automaton::current_head_precheck;
 use shell_automaton::fuzzing::state_singleton::FUZZER_STATE;
 use shell_automaton::mempool::mempool_actions;
+use shell_automaton::mempool::PrevalidatorAction;
 use shell_automaton::peers::init::PeersInitAction;
 use shell_automaton::prechecker::prechecker_actions;
-use shell_automaton::protocol::ProtocolAction;
 use shell_automaton::protocol_runner;
 use shell_automaton::rights::rights_actions;
 use shell_automaton::shutdown::ShutdownInitAction;
@@ -1043,7 +1043,7 @@ enum ControlActionTest {
     TestP2pServerEvent(P2pServerEvent),
     TestP2pPeerEvent(P2pPeerEvent),
     TestWakeupEvent(WakeupEvent),
-    TestProtocolAction(ProtocolAction),
+    TestProtocolAction(PrevalidatorAction),
     TestShutdownInitAction(ShutdownInitAction),
     TestShutdownPendingAction(ShutdownPendingAction),
     TestShutdownSuccessAction(ShutdownSuccessAction),

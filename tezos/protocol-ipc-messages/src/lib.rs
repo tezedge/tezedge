@@ -51,6 +51,7 @@ pub enum ProtocolMessage {
     ContextGetTreeByPrefix(ContextGetTreeByPrefixRequest),
     DumpContext(DumpContextRequest),
     RestoreContext(RestoreContextRequest),
+    Ping,
     ShutdownCall,
 }
 
@@ -95,7 +96,6 @@ pub struct InitProtocolContextParams {
     pub commit_genesis: bool,
     pub enable_testchain: bool,
     pub readonly: bool,
-    pub turn_off_context_raw_inspector: bool,
     pub patch_context: Option<PatchContext>,
     pub context_stats_db_path: Option<PathBuf>,
 }
@@ -157,6 +157,8 @@ pub enum NodeMessage {
 
     // TODO: generic error response instead with error types?
     IpcResponseEncodingFailure(String),
+
+    PingResult,
 
     ShutdownResult,
 }

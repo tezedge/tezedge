@@ -27,9 +27,6 @@ pub use rpc_service::{RpcService, RpcServiceDefault};
 pub mod actors_service;
 pub use actors_service::{ActorsService, ActorsServiceDefault};
 
-mod prevalidator_service;
-pub use prevalidator_service::{PrevalidatorService, PrevalidatorServiceDefault};
-
 pub mod statistics_service;
 pub use statistics_service::{BlockApplyStats, BlockPeerStats, StatisticsService};
 
@@ -41,7 +38,6 @@ pub trait Service: TimeService {
     type ProtocolRunner: ProtocolRunnerService;
     type Rpc: RpcService;
     type Actors: ActorsService;
-    type Prevalidator: PrevalidatorService;
 
     fn randomness(&mut self) -> &mut Self::Randomness;
 
@@ -57,7 +53,7 @@ pub trait Service: TimeService {
 
     fn actors(&mut self) -> &mut Self::Actors;
 
-    fn prevalidator(&mut self) -> &mut Self::Prevalidator;
+    fn prevalidator(&mut self) -> &mut Self::ProtocolRunner;
 
     fn statistics(&mut self) -> Option<&mut StatisticsService> {
         None
@@ -72,7 +68,6 @@ pub struct ServiceDefault {
     pub protocol_runner: ProtocolRunnerServiceDefault,
     pub rpc: RpcServiceDefault,
     pub actors: ActorsServiceDefault,
-    pub prevalidator: PrevalidatorServiceDefault,
     pub statistics: Option<StatisticsService>,
 }
 
@@ -86,7 +81,6 @@ impl Service for ServiceDefault {
     type ProtocolRunner = ProtocolRunnerServiceDefault;
     type Rpc = RpcServiceDefault;
     type Actors = ActorsServiceDefault;
-    type Prevalidator = PrevalidatorServiceDefault;
 
     fn randomness(&mut self) -> &mut Self::Randomness {
         &mut self.randomness
@@ -116,8 +110,8 @@ impl Service for ServiceDefault {
         &mut self.actors
     }
 
-    fn prevalidator(&mut self) -> &mut Self::Prevalidator {
-        &mut self.prevalidator
+    fn prevalidator(&mut self) -> &mut Self::ProtocolRunner {
+        self.protocol_runner()
     }
 
     fn statistics(&mut self) -> Option<&mut StatisticsService> {
