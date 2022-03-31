@@ -262,16 +262,17 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             if let Some(local_head_state) = &mempool_state.local_head_state {
                 let local_header = &local_head_state.header;
                 let new_header = &block.header;
-                if local_header.level() == new_header.level()
-                    && local_header.predecessor() == new_header.predecessor()
-                {
-                    slog::info!(
+                if new_header.fitness() <= local_header.fitness() {
+                    slog::debug!(
                         &state.log,
-                        "Block `{new_block}` applied on the same level, ignoring it",
-                        new_block = block.hash.to_base58_check();
-                        "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check())
+                        // "Ignoring applied block in mempool with lower fitness";
+                        "Applied block in mempool with lower fitness";
+                        "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check()),
+                        "head_level" => local_header.level(),
+                        "head_fitness" => local_header.fitness().to_string(),
+                        "new_head" => format!("{:?}", block),
                     );
-                    return;
+                    // return;
                 }
             }
 
