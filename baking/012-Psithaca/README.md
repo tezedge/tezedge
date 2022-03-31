@@ -108,6 +108,7 @@ Account my_delegate (tz1XXXXXX) activated with ꜩ76351.572618.
 ## Register baker/endorser delegate
 
 _TezEdge node have to be synced already._
+
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
@@ -133,12 +134,13 @@ $ tezos-baker-012-Psithaca \
    --media-type json \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
    run with local node "$HOME/data-dir-012-Psithaca/context_data" my_delegate
+Waiting for protocol 012-Psithaca to start...
+Baker v12.0 (409a3f3f) for Psithaca2MLR started.
 Node is bootstrapped.
-...
-Baker started.
-...
-Feb 25 10:01:16.978 - 012-Psithaca.delegate.baking_forge: no slot found at level 579218 (max_priority = 64)
-
+Waiting for protocol 012-Psithaca to start...
+Baker v12.0 (409a3f3f) for Psithaca2MLR started.
+Mar 31 21:06:51.688 - 012-Psithaca.baker.transitions: received new head BMTdte4kfE6anmq47V4VF1KUR8PJnn83kj57WLvUjzYL76DJqiP at
+Mar 31 21:06:51.689 - 012-Psithaca.baker.transitions:   level 317084, round 0
 ...
 ```
 
@@ -147,11 +149,14 @@ Feb 25 10:01:16.978 - 012-Psithaca.delegate.baking_forge: no slot found at level
 ```
 $ tezos-accuser-012-Psithaca \
    --endpoint "http://localhost:12535" \
+   --media-type json \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
    run
+Waiting for the node to be bootstrapped...
+Current head: BLa48oxwVSsS (timestamp: 2022-03-31T18:08:00.000-00:00, validation: 2022-03-31T18:08:14.563-00:00)
 Node is bootstrapped.
-...
-Accuser started.
+Accuser v12.0 (409a3f3f) for Psithaca2MLR started.
+Mar 31 21:08:30.944 - 012-Psithaca.delegate.denunciation: block BMUj49B7FhUdsyFAK56CwipEtt178oLmHKUwCpd3n3K6WVrndhT registered
 ...
 ```
 
@@ -326,10 +331,12 @@ $ tezos-baker-012-Psithaca \
    --media-type json \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
    run with local node "$HOME/data-dir-012-Psithaca/context_data" my_delegate
+Waiting for protocol 012-Psithaca to start...
+Baker v12.0 (409a3f3f) for Psithaca2MLR started.
 Node is bootstrapped.
-Baker started.
-...
-Feb 25 10:01:16.978 - 012-Psithaca.delegate.baking_forge: no slot found at level 579218 (max_priority = 64)
-
+Waiting for protocol 012-Psithaca to start...
+Baker v12.0 (409a3f3f) for Psithaca2MLR started.
+Mar 31 21:06:51.688 - 012-Psithaca.baker.transitions: received new head BMTdte4kfE6anmq47V4VF1KUR8PJnn83kj57WLvUjzYL76DJqiP at
+Mar 31 21:06:51.689 - 012-Psithaca.baker.transitions:   level 317084, round 0
 ...
 ```
