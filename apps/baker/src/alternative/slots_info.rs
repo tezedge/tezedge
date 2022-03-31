@@ -7,7 +7,7 @@ use crypto::hash::ContractTz1Hash;
 use tenderbake as tb;
 use tezos_messages::protocol::proto_012::operation::EndorsementOperation;
 
-use super::event::OperationSimple;
+use crate::services::event::OperationSimple;
 
 pub struct SlotsInfo {
     committee_size: u32,

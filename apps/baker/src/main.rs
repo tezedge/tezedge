@@ -2,18 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 mod command_line;
-mod key;
-mod logger;
 mod proof_of_work;
 
 mod alternative;
-// mod machine;
+mod services;
+mod machine;
 
 fn main() {
-    use self::{
-        command_line::{Arguments, Command},
-        key::CryptoService,
-    };
+    use self::command_line::{Arguments, Command};
+    use self::services::Services;
 
     let Arguments {
         base_dir,
@@ -28,23 +25,15 @@ fn main() {
         .try_init()
         .unwrap();
 
-    let logger = logger::main_logger();
-
     match command {
         Command::RunWithLocalNode { node_dir, baker } => {
             // We don't use context storage and protocol_runner
             let _ = node_dir;
 
-            let crypto = match CryptoService::read_key(&base_dir, &baker) {
-                Ok(v) => v,
-                Err(err) => {
-                    slog::error!(logger, "error creating crypto service: {err}");
-                    return;
-                }
-            };
-            slog::info!(logger, "crypto service ready: {}", crypto.public_key_hash());
-
-            alternative::run(endpoint.clone(), &crypto, &logger, &base_dir, &baker).unwrap();
+            let (srv, events) = Services::new(endpoint, &base_dir, &baker);
+            slog::info!(srv.log, "crypto service ready: {}", srv.crypto.public_key_hash());
+            
+            alternative::run(srv, &base_dir, &baker, events).unwrap();
         }
     }
 }

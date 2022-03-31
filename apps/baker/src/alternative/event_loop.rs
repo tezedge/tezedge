@@ -4,11 +4,9 @@
 use std::{
     convert::TryInto,
     path::PathBuf,
-    sync::mpsc,
     time::{Duration, SystemTime},
 };
 
-use reqwest::Url;
 use slog::Logger;
 
 use crypto::hash::{
@@ -20,35 +18,32 @@ use tezos_messages::protocol::proto_012::operation::{
     InlinedEndorsement, InlinedEndorsementMempoolContents, InlinedEndorsementMempoolContentsEndorsementVariant, InlinedPreendorsementContents, InlinedPreendorsementVariant, InlinedPreendorsement,
 };
 
-use crate::alternative::event::OperationSimple;
+use crate::services::{
+    event::{OperationSimple, Event, OperationKind},
+    key::CryptoService,
+    client::{RpcClient, RpcError, ProtocolBlockHeader},
+    timer::Timer,
+    Services,
+};
 
 use super::{
-    client::{RpcClient, RpcError, ProtocolBlockHeader},
-    event::{Event, OperationKind},
     guess_proof_of_work,
     slots_info::SlotsInfo,
-    timer::Timer,
     seed_nonce::SeedNonceService,
-    CryptoService,
 };
 
 const WAIT_OPERATION_TIMEOUT: Duration = Duration::from_secs(3600);
 
 pub fn run(
-    endpoint: Url,
-    crypto: &CryptoService,
-    log: &Logger,
+    srv: Services,
     base_dir: &PathBuf,
     baker: &str,
+    events: impl Iterator<Item = Result<Event, RpcError>>,
 ) -> Result<(), RpcError> {
-    let (tx, rx) = mpsc::channel();
-    let client = RpcClient::new(endpoint, tx.clone());
-    let timer = Timer::spawn(tx);
+    let chain_id = srv.client.get_chain_id()?;
+    srv.client.wait_bootstrapped()?;
 
-    let chain_id = client.get_chain_id()?;
-    client.wait_bootstrapped()?;
-
-    let constants = client.get_constants()?;
+    let constants = srv.client.get_constants()?;
     let mut seed_nonce = SeedNonceService::new(
         &base_dir,
         baker,
@@ -59,20 +54,20 @@ pub fn run(
     .unwrap();
 
     slog::info!(
-        log,
+        srv.log,
         "committee size: {}",
         constants.consensus_committee_size
     );
-    slog::info!(log, "pow threshold: {:x}", constants.proof_of_work_threshold);
+    slog::info!(srv.log, "pow threshold: {:x}", constants.proof_of_work_threshold);
     let timing = tb::TimingLinearGrow {
         minimal_block_delay: constants.minimal_block_delay,
         delay_increment_per_round: constants.delay_increment_per_round,
     };
     let proof_of_work_threshold = constants.proof_of_work_threshold;
 
-    client.monitor_heads(&chain_id)?;
+    srv.client.monitor_heads(&chain_id)?;
 
-    let ours = vec![crypto.public_key_hash().clone()];
+    let ours = vec![srv.crypto.public_key_hash().clone()];
     let mut dy = tb::Config {
         timing,
         map: SlotsInfo::new(constants.consensus_committee_size, ours),
@@ -80,19 +75,19 @@ pub fn run(
     };
     let mut state = tb::Machine::<ContractTz1Hash, OperationSimple, 200>::default();
 
-    for event in rx {
+    for event in events {
         let unix_epoch = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap();
         let now = tb::Timestamp { unix_epoch };
         let actions = match event {
             Err(err) => {
-                slog::error!(log, " .  {err}");
+                slog::error!(srv.log, " .  {err}");
                 vec![]
             }
             Ok(Event::Block(block)) => {
                 if block.level > dy.map.level() {
-                    let delegates = client.validators(block.level + 1)?;
+                    let delegates = srv.client.validators(block.level + 1)?;
                     dy.map.insert(block.level + 1, delegates);
                 }
                 let reveal_ops = seed_nonce
@@ -105,9 +100,9 @@ pub fn run(
                         hex::encode(bytes)
                     });
                 for op_hex in reveal_ops {
-                    match client.inject_operation(&chain_id, op_hex, true) {
-                        Ok(hash) => slog::info!(log, " .  inject nonce_reveal: {hash}"),
-                        Err(err) => slog::error!(log, " .  {err}"),
+                    match srv.client.inject_operation(&chain_id, op_hex, true) {
+                        Ok(hash) => slog::info!(srv.log, " .  inject nonce_reveal: {hash}"),
+                        Err(err) => slog::error!(srv.log, " .  {err}"),
                     }
                 }
                 let timestamp = tb::Timestamp {
@@ -116,7 +111,7 @@ pub fn run(
                 let round = block.round;
                 let pred_hash = tb::BlockHash(block.predecessor.0.as_slice().try_into().unwrap());
                 slog::info!(
-                    log,
+                    srv.log,
                     "Block: {}, pred: {}, {:?}",
                     block.hash,
                     block.predecessor,
@@ -124,7 +119,7 @@ pub fn run(
                 );
                 if let Some(consensus) = block.operations.first() {
                     slog::debug!(
-                        log,
+                        srv.log,
                         "Consensus operations: {}",
                         serde_json::to_string(consensus).unwrap()
                     );
@@ -203,22 +198,22 @@ pub fn run(
                 let mut tries = 3;
                 while tries > 0 {
                     tries -= 1;
-                    if let Err(err) = client.monitor_operations(WAIT_OPERATION_TIMEOUT) {
-                        slog::error!(log, " .  {}", err);
+                    if let Err(err) = srv.client.monitor_operations(WAIT_OPERATION_TIMEOUT) {
+                        slog::error!(srv.log, " .  {}", err);
                     } else {
                         break;
                     }
                 }
                 let event = tb::Event::Proposal(proposal, now);
                 let (new_actions, records) = state.handle(&dy, event);
-                write_log(log, records);
+                write_log(&srv.log, records);
                 new_actions.into_iter().collect()
             }
             Ok(Event::Operations(ops)) => {
                 let mut actions = vec![];
                 for op in ops {
                     match op.kind() {
-                        None => slog::error!(log, " .  unclassified operation {op:?}"),
+                        None => slog::error!(srv.log, " .  unclassified operation {op:?}"),
                         Some(OperationKind::Preendorsement(content)) => {
                             if let Some(validator) =
                                 dy.map.validator(content.level, content.slot, op)
@@ -229,7 +224,7 @@ pub fn run(
                                     now,
                                 );
                                 let (new_actions, records) = state.handle(&dy, event);
-                                write_log(log, records);
+                                write_log(&srv.log, records);
                                 actions.extend(new_actions.into_iter());
                             }
                         }
@@ -240,7 +235,7 @@ pub fn run(
                                 let event =
                                     tb::Event::Voted(SlotsInfo::block_id(&content), validator, now);
                                 let (new_actions, records) = state.handle(&dy, event);
-                                write_log(log, records);
+                                write_log(&srv.log, records);
                                 actions.extend(new_actions.into_iter());
                             }
                         }
@@ -254,15 +249,15 @@ pub fn run(
             Ok(Event::Tick) => {
                 let event = tb::Event::Timeout;
                 let (new_actions, records) = state.handle(&dy, event);
-                write_log(log, records);
+                write_log(&srv.log, records);
                 new_actions.into_iter().collect()
             }
         };
         perform(
-            &client,
-            log,
-            &timer,
-            crypto,
+            &srv.client,
+            &srv.log,
+            &srv.timer,
+            &srv.crypto,
             &mut seed_nonce,
             &dy.map,
             &chain_id,
