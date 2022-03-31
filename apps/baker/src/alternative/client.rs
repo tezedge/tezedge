@@ -235,6 +235,7 @@ impl RpcClient {
         &self,
         chain_id: &ChainId,
         op_hex: String,
+        is_async: bool,
     ) -> Result<OperationHash, RpcError> {
         let mut url = self
             .endpoint
@@ -242,6 +243,9 @@ impl RpcClient {
             .expect("valid constant url");
         url.query_pairs_mut()
             .append_pair("chain", &chain_id.to_base58_check());
+        if is_async {
+            url.query_pairs_mut().append_key_only("async");
+        }
         let body = format!("{op_hex:?}");
         self.single_response_blocking::<OperationHash>(&url, Some(body.clone()), None)
             .map_err(|inner| RpcError::WithBody { url, body, inner })

@@ -113,7 +113,7 @@ pub fn run(
                         hex::encode(bytes)
                     });
                 for op_hex in reveal_ops {
-                    match client.inject_operation(&chain_id, op_hex) {
+                    match client.inject_operation(&chain_id, op_hex, true) {
                         Ok(hash) => slog::info!(log, " .  inject nonce_reveal: {hash}"),
                         Err(err) => slog::error!(log, " .  {err}"),
                     }
@@ -332,7 +332,7 @@ fn perform(
                     signature: Signature(vec![]),
                 };
                 let (data, _) = crypto.sign(0x12, &chain_id, &preendorsement).unwrap();
-                match client.inject_operation(&chain_id, hex::encode(data)) {
+                match client.inject_operation(&chain_id, hex::encode(data), false) {
                     Ok(hash) => slog::info!(log, " .  inject preendorsement: {hash}"),
                     Err(err) => slog::error!(log, " .  {err}"),
                 }
@@ -362,7 +362,7 @@ fn perform(
                     signature: Signature(vec![]),
                 };
                 let (data, _) = crypto.sign(0x13, &chain_id, &endorsement).unwrap();
-                match client.inject_operation(&chain_id, hex::encode(data)) {
+                match client.inject_operation(&chain_id, hex::encode(data), false) {
                     Ok(hash) => slog::info!(log, " .  inject endorsement: {hash}"),
                     Err(err) => slog::error!(log, " .  {err}"),
                 }
