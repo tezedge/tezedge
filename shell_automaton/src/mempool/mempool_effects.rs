@@ -106,7 +106,7 @@ where
 
                         let known_valid = applied_to_send_iter
                             .chain(consensus_ops_branch_delayed_iter)
-                            .filter(|hash| state.mempool.has_peer_seen_op(address, hash))
+                            .filter(|hash| !state.mempool.has_peer_seen_op(address, hash))
                             .cloned()
                             .collect();
 

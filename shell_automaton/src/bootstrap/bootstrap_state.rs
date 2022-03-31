@@ -441,8 +441,6 @@ pub enum BootstrapError {
         peers: Vec<SocketAddr>,
     },
     BlockApplicationFailed,
-    /// Block injected during bootstrap process.
-    BlockInjectedDuringBootstap,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -548,6 +546,23 @@ impl BootstrapState {
     #[inline(always)]
     pub fn new() -> Self {
         Self::Idle {}
+    }
+
+    pub fn is_finished(&self) -> bool {
+        matches!(self, Self::Finished { .. })
+    }
+
+    pub fn can_inject_block(&self) -> bool {
+        match self {
+            Self::Idle { .. }
+            | Self::Init { .. }
+            | Self::PeersConnectPending { .. }
+            | Self::PeersConnectSuccess { .. }
+            | Self::PeersMainBranchFindPending { .. }
+            | Self::PeersMainBranchFindSuccess { .. }
+            | Self::Finished { .. } => true,
+            _ => false,
+        }
     }
 
     pub fn timeouts_last_check(&self) -> Option<u64> {

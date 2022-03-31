@@ -27,12 +27,6 @@ pub enum BlockApplierApplyError {
         block_hash: Option<Arc<BlockHash>>,
     },
     StoreApplyResult(StorageError),
-
-    /// Failed because injected block can't be accepted
-    /// (`!state.can_accept_new_head(block)`).
-    ///
-    /// TODO(zura): remove once injection is completely inside state machine.
-    RejectedInjectedBlock,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

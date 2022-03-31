@@ -11,10 +11,13 @@ use tezos_messages::{
 
 use crate::service::rpc_service::RpcId;
 
+use super::rpc_actions::RpcInjectedBlock;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct RpcState {
     pub bootstrapped: Bootstrapped,
     pub valid_blocks: ValidBlocks,
+    pub injected_blocks: BTreeMap<BlockHash, RpcInjectedBlock>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]

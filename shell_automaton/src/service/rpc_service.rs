@@ -1,24 +1,27 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use storage::persistent::SchemaError;
-
-use crate::Action;
-use crypto::hash::{BlockHash, ChainId, OperationHash};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
     thread,
     time::Instant,
 };
-use storage::shell_automaton_action_meta_storage::ShellAutomatonActionsStats;
+
+use serde::{Deserialize, Serialize};
+use tokio::sync::{mpsc, oneshot};
+
+use crypto::hash::{BlockHash, ChainId, OperationHash};
+use storage::persistent::SchemaError;
+use storage::{
+    shell_automaton_action_meta_storage::ShellAutomatonActionsStats, BlockHeaderWithHash,
+};
 use tezos_messages::p2p::encoding::{
     block_header::{BlockHeader, Level},
     operation::Operation,
 };
 
-use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, oneshot};
+use crate::Action;
 
 use crate::{request::RequestId, rpc::ValidBlocksQuery, storage::request::StorageRequestor, State};
 
@@ -96,7 +99,7 @@ pub enum RpcRequest {
         injected: Instant,
     },
     InjectBlock {
-        block_hash: BlockHash,
+        block: BlockHeaderWithHash,
     },
     InjectOperation {
         operation_hash: OperationHash,

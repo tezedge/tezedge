@@ -79,7 +79,7 @@ impl MempoolState {
         };
 
         let current_head_level = self.local_head_state.as_ref().map(|b| b.header.level());
-        current_head_level.map_or(false, |head_level| head_level < level + 1)
+        current_head_level.map_or(false, |head_level| head_level > level + 1)
     }
 
     pub fn has_peer_seen_op(&self, peer: SocketAddr, op_hash: &OperationHash) -> bool {

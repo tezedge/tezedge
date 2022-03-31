@@ -62,6 +62,21 @@ pub fn rpc_reducer(state: &mut crate::State, action: &crate::ActionWithMeta) {
                 .insert(*rpc_id, query.clone());
         }
 
+        Action::RpcInjectBlock(content) => {
+            state
+                .rpc
+                .injected_blocks
+                .insert(content.block.hash.clone(), content.clone());
+        }
+
+        Action::RpcRejectOutdatedInjectedBlock(content) => {
+            state.rpc.injected_blocks.remove(&content.block_hash);
+        }
+
+        Action::BlockApplierEnqueueBlock(content) => {
+            state.rpc.injected_blocks.remove(&content.block_hash);
+        }
+
         _ => (),
     }
 }
