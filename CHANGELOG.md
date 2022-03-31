@@ -33,6 +33,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Nothing.
 
+## [2.0.0] - 2022-03-31
+
+### Changed
+
+- Adapt bootstrapping and mempool logic for Ithaca.
+- State machine fuzzing improvements.
+
+### Fixed
+
+- On injection RPCs, respect the `is_async` parameter and respond without waiting for the injection to complete.
+- Fixed sporadic connectivity issues between the shell and protocol runner processes.
+
 ## [1.19.0] - 2022-03-25
 
 ### Added
@@ -761,7 +773,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.19.0...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.0.0...develop
+[2.0.0]: https://github.com/tezedge/tezedge/releases/v2.0.0
 [1.19.0]: https://github.com/tezedge/tezedge/releases/v1.19.0
 [1.18.1]: https://github.com/tezedge/tezedge/releases/v1.18.1
 [1.18.0]: https://github.com/tezedge/tezedge/releases/v1.18.0
