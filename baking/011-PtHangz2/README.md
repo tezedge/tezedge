@@ -75,7 +75,7 @@ tezos-client
 ## Wait for TezEdge node to sync with network
 
 ```
-$ tezos-client -E http:://localhost:12535 bootstrapped
+$ tezos-client -E http://localhost:12535 bootstrapped
 Waiting for the node to be bootstrapped...
 Current head: BLU4di1EGgkd (timestamp: 2021-11-05T23:19:31.000-00:00, validation: 2022-02-24T17:07:41.976-00:00)
 Current head: BLKsPJN9yqs9 (timestamp: 2021-11-05T23:19:46.000-00:00, validation: 2022-02-24T17:07:42.100-00:00)
@@ -299,7 +299,7 @@ To enable non-interactive singing of blocks and endorsements use the following c
 $ tezos-client \
    --endpoint "http://localhost:12535" \
    --base-dir "$HOME/data-dir-011-PtHangz2/client" \
-   setup ledger to bake for my_delegate 
+   setup ledger to bake for my_delegate
 ```
 
 Make sure you confirm this operation with your ledger.

@@ -19,12 +19,13 @@ https://teztnets.xyz/ithacanet-faucet
 ## Create working directory
 
 _Tezos baker requires access to the context directory, which is produced by TezEdge node._
- ```
- mkdir $HOME/data-dir-012-Psithaca
- mkdir $HOME/data-dir-012-Psithaca/client
 
- cp faucet.json $HOME/data-dir-012-Psithaca
- ```
+```
+mkdir $HOME/data-dir-012-Psithaca
+mkdir $HOME/data-dir-012-Psithaca/client
+
+cp faucet.json $HOME/data-dir-012-Psithaca
+```
 
 ## Run TezEdge node
 
@@ -66,9 +67,11 @@ Mar 31 16:10:23.359 INFO Generating new tezos identity. This will take a while, 
 ...
 ```
 
-## Build Tezos Baker/Endorser/Accuser binaries from source
+## Download tezos client binaries (or build from source)
 
-Please, see [https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam](https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam)
+Download `tezos-client`, `tezos-baker-012-Psithaca` and `tezos-accuser-012-Psithaca` from https://gitlab.com/tezos/tezos/-/releases.
+
+Or alternatively, build them from source. See [https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam](https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam) for instructions.
 
 After successfull compilation, you should see this binaries in Tezos source directory:
 ```
@@ -80,7 +83,7 @@ tezos-client
 ## Wait for TezEdge node to sync with network
 
 ```
-$ tezos-client -E http:://localhost:12535 bootstrapped
+$ tezos-client -E http://localhost:12535 bootstrapped
 Waiting for the node to be bootstrapped...
 Current head: BLU4di1EGgkd (timestamp: 2021-11-05T23:19:31.000-00:00, validation: 2022-02-24T17:07:41.976-00:00)
 Current head: BLKsPJN9yqs9 (timestamp: 2021-11-05T23:19:46.000-00:00, validation: 2022-02-24T17:07:42.100-00:00)
@@ -105,6 +108,7 @@ Account my_delegate (tz1XXXXXX) activated with ꜩ76351.572618.
 ## Register baker/endorser delegate
 
 _TezEdge node have to be synced already._
+
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
@@ -130,12 +134,13 @@ $ tezos-baker-012-Psithaca \
    --media-type json \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
    run with local node "$HOME/data-dir-012-Psithaca/context_data" my_delegate
+Waiting for protocol 012-Psithaca to start...
+Baker v12.0 (409a3f3f) for Psithaca2MLR started.
 Node is bootstrapped.
-...
-Baker started.
-...
-Feb 25 10:01:16.978 - 012-Psithaca.delegate.baking_forge: no slot found at level 579218 (max_priority = 64)
-
+Waiting for protocol 012-Psithaca to start...
+Baker v12.0 (409a3f3f) for Psithaca2MLR started.
+Mar 31 21:06:51.688 - 012-Psithaca.baker.transitions: received new head BMTdte4kfE6anmq47V4VF1KUR8PJnn83kj57WLvUjzYL76DJqiP at
+Mar 31 21:06:51.689 - 012-Psithaca.baker.transitions:   level 317084, round 0
 ...
 ```
 
@@ -144,11 +149,14 @@ Feb 25 10:01:16.978 - 012-Psithaca.delegate.baking_forge: no slot found at level
 ```
 $ tezos-accuser-012-Psithaca \
    --endpoint "http://localhost:12535" \
+   --media-type json \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
    run
+Waiting for the node to be bootstrapped...
+Current head: BLa48oxwVSsS (timestamp: 2022-03-31T18:08:00.000-00:00, validation: 2022-03-31T18:08:14.563-00:00)
 Node is bootstrapped.
-...
-Accuser started.
+Accuser v12.0 (409a3f3f) for Psithaca2MLR started.
+Mar 31 21:08:30.944 - 012-Psithaca.delegate.denunciation: block BMUj49B7FhUdsyFAK56CwipEtt178oLmHKUwCpd3n3K6WVrndhT registered
 ...
 ```
 
@@ -273,7 +281,7 @@ To enable non-interactive singing of blocks and endorsements use the following c
 $ tezos-client \
    --endpoint "http://localhost:12535" \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
-   setup ledger to bake for my_delegate 
+   setup ledger to bake for my_delegate
 ```
 
 Make sure you confirm this operation with your ledger.
@@ -323,10 +331,12 @@ $ tezos-baker-012-Psithaca \
    --media-type json \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
    run with local node "$HOME/data-dir-012-Psithaca/context_data" my_delegate
+Waiting for protocol 012-Psithaca to start...
+Baker v12.0 (409a3f3f) for Psithaca2MLR started.
 Node is bootstrapped.
-Baker started.
-...
-Feb 25 10:01:16.978 - 012-Psithaca.delegate.baking_forge: no slot found at level 579218 (max_priority = 64)
-
+Waiting for protocol 012-Psithaca to start...
+Baker v12.0 (409a3f3f) for Psithaca2MLR started.
+Mar 31 21:06:51.688 - 012-Psithaca.baker.transitions: received new head BMTdte4kfE6anmq47V4VF1KUR8PJnn83kj57WLvUjzYL76DJqiP at
+Mar 31 21:06:51.689 - 012-Psithaca.baker.transitions:   level 317084, round 0
 ...
 ```
