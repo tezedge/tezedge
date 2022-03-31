@@ -6,7 +6,7 @@ use tezos_messages::p2p::binary_message::BinaryChunk;
 use crate::peer::binary_message::write::PeerBinaryMessageWriteState;
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::{PeerHandshaked, PeerStatus, PeerTryWriteLoopStartAction};
-use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
@@ -239,6 +239,7 @@ where
         Action::PeerChunkWriteError(action) => {
             store.dispatch(PeersGraylistAddressAction {
                 address: action.address,
+                reason: PeerGraylistReason::ChunkWriteError,
             });
         }
         _ => {}

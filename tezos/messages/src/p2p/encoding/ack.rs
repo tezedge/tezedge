@@ -93,7 +93,7 @@ impl Arbitrary for NackInfo {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize, Deserialize, HasEncoding, NomReader, BinWriter, Arbitrary, Eq, PartialEq, Clone,
+    Serialize, Deserialize, HasEncoding, NomReader, BinWriter, Arbitrary, Eq, PartialEq, Clone, Copy,
 )]
 #[encoding(tags = "u16")]
 pub enum NackMotive {

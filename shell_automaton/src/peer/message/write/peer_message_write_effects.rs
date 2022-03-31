@@ -5,21 +5,22 @@ use std::net::SocketAddr;
 
 use tezos_encoding::binary_writer::BinaryWriterError;
 use tezos_messages::p2p::binary_message::BinaryWrite;
-use tezos_messages::p2p::encoding::peer::PeerMessage;
+use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 
 use crate::peer::binary_message::write::{
     PeerBinaryMessageWriteSetContentAction, PeerBinaryMessageWriteState,
 };
 use crate::peer::message::write::{PeerMessageWriteErrorAction, PeerMessageWriteSuccessAction};
-use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::service::{Service, StatisticsService};
 use crate::{Action, ActionId, ActionWithMeta, State, Store};
 
-use super::PeerMessageWriteNextAction;
+use super::{PeerMessageWriteError, PeerMessageWriteNextAction};
 
 fn binary_message_write_init<S: Service>(
     store: &mut Store<S>,
     address: SocketAddr,
+    message: &PeerMessageResponse,
     encoded_message: Result<Vec<u8>, BinaryWriterError>,
 ) -> bool {
     match encoded_message {
@@ -29,7 +30,10 @@ fn binary_message_write_init<S: Service>(
         }),
         Err(err) => store.dispatch(PeerMessageWriteErrorAction {
             address,
-            error: err.into(),
+            error: PeerMessageWriteError::Encode(format!(
+                "error: {:?}, message: {:?}",
+                err, message
+            )),
         }),
     }
 }
@@ -79,7 +83,13 @@ where
                     );
 
                     let message_encode_result = next_message.as_bytes();
-                    binary_message_write_init(store, content.address, message_encode_result);
+                    let next_message = next_message.clone();
+                    binary_message_write_init(
+                        store,
+                        content.address,
+                        &next_message,
+                        message_encode_result,
+                    );
                 }
             }
         }
@@ -100,7 +110,13 @@ where
                     action.id,
                 );
 
-                binary_message_write_init(store, content.address, content.message.as_bytes());
+                let message = content.message.clone();
+                binary_message_write_init(
+                    store,
+                    content.address,
+                    &message,
+                    content.message.as_bytes(),
+                );
             }
         }
         Action::PeerBinaryMessageWriteReady(content) => {
@@ -126,6 +142,7 @@ where
         Action::PeerMessageWriteError(content) => {
             store.dispatch(PeersGraylistAddressAction {
                 address: content.address,
+                reason: PeerGraylistReason::MessageWriteError(content.error.clone()),
             });
         }
         _ => {}

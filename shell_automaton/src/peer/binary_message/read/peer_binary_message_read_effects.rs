@@ -6,13 +6,16 @@ use tezos_messages::p2p::{
     encoding::{ack::AckMessage, metadata::MetadataMessage, peer::PeerMessageResponse},
 };
 
-use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::message::read::PeerMessageReadState;
 use crate::peer::{PeerHandshaked, PeerStatus};
 use crate::service::Service;
 use crate::{
     peer::chunk::read::{PeerChunkRead, PeerChunkReadInitAction, PeerChunkReadState},
     peers::graylist::PeersGraylistAddressAction,
+};
+use crate::{
+    peer::handshaking::{PeerHandshaking, PeerHandshakingStatus},
+    peers::graylist::PeerGraylistReason,
 };
 use crate::{Action, ActionWithMeta, Store};
 
@@ -270,6 +273,7 @@ where
         Action::PeerBinaryMessageReadError(action) => {
             store.dispatch(PeersGraylistAddressAction {
                 address: action.address,
+                reason: PeerGraylistReason::BinaryMessageReadError,
             });
         }
         _ => {}

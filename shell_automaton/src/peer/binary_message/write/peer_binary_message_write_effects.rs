@@ -6,7 +6,7 @@ use crate::peer::chunk::write::{
 };
 use crate::peer::handshaking::{PeerHandshaking, PeerHandshakingStatus};
 use crate::peer::{PeerHandshaked, PeerStatus};
-use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
@@ -139,6 +139,7 @@ where
         Action::PeerBinaryMessageWriteError(action) => {
             store.dispatch(PeersGraylistAddressAction {
                 address: action.address,
+                reason: PeerGraylistReason::BinaryMessageWriteError,
             });
         }
         _ => {}

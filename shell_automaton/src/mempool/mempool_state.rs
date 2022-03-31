@@ -66,20 +66,10 @@ pub struct MempoolState {
 }
 
 impl MempoolState {
-    /// Is endorsement for already applied block or not.
-    pub fn is_old_consensus_operation(&self, operation: &Operation) -> bool {
-        if !OperationKind::from_operation_content_raw(operation.data().as_ref())
-            .is_consensus_operation()
-        {
-            return false;
-        }
-        let level = match self.last_predecessor_blocks.get(operation.branch()) {
-            Some(v) => *v,
-            None => return false,
-        };
-
-        let current_head_level = self.local_head_state.as_ref().map(|b| b.header.level());
-        current_head_level.map_or(false, |head_level| head_level < level + 1)
+    pub fn has_peer_seen_op(&self, peer: SocketAddr, op_hash: &OperationHash) -> bool {
+        self.peer_state
+            .get(&peer)
+            .map_or(false, |p| p.seen_operations.contains(op_hash))
     }
 }
 
@@ -125,8 +115,6 @@ pub struct PeerState {
     pub(super) requesting_full_content: HashSet<OperationHash>,
     // those operations are known to the peer, should not rebroadcast
     pub(super) seen_operations: HashSet<OperationHash>,
-    // just validated
-    pub(super) known_valid_to_send: Vec<OperationHash>,
 }
 
 pub type OperationsStats = BTreeMap<OperationHash, OperationStats>;

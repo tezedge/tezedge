@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peer::disconnection::PeerDisconnectAction;
 use crate::service::Service;
 use crate::{Action, ActionWithMeta, Store};
 
@@ -10,7 +10,7 @@ where
     S: Service,
 {
     if let Action::PeerConnectionClosed(action) = &action.action {
-        store.dispatch(PeersGraylistAddressAction {
+        store.dispatch(PeerDisconnectAction {
             address: action.address,
         });
     }

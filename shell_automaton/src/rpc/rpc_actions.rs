@@ -86,3 +86,45 @@ impl EnablingCondition<State> for RpcReplyValidBlockAction {
         }
     }
 }
+
+pub type RpcInjectedBlock = RpcInjectBlockAction;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RpcInjectBlockAction {
+    pub rpc_id: RpcId,
+    pub block: BlockHeaderWithHash,
+}
+
+impl EnablingCondition<State> for RpcInjectBlockAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        can_accept_injected_block(state, &self.block)
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RpcRejectOutdatedInjectedBlockAction {
+    pub rpc_id: RpcId,
+    pub block_hash: BlockHash,
+}
+
+impl EnablingCondition<State> for RpcRejectOutdatedInjectedBlockAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let data = match state.rpc.injected_blocks.get(&self.block_hash) {
+            Some(v) => v,
+            None => return false,
+        };
+        data.rpc_id == self.rpc_id && !can_accept_injected_block(state, &data.block)
+    }
+}
+
+fn can_accept_injected_block(state: &State, block: &BlockHeaderWithHash) -> bool {
+    state.current_head.get().map_or(false, |h| {
+        h.header.level() == block.header.level() || h.header.level() + 1 == block.header.level()
+    }) && state.can_accept_new_head(block)
+        && !state.is_same_head(block.header.level(), &block.hash)
+        && state
+            .block_applier
+            .current
+            .block_hash()
+            .map_or(true, |hash| hash != &block.hash)
+}
