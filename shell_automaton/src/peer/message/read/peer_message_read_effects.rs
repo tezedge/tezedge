@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 
 use crypto::hash::BlockHash;
 use networking::network_channel::PeerMessageReceived;
-use storage::BlockHeaderWithHash;
+use storage::{BlockHeaderWithHash, OperationKey};
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::AdvertiseMessage;
@@ -244,28 +244,57 @@ where
                 }
                 PeerMessage::GetBlockHeaders(msg) => {
                     for block_hash in msg.get_block_headers() {
-                        if !store.dispatch(PeerRemoteRequestsBlockHeaderGetEnqueueAction {
+                        if store.dispatch(PeerRemoteRequestsBlockHeaderGetEnqueueAction {
                             address: content.address,
                             block_hash: block_hash.clone(),
                         }) {
-                            let state = store.state.get();
+                            continue;
+                        }
+                        let state = store.state.get();
+                        let peer = match state.peers.get_handshaked(&content.address) {
+                            Some(v) => v,
+                            None => return,
+                        };
+                        let requests = &peer.remote_requests.block_header_get;
+                        if requests.is_pending_or_queued(block_hash) {
+                            slog::debug!(&state.log, "Peer - Duplicate block header requests!";
+                                "peer" => format!("{}", content.address),
+                                "block_hash" => block_hash.to_string());
+                        } else {
                             slog::warn!(&state.log, "Peer - Too many block header requests!";
                                 "peer" => format!("{}", content.address),
-                                "current_requested_block_headers_len" => msg.get_block_headers().len());
+                                "block_hash" => block_hash.to_string(),
+                                "current_requested_block_headers_len" => msg.get_block_headers().len(),
+                                "already_pending_requests_len" => requests.queue.len());
                             break;
                         }
                     }
                 }
                 PeerMessage::GetOperationsForBlocks(msg) => {
                     for key in msg.get_operations_for_blocks() {
-                        if !store.dispatch(PeerRemoteRequestsBlockOperationsGetEnqueueAction {
+                        let key: OperationKey = key.into();
+                        if store.dispatch(PeerRemoteRequestsBlockOperationsGetEnqueueAction {
                             address: content.address,
-                            key: key.into(),
+                            key: key.clone(),
                         }) {
-                            let state = store.state.get();
-                            slog::warn!(&state.log, "Peer - Too many block operations requests!";
+                            continue;
+                        }
+                        let state = store.state.get();
+                        let peer = match state.peers.get_handshaked(&content.address) {
+                            Some(v) => v,
+                            None => return,
+                        };
+                        let requests = &peer.remote_requests.block_operations_get;
+                        if requests.is_pending_or_queued(&key) {
+                            slog::debug!(&state.log, "Peer - Duplicate block operations requests!";
                                 "peer" => format!("{}", content.address),
-                                "current_requested_block_operations_len" => msg.get_operations_for_blocks().len());
+                                "key" => format!("{:?}", key));
+                        } else {
+                            slog::warn!(&state.log, "Peer - Too many block header requests!";
+                                "peer" => format!("{}", content.address),
+                                "key" => format!("{:?}", key),
+                                "current_requested_block_headers_len" => msg.get_operations_for_blocks().len(),
+                                "already_pending_requests_len" => requests.queue.len());
                             break;
                         }
                     }
