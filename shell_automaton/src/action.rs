@@ -54,6 +54,7 @@ use crate::peer::disconnection::{PeerDisconnectAction, PeerDisconnectedAction};
 
 use crate::peer::handshaking::*;
 
+use crate::mempool::PrevalidatorAction;
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
 use crate::peers::check::timeouts::{
@@ -70,7 +71,6 @@ use crate::peers::graylist::{
 use crate::peers::init::PeersInitAction;
 use crate::peers::remove::PeersRemoveAction;
 use crate::prechecker::prechecker_actions::*;
-use crate::protocol::ProtocolAction;
 
 use crate::rights::rights_actions::*;
 
@@ -475,7 +475,7 @@ pub enum Action {
     BootstrapFinished(BootstrapFinishedAction),
     BootstrapFromPeerCurrentHead(BootstrapFromPeerCurrentHeadAction),
 
-    Protocol(ProtocolAction),
+    Prevalidator(PrevalidatorAction),
 
     MempoolRecvDone(MempoolRecvDoneAction),
     MempoolGetOperations(MempoolGetOperationsAction),
@@ -566,6 +566,8 @@ pub enum Action {
     RpcBootstrappedDone(RpcBootstrappedDoneAction),
     RpcMonitorValidBlocks(RpcMonitorValidBlocksAction),
     RpcReplyValidBlock(RpcReplyValidBlockAction),
+    RpcInjectBlock(RpcInjectBlockAction),
+    RpcRejectOutdatedInjectedBlock(RpcRejectOutdatedInjectedBlockAction),
 
     StorageBlockHeaderGet(kv_block_header::StorageBlockHeaderGetAction),
     StorageBlockHeaderOk(kv_block_header::StorageBlockHeaderOkAction),

@@ -198,7 +198,7 @@ impl<'a> MonitoredOperation<'a> {
                 protocol: protocol_hash,
                 hash: op_hash,
                 protocol_data,
-                error: serde_json::from_str(ocaml_err).unwrap_or_else(|err| vec![err.to_string()]),
+                error: vec![ocaml_err.clone()],
                 protocol_data_parse_error: err,
             })
         })

@@ -27,7 +27,7 @@ use crate::peer::handshaking::{
 use crate::peer::message::read::PeerMessageReadInitAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peer::{PeerCrypto, PeerStatus};
-use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::{ActorsService, RandomnessService, Service};
 use crate::{ActionWithMeta, Store};
@@ -519,21 +519,29 @@ where
                     ..
                 }) = &peer.status
                 {
-                    match remote_message {
+                    let nack_motive = match remote_message {
                         AckMessage::Ack => {
-                            return {
-                                store.dispatch(PeerHandshakingFinishAction {
-                                    address: action.address,
-                                });
-                            };
+                            store.dispatch(PeerHandshakingFinishAction {
+                                address: action.address,
+                            });
+                            return;
                         }
                         // TODO: use potential peers in nack message.
-                        AckMessage::Nack(_) => {}
-                        AckMessage::NackV0 => {}
-                    }
+                        AckMessage::Nack(info) => match *info.motive() {
+                            NackMotive::AlreadyConnected => {
+                                store.dispatch(PeerDisconnectAction {
+                                    address: action.address,
+                                });
+                                return;
+                            }
+                            motive => motive,
+                        },
+                        AckMessage::NackV0 => NackMotive::NoMotive,
+                    };
                     // peer nacked us so we should graylist him.
                     store.dispatch(PeersGraylistAddressAction {
                         address: action.address,
+                        reason: PeerGraylistReason::NackReceived(nack_motive),
                     });
                 }
             }
@@ -547,15 +555,26 @@ where
                     PeerStatus::Handshaked(v) => v,
                     status => {
                         if let PeerStatus::Handshaking(handshaking) = status {
-                            if let Some(NackMotive::AlreadyConnected) = &handshaking.nack_motive {
-                                store.dispatch(PeerDisconnectAction {
-                                    address: action.address,
-                                });
-                                return;
+                            match handshaking.nack_motive {
+                                Some(NackMotive::AlreadyConnected) => {
+                                    store.dispatch(PeerDisconnectAction {
+                                        address: action.address,
+                                    });
+                                    return;
+                                }
+                                Some(motive) => {
+                                    store.dispatch(PeersGraylistAddressAction {
+                                        address: action.address,
+                                        reason: PeerGraylistReason::NackSent(motive),
+                                    });
+                                    return;
+                                }
+                                None => {}
                             }
                         }
                         store.dispatch(PeersGraylistAddressAction {
                             address: action.address,
+                            reason: PeerGraylistReason::Unknown,
                         });
                         return;
                     }
@@ -589,6 +608,7 @@ where
         Action::PeerHandshakingError(action) => {
             store.dispatch(PeersGraylistAddressAction {
                 address: action.address,
+                reason: PeerGraylistReason::HandshakeError,
             });
         }
         _ => {}

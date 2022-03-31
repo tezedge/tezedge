@@ -376,7 +376,7 @@ Size: up to 131104
 | Name | Size | Contents |
 |:-----|:-----|:---------|
 | branch | 32 | BlockHash |
-| data | up to 131072 | up to 131072 of unsigned byte |
+| data | up to 131072 | list of unsigned byte |
 
 
 ### OperationMessage

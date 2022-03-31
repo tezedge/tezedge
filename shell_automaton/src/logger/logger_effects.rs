@@ -123,7 +123,9 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
         }
 
         Action::PeersGraylistAddress(content) => {
-            slog::warn!(log, "Graylisting peer ip"; "address" => content.address.to_string());
+            slog::warn!(log, "Graylisting peer ip";
+                "address" => content.address.to_string(),
+                "reason" => format!("{:?}", content.reason));
         }
         Action::PeersGraylistIpRemove(content) => {
             slog::info!(log, "Whitelisting peer ip"; "ip" => content.ip.to_string());

@@ -8,15 +8,20 @@ use std::{
     time::Instant,
 };
 
+use serde::{Deserialize, Serialize};
+use tokio::sync::{mpsc, oneshot};
+
 use crypto::hash::{BlockHash, ChainId, OperationHash};
-use storage::shell_automaton_action_meta_storage::ShellAutomatonActionsStats;
+use storage::persistent::SchemaError;
+use storage::{
+    shell_automaton_action_meta_storage::ShellAutomatonActionsStats, BlockHeaderWithHash,
+};
 use tezos_messages::p2p::encoding::{
     block_header::{BlockHeader, Level},
     operation::Operation,
 };
 
-use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, oneshot};
+use crate::Action;
 
 use crate::{request::RequestId, rpc::ValidBlocksQuery, storage::request::StorageRequestor, State};
 
@@ -94,7 +99,7 @@ pub enum RpcRequest {
         injected: Instant,
     },
     InjectBlock {
-        block_hash: BlockHash,
+        block: BlockHeaderWithHash,
     },
     InjectOperation {
         operation_hash: OperationHash,
@@ -118,6 +123,7 @@ pub enum RpcRequest {
     GetStatsCurrentHeadStats {
         channel: oneshot::Sender<Vec<(BlockHash, BlockApplyStats)>>,
         level: Level,
+        round: Option<i32>,
     },
 }
 
@@ -243,5 +249,23 @@ impl RpcService for RpcServiceDefault {
             }
             None => drop(self.outgoing_streams.remove(&call_id)),
         }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RpcShellAutomatonActionsRaw {
+    pub actions: Vec<Action>,
+    pub initial_state: State,
+}
+
+impl storage::persistent::Encoder for RpcShellAutomatonActionsRaw {
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        rmp_serde::to_vec(self).map_err(|_| SchemaError::EncodeError)
+    }
+}
+
+impl storage::persistent::Decoder for RpcShellAutomatonActionsRaw {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        rmp_serde::from_slice(bytes).map_err(|_err| SchemaError::DecodeError)
     }
 }

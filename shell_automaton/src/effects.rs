@@ -50,7 +50,6 @@ use crate::peers::graylist::peers_graylist_effects;
 use crate::peers::init::peers_init_effects;
 
 use crate::mempool::mempool_effects;
-use crate::protocol::protocol_effects;
 
 use crate::storage::blocks::genesis::check_applied::storage_blocks_genesis_check_applied_effects;
 use crate::storage::blocks::genesis::init::additional_data_put::storage_blocks_genesis_init_additional_data_put_effects;
@@ -127,8 +126,6 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     block_applier_effects(store, action);
 
     peer_effects(store, action);
-
-    protocol_effects(store, action);
 
     peer_connection_outgoing_effects(store, action);
     peer_connection_incoming_accept_effects(store, action);

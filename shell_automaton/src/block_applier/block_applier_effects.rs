@@ -69,6 +69,7 @@ where
                         content.block.header.level(),
                         content.block.header.timestamp().into(),
                         content.block.header.validation_pass(),
+                        content.block.header.fitness().round(),
                         start_time,
                         None,
                         None,

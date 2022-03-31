@@ -81,6 +81,7 @@ where
         }
         Action::WakeupEvent(_) => {
             while let Ok(result) = store.service.protocol_runner().try_recv() {
+                // TODO: clean this up
                 let init_state = match &store.state().protocol_runner {
                     ProtocolRunnerState::SpawnServer(state) => match state {
                         ProtocolRunnerSpawnServerState::Pending {} => match result {
@@ -179,6 +180,7 @@ where
                             store.dispatch(ProtocolRunnerResponseUnexpectedAction { result });
                         }
                     },
+                    // TODO: be explicit, don't use wildcard matching
                     _ => {
                         store.dispatch(ProtocolRunnerResponseUnexpectedAction { result });
                     }

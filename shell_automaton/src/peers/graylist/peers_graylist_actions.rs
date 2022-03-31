@@ -1,9 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, SocketAddr};
 
+use serde::{Deserialize, Serialize};
+
+use tezos_messages::p2p::encoding::ack::NackMotive;
+
+use crate::peer::message::write::PeerMessageWriteError;
 use crate::{EnablingCondition, State};
 
 #[cfg(feature = "fuzzing")]
@@ -11,9 +15,40 @@ use crate::fuzzing::net::{IpAddrMutator, SocketAddrMutator};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PeerGraylistReason {
+    ConnectionIncomingError,
+    ConnectionOutgoingError,
+
+    BinaryMessageReadError,
+    BinaryMessageWriteError,
+
+    ChunkReadError,
+    ChunkWriteError,
+
+    NackReceived(NackMotive),
+    NackSent(NackMotive),
+
+    HandshakeError,
+
+    MessageReadError,
+    MessageWriteError(PeerMessageWriteError),
+
+    RequestedBlockHeaderLevelMismatch,
+
+    BootstrapBlockHeaderInconsistentChain,
+    BootstrapCementedBlockReorg,
+
+    ConnectionClosed,
+    Unknown,
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PeersGraylistAddressAction {
     #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
+
+    pub reason: PeerGraylistReason,
 }
 
 impl EnablingCondition<State> for PeersGraylistAddressAction {

@@ -4,7 +4,10 @@
 use std::path::PathBuf;
 
 use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::{ApplyBlockRequest, TezosRuntimeConfiguration};
+use tezos_api::ffi::{
+    ApplyBlockRequest, BeginConstructionRequest, TezosRuntimeConfiguration,
+    ValidateOperationRequest,
+};
 use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
 use tezos_protocol_ipc_client::ProtocolServiceError;
 use tezos_protocol_ipc_messages::GenesisResultDataParams;
@@ -77,6 +80,34 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDummy {
     }
 
     fn apply_block(&mut self, _: ApplyBlockRequest) {}
+
+    fn begin_construction_for_prevalidation(
+        &mut self,
+        _: BeginConstructionRequest,
+    ) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
+    fn validate_operation_for_prevalidation(
+        &mut self,
+        _: ValidateOperationRequest,
+    ) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
+    fn begin_construction_for_mempool(
+        &mut self,
+        _: BeginConstructionRequest,
+    ) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
+    fn validate_operation_for_mempool(
+        &mut self,
+        _: ValidateOperationRequest,
+    ) -> ProtocolRunnerToken {
+        self.new_token()
+    }
 
     /// Notify status of protocol runner's and it's context initialization.
     fn notify_status(&mut self, _: bool) {}

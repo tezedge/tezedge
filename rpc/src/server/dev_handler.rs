@@ -309,6 +309,33 @@ pub async fn dev_shell_automaton_state_raw_get(
         .body(Body::from(contents))?)
 }
 
+pub async fn dev_shell_automaton_actions_raw_get(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let actions = dev_services::get_shell_automaton_actions_raw(
+        &env,
+        query.get_u64("cursor"),
+        query.get_usize("limit"),
+    )
+    .await?;
+
+    let contents = actions.encode()?;
+
+    Ok(Response::builder()
+        .header(hyper::header::CONTENT_TYPE, "application/octet-stream")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+        .header(
+            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+            "GET, POST, OPTIONS, PUT",
+        )
+        .body(Body::from(contents))?)
+}
+
 pub async fn dev_shell_automaton_storage_requests_get(
     _: Request<Body>,
     _: Params,
@@ -468,6 +495,8 @@ fn application_stats(hash: BlockHash, stats: BlockApplyStats, base_time: u64) ->
         .unwrap_or_default();
     serde_json::json!({
         "block_hash": hash,
+        "block_level": stats.level,
+        "block_round": stats.round,
         "block_timestamp": stats.block_timestamp.saturating_mul(1_000_000_000),
         "receive_timestamp": stats.receive_timestamp,
         "injected": stats.injected,
@@ -510,8 +539,9 @@ pub async fn dev_shell_automaton_stats_current_head_application(
         .get_str("level")
         .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `level`"))
         .and_then(|str| Ok(str.parse()?))?;
+    let round = query.get_str("round").and_then(|str| str.parse().ok());
 
-    let stats = dev_services::get_shell_automaton_stats_current_head(level, &env).await?;
+    let stats = dev_services::get_shell_automaton_stats_current_head(level, round, &env).await?;
     let base_time = stats
         .iter()
         .min_by_key(|(_, v)| v.receive_timestamp)
@@ -627,8 +657,9 @@ pub async fn dev_shell_automaton_stats_current_head_peers(
         .get_str("level")
         .ok_or_else(|| anyhow::anyhow!("Missing mandatory query parameter `level`"))
         .and_then(|str| Ok(str.parse()?))?;
+    let round = query.get_str("round").and_then(|str| str.parse().ok());
 
-    let stats = dev_services::get_shell_automaton_stats_current_head(level, &env).await?;
+    let stats = dev_services::get_shell_automaton_stats_current_head(level, round, &env).await?;
     let base_time = stats
         .iter()
         .min_by_key(|(_, v)| v.receive_timestamp)

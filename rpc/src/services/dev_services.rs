@@ -6,17 +6,17 @@
 // The timings database, along with the readonly IPC context access could be used
 // to reproduce the same functionality.
 
+use crypto::hash::{ContractKt1Hash, OperationHash};
+use serde::{Deserialize, Serialize};
+use shell_automaton::mempool::{OperationKind, OperationValidationResult};
+use shell_automaton::service::rpc_service::RpcShellAutomatonActionsRaw;
+use shell_automaton::{Action, ActionWithMeta};
+use slog::Logger;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::vec;
-
-use crypto::hash::{ContractKt1Hash, OperationHash};
-use serde::{Deserialize, Serialize};
-use shell_automaton::mempool::{OperationKind, OperationValidationResult};
-use shell_automaton::{Action, ActionWithMeta};
-use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
@@ -492,10 +492,10 @@ pub(crate) async fn shell_automaton_state_closest(
 #[derive(Serialize, Deserialize)]
 pub(crate) struct RpcShellAutomatonAction {
     #[serde(flatten)]
-    action: ActionWithMeta,
-    state: shell_automaton::State,
+    pub action: ActionWithMeta,
+    pub state: shell_automaton::State,
     /// Time between this action and the next one.
-    duration: u64,
+    pub duration: u64,
 }
 
 pub(crate) async fn get_shell_automaton_actions(
@@ -593,6 +593,22 @@ pub(crate) async fn get_shell_automaton_actions(
             .1)
     })
     .await?
+}
+
+pub(crate) async fn get_shell_automaton_actions_raw(
+    env: &RpcServiceEnvironment,
+    cursor: Option<u64>,
+    limit: Option<usize>,
+) -> anyhow::Result<RpcShellAutomatonActionsRaw> {
+    let actions_with_state = get_shell_automaton_actions(env, cursor, limit).await?;
+
+    Ok(RpcShellAutomatonActionsRaw {
+        actions: actions_with_state
+            .iter()
+            .map(|a| a.action.action.clone())
+            .collect(),
+        initial_state: actions_with_state[0].state.clone(),
+    })
 }
 
 pub(crate) async fn get_shell_automaton_actions_reverse(
@@ -798,6 +814,7 @@ pub struct BlockStats {
     block_first_seen: u64,
 
     block_level: Level,
+    block_round: Option<i32>,
 
     /// Time(ns) since block_first_seen in current head.
     data_ready: Option<u64>,
@@ -844,6 +861,7 @@ pub(crate) async fn get_shell_automaton_block_stats_graph(
             BlockStats {
                 block_first_seen,
                 block_level: stats.level,
+                block_round: stats.round,
                 data_ready: times_sub(stats.load_data_start, Some(data_ready_start)),
                 load_data: times_sub(stats.load_data_end, stats.load_data_start),
                 apply_block: times_sub(stats.apply_block_end, stats.apply_block_start),
@@ -853,7 +871,11 @@ pub(crate) async fn get_shell_automaton_block_stats_graph(
         })
         .collect::<Vec<_>>();
 
-    result.sort_by_key(|v| v.block_level);
+    result.sort_by(|a, b| {
+        a.block_level
+            .cmp(&b.block_level)
+            .then(a.block_round.cmp(&b.block_round))
+    });
     // take last/newest `limit` block stats.
     result = result.into_iter().rev().take(limit).rev().collect();
 
@@ -903,12 +925,17 @@ pub(crate) async fn get_shell_automaton_endorsements_status(
 
 pub(crate) async fn get_shell_automaton_stats_current_head(
     level: i32,
+    round: Option<i32>,
     env: &RpcServiceEnvironment,
 ) -> anyhow::Result<Vec<(BlockHash, shell_automaton::service::BlockApplyStats)>> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     let _ = env
         .shell_automaton_sender()
-        .send(RpcShellAutomatonMsg::GetStatsCurrentHeadStats { channel: tx, level })
+        .send(RpcShellAutomatonMsg::GetStatsCurrentHeadStats {
+            channel: tx,
+            level,
+            round,
+        })
         .await?;
     let response = rx.await?;
     Ok(response)

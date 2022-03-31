@@ -83,7 +83,7 @@ $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
     --protocol-runner "./target/release/protocol-runner" \
     --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
     --init-sapling-output-params-file "./tezos/sys/lib_tezos/artifacts/sapling-output.params" \
-    --p2p-port 19732 --rpc-port 18732 \
+    --p2p-port 9732 --rpc-port 8732 \
     --tokio-threads 0 \
     --ocaml-log-enabled false \
     --log terminal \
@@ -114,7 +114,7 @@ $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts nohup ./target/release/light-n
     --protocol-runner "./target/release/protocol-runner" \
     --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
     --init-sapling-output-params-file "./tezos/sys/lib_tezos/artifacts/sapling-output.params" \
-    --p2p-port 19732 --rpc-port 18732 \
+    --p2p-port 9732 --rpc-port 8732 \
     --tokio-threads 0 \
     --ocaml-log-enabled false \
     --log terminal \
@@ -135,9 +135,9 @@ _Currently Tezos binaries for version v11.x.x are known to be working with Tezed
 
 After successful compilation, you should see these binaries in Tezos source directory (for v11):
 ```
-tezos-baker-011-PtHangz2
+tezos-baker-012-Psithaca
+tezos-accuser-012-Psithaca
 tezos-client
-tezos-endorser-011-PtHangz2
 ```
 
 _Note: Following commands assume that tezos sources directory is added to the PATH environment variable_
@@ -146,8 +146,7 @@ _Note: Following commands assume that tezos sources directory is added to the PA
 ## Wait for TezEdge node to sync with the network
 
 ```
-$ tezos-client \
-    --endpoint http:://localhost:18732 bootstrapped
+$ tezos-client bootstrapped
 
 Waiting for the node to be bootstrapped...
 ...
@@ -161,7 +160,6 @@ See https://tezos.gitlab.io/user/key-management.html
 a) If you already have existing account for baking/endorsing, you just need to import the key:
 ```
 $ tezos-client \
-  --endpoint "http://localhost:18732" \
   --base-dir "$HOME/data-mainnet/client" \
    import secret key <delegate_alias> <delegate_secret_key>
 ```
@@ -169,7 +167,6 @@ $ tezos-client \
 b) If you use a key provided by Ledger Nano S, import the key from it:
 ```
 $ tezos-client \
-  --endpoint "http://localhost:18732" \
   --base-dir "$HOME/data-mainnet/client" \
    list connected ledgers
 
@@ -188,7 +185,6 @@ tezos-client import secret key ledger_username "ledger://major-squirrel-thick-he
 tezos-client import secret key ledger_username "ledger://major-squirrel-thick-hedgehog/P-256/0h/0h"
 
 $ tezos-client \
-  --endpoint "http://localhost:18732" \
   --base-dir "$HOME/data-mainnet/client" \
    import secret key <delegate_alias> "ledger://major-squirrel-thick-hedgehog/ed25519/0h/0h"
 Please validate (and write down) the public key hash displayed on the Ledger,
@@ -202,7 +198,6 @@ You will need to confirm addition of the address on the ledger.
 c) If you dont have any keys, you need to activate and register accounts as delegate:
 ```
 $ tezos-client \
-  --endpoint "http://localhost:18732" \
   --base-dir "$HOME/data-mainnet/client" \
    activate account <delegate_alias> with "<key/ledger/faucet>"
 ...
@@ -214,18 +209,17 @@ And then register as a delegate:
 
 ```
 $ tezos-client \
-  --endpoint "http://localhost:18732" \
   --base-dir "$HOME/data-mainnet/client" \
    register key <delegate_alias> as delegate
 ```
 
-## Run baker
+## Run Baker And Endorser
 
-_Note. For Tezos baker executable from v12.x.x `-m json` paramters should be added to make it expect JSON RPC instead of new compact encoding_
+_Note. For Tezos baker executable from v12.x.x `--media-type json` (or `-m json`) paramters should be added to make it expect JSON RPC instead of new compact encoding_
 
 ```
-$ tezos-baker-011-PtHangz2 \
-  --endpoint "http://localhost:18732" \
+$ tezos-baker-012-Psithaca \
+  --media-type json \
   --base-dir "$HOME/data-mainnet/client" \
   run with local node "$HOME/data-mainnet" <delegate_alias>
 
@@ -233,26 +227,20 @@ Node is bootstrapped.
 ...
 Baker started.
 ...
-Feb 23 13:11:53.782 - 011-PtHangz2.delegate.baking_forge: no slot found at level XXXXXXX (max_priority = 64)
-
-...
 ```
 
-## Run endorser
-
-_Note. For Tezos endorser executable from v12.x.x `-m json` paramters should be added to make it expect JSON RPC instead of new compact encoding_
+## Run accuser
 
 ```
-$ tezos-endorser-011-PtHangz2 \
-   --endpoint "http://localhost:18732" \
+$ tezos-accuser-012-Psithaca \
    --base-dir "$HOME/data-mainnet/client" \
-   run <delegate_alias>
-
+   run
 Node is bootstrapped.
 ...
-Endorser started.
+Accuser started.
 ...
 ```
+
 
 # Use Ledger
 
@@ -277,7 +265,6 @@ First, inspect if the ledger is recognized by the `tezos-client`
 
 ```
 $ tezos-client \
-   --endpoint "http://localhost:18732" \
    --base-dir "$HOME/data-mainnet/client" \
    list connected ledgers
 ## Ledger `major-squirrel-thick-hedgehog`
@@ -299,7 +286,6 @@ Use the second proposed command (with `ed25519` curve) to import public key from
 
 ```
 $ tezos-client \
-   --endpoint "http://localhost:18732" \
    --base-dir "$HOME/data-mainnet/client" \
    import secret key my_delegate "ledger://major-squirrel-thick-hedgehog/ed25519/0h/0h"
 ```
@@ -310,7 +296,6 @@ Check that the address is now known to the `tezos-client`.
 
 ```
 $ tezos-client \
-   --endpoint "http://localhost:18732" \
    --base-dir "$HOME/data-mainnet/client" \
    list known addresses
 my_delegate: tzXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX (ledger sk known)
@@ -324,7 +309,6 @@ To enable non-interactive singing of blocks and endorsements use the following c
 
 ```
 $ tezos-client \
-   --endpoint "http://localhost:18732" \
    --base-dir "$HOME/data-mainnet/client" \
    setup ledger to bake for my_delegate 
 ```
@@ -356,7 +340,6 @@ To make `tezos-baker` use remote signing, corresponding remote address should be
 
 ```
 $ tezos-signer \
-   --endpoint "http://localhost:18732" \
    --base-dir "$HOME/data-mainnet/client" \
    import secret key my_delegate http://home:17732/tz1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```
@@ -364,24 +347,11 @@ $ tezos-signer \
 Now you can run `tezos-baker` using this alias:
 
 ```
-$ tezos-baker-011-PtHangz2 \
-   --endpoint "http://localhost:18732" \
+$ tezos-baker-012-Psithaca \
+   --media-type json \
    --base-dir "$HOME/data-mainnet/client" \
    run with local node "$HOME/data-mainnet/context_data" my_delegate
 Node is bootstrapped.
 Baker started.
-Feb 27 14:19:14.978 - 011-PtHangz2.delegate.baking_forge: no slot found at level 2153775 (max_priority = 64)
-...
-```
-
-The same way you can run endorser daemon:
-
-```
-$ tezos-endorser-011-PtHangz2 \
-   --endpoint "http://localhost:18732" \
-   --base-dir "$HOME/data-mainnet/client" \
-   run my_delegate
-Node is bootstrapped.
-Endorser started.
 ...
 ```

@@ -7,7 +7,7 @@ use std::{convert::TryInto, sync::Arc};
 use getset::{CopyGetters, Getters, Setters};
 use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 use serde::{Deserialize, Serialize};
-use slog::{warn, Logger};
+use slog::{debug, warn, Logger};
 
 use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, HashType, OperationMetadataHash,
@@ -153,7 +153,7 @@ impl BlockMetaStorage {
                         // here we have some previous successors
                         // if does not contains block_hash, means that we detected reorg or new branch
                         if !meta.successors.contains(block_hash) {
-                            warn!(
+                            debug!(
                                 log, "Extending successors - means detected reorg or new branch";
                                 "block_hash_predecessor" => block_header.header.predecessor().to_base58_check(),
                                 "stored_successors" => {

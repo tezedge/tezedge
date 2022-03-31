@@ -287,7 +287,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
             } = &mut state.bootstrap
             {
                 let main_block = (main_block.header.level(), main_block.hash.clone());
-                let missing_levels_count = main_block.0 - current_head.header.level();
+                let missing_levels_count = main_block.0.saturating_sub(current_head.header.level());
 
                 let peer_intervals = std::mem::take(peer_branches)
                     .into_iter()
@@ -336,7 +336,9 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     last_logged_downloaded_count: 0,
                     main_chain_last_level: main_block.0,
                     main_chain_last_hash: main_block.1,
-                    main_chain: VecDeque::with_capacity(missing_levels_count.max(0) as usize),
+                    main_chain: VecDeque::with_capacity(
+                        missing_levels_count.max(0).min(10_000_000) as usize,
+                    ),
                     peer_intervals,
                 };
             }
@@ -842,49 +844,47 @@ pub fn log_stats(state: &mut State) {
 
     let now = state.time_as_nanos();
 
-    match &mut state.bootstrap {
-        BootstrapState::PeersBlockHeadersGetPending {
-            last_logged,
-            last_logged_downloaded_count,
-            main_chain,
-            main_chain_last_level,
-            peer_intervals,
-            ..
-        } => {
-            if now - *last_logged < LOG_INTERVAL_NS {
-                return;
-            }
-
-            let current_head = match state.current_head.get() {
-                Some(v) => v,
-                None => return,
-            };
-            let total = main_chain_last_level
-                .saturating_sub(current_head.header.level())
-                .max(0) as usize;
-            let downloaded_count = main_chain.len()
-                + peer_intervals
-                    .iter()
-                    .map(|v| v.downloaded.len())
-                    .sum::<usize>();
-            let parallelism = peer_intervals
-                .iter()
-                .filter(|b| b.current.is_pending())
-                .filter_map(|b| b.current.peer())
-                .collect::<BTreeSet<_>>()
-                .len();
-            let left = total.saturating_sub(downloaded_count);
-            let speed = downloaded_count.saturating_sub(*last_logged_downloaded_count)
-                / (LOG_INTERVAL_S as usize);
-
-            slog::info!(&state.log, "Downloading block headers";
-                "progress" => format!("{}/{} (left: {})", downloaded_count, total, left),
-                "speed" => format!("{} h/s", speed),
-                "parallelism" => parallelism);
-
-            *last_logged = now;
-            *last_logged_downloaded_count = downloaded_count;
+    if let BootstrapState::PeersBlockHeadersGetPending {
+        last_logged,
+        last_logged_downloaded_count,
+        main_chain,
+        main_chain_last_level,
+        peer_intervals,
+        ..
+    } = &mut state.bootstrap
+    {
+        if now - *last_logged < LOG_INTERVAL_NS {
+            return;
         }
-        _ => return,
+
+        let current_head = match state.current_head.get() {
+            Some(v) => v,
+            None => return,
+        };
+        let total = main_chain_last_level
+            .saturating_sub(current_head.header.level())
+            .max(0) as usize;
+        let downloaded_count = main_chain.len()
+            + peer_intervals
+                .iter()
+                .map(|v| v.downloaded.len())
+                .sum::<usize>();
+        let parallelism = peer_intervals
+            .iter()
+            .filter(|b| b.current.is_pending())
+            .filter_map(|b| b.current.peer())
+            .collect::<BTreeSet<_>>()
+            .len();
+        let left = total.saturating_sub(downloaded_count);
+        let speed = downloaded_count.saturating_sub(*last_logged_downloaded_count)
+            / (LOG_INTERVAL_S as usize);
+
+        slog::info!(&state.log, "Downloading block headers";
+            "progress" => format!("{}/{} (left: {})", downloaded_count, total, left),
+            "speed" => format!("{} h/s", speed),
+            "parallelism" => parallelism);
+
+        *last_logged = now;
+        *last_logged_downloaded_count = downloaded_count;
     }
 }

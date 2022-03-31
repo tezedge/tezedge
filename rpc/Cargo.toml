@@ -1,6 +1,6 @@
 [package]
 name = "rpc"
-version = "1.19.0"
+version = "2.0.0"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2021"
 build = "build.rs"
@@ -40,6 +40,8 @@ tezos_timing = { path = "../tezos/timing" }
 tezos_context_api = { path = "../tezos/context-api" }
 tezos_context_ipc_client = { path = "../tezos/context-ipc-client" }
 tezos_protocol_ipc_client = { path = "../tezos/protocol-ipc-client" }
+rmp = "0.8.10"
+rmp-serde = "0.15.5"
 
 [dev-dependencies]
 assert-json-diff = { git = "https://github.com/tezedge/assert-json-diff.git", tag = "v2.0.1-public-diff-module" }

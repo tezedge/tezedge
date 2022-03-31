@@ -14,10 +14,10 @@ use tezos_messages::p2p::encoding::operations_for_blocks::{
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 use tezos_messages::p2p::encoding::prelude::GetCurrentBranchMessage;
 
-use crate::block_applier::{BlockApplierApplyState, BlockApplierEnqueueBlockAction};
+use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::bootstrap::BootstrapState;
 use crate::peer::message::write::PeerMessageWriteInitAction;
-use crate::peers::graylist::PeersGraylistAddressAction;
+use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::service::actors_service::ActorsMessageTo;
 use crate::service::storage_service::StorageRequestPayload;
 use crate::service::{ActorsService, RandomnessService};
@@ -184,7 +184,11 @@ where
                         PeerIntervalError::NextIntervalsPredecessorHashMismatch => {
                             let peers = interval.peers.iter().cloned().collect::<Vec<_>>();
                             for address in peers {
-                                store.dispatch(PeersGraylistAddressAction { address });
+                                store.dispatch(PeersGraylistAddressAction {
+                                    address,
+                                    reason:
+                                        PeerGraylistReason::BootstrapBlockHeaderInconsistentChain,
+                                });
                             }
                             break;
                         }
@@ -311,24 +315,20 @@ where
             store.dispatch(BootstrapPeersBlockOperationsGetSuccessAction {});
         }
         Action::CurrentHeadUpdate(_) => {
-            store.dispatch(BootstrapScheduleBlocksForApplyAction {});
-            store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
-            store.dispatch(BootstrapFinishedAction {});
+            if store.state().bootstrap.is_finished() {
+                restart_bootstrap(store);
+            } else {
+                store.dispatch(BootstrapScheduleBlocksForApplyAction {});
+                store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
+                store.dispatch(BootstrapFinishedAction {});
+            }
         }
         Action::BlockApplierApplyError(_) => {
-            match &store.state().block_applier.current {
-                BlockApplierApplyState::Error {
-                    injector_rpc_id, ..
-                } => {
-                    if injector_rpc_id.is_some() {
-                        return;
-                    }
-                }
-                _ => return,
-            }
-            store.dispatch(BootstrapErrorAction {
+            if !store.dispatch(BootstrapErrorAction {
                 error: BootstrapError::BlockApplicationFailed,
-            });
+            }) {
+                restart_bootstrap(store);
+            }
         }
         Action::BootstrapPeerBlockHeaderGetTimeout(_) => {
             request_block_headers_from_available_peers(store);
@@ -342,27 +342,16 @@ where
         Action::BootstrapError(content) => {
             if let BootstrapError::CementedBlockReorg { peers, .. } = &content.error {
                 for address in peers.iter().cloned() {
-                    store.dispatch(PeersGraylistAddressAction { address });
+                    store.dispatch(PeersGraylistAddressAction {
+                        address,
+                        reason: PeerGraylistReason::BootstrapCementedBlockReorg,
+                    });
                 }
             }
             store.dispatch(BootstrapFinishedAction {});
         }
         Action::BootstrapFinished(_) => {
-            let state = store.state();
-            let (peer, current_head) = match state
-                .peers
-                .handshaked_iter()
-                .filter_map(|(addr, peer)| peer.current_head.as_ref().map(|head| (addr, head)))
-                .max_by_key(|(_, b)| b.header.fitness())
-                .filter(|(_, current_head)| {
-                    !state.is_same_head(current_head.header.level(), &current_head.hash)
-                })
-                .filter(|(_, current_head)| state.can_accept_new_head(current_head))
-            {
-                Some((addr, head)) => (addr, head.clone()),
-                None => return,
-            };
-            store.dispatch(BootstrapFromPeerCurrentHeadAction { peer, current_head });
+            restart_bootstrap(store);
         }
         Action::PeerCurrentHeadUpdate(content) => {
             store.dispatch(BootstrapPeersMainBranchFindSuccessAction {});
@@ -581,4 +570,25 @@ pub fn request_block_operations<S>(
         block_hash: block_hash.clone(),
     });
     store.dispatch(BootstrapPeerBlockOperationsGetSuccessAction { block_hash });
+}
+
+pub fn restart_bootstrap<S>(store: &mut Store<S>)
+where
+    S: Service,
+{
+    let state = store.state();
+    let (peer, current_head) = match state
+        .peers
+        .handshaked_iter()
+        .filter_map(|(addr, peer)| peer.current_head.as_ref().map(|head| (addr, head)))
+        .max_by_key(|(_, b)| b.header.fitness())
+        .filter(|(_, current_head)| {
+            !state.is_same_head(current_head.header.level(), &current_head.hash)
+        })
+        .filter(|(_, current_head)| state.can_accept_new_head(current_head))
+    {
+        Some((addr, head)) => (addr, head.clone()),
+        None => return,
+    };
+    store.dispatch(BootstrapFromPeerCurrentHeadAction { peer, current_head });
 }

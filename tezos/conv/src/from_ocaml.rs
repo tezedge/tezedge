@@ -190,6 +190,7 @@ impl_from_ocaml_record! {
         chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
         context_fitness: Option<OCamlList<OCamlBytes>>,
+        predecessor: OCamlBlockHash,
     }
 }
 
@@ -399,6 +400,8 @@ impl_from_ocaml_polymorphic_variant! {
             NodeMessage::RestoreContextResponse(result),
 
         IpcResponseEncodingFailure(message: String) => NodeMessage::IpcResponseEncodingFailure(message),
+
+        PingResult => NodeMessage::PingResult,
 
         ShutdownResult => NodeMessage::ShutdownResult,
     }

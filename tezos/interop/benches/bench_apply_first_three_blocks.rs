@@ -195,7 +195,6 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, InitProt
         commit_genesis: true,
         enable_testchain: false,
         readonly: false,
-        turn_off_context_raw_inspector: true, // TODO - TE-261: remove later, new context doesn't use it
         patch_context: tezos_env.patch_context_genesis_parameters.clone(),
 
         context_stats_db_path: None,

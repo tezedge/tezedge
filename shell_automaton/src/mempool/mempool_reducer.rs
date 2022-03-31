@@ -13,9 +13,9 @@ use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::block_applier::BlockApplierApplyState;
 use crate::mempool::OperationKind;
+use crate::mempool::PrevalidatorAction;
 use crate::peers::remove::PeersRemoveAction;
 use crate::prechecker::PrecheckerState;
-use crate::protocol::ProtocolAction;
 use crate::{Action, ActionWithMeta, State};
 
 use super::{
@@ -37,14 +37,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
     let mempool_state = &mut state.mempool;
 
     match &action.action {
-        Action::Protocol(act) => match act {
-            ProtocolAction::PrevalidatorReady(prevalidator) => {
+        Action::Prevalidator(act) => match act {
+            PrevalidatorAction::PrevalidatorReady(prevalidator) => {
                 mempool_state.prevalidator = Some(prevalidator.clone());
                 if let Some(local_head_state) = mempool_state.local_head_state.as_mut() {
                     local_head_state.prevalidator_ready = true;
                 }
             }
-            ProtocolAction::OperationValidated(result) => {
+            PrevalidatorAction::OperationValidated(result) => {
                 let current_head_level = mempool_state
                     .local_head_state
                     .as_ref()
@@ -57,11 +57,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .ops
                             .insert(v.hash.clone(), op);
                         mempool_state.validated_operations.applied.push(v.clone());
-                        for peer in mempool_state.peer_state.values_mut() {
-                            if !peer.seen_operations.contains(&v.hash) {
-                                peer.known_valid_to_send.push(v.hash.clone());
-                            }
-                        }
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -167,13 +162,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .validated_operations
                             .branch_delayed
                             .push(v.clone());
-                        if v.is_endorsement.unwrap_or(false) {
-                            for peer in mempool_state.peer_state.values_mut() {
-                                if !peer.seen_operations.contains(&v.hash) {
-                                    peer.known_valid_to_send.push(v.hash.clone());
-                                }
-                            }
-                        }
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -274,16 +262,17 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             if let Some(local_head_state) = &mempool_state.local_head_state {
                 let local_header = &local_head_state.header;
                 let new_header = &block.header;
-                if local_header.level() == new_header.level()
-                    && local_header.predecessor() == new_header.predecessor()
-                {
-                    slog::info!(
+                if new_header.fitness() <= local_header.fitness() {
+                    slog::debug!(
                         &state.log,
-                        "Block `{new_block}` applied on the same level, ignoring it",
-                        new_block = block.hash.to_base58_check();
-                        "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check())
+                        // "Ignoring applied block in mempool with lower fitness";
+                        "Applied block in mempool with lower fitness";
+                        "head" => slog::FnValue(|_| local_head_state.hash.to_base58_check()),
+                        "head_level" => local_header.level(),
+                        "head_fitness" => local_header.fitness().to_string(),
+                        "new_head" => format!("{:?}", block),
                     );
-                    return;
+                    // return;
                 }
             }
 
@@ -393,7 +382,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .or_else(|| mempool_state.pending_operations.get(op))
                         .or_else(|| mempool_state.validated_operations.refused_ops.get(op))
                         .map(|op| OperationKind::from_operation_content_raw(op.data().as_ref()))
-                        .filter(|op_kind| op_kind.is_endorsement())
+                        .filter(|op_kind| op_kind.is_consensus_operation())
                         .is_some();
 
                     if !is_endorsement {
@@ -528,19 +517,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 // TODO(vlad): received operation, but we did not requested it, what should we do?
             }
 
-            // ignore endorsement operation if its for the past block.
-            if mempool_state.is_old_endorsement(operation) {
-                if let Some(level) = mempool_state
-                    .last_predecessor_blocks
-                    .get(operation.branch())
-                {
-                    if let Some(ops) = mempool_state.level_to_operation.get_mut(level) {
-                        ops.retain(|op| op.ne(&operation_hash));
-                    }
-                    return;
-                }
-            }
-
             mempool_state
                 .pending_operations
                 .insert(operation_hash, operation.clone());
@@ -586,6 +562,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 Ok(v) => v,
                 Err(_) => return,
             };
+
             mempool_state
                 .operation_stats
                 .entry(operation_hash.clone())
@@ -738,15 +715,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             address,
             known_valid,
             pending,
-            cleanup_known_valid,
         }) => {
             let peer = mempool_state.peer_state.entry(*address).or_default();
 
             peer.seen_operations.extend(known_valid.iter().cloned());
             peer.seen_operations.extend(pending.iter().cloned());
-            if *cleanup_known_valid {
-                peer.known_valid_to_send.clear();
-            }
             for hash in known_valid {
                 if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
                     match operation_state {

@@ -321,8 +321,13 @@ pub async fn inject_operation(
     let is_async = parse_async(&query, false);
 
     result_to_json_response(
-        services::mempool_services::inject_operation(is_async, chain_id, &operation_data, &env)
-            .await,
+        services::mempool_services::inject_operation(
+            is_async,
+            chain_id,
+            &operation_data,
+            Arc::clone(&env),
+        )
+        .await,
         env.log(),
     )
 }
@@ -341,7 +346,7 @@ pub async fn inject_block(
     let is_async = parse_async(&query, false);
 
     result_to_json_response(
-        services::mempool_services::inject_block(is_async, chain_id, &body, &env).await,
+        services::mempool_services::inject_block(is_async, chain_id, &body, Arc::clone(&env)).await,
         env.log(),
     )
 }

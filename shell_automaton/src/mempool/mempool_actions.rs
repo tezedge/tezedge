@@ -7,6 +7,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
+use tezos_api::ffi::{PrevalidatorWrapper, ValidateOperationResponse};
 use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_messages::p2p::encoding::{mempool::Mempool, operation::Operation};
 
@@ -181,6 +182,7 @@ impl EnablingCondition<State> for MempoolSendAction {
 pub struct MempoolSendValidatedAction {
     #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
+    pub known_valid: Vec<OperationHash>,
 }
 
 impl EnablingCondition<State> for MempoolSendValidatedAction {
@@ -237,7 +239,6 @@ pub struct MempoolBroadcastDoneAction {
     pub address: SocketAddr,
     pub known_valid: Vec<OperationHash>,
     pub pending: Vec<OperationHash>,
-    pub cleanup_known_valid: bool,
 }
 
 impl EnablingCondition<State> for MempoolBroadcastDoneAction {
@@ -299,6 +300,23 @@ pub struct MempoolRpcEndorsementsStatusGetAction {
 
 impl EnablingCondition<State> for MempoolRpcEndorsementsStatusGetAction {
     fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+// Prevalidator
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PrevalidatorAction {
+    Error(String),
+    PrevalidatorReady(PrevalidatorWrapper),
+    PrevalidatorForMempoolReady(PrevalidatorWrapper),
+    OperationValidated(ValidateOperationResponse),
+}
+
+impl EnablingCondition<State> for PrevalidatorAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let _ = state;
         true
     }
 }

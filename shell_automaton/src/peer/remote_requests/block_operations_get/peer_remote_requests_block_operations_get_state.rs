@@ -67,3 +67,9 @@ pub struct PeerRemoteRequestsBlockOperationsGetState {
     pub queue: BTreeSet<OperationKey>,
     pub current: PeerRemoteRequestsBlockOperationsGetCurrentState,
 }
+
+impl PeerRemoteRequestsBlockOperationsGetState {
+    pub fn is_pending_or_queued(&self, key: &OperationKey) -> bool {
+        self.queue.contains(key) || self.current.key().map_or(false, |k| k == key)
+    }
+}
