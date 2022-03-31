@@ -12,7 +12,6 @@ use tezos_messages::protocol::SupportedProtocol;
 use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::block_applier::BlockApplierApplyState;
-use crate::mempool::OperationKind;
 use crate::mempool::PrevalidatorAction;
 use crate::peers::remove::PeersRemoveAction;
 use crate::prechecker::PrecheckerState;
@@ -360,63 +359,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
             mempool_state.level_to_operation.retain(|x, _| *x >= level);
-
-            let start_level = old_head_state
-                .as_ref()
-                .map(|v| v.header.level())
-                .unwrap_or(0);
-            let end_level = block.header.level();
-
-            if start_level >= end_level {
-                return;
-            }
-
-            // Remove old endorsement operations.
-            let range = start_level..end_level;
-            for (_, ops) in mempool_state.level_to_operation.range(range) {
-                for op in ops {
-                    let is_endorsement = mempool_state
-                        .validated_operations
-                        .ops
-                        .get(op)
-                        .or_else(|| mempool_state.pending_operations.get(op))
-                        .or_else(|| mempool_state.validated_operations.refused_ops.get(op))
-                        .map(|op| OperationKind::from_operation_content_raw(op.data().as_ref()))
-                        .filter(|op_kind| op_kind.is_consensus_operation())
-                        .is_some();
-
-                    if !is_endorsement {
-                        continue;
-                    }
-
-                    mempool_state.pending_operations.remove(op);
-                    mempool_state.validated_operations.ops.remove(op);
-                    mempool_state.validated_operations.refused_ops.remove(op);
-                    mempool_state
-                        .validated_operations
-                        .applied
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .refused
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .branch_delayed
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .branch_refused
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .outdated
-                        .retain(|v| v.hash.ne(op));
-                    for peer_state in mempool_state.peer_state.values_mut() {
-                        peer_state.seen_operations.remove(op);
-                    }
-                }
-            }
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
