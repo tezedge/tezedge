@@ -207,7 +207,7 @@ $ tezos-client \
 
 ## Run Baker And Endorser
 
-_Note. For Tezos baker executable from v12.x.x `--media-type json` (or `-m json`) paramters should be added to make it expect JSON RPC instead of new compact encoding_
+_Note. For Tezos baker executable from v12.x.x `--media-type json` (or `-m json`) parameters should be added to make it expect JSON RPC instead of new compact encoding_
 
 ```
 $ tezos-baker-012-Psithaca \
@@ -225,6 +225,7 @@ Baker started.
 
 ```
 $ tezos-accuser-012-Psithaca \
+   --media-type json \
    --base-dir "$HOME/data-mainnet/client" \
    run
 Node is bootstrapped.
