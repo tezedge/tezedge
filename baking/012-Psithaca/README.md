@@ -19,12 +19,13 @@ https://teztnets.xyz/ithacanet-faucet
 ## Create working directory
 
 _Tezos baker requires access to the context directory, which is produced by TezEdge node._
- ```
- mkdir $HOME/data-dir-012-Psithaca
- mkdir $HOME/data-dir-012-Psithaca/client
 
- cp faucet.json $HOME/data-dir-012-Psithaca
- ```
+```
+mkdir $HOME/data-dir-012-Psithaca
+mkdir $HOME/data-dir-012-Psithaca/client
+
+cp faucet.json $HOME/data-dir-012-Psithaca
+```
 
 ## Run TezEdge node
 
@@ -66,9 +67,11 @@ Mar 31 16:10:23.359 INFO Generating new tezos identity. This will take a while, 
 ...
 ```
 
-## Build Tezos Baker/Endorser/Accuser binaries from source
+## Download tezos client binaries (or build from source)
 
-Please, see [https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam](https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam)
+Download `tezos-client`, `tezos-baker-012-Psithaca` and `tezos-accuser-012-Psithaca` from https://gitlab.com/tezos/tezos/-/releases.
+
+Or alternatively, build them from source. See [https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam](https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam) for instructions.
 
 After successfull compilation, you should see this binaries in Tezos source directory:
 ```
@@ -80,7 +83,7 @@ tezos-client
 ## Wait for TezEdge node to sync with network
 
 ```
-$ tezos-client -E http:://localhost:12535 bootstrapped
+$ tezos-client -E http://localhost:12535 bootstrapped
 Waiting for the node to be bootstrapped...
 Current head: BLU4di1EGgkd (timestamp: 2021-11-05T23:19:31.000-00:00, validation: 2022-02-24T17:07:41.976-00:00)
 Current head: BLKsPJN9yqs9 (timestamp: 2021-11-05T23:19:46.000-00:00, validation: 2022-02-24T17:07:42.100-00:00)
@@ -273,7 +276,7 @@ To enable non-interactive singing of blocks and endorsements use the following c
 $ tezos-client \
    --endpoint "http://localhost:12535" \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
-   setup ledger to bake for my_delegate 
+   setup ledger to bake for my_delegate
 ```
 
 Make sure you confirm this operation with your ledger.

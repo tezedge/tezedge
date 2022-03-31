@@ -27,25 +27,17 @@ $ mkdir $HOME/data-mainnet
 $ mkdir $HOME/data-mainnet/client
 ```
 
-## Download snapshot data
+## Import snapshot data
 
 _If you want to run node from empty storage, you can skip this step._
-At first, you need to check, which (latest) snapshot to download, open a browser here: http://snapshots.tezedge.com/
+At first, you need to check, which (latest) snapshot to download, please visit http://snapshots.tezedge.com/ for instructions.
 
-There are two ways how to download the snapshot data:
+Example:
 
-a) **http download**
 ```
-$ cd $HOME/data-mainnet
-$ wget -m -np -nH --cut-dirs=1 -R 'index.html*' http://snapshots.tezedge.com/tezedge_mainnet_<date>_<block-hash>
-```
-
-b) **scp download**
-_For user/password please contact [jurajselep@viablesystems.io](jurajselep@viablesystems.io)_
-```
-$ cd $HOME/data-mainnet
-$ scp -r <user>@snapshots.tezedge.com:/usr/local/etc/tezedge-data/tezedge_mainnet_<date>_<block-hash> $HOME/data-mainnet
-passwd: <password>
+$ light-node import-snapshot \
+   --from http://snapshots.tezedge.com:8880/mainnet/irmin/full/tezedge_mainnet_20220331-115305_BL42sTybrNx3WWdRNis76eHRXRQgVmh2oNcAb29xP473YrJSUVm_irmin.full \
+   --tezos-data-dir "$HOME/data-mainnet"
 ```
 
 ## Identity json file
@@ -127,13 +119,13 @@ You can check the logs by typing this command:
 $ tail -f $HOME/data-mainnet/nohup-node.out
 ```
 
-## Build Tezos Baker/Endorser/Accuser binaries from source
+## Download tezos client binaries (or build from source)
 
-Please see [https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam](https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam)
+Download `tezos-client`, `tezos-baker-012-Psithaca` and `tezos-accuser-012-Psithaca` from https://gitlab.com/tezos/tezos/-/releases.
 
-_Currently Tezos binaries for version v11.x.x are known to be working with Tezedge_
+Or alternatively, build them from source. See [https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam](https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam) for instructions.
 
-After successful compilation, you should see these binaries in Tezos source directory (for v11):
+After successful compilation, you should see these binaries in Tezos source directory:
 ```
 tezos-baker-012-Psithaca
 tezos-accuser-012-Psithaca
@@ -310,7 +302,7 @@ To enable non-interactive singing of blocks and endorsements use the following c
 ```
 $ tezos-client \
    --base-dir "$HOME/data-mainnet/client" \
-   setup ledger to bake for my_delegate 
+   setup ledger to bake for my_delegate
 ```
 
 Make sure you confirm this operation with your ledger.
