@@ -548,6 +548,23 @@ impl BootstrapState {
         Self::Idle {}
     }
 
+    pub fn is_finished(&self) -> bool {
+        matches!(self, Self::Finished { .. })
+    }
+
+    pub fn can_inject_block(&self) -> bool {
+        match self {
+            Self::Idle { .. }
+            | Self::Init { .. }
+            | Self::PeersConnectPending { .. }
+            | Self::PeersConnectSuccess { .. }
+            | Self::PeersMainBranchFindPending { .. }
+            | Self::PeersMainBranchFindSuccess { .. }
+            | Self::Finished { .. } => true,
+            _ => false,
+        }
+    }
+
     pub fn timeouts_last_check(&self) -> Option<u64> {
         match self {
             Self::PeersBlockHeadersGetPending {

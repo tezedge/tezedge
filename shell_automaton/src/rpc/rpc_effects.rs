@@ -19,6 +19,8 @@ use crate::service::{RpcService, Service};
 use crate::storage::request::StorageRequestStatus;
 use crate::{Action, ActionWithMeta, Store};
 
+use super::rpc_actions::RpcInjectBlockAction;
+use super::rpc_actions::RpcRejectOutdatedInjectedBlockAction;
 use super::rpc_actions::{
     RpcBootstrappedAction, RpcBootstrappedDoneAction, RpcBootstrappedNewBlockAction,
     RpcMonitorValidBlocksAction, RpcReplyValidBlockAction,
@@ -141,11 +143,33 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         let stats = store.service().statistics();
                         let _ = channel.send(stats.map(|s| s.block_stats_get_all().clone()));
                     }
-                    RpcRequest::InjectBlock { block_hash } => {
-                        store.dispatch(BlockApplierEnqueueBlockAction {
-                            block_hash: block_hash.into(),
-                            injector_rpc_id: Some(rpc_id),
-                        });
+                    RpcRequest::InjectBlock { block } => {
+                        if !store.dispatch(RpcInjectBlockAction {
+                            rpc_id,
+                            block: block.clone(),
+                        }) {
+                            let state = store.state();
+                            let error = if !state.rpc.injected_blocks.contains_key(&block.hash) {
+                                "block is already injected and is in the queue to be applied"
+                            } else if state
+                                .block_applier
+                                .current
+                                .block_hash()
+                                .map_or(true, |hash| hash != &block.hash)
+                            {
+                                if state.block_applier.current.is_pending() {
+                                    "block is already injected and being applied"
+                                } else {
+                                    "block is already injected and applied"
+                                }
+                            } else {
+                                "level/fitness of the injected block is lower than the node's current head"
+                            };
+                            store
+                                .service
+                                .rpc()
+                                .respond(rpc_id, serde_json::Value::String(error.to_string()));
+                        }
                     }
                     RpcRequest::InjectOperation {
                         operation,
@@ -275,6 +299,22 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     next_protocol: content.next_protocol.clone(),
                 });
             }
+
+            enqueue_injected_block(store);
+        }
+
+        Action::RpcInjectBlock(_)
+        | Action::BlockApplierApplyError(_)
+        | Action::BlockApplierApplySuccess(_)
+        | Action::BootstrapFinished(_) => {
+            enqueue_injected_block(store);
+        }
+
+        Action::RpcRejectOutdatedInjectedBlock(content) => {
+            store.service.rpc().respond(
+                content.rpc_id,
+                serde_json::Value::String("injected block is outdated".to_string()),
+            );
         }
 
         Action::RpcBootstrapped(RpcBootstrappedAction { rpc_id }) => {
@@ -365,5 +405,46 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
         }
 
         _ => {}
+    }
+}
+
+fn enqueue_injected_block<S: Service>(store: &mut Store<S>) {
+    let state = store.state();
+
+    if state.block_applier.current.is_pending() || !state.block_applier.queue.is_empty() {
+        return;
+    }
+
+    if !state.bootstrap.can_inject_block() {
+        return;
+    }
+
+    let mut blocks = state
+        .rpc
+        .injected_blocks
+        .iter()
+        .map(|(_, data)| {
+            (
+                data.block.hash.clone(),
+                data.rpc_id,
+                data.block.header.fitness().clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    blocks.sort_by(|(_, _, a), (_, _, b)| b.cmp(a));
+
+    let mut has_accepted = false;
+    for (injected_block_hash, rpc_id, _) in blocks {
+        let block_hash = injected_block_hash.clone();
+        if !store.dispatch(RpcRejectOutdatedInjectedBlockAction { rpc_id, block_hash }) {
+            if !has_accepted {
+                has_accepted = true;
+                store.dispatch(BlockApplierEnqueueBlockAction {
+                    injector_rpc_id: Some(rpc_id),
+                    block_hash: injected_block_hash.into(),
+                });
+            }
+        }
     }
 }

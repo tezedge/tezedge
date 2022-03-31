@@ -11,7 +11,7 @@ use shell::validation::CanApplyStatus;
 use shell_automaton::service::rpc_service::RpcRequest as RpcShellAutomatonMsg;
 use slog::{info, warn};
 
-use crypto::hash::{BlockHash, ChainId, OperationHash};
+use crypto::hash::{ChainId, OperationHash};
 use storage::block_meta_storage::Meta;
 // use shell_integration::*;
 use storage::{
@@ -361,7 +361,7 @@ async fn process_injected_block(
         }
 
         // try apply block
-        try_apply_block(env, block_header_with_hash.hash.clone()).await?;
+        try_apply_block(env, &block_header_with_hash).await?;
     } else {
         warn!(log, "Injected duplicated block - will be ignored!");
         return Err(InjectBlockError {
@@ -442,19 +442,19 @@ pub fn process_block_operations(
 
 pub async fn try_apply_block(
     env: &RpcServiceEnvironment,
-    block_hash: BlockHash,
+    block: &BlockHeaderWithHash,
 ) -> Result<(), InjectBlockError> {
     let block_meta_storage = BlockMetaStorage::new(env.persistent_storage());
     let operations_meta_storage = OperationsMetaStorage::new(env.persistent_storage());
 
     // get block metadata
-    let block_metadata = match block_meta_storage.get(&block_hash)? {
+    let block_metadata = match block_meta_storage.get(&block.hash)? {
         Some(block_metadata) => block_metadata,
         None => {
             return Err(InjectBlockError {
                 reason: format!(
                     "No metadata found for block_hash: {}",
-                    block_hash.to_base58_check()
+                    block.hash.to_base58_check()
                 ),
             });
         }
@@ -462,7 +462,7 @@ pub async fn try_apply_block(
 
     // check if can be applied
     match shell::validation::can_apply_block(
-        (&block_hash, &block_metadata),
+        (&block.hash, &block_metadata),
         |bh| operations_meta_storage.is_complete(bh),
         |predecessor| block_meta_storage.is_applied(predecessor),
     )? {
@@ -476,7 +476,7 @@ pub async fn try_apply_block(
             return Err(InjectBlockError {
                 reason: format!(
                     "Block {} cannot be applied because missing predecessor block",
-                    block_hash.to_base58_check()
+                    block.hash.to_base58_check()
                 ),
             });
         }
@@ -484,7 +484,7 @@ pub async fn try_apply_block(
             return Err(InjectBlockError {
                 reason: format!(
                     "Block {} cannot be applied because predecessor block is not applied yet",
-                    block_hash.to_base58_check()
+                    block.hash.to_base58_check()
                 ),
             });
         }
@@ -492,7 +492,7 @@ pub async fn try_apply_block(
             return Err(InjectBlockError {
                 reason: format!(
                     "Block {} cannot be applied because missing operations",
-                    block_hash.to_base58_check()
+                    block.hash.to_base58_check()
                 ),
             });
         }
@@ -501,7 +501,7 @@ pub async fn try_apply_block(
     let result = env
         .shell_automaton_sender()
         .send(RpcShellAutomatonMsg::InjectBlock {
-            block_hash: block_hash.clone(),
+            block: block.clone(),
         })
         .await;
     match result {
@@ -510,21 +510,21 @@ pub async fn try_apply_block(
             Ok(serde_json::Value::String(error)) => Err(InjectBlockError {
                 reason: format!(
                     "Block {} cannot be applied because block application failed. Reason: {}",
-                    block_hash.to_base58_check(),
+                    block.hash.to_base58_check(),
                     error,
                 ),
             }),
             _ => Err(InjectBlockError {
                 reason: format!(
                     "Block {} cannot be applied because unknown block application error.",
-                    block_hash.to_base58_check(),
+                    block.hash.to_base58_check(),
                 ),
             }),
         },
         Err(_) => Err(InjectBlockError {
             reason: format!(
                 "Block {} cannot be applied because sending block for application failed!",
-                block_hash.to_base58_check(),
+                block.hash.to_base58_check(),
             ),
         }),
     }
