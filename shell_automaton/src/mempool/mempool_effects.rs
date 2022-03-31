@@ -447,10 +447,12 @@ where
             };
             let ops = peer.requesting_full_content.iter().cloned().collect();
             store.dispatch(MempoolMarkOperationsAsPendingAction { address: *address });
-            store.dispatch(PeerMessageWriteInitAction {
-                address: *address,
-                message: Arc::new(GetOperationsMessage::new(ops).into()),
-            });
+            for message in GetOperationsMessage::from_operations(ops) {
+                store.dispatch(PeerMessageWriteInitAction {
+                    address: *address,
+                    message: Arc::new(message.into()),
+                });
+            }
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
