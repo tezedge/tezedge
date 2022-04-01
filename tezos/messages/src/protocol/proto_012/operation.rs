@@ -260,6 +260,7 @@ Endorsement (tag 21)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InlinedEndorsementMempoolContents {
+    #[encoding(tag = 21)]
     Endorsement(InlinedEndorsementMempoolContentsEndorsementVariant),
 }
 
