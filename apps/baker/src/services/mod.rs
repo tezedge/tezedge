@@ -7,7 +7,7 @@ pub mod key;
 pub mod logger;
 pub mod timer;
 
-use std::{sync::mpsc, path::PathBuf};
+use std::{path::PathBuf, sync::mpsc};
 
 use reqwest::Url;
 
@@ -19,7 +19,14 @@ pub struct Services {
 }
 
 impl Services {
-    pub fn new(endpoint: Url, base_dir: &PathBuf, baker: &str) -> (Self, impl Iterator<Item = Result<event::Event, client::RpcError>>) {
+    pub fn new(
+        endpoint: Url,
+        base_dir: &PathBuf,
+        baker: &str,
+    ) -> (
+        Self,
+        impl Iterator<Item = Result<event::Event, client::RpcError>>,
+    ) {
         let (tx, rx) = mpsc::channel();
         (
             Services {

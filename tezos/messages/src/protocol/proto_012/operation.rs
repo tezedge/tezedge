@@ -24,8 +24,8 @@ pub use super::super::proto_011::operation::{
 use std::convert::TryFrom;
 
 use crypto::hash::{
-    BlockHash, BlockPayloadHash, ContextHash, HashTrait, NonceHash, OperationListListHash,
-    Signature, OperationHash, ProtocolHash,
+    BlockHash, BlockPayloadHash, ContextHash, HashTrait, NonceHash, OperationHash,
+    OperationListListHash, ProtocolHash, Signature,
 };
 use tezos_encoding::{
     binary_reader::BinaryReaderError,

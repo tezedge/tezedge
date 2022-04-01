@@ -1,26 +1,32 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, convert::TryInto, io, str, sync::mpsc, thread, time::Duration, num::ParseIntError};
+use std::{
+    collections::BTreeMap, convert::TryInto, io, num::ParseIntError, str, sync::mpsc, thread,
+    time::Duration,
+};
 
 use chrono::{DateTime, ParseError, Utc};
 use derive_more::From;
-use reqwest::{blocking::{Client, ClientBuilder}, StatusCode, Url};
+use reqwest::{
+    blocking::{Client, ClientBuilder},
+    StatusCode, Url,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 
 use crypto::hash::{
-    BlockHash, BlockPayloadHash, ChainId, ContextHash, ContractTz1Hash, OperationHash,
-    OperationListListHash, ProtocolHash, Signature, NonceHash,
+    BlockHash, BlockPayloadHash, ChainId, ContextHash, ContractTz1Hash, NonceHash, OperationHash,
+    OperationListListHash, ProtocolHash, Signature,
 };
 use tezos_encoding::{binary_reader::BinaryReaderError, types::SizedBytes};
+use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
 use tezos_messages::{
     p2p::{binary_message::BinaryRead, encoding::operation::DecodedOperation},
     protocol::proto_012::operation::FullHeader,
 };
-use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
 
-use super::event::{Block, OperationSimple, Event};
+use super::event::{Block, Event, OperationSimple};
 
 pub const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
@@ -96,7 +102,10 @@ impl RpcClient {
         RpcClient {
             tx,
             endpoint,
-            inner: ClientBuilder::new().timeout(None).build().expect("client should created"),
+            inner: ClientBuilder::new()
+                .timeout(None)
+                .build()
+                .expect("client should created"),
         }
     }
 
@@ -145,8 +154,20 @@ impl RpcClient {
             .endpoint
             .join("chains/main/blocks/head/context/constants")
             .expect("valid constant url");
-        let ConstantsInner { nonce_length, blocks_per_cycle, blocks_per_commitment, consensus_committee_size, minimal_block_delay, delay_increment_per_round, proof_of_work_threshold } = self.single_response_blocking::<ConstantsInner>(&url, None, None)
-            .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
+        let ConstantsInner {
+            nonce_length,
+            blocks_per_cycle,
+            blocks_per_commitment,
+            consensus_committee_size,
+            minimal_block_delay,
+            delay_increment_per_round,
+            proof_of_work_threshold,
+        } = self
+            .single_response_blocking::<ConstantsInner>(&url, None, None)
+            .map_err(|inner| RpcError::WithContext {
+                url: url.clone(),
+                inner,
+            })?;
 
         Ok(Constants {
             nonce_length,
@@ -157,18 +178,29 @@ impl RpcClient {
                 proof_of_work_threshold
                     .parse::<i64>()
                     .map_err(|err| RpcErrorInner::IntParse(err, "pow threshold".to_string()))
-                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?
+                    .map_err(|inner| RpcError::WithContext {
+                        url: url.clone(),
+                        inner,
+                    })?
                     .to_be_bytes(),
             ),
             minimal_block_delay: Duration::from_secs(
-                minimal_block_delay.parse()
+                minimal_block_delay
+                    .parse()
                     .map_err(|err| RpcErrorInner::IntParse(err, "minimal block delay".to_string()))
-                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?,
+                    .map_err(|inner| RpcError::WithContext {
+                        url: url.clone(),
+                        inner,
+                    })?,
             ),
             delay_increment_per_round: Duration::from_secs(
-                delay_increment_per_round.parse()
+                delay_increment_per_round
+                    .parse()
                     .map_err(|err| RpcErrorInner::IntParse(err, "delay increment".to_string()))
-                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?,
+                    .map_err(|inner| RpcError::WithContext {
+                        url: url.clone(),
+                        inner,
+                    })?,
             ),
         })
     }

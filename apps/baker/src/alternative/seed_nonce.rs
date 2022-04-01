@@ -3,10 +3,11 @@
 
 use std::{
     collections::BTreeMap,
+    convert::TryInto,
     fs::File,
     io::{self, Read},
     mem,
-    path::PathBuf, convert::TryInto,
+    path::PathBuf,
 };
 
 use derive_more::From;
@@ -132,10 +133,7 @@ impl SeedNonceService {
         })
     }
 
-    pub fn gen_nonce(
-        &mut self,
-        level: i32,
-    ) -> Result<Option<NonceHash>, SeedPersistanceError> {
+    pub fn gen_nonce(&mut self, level: i32) -> Result<Option<NonceHash>, SeedPersistanceError> {
         let level = level as u32;
         if level % self.blocks_per_commitment == 0 {
             let nonce = Nonce::random(self.nonce_length);

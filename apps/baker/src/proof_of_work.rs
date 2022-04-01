@@ -78,7 +78,9 @@ mod tests {
             )
             .unwrap(),
             payload_round: 0,
-            proof_of_work_nonce: SizedBytes(hex::decode("409a3f3ff9820000").unwrap().try_into().unwrap()),
+            proof_of_work_nonce: SizedBytes(
+                hex::decode("409a3f3ff9820000").unwrap().try_into().unwrap(),
+            ),
             liquidity_baking_escape_vote: false,
             seed_nonce_hash: None,
             signature: Signature(vec![0x00; 64]),

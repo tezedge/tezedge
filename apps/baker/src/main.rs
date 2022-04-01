@@ -5,8 +5,8 @@ mod command_line;
 mod proof_of_work;
 
 mod alternative;
-mod services;
 mod machine;
+mod services;
 
 fn main() {
     use self::command_line::{Arguments, Command};
@@ -31,8 +31,12 @@ fn main() {
             let _ = node_dir;
 
             let (srv, events) = Services::new(endpoint, &base_dir, &baker);
-            slog::info!(srv.log, "crypto service ready: {}", srv.crypto.public_key_hash());
-            
+            slog::info!(
+                srv.log,
+                "crypto service ready: {}",
+                srv.crypto.public_key_hash()
+            );
+
             alternative::run(srv, &base_dir, &baker, events).unwrap();
         }
     }

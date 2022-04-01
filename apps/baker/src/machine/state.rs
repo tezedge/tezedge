@@ -3,9 +3,9 @@
 
 use std::collections::BTreeMap;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crypto::hash::{ContractTz1Hash, BlockHash, Signature, OperationHash, ProtocolHash};
+use crypto::hash::{BlockHash, ContractTz1Hash, OperationHash, ProtocolHash, Signature};
 use tenderbake as tb;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -80,5 +80,5 @@ pub struct State {
     pub nonces: CycleNonces,
     pub retry_monitor_operations: usize,
     pub tb_delegate: tb::Config<tb::TimingLinearGrow, SlotsInfo>,
-    pub tb_state: tb::Machine::<ContractTz1Hash, OperationSimple, 200>,
+    pub tb_state: tb::Machine<ContractTz1Hash, OperationSimple, 200>,
 }

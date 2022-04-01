@@ -277,9 +277,12 @@ where
                 return Transition::next_level(log, config, block, now).map_left(Err);
             }
             Some(v) => {
-                log.push(LogRecord::Predecessor { round: v.round, timestamp: v.timestamp });
+                log.push(LogRecord::Predecessor {
+                    round: v.round,
+                    timestamp: v.timestamp,
+                });
                 v.clone()
-            },
+            }
         };
 
         let payload = if let Some(v) = block.payload {
@@ -424,9 +427,12 @@ where
                 return Transition::next_level(log, config, block, now).map_left(Err);
             }
             Some(v) => {
-                log.push(LogRecord::Predecessor { round: v.round, timestamp: v.timestamp });
+                log.push(LogRecord::Predecessor {
+                    round: v.round,
+                    timestamp: v.timestamp,
+                });
                 v.clone()
-            },
+            }
         };
 
         let current_round = pred_time_header.round_local_coord(&config.timing, now);
@@ -635,7 +641,12 @@ where
         let current_round = pred_time_header.round_local_coord(&config.timing, now);
 
         // if we have elected block, and the vote is late, let's include it anyway
-        if let VotesState::Done { ref round, ref mut cer, .. } = &mut self.inner_ {
+        if let VotesState::Done {
+            ref round,
+            ref mut cer,
+            ..
+        } = &mut self.inner_
+        {
             if round.eq(&block_id.round) {
                 cer.votes += validator;
             }
@@ -652,7 +663,11 @@ where
 
         let votes = match &mut self.inner_ {
             VotesState::Collecting { ref mut incomplete } => incomplete,
-            VotesState::Done { ref mut cer, ref hash, .. } => {
+            VotesState::Done {
+                ref mut cer,
+                ref hash,
+                ..
+            } => {
                 if self.hash.eq(hash) {
                     cer.votes += validator;
                 }

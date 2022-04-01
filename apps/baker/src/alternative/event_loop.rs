@@ -15,22 +15,20 @@ use crypto::hash::{
 use tenderbake as tb;
 use tezos_encoding::{enc::BinWriter, types::SizedBytes};
 use tezos_messages::protocol::proto_012::operation::{
-    InlinedEndorsement, InlinedEndorsementMempoolContents, InlinedEndorsementMempoolContentsEndorsementVariant, InlinedPreendorsementContents, InlinedPreendorsementVariant, InlinedPreendorsement,
+    InlinedEndorsement, InlinedEndorsementMempoolContents,
+    InlinedEndorsementMempoolContentsEndorsementVariant, InlinedPreendorsement,
+    InlinedPreendorsementContents, InlinedPreendorsementVariant,
 };
 
 use crate::services::{
-    event::{OperationSimple, Event, OperationKind},
+    client::{ProtocolBlockHeader, RpcClient, RpcError},
+    event::{Event, OperationKind, OperationSimple},
     key::CryptoService,
-    client::{RpcClient, RpcError, ProtocolBlockHeader},
     timer::Timer,
     Services,
 };
 
-use super::{
-    guess_proof_of_work,
-    slots_info::SlotsInfo,
-    seed_nonce::SeedNonceService,
-};
+use super::{guess_proof_of_work, seed_nonce::SeedNonceService, slots_info::SlotsInfo};
 
 const WAIT_OPERATION_TIMEOUT: Duration = Duration::from_secs(3600);
 
@@ -58,7 +56,11 @@ pub fn run(
         "committee size: {}",
         constants.consensus_committee_size
     );
-    slog::info!(srv.log, "pow threshold: {:x}", constants.proof_of_work_threshold);
+    slog::info!(
+        srv.log,
+        "pow threshold: {:x}",
+        constants.proof_of_work_threshold
+    );
     let timing = tb::TimingLinearGrow {
         minimal_block_delay: constants.minimal_block_delay,
         delay_increment_per_round: constants.delay_increment_per_round,
@@ -422,7 +424,9 @@ fn perform(
                     payload_hash,
                     payload_round,
                     seed_nonce_hash,
-                    proof_of_work_nonce: SizedBytes(hex::decode("7985fafe1fb70300").unwrap().try_into().unwrap()),
+                    proof_of_work_nonce: SizedBytes(
+                        hex::decode("7985fafe1fb70300").unwrap().try_into().unwrap(),
+                    ),
                     liquidity_baking_escape_vote: false,
                     signature: Signature(vec![]),
                 };
@@ -457,7 +461,7 @@ fn perform(
                         serde_json::from_value(applied).ok()
                     })
                     .collect();
-    
+
                 match client.inject_block(hex::encode(data), valid_operations) {
                     Ok(hash) => slog::info!(
                         log,
@@ -468,10 +472,9 @@ fn perform(
                     Err(err) => {
                         slog::error!(log, " .  {err}");
                         slog::error!(log, " .  {}", serde_json::to_string(&operations).unwrap());
-                    },
+                    }
                 }
             }
         }
     }
 }
- 
