@@ -38,7 +38,11 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 } => (head.clone(), head_pred.clone()),
                 _ => return,
             };
-            state.current_head = CurrentHeadState::Rehydrated { head, head_pred };
+            state.current_head = CurrentHeadState::Rehydrated {
+                head,
+                head_payload_hash: None,
+                head_pred,
+            };
         }
         Action::CurrentHeadUpdate(content) => {
             let head_pred = state
@@ -50,6 +54,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 .cloned();
             state.current_head = CurrentHeadState::Rehydrated {
                 head: content.new_head.as_ref().clone(),
+                head_payload_hash: content.payload_hash.clone(),
                 head_pred,
             };
         }

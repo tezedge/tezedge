@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crypto::hash::ProtocolHash;
+use crypto::hash::{BlockPayloadHash, ProtocolHash};
 use serde::{Deserialize, Serialize};
 
 use storage::BlockHeaderWithHash;
@@ -97,6 +97,7 @@ impl EnablingCondition<State> for CurrentHeadRehydratedAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CurrentHeadUpdateAction {
     pub new_head: Arc<BlockHeaderWithHash>,
+    pub payload_hash: Option<BlockPayloadHash>,
     pub protocol: ProtocolHash,
     pub next_protocol: ProtocolHash,
 }

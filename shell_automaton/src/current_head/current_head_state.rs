@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::BlockPayloadHash;
 use serde::{Deserialize, Serialize};
 
 use storage::BlockHeaderWithHash;
@@ -31,6 +32,8 @@ pub enum CurrentHeadState {
 
     Rehydrated {
         head: BlockHeaderWithHash,
+        head_payload_hash: Option<BlockPayloadHash>,
+
         head_pred: Option<BlockHeaderWithHash>,
     },
 }
@@ -51,6 +54,15 @@ impl CurrentHeadState {
     pub fn get_pred(&self) -> Option<&BlockHeaderWithHash> {
         match self {
             Self::Rehydrated { head_pred, .. } => head_pred.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn payload_hash(&self) -> Option<&BlockPayloadHash> {
+        match self {
+            Self::Rehydrated {
+                head_payload_hash, ..
+            } => head_payload_hash.as_ref(),
             _ => None,
         }
     }
