@@ -1340,7 +1340,9 @@ fn reduce_with_state(action: &ActionWithMeta<Action>) -> bool {
     let prev_hook = std::panic::take_hook();
 
     std::panic::set_hook(Box::new(move |panic_info| {
+        let bt = std::backtrace::Backtrace::force_capture();
         println!("NEW CRASH {}", panic_info);
+        println!("{:?}", bt);
     }));
 
     let mut state = FUZZER_STATE.write().unwrap();
