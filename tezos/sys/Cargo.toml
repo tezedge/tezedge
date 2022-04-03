@@ -3,6 +3,7 @@ name = "tezos-sys"
 version = "2.0.1"
 authors = ["Bruno Deferrari <bruno.deferrari@simplestaking.com>"]
 edition = "2021"
+rust-version = "1.58"
 links = "tezos"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

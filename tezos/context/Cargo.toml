@@ -3,6 +3,7 @@ name = "tezos_context"
 version = "2.0.1"
 authors = ["Branislav Kontur <branislav.kontur@viablesystems.io>"]
 edition = "2021"
+rust-version = "1.58"
 
 [dependencies]
 blake2 = "0.9"
