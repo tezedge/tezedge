@@ -286,6 +286,11 @@ impl RpcClient {
                 this.single_response_blocking(&url, None, Some(Duration::from_secs(30)))?
             };
 
+            let s = format!("chains/main/blocks/{}/live_blocks", header.hash);
+            let url = this.endpoint.join(&s).expect("valid url");
+            let live_blocks =
+                this.single_response_blocking(&url, None, Some(Duration::from_secs(30)))?;
+
             Ok(Event::Block(Block {
                 hash: header.hash,
                 level: header.level,
@@ -298,6 +303,7 @@ impl RpcClient {
 
                 transition,
                 operations,
+                live_blocks,
             }))
         })
         .map_err(|inner| RpcError::WithContext { url, inner })

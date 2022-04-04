@@ -92,6 +92,7 @@ pub struct Block {
 
     pub transition: bool,
     pub operations: Vec<Vec<OperationSimple>>,
+    pub live_blocks: Vec<BlockHash>,
 }
 
 pub enum Event {

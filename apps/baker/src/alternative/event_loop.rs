@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    collections::{BTreeMap, BTreeSet},
     convert::TryInto,
     path::PathBuf,
     time::{Duration, SystemTime},
@@ -77,6 +78,10 @@ pub fn run(
     };
     let mut state = tb::Machine::<ContractTz1Hash, OperationSimple, 200>::default();
 
+    let mut ahead_ops = BTreeMap::<BlockHash, Vec<OperationSimple>>::new();
+    let mut live_blocks = vec![];
+    let mut this_level = BTreeSet::new();
+
     for event in events {
         let unix_epoch = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -89,9 +94,13 @@ pub fn run(
             }
             Ok(Event::Block(block)) => {
                 if block.level > dy.map.level() {
+                    // TODO: do not fetch live blocks for any block, only for new level block
+                    live_blocks = block.live_blocks.clone();
+                    this_level.clear();
                     let delegates = srv.client.validators(block.level + 1)?;
                     dy.map.insert(block.level + 1, delegates);
                 }
+                this_level.insert(block.predecessor.clone());
                 let reveal_ops = seed_nonce
                     .reveal_nonce(block.level)
                     .into_iter()
@@ -207,45 +216,36 @@ pub fn run(
                     }
                 }
                 let event = tb::Event::Proposal(proposal, now);
-                let (new_actions, records) = state.handle(&dy, event);
+                let (mut actions, records) = state.handle(&dy, event);
+                if let Some(ops) = ahead_ops.remove(&block.predecessor) {
+                    process_ops(
+                        ops,
+                        &live_blocks,
+                        &this_level,
+                        &mut ahead_ops,
+                        &dy,
+                        &mut state,
+                        &srv,
+                        now,
+                        &mut actions,
+                    );
+                }
                 write_log(&srv.log, records);
-                new_actions.into_iter().collect()
+                actions.into_iter().collect()
             }
             Ok(Event::Operations(ops)) => {
                 let mut actions = vec![];
-                for op in ops {
-                    match op.kind() {
-                        None => slog::error!(srv.log, " .  unclassified operation {op:?}"),
-                        Some(OperationKind::Preendorsement(content)) => {
-                            if let Some(validator) =
-                                dy.map.validator(content.level, content.slot, op)
-                            {
-                                let event = tb::Event::PreVoted(
-                                    SlotsInfo::block_id(&content),
-                                    validator,
-                                    now,
-                                );
-                                let (new_actions, records) = state.handle(&dy, event);
-                                write_log(&srv.log, records);
-                                actions.extend(new_actions.into_iter());
-                            }
-                        }
-                        Some(OperationKind::Endorsement(content)) => {
-                            if let Some(validator) =
-                                dy.map.validator(content.level, content.slot, op)
-                            {
-                                let event =
-                                    tb::Event::Voted(SlotsInfo::block_id(&content), validator, now);
-                                let (new_actions, records) = state.handle(&dy, event);
-                                write_log(&srv.log, records);
-                                actions.extend(new_actions.into_iter());
-                            }
-                        }
-                        Some(_) => {
-                            state.handle(&dy, tb::Event::Operation(op));
-                        }
-                    }
-                }
+                process_ops(
+                    ops,
+                    &live_blocks,
+                    &this_level,
+                    &mut ahead_ops,
+                    &dy,
+                    &mut state,
+                    &srv,
+                    now,
+                    &mut actions,
+                );
                 actions
             }
             Ok(Event::Tick) => {
@@ -276,6 +276,61 @@ fn write_log(log: &Logger, records: impl IntoIterator<Item = tb::LogRecord>) {
         match record.level() {
             tb::LogLevel::Info => slog::info!(log, "{record}"),
             tb::LogLevel::Warn => slog::warn!(log, "{record}"),
+        }
+    }
+}
+
+fn process_ops(
+    ops: Vec<OperationSimple>,
+    live_blocks: &Vec<BlockHash>,
+    this_level: &BTreeSet<BlockHash>,
+    ahead_ops: &mut BTreeMap<BlockHash, Vec<OperationSimple>>,
+    dy: &tb::Config<tb::TimingLinearGrow, SlotsInfo>,
+    state: &mut tb::Machine<ContractTz1Hash, OperationSimple, 200>,
+    srv: &Services,
+    now: tb::Timestamp,
+    actions: &mut Vec<tb::Action<ContractTz1Hash, OperationSimple>>,
+) {
+    for op in ops {
+        // the operation does not belong to
+        let on_time = if this_level.contains(&op.branch) {
+            true
+        } else if live_blocks.contains(&op.branch) {
+            false
+        } else {
+            slog::warn!(srv.log, " .  the op is ahead, or very outdated {op:?}");
+            ahead_ops.entry(op.branch.clone()).or_default().push(op);
+            continue;
+        };
+        match op.kind() {
+            None => slog::error!(srv.log, " .  unclassified operation {op:?}"),
+            Some(OperationKind::Preendorsement(content)) => {
+                if !on_time {
+                    slog::warn!(srv.log, " .  outdated preendorsement {op:?}");
+                    continue;
+                }
+                if let Some(validator) = dy.map.validator(content.level, content.slot, op) {
+                    let event = tb::Event::PreVoted(SlotsInfo::block_id(&content), validator, now);
+                    let (new_actions, records) = state.handle(&dy, event);
+                    write_log(&srv.log, records);
+                    actions.extend(new_actions.into_iter());
+                }
+            }
+            Some(OperationKind::Endorsement(content)) => {
+                if !on_time {
+                    slog::warn!(srv.log, " .  outdated endorsement {op:?}");
+                    continue;
+                }
+                if let Some(validator) = dy.map.validator(content.level, content.slot, op) {
+                    let event = tb::Event::Voted(SlotsInfo::block_id(&content), validator, now);
+                    let (new_actions, records) = state.handle(&dy, event);
+                    write_log(&srv.log, records);
+                    actions.extend(new_actions.into_iter());
+                }
+            }
+            Some(_) => {
+                state.handle(&dy, tb::Event::Operation(op));
+            }
         }
     }
 }
