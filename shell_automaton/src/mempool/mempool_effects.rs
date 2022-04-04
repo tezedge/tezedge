@@ -74,6 +74,7 @@ where
                 store.dispatch(PrevalidatorAction::Error(err.to_string()));
             }
             ProtocolRunnerResult::BeginConstruction((_token, Ok(res))) => {
+                // FIXME: doesn't differentiate between ForPrevalidator and ForMempool
                 store.dispatch(PrevalidatorAction::PrevalidatorReady(res.clone()));
             }
             ProtocolRunnerResult::ValidateOperation((_token, Ok(res))) => {

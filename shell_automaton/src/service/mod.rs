@@ -15,6 +15,8 @@ pub use randomness_service::{RandomnessService, RandomnessServiceDefault};
 pub mod mio_service;
 pub use mio_service::{MioService, MioServiceDefault};
 
+mod protocol_runner_service_worker;
+
 pub mod protocol_runner_service;
 pub use protocol_runner_service::{ProtocolRunnerService, ProtocolRunnerServiceDefault};
 
