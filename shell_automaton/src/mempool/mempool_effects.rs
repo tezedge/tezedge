@@ -201,6 +201,9 @@ where
                             ))
                             .chain(MonitoredOperation::collect_errored(outdated, ops, &prot))
                             .collect::<Vec<_>>();
+                        if resp.is_empty() {
+                            return;
+                        }
                         if let Ok(json) = serde_json::to_value(resp) {
                             store
                                 .service()
@@ -415,7 +418,6 @@ where
                 .chain(MonitoredOperation::collect_errored(outdated, ops, &prot))
                 .collect::<Vec<_>>();
             if let Ok(json) = serde_json::to_value(&resp) {
-                slog::trace!(&store.state().log, "============\n{:#?}", resp);
                 store.service().rpc().respond_stream(act.rpc_id, Some(json));
             }
         }
