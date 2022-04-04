@@ -170,6 +170,7 @@ impl Node {
 
         Ok(NodeInfo::new(
             head_data["level"].as_u64().unwrap_or(0),
+            head_data["payload_round"].as_u64().unwrap_or(0),
             head_data["hash"].as_str().unwrap_or("").to_string(),
             head_data["timestamp"].as_str().unwrap_or("").to_string(),
             head_data["proto"].as_u64().unwrap_or(0),

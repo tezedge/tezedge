@@ -27,66 +27,68 @@ mod slack;
 use crate::configuration::DeployMonitoringEnvironment;
 use crate::monitors::alerts::Alerts;
 use crate::monitors::resource::{ResourceMonitor, ResourceUtilization, ResourceUtilizationStorage};
+use crate::monitors::statistics::LockedBTreeMap;
 use crate::rpc::MEASUREMENTS_MAX_CAPACITY;
 
 const PROCESS_LOOKUP_INTERVAL: Duration = Duration::from_secs(10);
 
+// #[tokio::main]
+// async fn main() {
+//     let env = configuration::DeployMonitoringEnvironment::from_args();
+
+//     // create an slog logger
+//     let log = create_logger(env.log_level);
+
+//     let DeployMonitoringEnvironment {
+//         slack_configuration,
+//         tezedge_alert_thresholds,
+//         ocaml_alert_thresholds,
+//         resource_monitor_interval,
+//         ..
+//     } = env.clone();
+
+//     let slack_server =
+//         slack_configuration.map(|cfg| slack::SlackServer::new(cfg.slack_url, log.clone()));
+
+//     if let Some(delegates) = env.delegates {
+//         for node in env.nodes {
+//             // let node_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), node.port());
+//             // slog::info!(
+//             //     log,
+//             //     "Using node `{node}` to monitor performance for delegates",
+//             //     node = node.tag()
+//             // );
+//             // let delegates = delegates.clone();
+//             // let log = log.clone();
+//             // let slack = slack_server.clone();
+//             // tokio::spawn(async move {
+//             //     if let Err(err) = DelegatesMonitor::new(node_addr, delegates, slack, log.clone())
+//             //         .run()
+//             //         .await
+//             //     {
+//             //         slog::error!(log, "Error in delegates monitor: `{err}`");
+//             //     }
+//             // });
+//             let log = log.clone();
+//             let delegates = delegates.clone();
+//             tokio::spawn(async move {
+//                 if let Err(err) = StatisticsMonitor::new(node, delegates).run().await {
+//                     slog::error!(log, "Error in statistics monitor: `{err}`");
+//                 }
+//             });
+//         }
+//     }
+
+//     // wait for SIGINT
+//     signal::ctrl_c()
+//         .await
+//         .expect("Failed to listen for ctrl-c event");
+//     info!(log, "Ctrl-c or SIGINT received!");
+
+// }
+
 #[tokio::main]
 async fn main() {
-    let env = configuration::DeployMonitoringEnvironment::from_args();
-
-    // create an slog logger
-    let log = create_logger(env.log_level);
-
-    let DeployMonitoringEnvironment {
-        slack_configuration,
-        tezedge_alert_thresholds,
-        ocaml_alert_thresholds,
-        resource_monitor_interval,
-        ..
-    } = env.clone();
-
-    let slack_server =
-        slack_configuration.map(|cfg| slack::SlackServer::new(cfg.slack_url, log.clone()));
-
-    if let Some(delegates) = env.delegates {
-        for node in env.nodes {
-            // let node_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), node.port());
-            // slog::info!(
-            //     log,
-            //     "Using node `{node}` to monitor performance for delegates",
-            //     node = node.tag()
-            // );
-            // let delegates = delegates.clone();
-            // let log = log.clone();
-            // let slack = slack_server.clone();
-            // tokio::spawn(async move {
-            //     if let Err(err) = DelegatesMonitor::new(node_addr, delegates, slack, log.clone())
-            //         .run()
-            //         .await
-            //     {
-            //         slog::error!(log, "Error in delegates monitor: `{err}`");
-            //     }
-            // });
-            let log = log.clone();
-            tokio::spawn(async move {
-                if let Err(err) = StatisticsMonitor::new(node).run().await {
-                    slog::error!(log, "Error in statistics monitor: `{err}`");
-                }
-            });
-        }
-    }
-
-    // wait for SIGINT
-    signal::ctrl_c()
-        .await
-        .expect("Failed to listen for ctrl-c event");
-    info!(log, "Ctrl-c or SIGINT received!");
-
-}
-
-#[tokio::main]
-async fn main_suspended() {
     let env = configuration::DeployMonitoringEnvironment::from_args();
 
     // create an slog logger
@@ -164,27 +166,41 @@ async fn main_suspended() {
 
     if let Some(delegates) = env.delegates {
         for node in env.nodes {
-            // let node_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), node.port());
-            // slog::info!(
-            //     log,
-            //     "Using node `{node}` to monitor performance for delegates",
-            //     node = node.tag()
-            // );
-            // let delegates = delegates.clone();
-            // let log = log.clone();
-            // let slack = slack_server.clone();
-            // tokio::spawn(async move {
-            //     if let Err(err) = DelegatesMonitor::new(node_addr, delegates, slack, log.clone())
-            //         .run()
-            //         .await
-            //     {
-            //         slog::error!(log, "Error in delegates monitor: `{err}`");
-            //     }
-            // });
+            let endorsmenet_summary_storage = LockedBTreeMap::new();
             let log = log.clone();
+            let node_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), node.port());
+            slog::info!(
+                log,
+                "Using node `{node}` to monitor performance for delegates",
+                node = node.tag()
+            );
+            let t_delegates = delegates.clone();
+            let t_log = log.clone();
+            let t_endorsmenet_summary_storage = endorsmenet_summary_storage.clone();
+            let slack = slack_server.clone();
             tokio::spawn(async move {
-                if let Err(err) = StatisticsMonitor::new(node).run().await {
-                    slog::error!(log, "Error in statistics monitor: `{err}`");
+                if let Err(err) = DelegatesMonitor::new(
+                    node_addr,
+                    t_delegates,
+                    t_endorsmenet_summary_storage,
+                    slack,
+                    t_log.clone(),
+                )
+                .run()
+                .await
+                {
+                    slog::error!(t_log, "Error in delegates monitor: `{err}`");
+                }
+            });
+            let t_log = log.clone();
+            let t_delegates = delegates.clone();
+            tokio::spawn(async move {
+                if let Err(err) =
+                    StatisticsMonitor::new(node, t_delegates, endorsmenet_summary_storage)
+                        .run()
+                        .await
+                {
+                    slog::error!(t_log, "Error in statistics monitor: `{err}`");
                 }
             });
         }
