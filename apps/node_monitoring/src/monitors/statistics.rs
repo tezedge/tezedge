@@ -17,7 +17,7 @@ use crate::node::Node;
 
 use super::delegate::{DelegateEndorsingRights, EndorsingRights};
 
-pub type MempoolEndorsementStats = BTreeMap<String, OperationStats>;
+pub type OperationStatsMap = BTreeMap<String, OperationStats>;
 pub type PreendorsementStatus = EndorsementStatus;
 
 #[derive(Debug, Error)]
@@ -107,7 +107,7 @@ impl StatisticsMonitor {
                     .insert(stats.block_hash.clone(), stats)?;
             }
 
-            let mempool_endorsements = self.get_memopool_endorsement_stats().await?;
+            // let mempool_endorsements = self.get_consensus_operation_stats().await?;
             // let endorsements_status = ;
 
             let block_application_stats = self
@@ -140,13 +140,13 @@ impl StatisticsMonitor {
                             .last()
                             .unwrap();
 
-                        // println!("Preendorsement op hash: {injected_preendorsement_op_hash}");
-                        // println!("Endorsement op hash: {injected_endorsement_op_hash}");
+                        println!("Preendorsement op hash: {injected_preendorsement_op_hash}");
+                        println!("Endorsement op hash: {injected_endorsement_op_hash}");
 
                         let injected_preendorsement =
-                            mempool_endorsements.get(injected_preendorsement_op_hash);
+                            self.get_consensus_operation_stats(injected_preendorsement_op_hash).await?;
                         let injected_endorsement =
-                            mempool_endorsements.get(injected_endorsement_op_hash);
+                            self.get_consensus_operation_stats(injected_endorsement_op_hash).await?;
 
                         // println!("Preendorsement op: {:#?}", injected_preendorsement);
                         // println!("Endorsement op: {:#?}", injected_endorsement);
@@ -163,8 +163,8 @@ impl StatisticsMonitor {
 
                         let endorsement_summary = EndorsementOperationSummary::new(
                             OffsetDateTime::parse(current_head.timestamp(), &Rfc3339).unwrap(),
-                            injected_preendorsement.cloned(),
-                            injected_endorsement.cloned(),
+                            injected_preendorsement,
+                            injected_endorsement,
                             block_application_stats.clone(),
                             preendorsement_quorum_time,
                         );
@@ -192,16 +192,20 @@ impl StatisticsMonitor {
         }
     }
 
-    async fn get_memopool_endorsement_stats(
+    async fn get_consensus_operation_stats(
         &self,
-    ) -> Result<MempoolEndorsementStats, reqwest::Error> {
+        op_hash: &str,
+    ) -> Result<Option<OperationStats>, reqwest::Error> {
         reqwest::get(&format!(
-            "http://127.0.0.1:{}/dev/shell/automaton/stats/mempool/endorsements",
+            "http://127.0.0.1:{}/dev/shell/automaton/mempool/operation_stats?hash={op_hash}",
             self.node.port()
         ))
         .await?
         .json()
         .await
+        .map(|res: OperationStatsMap| {
+            res.values().last().cloned()
+        })
     }
 
     async fn get_application_stats(
@@ -450,7 +454,7 @@ impl Display for EndorsementOperationSummary {
             7. Preendorsement Operation sent: {}
             8. Preendorsement Operation hash received back: {}
             9. Preendorsement quorum reached: {}
-            10. Endorsement Injected:{}
+            10. Endorsement Injected: {}
             11. Endorsement Validated: {}
             12. Endorsement Operation hash sent: {}
             13. Endorsement Operation hash requested: {}
