@@ -149,7 +149,6 @@ where
                     let streams = store.state().mempool.operation_streams.clone();
                     for stream in streams {
                         let ops = &store.state().mempool.validated_operations.ops;
-                        let refused_ops = &store.state().mempool.validated_operations.refused_ops;
                         // `PrevalidatorAction::OperationValidated` action can happens only
                         // if we have a prevalidator
                         let prevalidator = match store.state().mempool.prevalidator.as_ref() {
@@ -184,11 +183,7 @@ where
                         };
                         let resp = std::iter::empty()
                             .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
-                            .chain(MonitoredOperation::collect_errored(
-                                refused,
-                                refused_ops,
-                                &prot,
-                            ))
+                            .chain(MonitoredOperation::collect_errored(refused, ops, &prot))
                             .chain(MonitoredOperation::collect_errored(
                                 branch_delayed,
                                 ops,
@@ -343,68 +338,34 @@ where
         Action::MempoolRegisterOperationsStream(act) => {
             // TODO(vlad): duplicated code
             let ops = &store.state().mempool.validated_operations.ops;
-            let refused_ops = &store.state().mempool.validated_operations.refused_ops;
             let prot = match &store.state().mempool.prevalidator {
                 Some(prevalidator) => prevalidator.protocol.to_base58_check(),
                 None => return,
             };
-            let applied = if act.applied {
-                store
-                    .state()
-                    .mempool
-                    .validated_operations
-                    .applied
-                    .as_slice()
-            } else {
-                &[]
-            };
-            let refused = if act.refused {
-                store
-                    .state()
-                    .mempool
-                    .validated_operations
-                    .refused
-                    .as_slice()
-            } else {
-                &[]
-            };
-            let branch_delayed = if act.branch_delayed {
-                store
-                    .state()
-                    .mempool
-                    .validated_operations
-                    .branch_delayed
-                    .as_slice()
-            } else {
-                &[]
-            };
-            let branch_refused = if act.branch_refused {
-                store
-                    .state()
-                    .mempool
-                    .validated_operations
-                    .branch_refused
-                    .as_slice()
-            } else {
-                &[]
-            };
-            let outdated = if act.outdated {
-                store
-                    .state()
-                    .mempool
-                    .validated_operations
-                    .outdated
-                    .as_slice()
-            } else {
-                &[]
-            };
+            let validated_operations = &store.state().mempool.validated_operations;
+            let applied = validated_operations
+                .applied
+                .iter()
+                .take_while(|_| act.applied);
+            let refused = validated_operations
+                .refused
+                .iter()
+                .take_while(|_| act.refused);
+            let branch_delayed = validated_operations
+                .branch_delayed
+                .iter()
+                .take_while(|_| act.branch_delayed);
+            let branch_refused = validated_operations
+                .branch_refused
+                .iter()
+                .take_while(|_| act.branch_refused);
+            let outdated = validated_operations
+                .outdated
+                .iter()
+                .take_while(|_| act.outdated);
             let resp = std::iter::empty()
                 .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
-                .chain(MonitoredOperation::collect_errored(
-                    refused,
-                    refused_ops,
-                    &prot,
-                ))
+                .chain(MonitoredOperation::collect_errored(refused, ops, &prot))
                 .chain(MonitoredOperation::collect_errored(
                     branch_delayed,
                     ops,

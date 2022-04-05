@@ -19,7 +19,7 @@ use crate::{Action, ActionWithMeta, State};
 
 use super::{
     mempool_actions::*,
-    mempool_state::{HeadState, MempoolOperation, OperationStream},
+    mempool_state::{HeadState, MempoolOperation, OperationStream, MAX_REFUSED_OPERATIONS},
 };
 use super::{
     OperationNodeCurrentHeadStats, OperationState, OperationStats, OperationValidationResult,
@@ -84,11 +84,24 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 for v in &result.result.refused {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                        while mempool_state.validated_operations.refused.len()
+                            >= MAX_REFUSED_OPERATIONS
+                        {
+                            let hash = match mempool_state.validated_operations.refused.pop_front()
+                            {
+                                Some(v) => v.hash,
+                                None => break,
+                            };
+                            mempool_state.validated_operations.ops.remove(&hash);
+                        }
                         mempool_state
                             .validated_operations
-                            .refused_ops
+                            .ops
                             .insert(v.hash.clone(), op);
-                        mempool_state.validated_operations.refused.push(v.clone());
+                        mempool_state
+                            .validated_operations
+                            .refused
+                            .push_back(v.clone());
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -117,6 +130,19 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 for v in &result.result.branch_refused {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                        while mempool_state.validated_operations.branch_refused.len()
+                            >= MAX_REFUSED_OPERATIONS
+                        {
+                            let hash = match mempool_state
+                                .validated_operations
+                                .branch_refused
+                                .pop_front()
+                            {
+                                Some(v) => v.hash,
+                                None => break,
+                            };
+                            mempool_state.validated_operations.ops.remove(&hash);
+                        }
                         mempool_state
                             .validated_operations
                             .ops
@@ -124,7 +150,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .branch_refused
-                            .push(v.clone());
+                            .push_back(v.clone());
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -153,6 +179,19 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 for v in &result.result.branch_delayed {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                        while mempool_state.validated_operations.branch_delayed.len()
+                            >= MAX_REFUSED_OPERATIONS
+                        {
+                            let hash = match mempool_state
+                                .validated_operations
+                                .branch_delayed
+                                .pop_front()
+                            {
+                                Some(v) => v.hash,
+                                None => break,
+                            };
+                            mempool_state.validated_operations.ops.remove(&hash);
+                        }
                         mempool_state
                             .validated_operations
                             .ops
@@ -160,7 +199,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .branch_delayed
-                            .push(v.clone());
+                            .push_back(v.clone());
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -189,11 +228,24 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 for v in &result.result.outdated {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                        while mempool_state.validated_operations.outdated.len()
+                            >= MAX_REFUSED_OPERATIONS
+                        {
+                            let hash = match mempool_state.validated_operations.outdated.pop_front()
+                            {
+                                Some(v) => v.hash,
+                                None => break,
+                            };
+                            mempool_state.validated_operations.ops.remove(&hash);
+                        }
                         mempool_state
                             .validated_operations
-                            .refused_ops
+                            .ops
                             .insert(v.hash.clone(), op);
-                        mempool_state.validated_operations.outdated.push(v.clone());
+                        mempool_state
+                            .validated_operations
+                            .outdated
+                            .push_back(v.clone());
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -318,10 +370,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
 
-            // for (_, op) in &mempool_state.pending_operations {
-            //     mempool_state.wait_prevalidator_operations.push(op.clone());
-            // }
-
             let level = block.header.level().saturating_sub(TTL);
 
             // `drain_filter` is unstable for now
@@ -329,7 +377,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 for op in ops {
                     mempool_state.pending_operations.remove(op);
                     mempool_state.validated_operations.ops.remove(op);
-                    mempool_state.validated_operations.refused_ops.remove(op);
                     mempool_state
                         .validated_operations
                         .applied
@@ -592,12 +639,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     if let Some(op) = mempool_state.pending_operations.remove(&errored.hash) {
                         mempool_state
                             .validated_operations
-                            .refused_ops
+                            .ops
                             .insert(errored.hash.clone(), op);
                         mempool_state
                             .validated_operations
                             .refused
-                            .push(errored.as_errored());
+                            .push_back(errored.as_errored());
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&errored.hash) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
