@@ -53,6 +53,13 @@ impl EndorsingRights {
     // pub fn get_delegate(&self, delegate: &str) -> Option<DelegateEndorsingRights> {
     //     self.delegates.into_iter().filter(|delegate_rights| delegate_rights.delegate.eq(delegate)).collect::<Vec<DelegateEndorsingRights>>().last().cloned()
     // }
+
+    pub fn endorsement_powers(&self) -> BTreeMap<u16, u16> {
+        self.delegates
+            .iter()
+            .map(|delegate| (delegate.first_slot, delegate.endorsing_power))
+            .collect()
+    }
 }
 
 #[derive(Debug, Deserialize)]

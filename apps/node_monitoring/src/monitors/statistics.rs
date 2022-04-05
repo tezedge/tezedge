@@ -96,6 +96,8 @@ impl StatisticsMonitor {
             let current_head_round = *current_head.payload_round() as i32;
             let current_head_hash = current_head.block_hash();
 
+            let constants = self.get_network_constants().await?;
+
             debug!(self.log, "Current head - Level: {current_head_level} Round: {current_head_round} Hash: {current_head_hash}");
 
             // TODO: this should occure only on head change (?)
@@ -114,7 +116,7 @@ impl StatisticsMonitor {
 
             for delegate in &self.delegates {
                 if let Some(delegate_rigths) = self
-                    .get_endorsing_rights(current_head_level, delegate)
+                    .get_endorsing_rights_for_delegate(current_head_level, delegate)
                     .await?
                 {
                     let preendorsmenent_statuses = self
@@ -135,27 +137,41 @@ impl StatisticsMonitor {
                             .iter()
                             .filter(|(_, preendorsement)| preendorsement.slot == delegate_slot)
                             .map(|(op_h, _)| op_h)
-                            .last().unwrap();
-                        
-                        println!("Preendorsement op hash: {injected_preendorsement_op_hash}");
-                        println!("Endorsement op hash: {injected_endorsement_op_hash}");
+                            .last()
+                            .unwrap();
 
-                        let injected_preendorsement = mempool_endorsements.get(injected_preendorsement_op_hash);
-                        let injected_endorsement = mempool_endorsements.get(injected_endorsement_op_hash);
+                        // println!("Preendorsement op hash: {injected_preendorsement_op_hash}");
+                        // println!("Endorsement op hash: {injected_endorsement_op_hash}");
+
+                        let injected_preendorsement =
+                            mempool_endorsements.get(injected_preendorsement_op_hash);
+                        let injected_endorsement =
+                            mempool_endorsements.get(injected_endorsement_op_hash);
 
                         // println!("Preendorsement op: {:#?}", injected_preendorsement);
                         // println!("Endorsement op: {:#?}", injected_endorsement);
+
+                        let preendorsement_quorum_time = quorum_reached(
+                            preendorsmenent_statuses,
+                            &self.get_endorsing_rights(current_head_level).await?.unwrap(), // TODO
+                            constants.consensus_threshold,
+                        );
+                        // println!(
+                        //     "Preendorsement quorum reached: {}",
+                        //     preendorsement_quorum_time.is_some()
+                        // );
 
                         let endorsement_summary = EndorsementOperationSummary::new(
                             OffsetDateTime::parse(current_head.timestamp(), &Rfc3339).unwrap(),
                             injected_preendorsement.cloned(),
                             injected_endorsement.cloned(),
                             block_application_stats.clone(),
+                            preendorsement_quorum_time,
                         );
                         println!("Summary: {endorsement_summary}");
                         self.endorsmenet_summary_storage
                             .insert(*current_head.level() as i32, endorsement_summary)?;
-                        println!("Inserted summary for: {delegate} at level: {current_head_level}");
+                        // println!("Inserted summary for: {delegate} at level: {current_head_level}");
                         println!();
                     } else {
                         let endorsement_summary = EndorsementOperationSummary::new(
@@ -163,6 +179,7 @@ impl StatisticsMonitor {
                             None,
                             None,
                             block_application_stats.clone(),
+                            None,
                         );
                         self.endorsmenet_summary_storage
                             .insert(*current_head.level() as i32, endorsement_summary)?;
@@ -201,6 +218,20 @@ impl StatisticsMonitor {
     }
 
     async fn get_endorsing_rights(
+        &self,
+        level: i32,
+    ) -> Result<Option<EndorsingRights>, reqwest::Error> {
+        reqwest::get(&format!(
+            "http://127.0.0.1:{}/chains/main/blocks/head/helpers/endorsing_rights?level={level}",
+            self.node.port()
+        ))
+        .await?
+        .json()
+        .await
+        .map(|res: Vec<EndorsingRights>| res.get(0).cloned())
+    }
+
+    async fn get_endorsing_rights_for_delegate(
         &self,
         level: i32,
         delegate: &str,
@@ -242,14 +273,33 @@ impl StatisticsMonitor {
         .json()
         .await
     }
+
+    async fn get_network_constants(&self) -> Result<NetworkConstants, reqwest::Error> {
+        reqwest::get(&format!(
+            "http://127.0.0.1:{}/chains/main/blocks/head/context/constants",
+            self.node.port()
+        ))
+        .await?
+        .json()
+        .await
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct NetworkConstants {
+    // New fields added in ithaca
+    // TODO: ithaca double check the types
+    pub consensus_committee_size: u64,
+    pub consensus_threshold: u64,
 }
 
 impl EndorsementOperationSummary {
     pub fn new(
         current_head_timestamp: OffsetDateTime,
         preendorsement_op_stats: Option<OperationStats>,
-        op_stats: Option<OperationStats>,
+        enbdorsement_op_stat: Option<OperationStats>,
         block_stats: Option<BlockApplicationStatistics>,
+        preendorsement_quorum_time: Option<i64>,
     ) -> Self {
         let block_received = block_stats.clone().map(|stats| {
             let current_head_nanos = current_head_timestamp.unix_timestamp_nanos();
@@ -268,40 +318,81 @@ impl EndorsementOperationSummary {
             })
         });
 
-        let endorsement_injected = op_stats.as_ref().and_then(|op_s| {
-            op_s.injected_timestamp.and_then(|endorsement_inject_time| {
-                preendorsement_op_stats.clone().and_then(|stats| stats.injected_timestamp.map(|preendorsement_inject_time| endorsement_inject_time.saturating_sub(preendorsement_inject_time) as i64))
-            })
-        });
-
-        // TODO: debug
-        if preendorsement_injected.is_none() || endorsement_injected.is_none() {
-            println!("Preendorsement stats: {:#?}", preendorsement_op_stats.is_some());
-            println!("Endorsement stats: {:#?}", op_stats.is_some());
-        }
-
-        let validated = op_stats
+        let preendorsement_validated = preendorsement_op_stats
             .as_ref()
             .and_then(|op_s| op_s.validation_duration());
-
-        let operation_hash_sent = op_stats.as_ref().and_then(|op_s| {
+    
+        let preendorsement_operation_hash_sent = preendorsement_op_stats.as_ref().and_then(|op_s| {
             op_s.first_sent()
                 .and_then(|sent| op_s.validation_ended().map(|v_end| sent - v_end))
         });
 
-        let operation_requested = op_stats.as_ref().and_then(|op_s| {
+        let preendorsement_operation_requested = preendorsement_op_stats.as_ref().and_then(|op_s| {
             op_s.first_content_requested_remote()
                 .and_then(|op_req| op_s.first_sent().map(|sent| op_req - sent))
         });
 
-        let operation_sent = op_stats.as_ref().and_then(|op_s| {
+        let preendorsement_operation_sent = preendorsement_op_stats.as_ref().and_then(|op_s| {
             op_s.first_content_sent().and_then(|cont_sent| {
                 op_s.first_content_requested_remote()
                     .map(|op_req| cont_sent - op_req)
             })
         });
 
-        let operation_hash_received_back = op_stats.as_ref().and_then(|op_s| {
+        let preendorsement_operation_hash_received_back = preendorsement_op_stats.as_ref().and_then(|op_s| {
+            op_s.second_received().and_then(|received| {
+                op_s.first_content_sent()
+                    .map(|content_sent| received - content_sent)
+            })
+        });
+
+        let preendorsement_quorum_reached = preendorsement_quorum_time.and_then(|quorum_time| {
+            preendorsement_op_stats.clone().and_then(|stats| {
+                stats.injected_timestamp.map(|preendorsement_inject_time| {
+                    quorum_time - (preendorsement_inject_time as i64)
+                })
+            })
+        });
+
+        let endorsement_injected = preendorsement_quorum_time.and_then(|quorum_time| {
+            enbdorsement_op_stat.clone().and_then(|stats| {
+                stats
+                    .injected_timestamp
+                    .map(|endorsement_inject_time| (endorsement_inject_time as i64) - quorum_time)
+            })
+        });
+
+        // TODO: debug
+        if preendorsement_injected.is_none() || endorsement_injected.is_none() {
+            println!(
+                "Preendorsement stats: {:#?}",
+                preendorsement_op_stats.is_some()
+            );
+            println!("Endorsement stats: {:#?}", enbdorsement_op_stat.is_some());
+        }
+
+        let endorsement_validated = enbdorsement_op_stat
+            .as_ref()
+            .and_then(|op_s| op_s.validation_duration());
+
+        let endorsement_operation_hash_sent = enbdorsement_op_stat.as_ref().and_then(|op_s| {
+            op_s.first_sent()
+                .and_then(|sent| op_s.validation_ended().map(|v_end| sent - v_end))
+        });
+
+        let endorsement_operation_requested = enbdorsement_op_stat.as_ref().and_then(|op_s| {
+            op_s.first_content_requested_remote()
+                .and_then(|op_req| op_s.first_sent().map(|sent| op_req - sent))
+        });
+
+        let endorsement_operation_sent = enbdorsement_op_stat.as_ref().and_then(|op_s| {
+            op_s.first_content_sent().and_then(|cont_sent| {
+                op_s.first_content_requested_remote()
+                    .map(|op_req| cont_sent - op_req)
+            })
+        });
+
+        let endorsement_operation_hash_received_back = enbdorsement_op_stat.as_ref().and_then(|op_s| {
             op_s.second_received().and_then(|received| {
                 op_s.first_content_sent()
                     .map(|content_sent| received - content_sent)
@@ -312,12 +403,18 @@ impl EndorsementOperationSummary {
             block_received,
             block_application,
             preendorsement_injected,
+            preendorsement_validated,
+            preendorsement_operation_hash_sent,
+            preendorsement_operation_requested,
+            preendorsement_operation_sent,
+            preendorsement_operation_hash_received_back,
+            preendorsement_quorum_reached,
             endorsement_injected,
-            validated,
-            operation_hash_sent,
-            operation_requested,
-            operation_sent,
-            operation_hash_received_back,
+            endorsement_validated,
+            endorsement_operation_hash_sent,
+            endorsement_operation_requested,
+            endorsement_operation_sent,
+            endorsement_operation_hash_received_back,
         }
     }
 }
@@ -327,26 +424,53 @@ pub struct EndorsementOperationSummary {
     pub block_application: Option<i64>,
     pub block_received: Option<i64>,
     pub preendorsement_injected: Option<i64>,
+    pub preendorsement_validated: Option<i64>,
+    pub preendorsement_operation_hash_sent: Option<i64>,
+    pub preendorsement_operation_requested: Option<i64>,
+    pub preendorsement_operation_sent: Option<i64>,
+    pub preendorsement_operation_hash_received_back: Option<i64>,
+    pub preendorsement_quorum_reached: Option<i64>,
     pub endorsement_injected: Option<i64>,
-    pub validated: Option<i64>,
-    pub operation_hash_sent: Option<i64>,
-    pub operation_requested: Option<i64>,
-    pub operation_sent: Option<i64>,
-    pub operation_hash_received_back: Option<i64>,
+    pub endorsement_validated: Option<i64>,
+    pub endorsement_operation_hash_sent: Option<i64>,
+    pub endorsement_operation_requested: Option<i64>,
+    pub endorsement_operation_sent: Option<i64>,
+    pub endorsement_operation_hash_received_back: Option<i64>,
 }
 
 impl Display for EndorsementOperationSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "\nBlock Application: {}\nBlock Received: {:#?}\nPreendorsement Injected: {:#?}\nEndorsement Injected:{:#?}\nValidated: {:#?}\nOperation hash sent: {:#?}\nOperation hash requested: {:#?}\nOperatin sent: {:#?}\nOperation hash received back: {:#?}",
-            convert_time_to_unit_string(self.block_application),
+        writeln!(f, r#"
+            1. Block Received: {}
+            2. Block Application: {}
+            3. Preendorsement Injected: {}
+            4. Preendorsement Validated: {}
+            5. Preendorsement Operation hash sent: {}
+            6. Preendorsement Operation hash requested: {}
+            7. Preendorsement Operation sent: {}
+            8. Preendorsement Operation hash received back: {}
+            9. Preendorsement quorum reached: {}
+            10. Endorsement Injected:{}
+            11. Endorsement Validated: {}
+            12. Endorsement Operation hash sent: {}
+            13. Endorsement Operation hash requested: {}
+            14. Endorsement Operatin sent: {}
+            15. Endorsement Operation hash received back: {}"#,
             convert_time_to_unit_string(self.block_received),
+            convert_time_to_unit_string(self.block_application),
             convert_time_to_unit_string(self.preendorsement_injected),
+            convert_time_to_unit_string(self.preendorsement_validated),
+            convert_time_to_unit_string(self.preendorsement_operation_hash_sent),
+            convert_time_to_unit_string(self.preendorsement_operation_requested),
+            convert_time_to_unit_string(self.preendorsement_operation_sent),
+            convert_time_to_unit_string(self.preendorsement_operation_hash_received_back),
+            convert_time_to_unit_string(self.preendorsement_quorum_reached),
             convert_time_to_unit_string(self.endorsement_injected),
-            convert_time_to_unit_string(self.validated),
-            convert_time_to_unit_string(self.operation_hash_sent),
-            convert_time_to_unit_string(self.operation_requested),
-            convert_time_to_unit_string(self.operation_sent),
-            convert_time_to_unit_string(self.operation_hash_received_back),
+            convert_time_to_unit_string(self.endorsement_validated),
+            convert_time_to_unit_string(self.endorsement_operation_hash_sent),
+            convert_time_to_unit_string(self.endorsement_operation_requested),
+            convert_time_to_unit_string(self.endorsement_operation_sent),
+            convert_time_to_unit_string(self.endorsement_operation_hash_received_back),
         )
     }
 }
@@ -606,8 +730,36 @@ where
             format!("{}ns", time)
         }
     } else {
-        String::from("None")
+        String::from("Failed")
     }
+}
+
+fn quorum_reached(
+    statuses: BTreeMap<String, EndorsementStatus>,
+    endorsing_rights: &EndorsingRights,
+    threshold: u64,
+) -> Option<i64> {
+    let endorsing_powers = endorsing_rights.endorsement_powers();
+    statuses
+        .values()
+        .sorted_by_key(|val| val.received_hash_time)
+        .filter_map(|status| {
+            endorsing_powers.get(&status.slot).and_then(|power| {
+                status
+                    .received_hash_time
+                    .map(|receive_time| (*power, receive_time))
+            })
+        })
+        .reduce(
+            |(mut acc, mut receive_time), (power, current_receive_time)| {
+                acc += power;
+                if u64::from(acc) < threshold {
+                    receive_time = current_receive_time;
+                }
+                (acc, receive_time)
+            },
+        )
+        .map(|(_, receive_time)| receive_time as i64)
 }
 
 #[cfg(test)]
@@ -621,55 +773,51 @@ mod test {
                 (
                     String::from("1"),
                     OperationNodeStats {
-                        received: vec![
-                            OperationNodeCurrentHeadStats {
-                                latency: 100,
-                                block_level: 1,
-                                block_timestamp: 0,
-                            }
-                        ],
+                        received: vec![OperationNodeCurrentHeadStats {
+                            latency: 100,
+                            block_level: 1,
+                            block_timestamp: 0,
+                        }],
                         sent: vec![],
                         content_received: vec![],
                         content_requested: vec![],
                         content_requested_remote: vec![],
                         content_sent: vec![],
-                    }
+                    },
                 ),
                 (
                     String::from("2"),
                     OperationNodeStats {
-                        received: vec![
-                            OperationNodeCurrentHeadStats {
-                                latency: 150,
-                                block_level: 1,
-                                block_timestamp: 0,
-                            }
-                        ],
+                        received: vec![OperationNodeCurrentHeadStats {
+                            latency: 150,
+                            block_level: 1,
+                            block_timestamp: 0,
+                        }],
                         sent: vec![],
                         content_received: vec![],
                         content_requested: vec![],
                         content_requested_remote: vec![],
                         content_sent: vec![],
-                    }
+                    },
                 ),
                 (
                     String::from("3"),
                     OperationNodeStats {
-                        received: vec![
-                            OperationNodeCurrentHeadStats {
-                                latency: 300,
-                                block_level: 1,
-                                block_timestamp: 0,
-                            }
-                        ],
+                        received: vec![OperationNodeCurrentHeadStats {
+                            latency: 300,
+                            block_level: 1,
+                            block_timestamp: 0,
+                        }],
                         sent: vec![],
                         content_received: vec![],
                         content_requested: vec![],
                         content_requested_remote: vec![],
                         content_sent: vec![],
-                    }
-                )
-            ].into_iter().collect(),
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
             ..Default::default()
         };
 
@@ -677,29 +825,30 @@ mod test {
         assert_eq!(second_received, Some(150));
 
         let stats = OperationStats {
-            nodes: vec![
-                (
-                    String::from("1"),
-                    OperationNodeStats {
-                        received: vec![
-                            OperationNodeCurrentHeadStats {
-                                latency: 100,
-                                block_level: 1,
-                                block_timestamp: 0,
-                            }
-                        ],
-                        sent: vec![],
-                        content_received: vec![],
-                        content_requested: vec![],
-                        content_requested_remote: vec![],
-                        content_sent: vec![],
-                    }
-                ),
-            ].into_iter().collect(),
+            nodes: vec![(
+                String::from("1"),
+                OperationNodeStats {
+                    received: vec![OperationNodeCurrentHeadStats {
+                        latency: 100,
+                        block_level: 1,
+                        block_timestamp: 0,
+                    }],
+                    sent: vec![],
+                    content_received: vec![],
+                    content_requested: vec![],
+                    content_requested_remote: vec![],
+                    content_sent: vec![],
+                },
+            )]
+            .into_iter()
+            .collect(),
             ..Default::default()
         };
 
         let second_received = stats.second_received();
         assert_eq!(second_received, None);
     }
+
+    #[test]
+    fn test_quorum_reached() {}
 }
