@@ -47,68 +47,66 @@ fn convert_applied(
         .collect()
 }
 
-fn convert_errored(
-    errored: &[Errored],
+fn convert_errored<'a>(
+    errored: impl IntoIterator<Item = &'a Errored>,
     operations: &HashMap<OperationHash, Operation>,
     protocol: &ProtocolHash,
 ) -> Vec<Value> {
-    let mut result = Vec::with_capacity(errored.len());
-    for v in errored {
-        let operation = match operations.get(&v.hash) {
-            Some(b) => b,
-            None => continue,
-        };
-        let mut m: HashMap<String, Value> = if v
-            .protocol_data_json_with_error_json
-            .protocol_data_json
-            .is_empty()
-        {
-            HashMap::new()
-        } else {
-            serde_json::from_str(&v.protocol_data_json_with_error_json.protocol_data_json)
-                .unwrap_or_else(|err| {
-                    let mut m = HashMap::new();
-                    m.insert(
-                        "protocol_data_parse_error".to_string(),
-                        Value::String(err.to_string()),
-                    );
-                    m
-                })
-        };
+    errored
+        .into_iter()
+        .filter_map(|v| {
+            let operation = match operations.get(&v.hash) {
+                Some(b) => b,
+                None => return None,
+            };
+            let mut m: HashMap<String, Value> = if v
+                .protocol_data_json_with_error_json
+                .protocol_data_json
+                .is_empty()
+            {
+                HashMap::new()
+            } else {
+                serde_json::from_str(&v.protocol_data_json_with_error_json.protocol_data_json)
+                    .unwrap_or_else(|err| {
+                        let mut m = HashMap::new();
+                        m.insert(
+                            "protocol_data_parse_error".to_string(),
+                            Value::String(err.to_string()),
+                        );
+                        m
+                    })
+            };
 
-        let error = if v.protocol_data_json_with_error_json.error_json.is_empty() {
-            Value::Null
-        } else {
-            serde_json::from_str(&v.protocol_data_json_with_error_json.error_json)
-                .unwrap_or_else(|err| Value::String(err.to_string()))
-        };
+            let error = if v.protocol_data_json_with_error_json.error_json.is_empty() {
+                Value::Null
+            } else {
+                serde_json::from_str(&v.protocol_data_json_with_error_json.error_json)
+                    .unwrap_or_else(|err| Value::String(err.to_string()))
+            };
 
-        m.insert(
-            "protocol".to_string(),
-            Value::String(protocol.to_base58_check()),
-        );
-        m.insert(
-            "branch".to_string(),
-            Value::String(operation.branch().to_base58_check()),
-        );
-        m.insert("error".to_string(), error);
-        if let Ok(json) = serde_json::to_value(m) {
-            result.push(Value::Array(vec![
-                Value::String(v.hash.to_base58_check()),
-                json,
-            ]));
-        }
-    }
-    result
+            m.insert(
+                "protocol".to_string(),
+                Value::String(protocol.to_base58_check()),
+            );
+            m.insert(
+                "branch".to_string(),
+                Value::String(operation.branch().to_base58_check()),
+            );
+            m.insert("error".to_string(), error);
+            serde_json::to_value(m)
+                .ok()
+                .map(|json| Value::Array(vec![Value::String(v.hash.to_base58_check()), json]))
+        })
+        .collect()
 }
 
 impl MempoolOperations {
-    pub fn collect(
+    pub fn collect<'a>(
         applied: &[Applied],
-        refused: &[Errored],
-        branch_delayed: &[Errored],
-        branch_refused: &[Errored],
-        outdated: &[Errored],
+        refused: impl IntoIterator<Item = &'a Errored>,
+        branch_delayed: impl IntoIterator<Item = &'a Errored>,
+        branch_refused: impl IntoIterator<Item = &'a Errored>,
+        outdated: impl IntoIterator<Item = &'a Errored>,
         operations: &HashMap<OperationHash, Operation>,
         protocol: &ProtocolHash,
     ) -> Self {
@@ -155,11 +153,11 @@ impl<'a> MonitoredOperation<'a> {
     }
 
     pub fn collect_applied(
-        applied: &'a [Applied],
+        applied: impl IntoIterator<Item = &'a Applied> + 'a,
         operations: &'a HashMap<OperationHash, Operation>,
         protocol_hash: &'a str,
     ) -> impl Iterator<Item = MonitoredOperation<'a>> + 'a {
-        applied.iter().filter_map(move |applied_op| {
+        applied.into_iter().filter_map(move |applied_op| {
             let op_hash = applied_op.hash.to_base58_check();
             let operation = operations.get(&applied_op.hash)?;
             let (protocol_data, err) = match serde_json::from_str(&applied_op.protocol_data_json) {
@@ -178,11 +176,11 @@ impl<'a> MonitoredOperation<'a> {
     }
 
     pub fn collect_errored(
-        errored: &'a [Errored],
+        errored: impl IntoIterator<Item = &'a Errored> + 'a,
         operations: &'a HashMap<OperationHash, Operation>,
         protocol_hash: &'a str,
     ) -> impl Iterator<Item = MonitoredOperation<'a>> + 'a {
-        errored.iter().filter_map(move |errored_op| {
+        errored.into_iter().filter_map(move |errored_op| {
             let op_hash = errored_op.hash.to_base58_check();
             let operation = operations.get(&errored_op.hash)?;
             let json = &errored_op

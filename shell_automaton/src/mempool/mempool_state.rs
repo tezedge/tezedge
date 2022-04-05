@@ -22,6 +22,13 @@ use crate::{
     prechecker::OperationDecodedContents, rights::Slot, service::rpc_service::RpcId, ActionWithMeta,
 };
 
+/// https://gitlab.com/tezedge/tezos/-/blob/v12.2/src/lib_shell/prevalidator.ml#L219
+///
+/// Bound for the refused (refused, branch_refused, branch_delayed, outdated)
+/// operations stored inside mempool. They will be FIFO queues and if the
+/// bound is reached and we add operation, oldest one will be removed.
+pub const MAX_REFUSED_OPERATIONS: usize = 2048;
+
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolState {
     // TODO(vlad): instant
@@ -97,16 +104,15 @@ pub struct OperationStream {
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct ValidatedOperations {
     pub ops: HashMap<OperationHash, Operation>,
-    pub refused_ops: HashMap<OperationHash, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
     pub applied: Vec<Applied>,
     // cannot be included in the next head of the chain, but it could be included in a descendant
-    pub branch_delayed: Vec<Errored>,
+    pub branch_delayed: VecDeque<Errored>,
     // might be applied on a different branch if a reorganization happens
-    pub branch_refused: Vec<Errored>,
-    pub refused: Vec<Errored>,
-    pub outdated: Vec<Errored>,
+    pub branch_refused: VecDeque<Errored>,
+    pub refused: VecDeque<Errored>,
+    pub outdated: VecDeque<Errored>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
