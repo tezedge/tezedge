@@ -14,7 +14,7 @@ use shell_automaton::{Action, ActionWithMeta};
 use slog::Logger;
 use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::vec;
 
@@ -793,12 +793,16 @@ pub struct OperationValidationStats {
 
 pub(crate) async fn get_shell_automaton_mempool_operation_stats(
     env: &RpcServiceEnvironment,
+    hash_filter: Option<BTreeSet<OperationHash>>,
 ) -> Result<OperationsStats, tokio::sync::oneshot::error::RecvError> {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     let _ = env
         .shell_automaton_sender()
-        .send(RpcShellAutomatonMsg::GetMempoolOperationStats { channel: tx })
+        .send(RpcShellAutomatonMsg::GetMempoolOperationStats {
+            channel: tx,
+            hash_filter,
+        })
         .await;
 
     let result = rx.await?;

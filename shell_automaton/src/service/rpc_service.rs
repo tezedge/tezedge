@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
     thread,
     time::Instant,
@@ -87,6 +87,7 @@ pub enum RpcRequest {
 
     GetMempoolOperationStats {
         channel: oneshot::Sender<crate::mempool::OperationsStats>,
+        hash_filter: Option<BTreeSet<OperationHash>>,
     },
     GetMempooEndrosementsStats {
         channel: oneshot::Sender<BTreeMap<OperationHash, crate::mempool::OperationStats>>,

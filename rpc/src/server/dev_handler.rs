@@ -7,11 +7,12 @@ use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{context, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
 use anyhow::format_err;
-use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
+use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
 use crypto::PublicKeyWithHash;
 use hyper::{Body, Request, Response};
 use shell_automaton::service::{BlockApplyStats, BlockPeerStats};
 use slog::warn;
+use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use storage::persistent::Encoder;
@@ -392,10 +393,21 @@ pub async fn dev_shell_automaton_actions_graph_get(
 pub async fn dev_shell_automaton_mempool_operation_stats_get(
     _: Request<Body>,
     _: Params,
-    _: Query,
+    query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    make_json_response(&dev_services::get_shell_automaton_mempool_operation_stats(&env).await?)
+    let hash_filter = query
+        .get("hash")
+        .map(|v| {
+            v.iter()
+                .flat_map(|s| s.split(","))
+                .filter_map(|s| OperationHash::from_base58_check(s).ok())
+                .collect::<BTreeSet<_>>()
+        })
+        .filter(|v| !v.is_empty());
+    make_json_response(
+        &dev_services::get_shell_automaton_mempool_operation_stats(&env, hash_filter).await?,
+    )
 }
 
 pub async fn dev_shell_automaton_block_stats_graph_get(
