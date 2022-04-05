@@ -101,6 +101,7 @@ pub fn run(
                     dy.map.insert(block.level + 1, delegates);
                 }
                 this_level.insert(block.predecessor.clone());
+                this_level.insert(block.hash.clone());
                 let reveal_ops = seed_nonce
                     .reveal_nonce(block.level)
                     .into_iter()
