@@ -27,6 +27,7 @@ pub enum PeerTimeout {
     Connecting(PeerConnectionStatePhase),
     Handshaking(PeerHandshakingPhase),
     CurrentHeadUpdate,
+    RequestsPotentialPeersGet,
 }
 
 #[cfg(feature = "fuzzing")]

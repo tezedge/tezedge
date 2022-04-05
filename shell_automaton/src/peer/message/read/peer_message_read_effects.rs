@@ -20,8 +20,8 @@ use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peer::remote_requests::block_header_get::PeerRemoteRequestsBlockHeaderGetEnqueueAction;
 use crate::peer::remote_requests::block_operations_get::PeerRemoteRequestsBlockOperationsGetEnqueueAction;
 use crate::peer::remote_requests::current_branch_get::PeerRemoteRequestsCurrentBranchGetInitAction;
+use crate::peer::requests::potential_peers_get::PeerRequestsPotentialPeersGetSuccessAction;
 use crate::peer::{Peer, PeerCurrentHeadUpdateAction};
-use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::service::actors_service::{ActorsMessageTo, ActorsService};
 use crate::service::{RandomnessService, Service, StatisticsService};
@@ -186,8 +186,9 @@ where
                     });
                 }
                 PeerMessage::Advertise(msg) => {
-                    store.dispatch(PeersAddMultiAction {
-                        addresses: msg.id().iter().filter_map(|x| x.parse().ok()).collect(),
+                    store.dispatch(PeerRequestsPotentialPeersGetSuccessAction {
+                        address: content.address,
+                        result: msg.id().iter().filter_map(|x| x.parse().ok()).collect(),
                     });
                 }
                 PeerMessage::GetCurrentBranch(msg) => {

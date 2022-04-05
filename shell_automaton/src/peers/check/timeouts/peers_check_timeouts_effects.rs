@@ -12,6 +12,10 @@ use crate::peer::connection::outgoing::{
 use crate::peer::connection::PeerConnectionStatePhase;
 use crate::peer::disconnection::PeerDisconnectAction;
 use crate::peer::handshaking::{PeerHandshakingError, PeerHandshakingErrorAction};
+use crate::peer::requests::potential_peers_get::{
+    PeerRequestsPotentialPeersGetError, PeerRequestsPotentialPeersGetErrorAction,
+    PEER_POTENTIAL_PEERS_GET_TIMEOUT,
+};
 use crate::peer::{Peer, PeerStatus};
 use crate::peers::graylist::PeersGraylistIpRemoveAction;
 use crate::{Action, ActionWithMeta, Service, Store};
@@ -27,37 +31,44 @@ fn check_timeout(
     peer_connecting_timeout: u64,
     peer_handshaking_timeout: u64,
 ) -> Option<PeerTimeout> {
-    Some(match &peer.status {
-        PeerStatus::Potential => return None,
+    match &peer.status {
+        PeerStatus::Potential => None,
         PeerStatus::Connecting(connecting) => {
             if current_time < connecting.time() + peer_connecting_timeout {
                 return None;
             }
-            PeerTimeout::Connecting(connecting.into())
+            Some(PeerTimeout::Connecting(connecting.into()))
         }
         PeerStatus::Handshaking(handshaking) => {
             if current_time < handshaking.since + peer_handshaking_timeout {
                 return None;
             }
-            PeerTimeout::Handshaking((&handshaking.status).into())
+            Some(PeerTimeout::Handshaking((&handshaking.status).into()))
         }
-        PeerStatus::Handshaked(peer) => {
-            if let Some(current_head_last_update) = peer.current_head_last_update {
-                if current_time - current_head_last_update
-                    < Duration::from_secs(120).as_nanos() as u64
+        PeerStatus::Handshaked(peer) => None
+            .or_else(|| {
+                if let Some(current_head_last_update) = peer.current_head_last_update {
+                    if current_time - current_head_last_update
+                        < Duration::from_secs(120).as_nanos() as u64
+                    {
+                        return None;
+                    }
+                } else if current_time - peer.handshaked_since
+                    < Duration::from_secs(8).as_nanos() as u64
                 {
                     return None;
                 }
-            } else if current_time - peer.handshaked_since
-                < Duration::from_secs(8).as_nanos() as u64
-            {
-                return None;
-            }
-            PeerTimeout::CurrentHeadUpdate
-        }
-        PeerStatus::Disconnecting(_) => return None,
-        PeerStatus::Disconnected => return None,
-    })
+                Some(PeerTimeout::CurrentHeadUpdate)
+            })
+            .or_else(|| {
+                let time = peer.requests.potential_peers_get.time();
+                Some(PeerTimeout::RequestsPotentialPeersGet)
+                    .filter(|_| peer.requests.potential_peers_get.is_pending())
+                    .filter(|_| current_time >= time + PEER_POTENTIAL_PEERS_GET_TIMEOUT)
+            }),
+        PeerStatus::Disconnecting(_) => None,
+        PeerStatus::Disconnected => None,
+    }
 }
 
 pub fn peers_check_timeouts_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -148,6 +159,12 @@ where
                             }
                             PeerTimeout::CurrentHeadUpdate => {
                                 store.dispatch(PeerDisconnectAction { address });
+                            }
+                            PeerTimeout::RequestsPotentialPeersGet => {
+                                store.dispatch(PeerRequestsPotentialPeersGetErrorAction {
+                                    address,
+                                    error: PeerRequestsPotentialPeersGetError::Timeout,
+                                });
                             }
                         }
                     }

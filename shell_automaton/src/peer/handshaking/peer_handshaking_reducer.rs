@@ -501,6 +501,7 @@ pub fn peer_handshaking_reducer(state: &mut State, action: &ActionWithMeta) {
                                     crypto: write_crypto,
                                 },
                             },
+                            requests: Default::default(),
                             remote_requests: Default::default(),
                             current_head: None,
                             current_head_last_update: None,
