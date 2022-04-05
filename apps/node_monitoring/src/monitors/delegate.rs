@@ -308,9 +308,15 @@ impl DelegatesMonitor {
                     )?
                 {
                     if was_failure {
-                        self.report_recover(format!(
-                            "`{delegate}` endorsed block on level `{level}` after failure"
-                        ));
+                        if let Some(summary) = self.endorsmenet_summary_storage.get(level)? {
+                            self.report_recover(format!(
+                                "`{delegate}` endorsed block on level `{level}` after failure\nSummary: {summary}"
+                            ));
+                        } else {
+                            self.report_recover(format!(
+                                "`{delegate}` endorsed block on level `{level}` after failure\nSummary: Not found"
+                            ));
+                        }
                     }
                     return Ok(true);
                 }
@@ -318,7 +324,8 @@ impl DelegatesMonitor {
         }
         if let Some(summary) = self.endorsmenet_summary_storage.get(level)? {
             self.report_error(format!(
-                "Missed `{delegate}`'s endorsement for level `{level}`\nSummary: {}", summary
+                "Missed `{delegate}`'s endorsement for level `{level}`\nSummary: {}",
+                summary
             ));
         } else {
             self.report_error(format!(

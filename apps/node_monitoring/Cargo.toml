@@ -16,6 +16,7 @@ fs_extra = "1.2"
 itertools = "0.10"
 getset = "0.1"
 merge = "0.1"
+num = "0.4"
 http = "0.2.2"
 percentage = "0.1"
 reqwest = { version = "0.11", features = ["json"] }

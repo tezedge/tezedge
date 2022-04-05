@@ -196,7 +196,7 @@ async fn main() {
             let t_delegates = delegates.clone();
             tokio::spawn(async move {
                 if let Err(err) =
-                    StatisticsMonitor::new(node, t_delegates, endorsmenet_summary_storage)
+                    StatisticsMonitor::new(node, t_delegates, endorsmenet_summary_storage, t_log.clone())
                         .run()
                         .await
                 {

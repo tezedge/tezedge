@@ -1,10 +1,14 @@
 use std::{
     collections::BTreeMap,
+    fmt::Display,
     sync::{Arc, RwLock},
-    time::Duration, fmt::Display,
+    time::Duration,
 };
 
+use itertools::Itertools;
+use num::ToPrimitive;
 use serde::{Deserialize, Serialize};
+use slog::{debug, Logger};
 use strum_macros::EnumIter;
 use thiserror::Error;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
@@ -14,6 +18,7 @@ use crate::node::Node;
 use super::delegate::{DelegateEndorsingRights, EndorsingRights};
 
 pub type MempoolEndorsementStats = BTreeMap<String, OperationStats>;
+pub type PreendorsementStatus = EndorsementStatus;
 
 #[derive(Debug, Error)]
 pub enum StatisticMonitorError {
@@ -63,6 +68,8 @@ pub struct StatisticsMonitor {
     pub endorsmenet_summary_storage: LockedBTreeMap<i32, EndorsementOperationSummary>,
     pub application_statistics_storage: LockedBTreeMap<String, BlockApplicationStatistics>,
     pub delegates: Vec<String>,
+    pub last_seen_current_head: Option<String>,
+    log: Logger,
 }
 
 impl StatisticsMonitor {
@@ -70,12 +77,15 @@ impl StatisticsMonitor {
         node: Node,
         delegates: Vec<String>,
         endorsmenet_summary_storage: LockedBTreeMap<i32, EndorsementOperationSummary>,
+        log: Logger,
     ) -> Self {
         Self {
             node,
             endorsmenet_summary_storage,
             application_statistics_storage: LockedBTreeMap::new(),
             delegates,
+            last_seen_current_head: None,
+            log,
         }
     }
 
@@ -84,6 +94,9 @@ impl StatisticsMonitor {
             let current_head = self.node.get_head_data().await.unwrap();
             let current_head_level = *current_head.level() as i32;
             let current_head_round = *current_head.payload_round() as i32;
+            let current_head_hash = current_head.block_hash();
+
+            debug!(self.log, "Current head - Level: {current_head_level} Round: {current_head_round} Hash: {current_head_hash}");
 
             // TODO: this should occure only on head change (?)
             let application_statistics = self.get_application_stats(current_head_level).await?;
@@ -104,29 +117,50 @@ impl StatisticsMonitor {
                     .get_endorsing_rights(current_head_level, delegate)
                     .await?
                 {
+                    let preendorsmenent_statuses = self
+                        .get_preendorsement_statuses(current_head_level, current_head_round)
+                        .await?;
                     let endorsmenent_statuses = self
                         .get_endorsement_statuses(current_head_level, current_head_round)
                         .await?;
                     let delegate_slot = delegate_rigths.delegates[0].get_first_slot();
                     // let injected_endorsement = mempool_endorsements.values().filter(|op| op.is_injected());
-                    if let Some(injected_op_hash) = endorsmenent_statuses
+                    if let Some(injected_endorsement_op_hash) = endorsmenent_statuses
                         .iter()
                         .filter(|(_, endorsement)| endorsement.slot == delegate_slot)
                         .map(|(op_h, _)| op_h)
                         .last()
                     {
-                        let injected_endorsement = mempool_endorsements.get(injected_op_hash);
+                        let injected_preendorsement_op_hash = preendorsmenent_statuses
+                            .iter()
+                            .filter(|(_, preendorsement)| preendorsement.slot == delegate_slot)
+                            .map(|(op_h, _)| op_h)
+                            .last().unwrap();
+                        
+                        println!("Preendorsement op hash: {injected_preendorsement_op_hash}");
+                        println!("Endorsement op hash: {injected_endorsement_op_hash}");
+
+                        let injected_preendorsement = mempool_endorsements.get(injected_preendorsement_op_hash);
+                        let injected_endorsement = mempool_endorsements.get(injected_endorsement_op_hash);
+
+                        // println!("Preendorsement op: {:#?}", injected_preendorsement);
+                        // println!("Endorsement op: {:#?}", injected_endorsement);
+
                         let endorsement_summary = EndorsementOperationSummary::new(
                             OffsetDateTime::parse(current_head.timestamp(), &Rfc3339).unwrap(),
+                            injected_preendorsement.cloned(),
                             injected_endorsement.cloned(),
                             block_application_stats.clone(),
                         );
+                        println!("Summary: {endorsement_summary}");
                         self.endorsmenet_summary_storage
                             .insert(*current_head.level() as i32, endorsement_summary)?;
                         println!("Inserted summary for: {delegate} at level: {current_head_level}");
+                        println!();
                     } else {
                         let endorsement_summary = EndorsementOperationSummary::new(
                             OffsetDateTime::parse(current_head.timestamp(), &Rfc3339).unwrap(),
+                            None,
                             None,
                             block_application_stats.clone(),
                         );
@@ -194,11 +228,26 @@ impl StatisticsMonitor {
         .json()
         .await
     }
+
+    async fn get_preendorsement_statuses(
+        &self,
+        level: i32,
+        round: i32,
+    ) -> Result<BTreeMap<String, PreendorsementStatus>, reqwest::Error> {
+        reqwest::get(&format!(
+            "http://127.0.0.1:{}/dev/shell/automaton/preendorsements_status?level={level}&round={round}",
+            self.node.port()
+        ))
+        .await?
+        .json()
+        .await
+    }
 }
 
 impl EndorsementOperationSummary {
     pub fn new(
         current_head_timestamp: OffsetDateTime,
+        preendorsement_op_stats: Option<OperationStats>,
         op_stats: Option<OperationStats>,
         block_stats: Option<BlockApplicationStatistics>,
     ) -> Self {
@@ -213,11 +262,23 @@ impl EndorsementOperationSummary {
                 .and_then(|end| stats.apply_block_start.map(|start| (end - start) as i64))
         });
 
-        let injected = op_stats.as_ref().and_then(|op_s| {
+        let preendorsement_injected = preendorsement_op_stats.as_ref().and_then(|op_s| {
             op_s.injected_timestamp.and_then(|inject_time| {
                 block_stats.map(|stats| (inject_time as i64) - stats.receive_timestamp)
             })
         });
+
+        let endorsement_injected = op_stats.as_ref().and_then(|op_s| {
+            op_s.injected_timestamp.and_then(|endorsement_inject_time| {
+                preendorsement_op_stats.clone().and_then(|stats| stats.injected_timestamp.map(|preendorsement_inject_time| endorsement_inject_time.saturating_sub(preendorsement_inject_time) as i64))
+            })
+        });
+
+        // TODO: debug
+        if preendorsement_injected.is_none() || endorsement_injected.is_none() {
+            println!("Preendorsement stats: {:#?}", preendorsement_op_stats.is_some());
+            println!("Endorsement stats: {:#?}", op_stats.is_some());
+        }
 
         let validated = op_stats
             .as_ref()
@@ -240,15 +301,23 @@ impl EndorsementOperationSummary {
             })
         });
 
+        let operation_hash_received_back = op_stats.as_ref().and_then(|op_s| {
+            op_s.second_received().and_then(|received| {
+                op_s.first_content_sent()
+                    .map(|content_sent| received - content_sent)
+            })
+        });
+
         Self {
             block_received,
             block_application,
-            injected,
+            preendorsement_injected,
+            endorsement_injected,
             validated,
             operation_hash_sent,
             operation_requested,
             operation_sent,
-            operation_hash_received_back: None, // TODO
+            operation_hash_received_back,
         }
     }
 }
@@ -257,20 +326,30 @@ impl EndorsementOperationSummary {
 pub struct EndorsementOperationSummary {
     pub block_application: Option<i64>,
     pub block_received: Option<i64>,
-    pub injected: Option<i64>,
+    pub preendorsement_injected: Option<i64>,
+    pub endorsement_injected: Option<i64>,
     pub validated: Option<i64>,
     pub operation_hash_sent: Option<i64>,
     pub operation_requested: Option<i64>,
     pub operation_sent: Option<i64>,
-    pub operation_hash_received_back: Option<u64>,
+    pub operation_hash_received_back: Option<i64>,
 }
 
 impl Display for EndorsementOperationSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Block Application: {:#?}\nBlock Received: {:#?}\nInjected: {:#?}\nValidated: {:#?}\nOperation hash sent: {:#?}\nOperation hash requested: {:#?}\nOperatin sent: {:#?}\nOperation hash received back: {:#?}", self.block_application, self.block_received, self.injected, self.validated, self.operation_hash_sent, self.operation_requested, self.operation_sent, self.operation_hash_received_back)
+        writeln!(f, "\nBlock Application: {}\nBlock Received: {:#?}\nPreendorsement Injected: {:#?}\nEndorsement Injected:{:#?}\nValidated: {:#?}\nOperation hash sent: {:#?}\nOperation hash requested: {:#?}\nOperatin sent: {:#?}\nOperation hash received back: {:#?}",
+            convert_time_to_unit_string(self.block_application),
+            convert_time_to_unit_string(self.block_received),
+            convert_time_to_unit_string(self.preendorsement_injected),
+            convert_time_to_unit_string(self.endorsement_injected),
+            convert_time_to_unit_string(self.validated),
+            convert_time_to_unit_string(self.operation_hash_sent),
+            convert_time_to_unit_string(self.operation_requested),
+            convert_time_to_unit_string(self.operation_sent),
+            convert_time_to_unit_string(self.operation_hash_received_back),
+        )
     }
 }
-
 #[derive(Deserialize, Clone, Debug, Default, Serialize, PartialEq)]
 #[allow(dead_code)] // TODO: make BE send only the relevant data
 pub struct OperationStats {
@@ -401,6 +480,20 @@ impl OperationStats {
             .min()
     }
 
+    pub fn second_received(&self) -> Option<i64> {
+        self.nodes
+            .clone()
+            .into_iter()
+            .filter_map(|(_, v)| {
+                v.received
+                    .into_iter()
+                    .min_by_key(|v| v.latency)
+                    .map(|v| v.latency)
+            })
+            .sorted_by_key(|val| *val)
+            .nth(1)
+    }
+
     pub fn first_content_requested_remote(&self) -> Option<i64> {
         self.nodes
             .clone()
@@ -486,4 +579,127 @@ pub enum EndorsementState {
     Decoded = 4,
     Received = 5,
     BranchDelayed = 6,
+}
+
+pub fn convert_time_to_unit_string<T>(time: Option<T>) -> String
+where
+    T: ToPrimitive + PartialOrd + std::ops::Div<Output = T> + std::fmt::Display,
+{
+    if let Some(time) = time {
+        let time = if let Some(time) = time.to_f64() {
+            time
+        } else {
+            return String::from("NaN");
+        };
+
+        const MILLISECOND_FACTOR: f64 = 1000.0;
+        const MICROSECOND_FACTOR: f64 = 1000000.0;
+        const NANOSECOND_FACTOR: f64 = 1000000000.0;
+
+        if time >= NANOSECOND_FACTOR {
+            format!("{:.2}s", time / NANOSECOND_FACTOR)
+        } else if time >= MICROSECOND_FACTOR {
+            format!("{:.2}ms", time / MICROSECOND_FACTOR)
+        } else if time >= MILLISECOND_FACTOR {
+            format!("{:.2}μs", time / MILLISECOND_FACTOR)
+        } else {
+            format!("{}ns", time)
+        }
+    } else {
+        String::from("None")
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_operation_stats_second_received() {
+        let stats = OperationStats {
+            nodes: vec![
+                (
+                    String::from("1"),
+                    OperationNodeStats {
+                        received: vec![
+                            OperationNodeCurrentHeadStats {
+                                latency: 100,
+                                block_level: 1,
+                                block_timestamp: 0,
+                            }
+                        ],
+                        sent: vec![],
+                        content_received: vec![],
+                        content_requested: vec![],
+                        content_requested_remote: vec![],
+                        content_sent: vec![],
+                    }
+                ),
+                (
+                    String::from("2"),
+                    OperationNodeStats {
+                        received: vec![
+                            OperationNodeCurrentHeadStats {
+                                latency: 150,
+                                block_level: 1,
+                                block_timestamp: 0,
+                            }
+                        ],
+                        sent: vec![],
+                        content_received: vec![],
+                        content_requested: vec![],
+                        content_requested_remote: vec![],
+                        content_sent: vec![],
+                    }
+                ),
+                (
+                    String::from("3"),
+                    OperationNodeStats {
+                        received: vec![
+                            OperationNodeCurrentHeadStats {
+                                latency: 300,
+                                block_level: 1,
+                                block_timestamp: 0,
+                            }
+                        ],
+                        sent: vec![],
+                        content_received: vec![],
+                        content_requested: vec![],
+                        content_requested_remote: vec![],
+                        content_sent: vec![],
+                    }
+                )
+            ].into_iter().collect(),
+            ..Default::default()
+        };
+
+        let second_received = stats.second_received();
+        assert_eq!(second_received, Some(150));
+
+        let stats = OperationStats {
+            nodes: vec![
+                (
+                    String::from("1"),
+                    OperationNodeStats {
+                        received: vec![
+                            OperationNodeCurrentHeadStats {
+                                latency: 100,
+                                block_level: 1,
+                                block_timestamp: 0,
+                            }
+                        ],
+                        sent: vec![],
+                        content_received: vec![],
+                        content_requested: vec![],
+                        content_requested_remote: vec![],
+                        content_sent: vec![],
+                    }
+                ),
+            ].into_iter().collect(),
+            ..Default::default()
+        };
+
+        let second_received = stats.second_received();
+        assert_eq!(second_received, None);
+    }
 }
