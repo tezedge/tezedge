@@ -84,6 +84,9 @@ pub struct Config {
     pub peers_potential_max: usize,
 
     /// Maximum number of connected peers on socket layer.
+    pub peers_connected_min: usize,
+
+    /// Maximum number of connected peers on socket layer.
     pub peers_connected_max: usize,
 
     /// Minimum number of peers that we need to be bootstrapped with
@@ -204,6 +207,7 @@ pub fn default_test_config() -> Config {
         peer_max_io_syscalls: 64,
 
         peers_potential_max: 80,
+        peers_connected_min: 20,
         peers_connected_max: 40,
         peers_bootstrapped_min: 60,
 

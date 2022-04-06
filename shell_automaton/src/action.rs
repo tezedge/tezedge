@@ -35,6 +35,7 @@ use crate::peer::message::write::*;
 use crate::peer::remote_requests::block_header_get::*;
 use crate::peer::remote_requests::block_operations_get::*;
 use crate::peer::remote_requests::current_branch_get::*;
+use crate::peer::requests::potential_peers_get::*;
 use crate::peer::{
     PeerCurrentHeadUpdateAction, PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction,
     PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
@@ -399,6 +400,12 @@ pub enum Action {
     PeerHandshakingFinish(PeerHandshakingFinishAction),
 
     PeerCurrentHeadUpdate(PeerCurrentHeadUpdateAction),
+
+    PeerRequestsPotentialPeersGetInit(PeerRequestsPotentialPeersGetInitAction),
+    PeerRequestsPotentialPeersGetPending(PeerRequestsPotentialPeersGetPendingAction),
+    PeerRequestsPotentialPeersGetError(PeerRequestsPotentialPeersGetErrorAction),
+    PeerRequestsPotentialPeersGetSuccess(PeerRequestsPotentialPeersGetSuccessAction),
+    PeerRequestsPotentialPeersGetFinish(PeerRequestsPotentialPeersGetFinishAction),
 
     PeerRemoteRequestsBlockHeaderGetEnqueue(PeerRemoteRequestsBlockHeaderGetEnqueueAction),
     PeerRemoteRequestsBlockHeaderGetInitNext(PeerRemoteRequestsBlockHeaderGetInitNextAction),

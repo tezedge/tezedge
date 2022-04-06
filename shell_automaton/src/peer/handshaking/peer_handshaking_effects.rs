@@ -10,7 +10,6 @@ use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::{AckMessage, NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
-use tezos_messages::p2p::encoding::peer::PeerMessage;
 
 use crate::action::Action;
 use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
@@ -25,7 +24,6 @@ use crate::peer::handshaking::{
     PeerHandshakingConnectionMessageWriteAction, PeerHandshakingMetadataMessageInitAction,
 };
 use crate::peer::message::read::PeerMessageReadInitAction;
-use crate::peer::message::write::PeerMessageWriteInitAction;
 use crate::peer::{PeerCrypto, PeerStatus};
 use crate::peers::graylist::{PeerGraylistReason, PeersGraylistAddressAction};
 use crate::service::actors_service::ActorsMessageTo;
@@ -592,13 +590,6 @@ where
                 ),
                 Arc::new(peer_handshaked.version.clone()),
             ));
-
-            if state.peers.potential_len() < state.config.peers_potential_max {
-                store.dispatch(PeerMessageWriteInitAction {
-                    address: action.address,
-                    message: Arc::new(PeerMessage::Bootstrap.into()),
-                });
-            }
 
             store.dispatch(PeerMessageReadInitAction {
                 address: action.address,

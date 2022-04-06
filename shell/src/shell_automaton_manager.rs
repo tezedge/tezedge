@@ -185,6 +185,7 @@ impl ShellAutomatonManager {
             peer_max_io_syscalls: 32,
 
             peers_potential_max: p2p_config.peer_threshold.high * 5,
+            peers_connected_min: p2p_config.peer_threshold.low,
             peers_connected_max: p2p_config.peer_threshold.high,
             peers_bootstrapped_min: p2p_config
                 .peer_threshold

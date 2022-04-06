@@ -27,6 +27,7 @@ use crate::peer::peer_reducer;
 use crate::peer::remote_requests::block_header_get::peer_remote_requests_block_header_get_reducer;
 use crate::peer::remote_requests::block_operations_get::peer_remote_requests_block_operations_get_reducer;
 use crate::peer::remote_requests::current_branch_get::peer_remote_requests_current_branch_get_reducer;
+use crate::peer::requests::potential_peers_get::peer_requests_potential_peers_get_reducer;
 
 use crate::peers::add::multi::peers_add_multi_reducer;
 use crate::peers::add::peers_add_reducer;
@@ -107,6 +108,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         peer_chunk_write_reducer,
         peer_chunk_read_reducer,
         peer_disconnection_reducer,
+        peer_requests_potential_peers_get_reducer,
         peer_remote_requests_block_header_get_reducer,
         peer_remote_requests_block_operations_get_reducer,
         peer_remote_requests_current_branch_get_reducer,
