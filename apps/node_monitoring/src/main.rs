@@ -195,16 +195,17 @@ async fn main() {
             let t_log = log.clone();
             let t_delegates = delegates.clone();
             tokio::spawn(async move {
-                if let Err(err) = StatisticsMonitor::new(
+                let mut statistics_monitor = StatisticsMonitor::new(
                     node,
                     t_delegates,
                     endorsmenet_summary_storage,
                     t_log.clone(),
-                )
-                .run()
-                .await
-                {
-                    slog::error!(t_log, "Error in statistics monitor: `{err}`");
+                );
+                loop {
+                    if let Err(err) = statistics_monitor.parse_statistics().await {
+                        slog::error!(t_log, "Error in statistics monitor: `{err}`");
+                    }
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             });
         }

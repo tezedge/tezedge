@@ -15,7 +15,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::node::Node;
 
-use super::delegate::{DelegateEndorsingRights, EndorsingRights};
+use super::{delegate::EndorsingRights, resource::ResourceMonitorError};
 
 pub type OperationStatsMap = BTreeMap<String, OperationStats>;
 pub type PreendorsementStatus = EndorsementStatus;
@@ -28,6 +28,13 @@ pub enum StatisticMonitorError {
 
     #[error("Error in node RPC, reason: {0}")]
     NodeRpcError(#[from] reqwest::Error),
+
+    // TODO: Shouldn't be ResourceMonitorError
+    #[error("Other, reason: {0}")]
+    OtherError(#[from] ResourceMonitorError),
+
+    #[error("Other error occured, reason: {0}")]
+    ParseTimestamp(#[from] time::error::Parse),
 }
 
 #[derive(Clone, Debug)]
@@ -89,94 +96,93 @@ impl StatisticsMonitor {
         }
     }
 
-    pub async fn run(&mut self) -> Result<(), StatisticMonitorError> {
-        loop {
-            let current_head = self.node.get_head_data().await.unwrap();
-            let current_head_level = *current_head.level() as i32;
-            let current_head_round = *current_head.payload_round() as i32;
-            let current_head_hash = current_head.block_hash();
+    pub async fn parse_statistics(&mut self) -> Result<(), StatisticMonitorError> {
+        let current_head = self.node.get_head_data().await?;
+        let current_head_level = *current_head.level() as i32;
+        let current_head_round = *current_head.payload_round() as i32;
+        let current_head_hash = current_head.block_hash();
 
-            let constants = self.get_network_constants().await?;
+        let constants = self.get_network_constants().await?;
 
-            debug!(self.log, "Current head - Level: {current_head_level} Round: {current_head_round} Hash: {current_head_hash}");
+        debug!(self.log, "Current head - Level: {current_head_level} Round: {current_head_round} Hash: {current_head_hash}");
 
-            // TODO: this should occure only on head change (?)
-            let application_statistics = self.get_application_stats(current_head_level).await?;
-            for stats in application_statistics {
-                self.application_statistics_storage
-                    .insert(stats.block_hash.clone(), stats)?;
-            }
+        // TODO: this should occure only on head change (?)
+        let application_statistics = self.get_application_stats(current_head_level).await?;
+        for stats in application_statistics {
+            self.application_statistics_storage
+                .insert(stats.block_hash.clone(), stats)?;
+        }
 
-            // let mempool_endorsements = self.get_consensus_operation_stats().await?;
-            // let endorsements_status = ;
+        let block_application_stats = self
+            .application_statistics_storage
+            .get(current_head.block_hash().to_string())?;
 
-            let block_application_stats = self
-                .application_statistics_storage
-                .get(current_head.block_hash().to_string())?;
+        let endorsing_rights_for_level =
+            self.get_endorsing_rights(current_head_level).await?;
 
-            for delegate in &self.delegates {
-                if let Some(delegate_rigths) = self
-                    .get_endorsing_rights_for_delegate(current_head_level, delegate)
-                    .await?
+        for delegate in &self.delegates {
+            if let Some(delegate_rigths) = self
+                .get_endorsing_rights_for_delegate(current_head_level, delegate)
+                .await?
+            {
+                let preendorsmenent_statuses = self
+                    .get_preendorsement_statuses(current_head_level, current_head_round)
+                    .await?;
+                let endorsmenent_statuses = self
+                    .get_endorsement_statuses(current_head_level, current_head_round)
+                    .await?;
+                let delegate_slot = delegate_rigths.delegates[0].get_first_slot();
+
+                if let Some(injected_preendorsement_op_hash) = preendorsmenent_statuses
+                    .iter()
+                    .filter(|(_, preendorsement)| preendorsement.slot == delegate_slot)
+                    .map(|(op_h, _)| op_h)
+                    .last()
                 {
-                    let preendorsmenent_statuses = self
-                        .get_preendorsement_statuses(current_head_level, current_head_round)
+                    debug!(
+                        self.log,
+                        "Preendorsement op hash: {injected_preendorsement_op_hash}"
+                    );
+
+                    let injected_preendorsement = self
+                        .get_consensus_operation_stats(injected_preendorsement_op_hash)
                         .await?;
-                    let endorsmenent_statuses = self
-                        .get_endorsement_statuses(current_head_level, current_head_round)
-                        .await?;
-                    let delegate_slot = delegate_rigths.delegates[0].get_first_slot();
-                    // let injected_endorsement = mempool_endorsements.values().filter(|op| op.is_injected());
+
                     if let Some(injected_endorsement_op_hash) = endorsmenent_statuses
                         .iter()
                         .filter(|(_, endorsement)| endorsement.slot == delegate_slot)
                         .map(|(op_h, _)| op_h)
                         .last()
                     {
-                        let injected_preendorsement_op_hash = preendorsmenent_statuses
-                            .iter()
-                            .filter(|(_, preendorsement)| preendorsement.slot == delegate_slot)
-                            .map(|(op_h, _)| op_h)
-                            .last()
-                            .unwrap();
+                        debug!(
+                            self.log,
+                            "Endorsement op hash: {injected_endorsement_op_hash}"
+                        );
 
-                        println!("Preendorsement op hash: {injected_preendorsement_op_hash}");
-                        println!("Endorsement op hash: {injected_endorsement_op_hash}");
-
-                        let injected_preendorsement =
-                            self.get_consensus_operation_stats(injected_preendorsement_op_hash).await?;
-                        let injected_endorsement =
-                            self.get_consensus_operation_stats(injected_endorsement_op_hash).await?;
-
-                        // println!("Preendorsement op: {:#?}", injected_preendorsement);
-                        // println!("Endorsement op: {:#?}", injected_endorsement);
+                        let injected_endorsement = self
+                            .get_consensus_operation_stats(injected_endorsement_op_hash)
+                            .await?;
 
                         let preendorsement_quorum_time = quorum_reached(
                             preendorsmenent_statuses,
-                            &self.get_endorsing_rights(current_head_level).await?.unwrap(), // TODO
+                            endorsing_rights_for_level.clone(),
                             constants.consensus_threshold,
                         );
-                        // println!(
-                        //     "Preendorsement quorum reached: {}",
-                        //     preendorsement_quorum_time.is_some()
-                        // );
 
                         let endorsement_summary = EndorsementOperationSummary::new(
-                            OffsetDateTime::parse(current_head.timestamp(), &Rfc3339).unwrap(),
+                            OffsetDateTime::parse(current_head.timestamp(), &Rfc3339)?,
                             injected_preendorsement,
                             injected_endorsement,
                             block_application_stats.clone(),
                             preendorsement_quorum_time,
                         );
-                        println!("Summary: {endorsement_summary}");
+                        debug!(self.log, "Summary: {endorsement_summary}");
                         self.endorsmenet_summary_storage
                             .insert(*current_head.level() as i32, endorsement_summary)?;
-                        // println!("Inserted summary for: {delegate} at level: {current_head_level}");
-                        println!();
                     } else {
                         let endorsement_summary = EndorsementOperationSummary::new(
-                            OffsetDateTime::parse(current_head.timestamp(), &Rfc3339).unwrap(),
-                            None,
+                            OffsetDateTime::parse(current_head.timestamp(), &Rfc3339)?,
+                            injected_preendorsement,
                             None,
                             block_application_stats.clone(),
                             None,
@@ -184,12 +190,21 @@ impl StatisticsMonitor {
                         self.endorsmenet_summary_storage
                             .insert(*current_head.level() as i32, endorsement_summary)?;
                     }
+                } else {
+                    let endorsement_summary = EndorsementOperationSummary::new(
+                        OffsetDateTime::parse(current_head.timestamp(), &Rfc3339)?,
+                        None,
+                        None,
+                        block_application_stats.clone(),
+                        None,
+                    );
+                    self.endorsmenet_summary_storage
+                        .insert(*current_head.level() as i32, endorsement_summary)?;
                 }
             }
-            // println!("Endorsement Summaries: {:#?}", self.endorsmenet_summary_storage.inner);
-            // println!("Block applications: {:#?}", self.application_statistics_storage.inner);
-            tokio::time::sleep(Duration::from_secs(1)).await;
         }
+
+        Ok(())
     }
 
     async fn get_consensus_operation_stats(
@@ -203,9 +218,7 @@ impl StatisticsMonitor {
         .await?
         .json()
         .await
-        .map(|res: OperationStatsMap| {
-            res.values().last().cloned()
-        })
+        .map(|res: OperationStatsMap| res.values().last().cloned())
     }
 
     async fn get_application_stats(
@@ -325,16 +338,18 @@ impl EndorsementOperationSummary {
         let preendorsement_validated = preendorsement_op_stats
             .as_ref()
             .and_then(|op_s| op_s.validation_duration());
-    
-        let preendorsement_operation_hash_sent = preendorsement_op_stats.as_ref().and_then(|op_s| {
-            op_s.first_sent()
-                .and_then(|sent| op_s.validation_ended().map(|v_end| sent - v_end))
-        });
 
-        let preendorsement_operation_requested = preendorsement_op_stats.as_ref().and_then(|op_s| {
-            op_s.first_content_requested_remote()
-                .and_then(|op_req| op_s.first_sent().map(|sent| op_req - sent))
-        });
+        let preendorsement_operation_hash_sent =
+            preendorsement_op_stats.as_ref().and_then(|op_s| {
+                op_s.first_sent()
+                    .and_then(|sent| op_s.validation_ended().map(|v_end| sent - v_end))
+            });
+
+        let preendorsement_operation_requested =
+            preendorsement_op_stats.as_ref().and_then(|op_s| {
+                op_s.first_content_requested_remote()
+                    .and_then(|op_req| op_s.first_sent().map(|sent| op_req - sent))
+            });
 
         let preendorsement_operation_sent = preendorsement_op_stats.as_ref().and_then(|op_s| {
             op_s.first_content_sent().and_then(|cont_sent| {
@@ -343,12 +358,13 @@ impl EndorsementOperationSummary {
             })
         });
 
-        let preendorsement_operation_hash_received_back = preendorsement_op_stats.as_ref().and_then(|op_s| {
-            op_s.second_received().and_then(|received| {
-                op_s.first_content_sent()
-                    .map(|content_sent| received - content_sent)
-            })
-        });
+        let preendorsement_operation_hash_received_back =
+            preendorsement_op_stats.as_ref().and_then(|op_s| {
+                op_s.second_received().and_then(|received| {
+                    op_s.first_content_sent()
+                        .map(|content_sent| received - content_sent)
+                })
+            });
 
         let preendorsement_quorum_reached = preendorsement_quorum_time.and_then(|quorum_time| {
             preendorsement_op_stats.clone().and_then(|stats| {
@@ -365,15 +381,6 @@ impl EndorsementOperationSummary {
                     .map(|endorsement_inject_time| (endorsement_inject_time as i64) - quorum_time)
             })
         });
-
-        // TODO: debug
-        if preendorsement_injected.is_none() || endorsement_injected.is_none() {
-            println!(
-                "Preendorsement stats: {:#?}",
-                preendorsement_op_stats.is_some()
-            );
-            println!("Endorsement stats: {:#?}", enbdorsement_op_stat.is_some());
-        }
 
         let endorsement_validated = enbdorsement_op_stat
             .as_ref()
@@ -396,12 +403,13 @@ impl EndorsementOperationSummary {
             })
         });
 
-        let endorsement_operation_hash_received_back = enbdorsement_op_stat.as_ref().and_then(|op_s| {
-            op_s.second_received().and_then(|received| {
-                op_s.first_content_sent()
-                    .map(|content_sent| received - content_sent)
-            })
-        });
+        let endorsement_operation_hash_received_back =
+            enbdorsement_op_stat.as_ref().and_then(|op_s| {
+                op_s.second_received().and_then(|received| {
+                    op_s.first_content_sent()
+                        .map(|content_sent| received - content_sent)
+                })
+            });
 
         Self {
             block_received,
@@ -444,7 +452,9 @@ pub struct EndorsementOperationSummary {
 
 impl Display for EndorsementOperationSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, r#"
+        writeln!(
+            f,
+            r#"
             1. Block Received: {}
             2. Block Application: {}
             3. Preendorsement Injected: {}
@@ -575,14 +585,15 @@ pub enum OperationValidationResult {
     PrecheckRefused,
     Prevalidate,
     Default,
+    Outdated,
 }
 
 impl OperationStats {
-    pub fn node_count(&self) -> usize {
+    pub fn _node_count(&self) -> usize {
         self.nodes.len()
     }
 
-    pub fn is_injected(&self) -> bool {
+    pub fn _is_injected(&self) -> bool {
         self.injected_timestamp.is_some()
     }
 
@@ -740,30 +751,32 @@ where
 
 fn quorum_reached(
     statuses: BTreeMap<String, EndorsementStatus>,
-    endorsing_rights: &EndorsingRights,
+    endorsing_rights: Option<EndorsingRights>,
     threshold: u64,
 ) -> Option<i64> {
-    let endorsing_powers = endorsing_rights.endorsement_powers();
-    statuses
-        .values()
-        .sorted_by_key(|val| val.received_hash_time)
-        .filter_map(|status| {
-            endorsing_powers.get(&status.slot).and_then(|power| {
-                status
-                    .received_hash_time
-                    .map(|receive_time| (*power, receive_time))
+    endorsing_rights.and_then(|rights| {
+        let endorsing_powers = rights.endorsement_powers();
+        statuses
+            .values()
+            .sorted_by_key(|val| val.received_hash_time)
+            .filter_map(|status| {
+                endorsing_powers.get(&status.slot).and_then(|power| {
+                    status
+                        .received_hash_time
+                        .map(|receive_time| (*power, receive_time))
+                })
             })
-        })
-        .reduce(
-            |(mut acc, mut receive_time), (power, current_receive_time)| {
-                acc += power;
-                if u64::from(acc) < threshold {
-                    receive_time = current_receive_time;
-                }
-                (acc, receive_time)
-            },
-        )
-        .map(|(_, receive_time)| receive_time as i64)
+            .reduce(
+                |(mut acc, mut receive_time), (power, current_receive_time)| {
+                    acc += power;
+                    if u64::from(acc) < threshold {
+                        receive_time = current_receive_time;
+                    }
+                    (acc, receive_time)
+                },
+            )
+            .map(|(_, receive_time)| receive_time as i64)
+    })
 }
 
 #[cfg(test)]
