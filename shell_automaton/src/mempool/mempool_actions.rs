@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
 use tezos_api::ffi::{PrevalidatorWrapper, ValidateOperationResponse};
-use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::{mempool::Mempool, operation::Operation};
 
 use crate::prechecker::OperationDecodedContents;
@@ -19,6 +19,8 @@ use crate::{action::EnablingCondition, state::State};
 #[cfg(feature = "fuzzing")]
 use crate::fuzzing::net::SocketAddrMutator;
 
+use super::MempoolOperation;
+
 /// Process the mempool received from the peer
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -26,11 +28,8 @@ pub struct MempoolRecvDoneAction {
     #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
     pub block_hash: BlockHash,
-    pub prev_block_hash: BlockHash,
+    pub block_header: BlockHeader,
     pub message: Mempool,
-    pub level: Level,
-    pub timestamp: i64,
-    pub proto: u8,
 }
 
 impl EnablingCondition<State> for MempoolRecvDoneAction {
@@ -291,11 +290,94 @@ impl EnablingCondition<State> for MempoolFlushAction {
 }
 
 // RPC
+
+pub(super) trait MempoolOperationMatcher {
+    fn matches(&self, op: &MempoolOperation) -> bool {
+        op.operation_decoded_contents.as_ref().map_or_else(
+            || self.matches_non_decoded(),
+            |op| self.matches_decoded_content(op),
+        )
+    }
+
+    fn matches_non_decoded(&self) -> bool {
+        false
+    }
+
+    fn matches_decoded_content(&self, _op: &OperationDecodedContents) -> bool {
+        false
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum ConsensusOperationMatcher {
+    Branch(OperationBranchMatcher),
+    Endorsement(OperationLevelRoundMatcher),
+    Preendorsement(OperationLevelRoundMatcher),
+}
+
+impl ConsensusOperationMatcher {
+    pub fn endorsement_branch(branch: BlockHash) -> Self {
+        Self::Branch(OperationBranchMatcher { branch })
+    }
+
+    pub fn endorsement_level_round(level: i32, round: Option<i32>) -> Self {
+        Self::Endorsement(OperationLevelRoundMatcher { level, round })
+    }
+
+    pub fn preendorsement_level_round(level: i32, round: Option<i32>) -> Self {
+        Self::Preendorsement(OperationLevelRoundMatcher { level, round })
+    }
+}
+
+impl MempoolOperationMatcher for ConsensusOperationMatcher {
+    fn matches_decoded_content(&self, op: &OperationDecodedContents) -> bool {
+        match self {
+            ConsensusOperationMatcher::Branch(m) => {
+                op.is_endorsement() && m.matches_decoded_content(op)
+            }
+            ConsensusOperationMatcher::Endorsement(m) => {
+                op.is_endorsement() && m.matches_decoded_content(op)
+            }
+            ConsensusOperationMatcher::Preendorsement(m) => {
+                op.is_preendorsement() && m.matches_decoded_content(op)
+            }
+        }
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OperationBranchMatcher {
+    branch: BlockHash,
+}
+
+impl MempoolOperationMatcher for OperationBranchMatcher {
+    fn matches_decoded_content(&self, op: &OperationDecodedContents) -> bool {
+        op.branch() == &self.branch
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OperationLevelRoundMatcher {
+    level: i32,
+    round: Option<i32>,
+}
+
+impl MempoolOperationMatcher for OperationLevelRoundMatcher {
+    fn matches_decoded_content(&self, op: &OperationDecodedContents) -> bool {
+        op.level_round().map_or(false, |(level, round)| {
+            self.level == level && self.round.map_or(true, |r| r == round)
+        })
+    }
+}
+
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MempoolRpcEndorsementsStatusGetAction {
     pub rpc_id: RpcId,
-    pub block_hash: Option<BlockHash>,
+    pub matcher: ConsensusOperationMatcher,
 }
 
 impl EnablingCondition<State> for MempoolRpcEndorsementsStatusGetAction {

@@ -17,16 +17,12 @@ use crate::{
         PrecheckerOperationState, Refused,
     },
     rights::{rights_actions::*, RightsKey},
-    storage::kv_block_additional_data::{
-        StorageBlockAdditionalDataErrorAction, StorageBlockAdditionalDataGetAction,
-        StorageBlockAdditionalDataOkAction,
-    },
     Action, ActionWithMeta, Service, State, Store,
 };
 
 use super::{
-    prechecker_actions::*, EndorsementValidationError, Key, OperationDecodedContents,
-    PrecheckerError, PrecheckerOperation, SupportedProtocolState,
+    prechecker_actions::*, protocol_for_block, EndorsementValidationError, Key,
+    OperationDecodedContents, PrecheckerError, PrecheckerOperation,
 };
 
 pub fn prechecker_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -37,6 +33,33 @@ where
     let prechecker_state_operations = &prechecker_state.operations;
     let log = &store.state.get().log;
     match &action.action {
+        Action::PrecheckerPrecheckBlock(PrecheckerPrecheckBlockAction {
+            block_hash,
+            block_header,
+        }) => {
+            if let Some(protocol) = protocol_for_block(block_header, prechecker_state) {
+                match protocol {
+                    SupportedProtocol::Proto012 => {
+                        if let Ok(proto_header) =
+                            tezos_messages::protocol::proto_012::block_header::BlockHeader::try_from(
+                                block_header,
+                            )
+                        {
+                            if let Some(block_stats) = store
+                                .service
+                                .statistics()
+                                .and_then(|stats| stats.get_mut(block_hash))
+                            {
+                                block_stats.payload_hash = Some(proto_header.payload_hash.clone());
+                                block_stats.payload_round = Some(proto_header.payload_round);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         Action::PrecheckerPrecheckOperationRequest(PrecheckerPrecheckOperationRequestAction {
             operation,
         }) => {
@@ -72,40 +95,63 @@ where
             key,
             ..
         }) => {
-            match prechecker_state_operations.get(key).map(|op| &op.state) {
-                Some(PrecheckerOperationState::Init { .. }) => {
-                    store.dispatch(PrecheckerGetProtocolVersionAction { key: key.clone() });
+            if let Some(operation) = prechecker_state_operations.get(key) {
+                match &operation.state {
+                    PrecheckerOperationState::Init { .. } => {
+                        let header = if let Some((_, h)) = prechecker_state
+                            .blocks_cache
+                            .get(operation.operation.branch())
+                        {
+                            h
+                        } else {
+                            let block_hash = operation.operation.branch().clone();
+                            store.dispatch(PrecheckerErrorAction::new(
+                                key.clone(),
+                                PrecheckerError::MissingBlockHeader(block_hash),
+                            ));
+                            return;
+                        };
+                        let protocol =
+                            if let Some(p) = prechecker_state.proto_cache.get(&header.proto()) {
+                                p
+                            } else if let Some((_, _, p)) =
+                                prechecker_state.protocol_cache.get(header.predecessor())
+                            {
+                                p
+                            } else {
+                                let block_hash = operation.operation.branch().clone();
+                                store.dispatch(PrecheckerErrorAction::new(
+                                    key.clone(),
+                                    PrecheckerError::MissingProtocol(block_hash),
+                                ));
+                                return;
+                            };
+                        let protocol = match SupportedProtocol::try_from(protocol) {
+                            Ok(p) => p,
+                            Err(err) => {
+                                store.dispatch(PrecheckerErrorAction::new(key.clone(), err));
+                                return;
+                            }
+                        };
+                        store.dispatch(PrecheckerDecodeOperationAction {
+                            key: key.clone(),
+                            protocol: protocol.clone(),
+                        });
+                    }
+                    PrecheckerOperationState::Applied { .. } => {
+                        let action =
+                            PrecheckerEndorsementValidationAppliedAction { key: key.clone() };
+                        store.dispatch(action);
+                    }
+                    PrecheckerOperationState::Error { error, .. } => {
+                        let error = error.clone();
+                        store.dispatch(PrecheckerErrorAction::new(key.clone(), error));
+                    }
+                    _ => (),
                 }
-                Some(PrecheckerOperationState::Applied { .. }) => {
-                    let action = PrecheckerEndorsementValidationAppliedAction { key: key.clone() };
-                    store.dispatch(action);
-                }
-                Some(PrecheckerOperationState::Error { error, .. }) => {
-                    let error = error.clone();
-                    store.dispatch(PrecheckerErrorAction::new(key.clone(), error));
-                }
-                _ => (),
             };
         }
-        Action::PrecheckerGetProtocolVersion(PrecheckerGetProtocolVersionAction { key }) => {
-            if let Some((_, SupportedProtocolState::Ready(_))) =
-                store.state.get().prechecker.next_protocol
-            {
-                store.dispatch(PrecheckerProtocolVersionReadyAction { key: key.clone() });
-            }
-            // otherwise `BlockApplied` will trigger protocol version fetching
-        }
-        Action::PrecheckerProtocolVersionReady(PrecheckerProtocolVersionReadyAction { key }) => {
-            store.dispatch(PrecheckerDecodeOperationAction { key: key.clone() });
-        }
-        Action::PrecheckerDecodeOperation(PrecheckerDecodeOperationAction { key }) => {
-            let proto = match &prechecker_state.next_protocol {
-                Some((_, SupportedProtocolState::Ready(proto))) => proto,
-                _ => {
-                    store.dispatch(PrecheckerGetProtocolVersionAction { key: key.clone() });
-                    return;
-                }
-            };
+        Action::PrecheckerDecodeOperation(PrecheckerDecodeOperationAction { key, protocol }) => {
             if let Some(PrecheckerOperation {
                 operation_binary_encoding,
                 state: PrecheckerOperationState::PendingContentDecoding,
@@ -113,7 +159,7 @@ where
             }) = prechecker_state_operations.get(key)
             {
                 // TODO use proper protocol to parse operation
-                match OperationDecodedContents::parse(operation_binary_encoding, proto) {
+                match OperationDecodedContents::parse(operation_binary_encoding, protocol) {
                     Ok(contents) => {
                         store.dispatch(PrecheckerOperationDecodedAction {
                             key: key.clone(),
@@ -139,13 +185,17 @@ where
                 let disable_block_precheck = store.state().config.disable_block_precheck;
                 let disable_endorsements_precheck =
                     store.state().config.disable_endorsements_precheck;
+                let ithaca_protocol = matches!(
+                    operation_decoded_contents,
+                    OperationDecodedContents::Proto012(_)
+                );
 
                 store.dispatch(MempoolOperationDecodedAction {
                     operation: key.operation.clone(),
                     operation_decoded_contents,
                 });
 
-                if disable_endorsements_precheck || !is_endorsement {
+                if disable_endorsements_precheck || !is_endorsement || ithaca_protocol {
                     store.dispatch(PrecheckerProtocolNeededAction { key: key.clone() });
                 } else if disable_block_precheck {
                     let current_head = match store.state().current_head.get() {
@@ -452,19 +502,22 @@ where
                             err.clone(),
                         ));
                     }
-                    PrecheckerError::OperationContentsDecode(err) => {
-                        store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
-                            err.clone(),
-                        ));
-                    }
-                    PrecheckerError::Protocol(_) => {
+                    PrecheckerError::UnsupportedProtocol(_) => {
                         store.dispatch(PrecheckerPrecheckOperationResponseAction::prevalidate(
                             &key.operation,
                         ));
                     }
+
                     PrecheckerError::Storage(err) => {
                         store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
                             err.clone(),
+                        ));
+                    }
+                    PrecheckerError::MissingBlockHeader(_)
+                    | PrecheckerError::MissingProtocol(_)
+                    | PrecheckerError::OperationContentsDecode(_) => {
+                        store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
+                            error.clone(),
                         ));
                     }
                 }
@@ -485,17 +538,7 @@ where
         Action::CurrentHeadUpdate(content) => {
             let block = &content.new_head;
 
-            let need_proto_update =
-                prechecker_state
-                    .next_protocol
-                    .as_ref()
-                    .map_or(true, |(proto, state)| {
-                        (*proto == block.header.proto()
-                            && matches!(state, SupportedProtocolState::None))
-                            || proto + 1 == block.header.proto()
-                    });
-
-            let (block_hash, proto) = (block.hash.clone(), block.header.proto());
+            let (block_hash, _proto) = (block.hash.clone(), block.header.proto());
             for key in store
                 .state
                 .get()
@@ -520,93 +563,13 @@ where
             {
                 store.dispatch(PrecheckerBlockAppliedAction { key });
             }
-
-            if need_proto_update {
-                slog::trace!(&store.state.get().log, "query next block protocol"; "proto" => proto, "block" => block_hash.to_base58_check());
-                store.dispatch(PrecheckerQueryNextBlockProtocolAction { block_hash, proto });
-            }
-        }
-        Action::PrecheckerQueryNextBlockProtocol(PrecheckerQueryNextBlockProtocolAction {
-            block_hash,
-            ..
-        }) => {
-            store.dispatch(StorageBlockAdditionalDataGetAction {
-                key: block_hash.clone(),
+            store.dispatch(PrecheckerCacheProtocolAction {
+                block_hash: content.new_head.hash.clone(),
+                proto: content.new_head.header.proto(),
+                protocol_hash: content.protocol.clone(),
+                next_protocol_hash: content.next_protocol.clone(),
             });
         }
-        Action::StorageBlockAdditionalDataOk(StorageBlockAdditionalDataOkAction { key, value }) => {
-            match SupportedProtocol::try_from(value.next_protocol_hash()) {
-                Ok(proto) => {
-                    store.dispatch(PrecheckerNextBlockProtocolReadyAction {
-                        block_hash: key.clone(),
-                        supported_protocol: proto,
-                    });
-                }
-                Err(err) => {
-                    store.dispatch(PrecheckerNextBlockProtocolErrorAction {
-                        block_hash: key.clone(),
-                        error: err.into(),
-                    });
-                }
-            };
-        }
-        Action::StorageBlockAdditionalDataError(StorageBlockAdditionalDataErrorAction {
-            key,
-            error,
-        }) => {
-            store.dispatch(PrecheckerNextBlockProtocolErrorAction {
-                block_hash: key.clone(),
-                error: error.clone().into(),
-            });
-        }
-
-        Action::PrecheckerNextBlockProtocolReady(PrecheckerNextBlockProtocolReadyAction {
-            ..
-        }) => {
-            for key in store
-                .state
-                .get()
-                .prechecker
-                .operations
-                .iter()
-                .filter_map(|(k, op)| {
-                    if let PrecheckerOperationState::PendingProtocolVersion = op.state {
-                        Some(k.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-            {
-                store.dispatch(PrecheckerProtocolVersionReadyAction { key });
-            }
-        }
-        Action::PrecheckerNextBlockProtocolError(PrecheckerNextBlockProtocolErrorAction {
-            error,
-            ..
-        }) => {
-            for key in store
-                .state
-                .get()
-                .prechecker
-                .operations
-                .iter()
-                .filter_map(|(k, op)| {
-                    if let PrecheckerOperationState::PendingProtocolVersion = op.state {
-                        Some(k.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-            {
-                store.dispatch(PrecheckerErrorAction {
-                    key,
-                    error: error.clone(),
-                });
-            }
-        }
-
         _ => (),
     }
 }

@@ -903,10 +903,6 @@ enum PrecheckerActionTest {
     TestPrecheckerPrecheckOperationInitAction(
         prechecker_actions::PrecheckerPrecheckOperationInitAction,
     ),
-    TestPrecheckerGetProtocolVersionAction(prechecker_actions::PrecheckerGetProtocolVersionAction),
-    TestPrecheckerProtocolVersionReadyAction(
-        prechecker_actions::PrecheckerProtocolVersionReadyAction,
-    ),
     TestPrecheckerDecodeOperationAction(prechecker_actions::PrecheckerDecodeOperationAction),
     TestPrecheckerOperationDecodedAction(prechecker_actions::PrecheckerOperationDecodedAction),
     //TestPrecheckerWaitForBlockApplicationAction(
@@ -936,18 +932,6 @@ enum PrecheckerActionTest {
     TestPrecheckerPrecacheEndorsingRightsAction(
         prechecker_actions::PrecheckerPrecacheEndorsingRightsAction,
     ),
-    TestPrecheckerSetNextBlockProtocolAction(
-        prechecker_actions::PrecheckerSetNextBlockProtocolAction,
-    ),
-    TestPrecheckerQueryNextBlockProtocolAction(
-        prechecker_actions::PrecheckerQueryNextBlockProtocolAction,
-    ),
-    TestPrecheckerNextBlockProtocolReadyAction(
-        prechecker_actions::PrecheckerNextBlockProtocolReadyAction,
-    ),
-    TestPrecheckerNextBlockProtocolErrorAction(
-        prechecker_actions::PrecheckerNextBlockProtocolErrorAction,
-    ),
     TestPrecheckerPruneOperationAction(prechecker_actions::PrecheckerPruneOperationAction),
 }
 
@@ -958,8 +942,6 @@ impl PrecheckerActionTest {
             Self::TestPrecheckerPrecheckOperationResponseAction(a) => a.into(),
             Self::TestPrecheckerCacheAppliedBlockAction(a) => a.into(),
             Self::TestPrecheckerPrecheckOperationInitAction(a) => a.into(),
-            Self::TestPrecheckerGetProtocolVersionAction(a) => a.into(),
-            Self::TestPrecheckerProtocolVersionReadyAction(a) => a.into(),
             Self::TestPrecheckerDecodeOperationAction(a) => a.into(),
             Self::TestPrecheckerOperationDecodedAction(a) => a.into(),
             //Self::TestPrecheckerWaitForBlockApplicationAction(a) => a.into(),
@@ -975,10 +957,6 @@ impl PrecheckerActionTest {
             Self::TestPrecheckerProtocolNeededAction(a) => a.into(),
             Self::TestPrecheckerErrorAction(a) => a.into(),
             Self::TestPrecheckerPrecacheEndorsingRightsAction(a) => a.into(),
-            Self::TestPrecheckerSetNextBlockProtocolAction(a) => a.into(),
-            Self::TestPrecheckerQueryNextBlockProtocolAction(a) => a.into(),
-            Self::TestPrecheckerNextBlockProtocolReadyAction(a) => a.into(),
-            Self::TestPrecheckerNextBlockProtocolErrorAction(a) => a.into(),
             Self::TestPrecheckerPruneOperationAction(a) => a.into(),
         }
     }

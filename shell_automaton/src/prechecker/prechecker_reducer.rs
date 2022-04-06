@@ -1,22 +1,29 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::convert::TryInto;
-
 use slog::{trace, warn, FnValue};
 
-use crate::{
-    storage::kv_block_additional_data::StorageBlockAdditionalDataOkAction, Action, ActionWithMeta,
-    State,
-};
+use crate::{Action, ActionWithMeta, State};
 
-use super::{
-    prechecker_actions::*, PrecheckerOperation, PrecheckerOperationState, SupportedProtocolState,
-};
+use super::{prechecker_actions::*, PrecheckerOperation, PrecheckerOperationState};
+
+const CACHE_RETAIN_PERIOD: u64 = 60 * 60;
 
 pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
     let prechecker_state = &mut state.prechecker;
     match &action.action {
+        Action::PrecheckerPrecheckBlock(PrecheckerPrecheckBlockAction {
+            block_hash,
+            block_header,
+        }) => {
+            prechecker_state.blocks_cache.retain(|_, (timestamp, _)| {
+                action.id.duration_since(*timestamp).as_secs() < CACHE_RETAIN_PERIOD
+            });
+            prechecker_state
+                .blocks_cache
+                .insert(block_hash.clone(), (action.id, block_header.clone()));
+        }
+
         Action::PrecheckerPrecheckOperationInit(PrecheckerPrecheckOperationInitAction {
             key,
             operation,
@@ -33,35 +40,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                 });
         }
 
-        Action::PrecheckerGetProtocolVersion(PrecheckerGetProtocolVersionAction { key }) => {
-            prechecker_state
-                .operations
-                .entry(key.clone())
-                .and_modify(|state| {
-                    state.state = PrecheckerOperationState::PendingProtocolVersion;
-                });
-        }
-        Action::StorageBlockAdditionalDataOk(StorageBlockAdditionalDataOkAction { key, value }) => {
-            let cache = &mut state.prechecker.protocol_version_cache;
-            let duration = cache.time;
-            cache
-                .next_protocol_versions
-                .retain(|_, (timestamp, _)| action.id.duration_since(*timestamp) < duration);
-            if let Ok(protocol_version) = value.next_protocol_hash().try_into() {
-                cache
-                    .next_protocol_versions
-                    .insert(key.clone(), (action.id, protocol_version));
-            }
-        }
-        Action::PrecheckerProtocolVersionReady(PrecheckerProtocolVersionReadyAction { key }) => {
-            prechecker_state
-                .operations
-                .entry(key.clone())
-                .and_modify(|state| {
-                    state.state = PrecheckerOperationState::ProtocolVersionReady;
-                });
-        }
-        Action::PrecheckerDecodeOperation(PrecheckerDecodeOperationAction { key }) => {
+        Action::PrecheckerDecodeOperation(PrecheckerDecodeOperationAction { key, .. }) => {
             prechecker_state
                 .operations
                 .entry(key.clone())
@@ -291,28 +270,27 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                     }
                 });
         }
-        Action::PrecheckerSetNextBlockProtocol(PrecheckerSetNextBlockProtocolAction { proto }) => {
-            prechecker_state.next_protocol = Some((*proto, SupportedProtocolState::None));
-        }
-        Action::PrecheckerQueryNextBlockProtocol(PrecheckerQueryNextBlockProtocolAction {
-            block_hash,
-            proto,
-        }) => {
-            prechecker_state
-                .next_protocol
-                .get_or_insert((*proto, SupportedProtocolState::None))
-                .1 = SupportedProtocolState::Requesting(block_hash.clone());
-        }
-        Action::PrecheckerNextBlockProtocolReady(PrecheckerNextBlockProtocolReadyAction {
-            supported_protocol,
-            ..
-        }) => {
-            if let Some(sps) = prechecker_state.next_protocol.as_mut() {
-                sps.1 = SupportedProtocolState::Ready(supported_protocol.clone())
-            }
-        }
         Action::PrecheckerPruneOperation(PrecheckerPruneOperationAction { key }) => {
             prechecker_state.operations.remove(key);
+        }
+
+        Action::PrecheckerCacheProtocol(PrecheckerCacheProtocolAction {
+            block_hash,
+            proto,
+            protocol_hash,
+            next_protocol_hash,
+        }) => {
+            prechecker_state
+                .proto_cache
+                .entry(*proto)
+                .or_insert(protocol_hash.clone());
+            prechecker_state.protocol_cache.retain(|_, (t, _, _)| {
+                action.id.duration_since(*t).as_secs() < CACHE_RETAIN_PERIOD
+            });
+            prechecker_state.protocol_cache.insert(
+                block_hash.clone(),
+                (action.id, protocol_hash.clone(), next_protocol_hash.clone()),
+            );
         }
 
         _ => (),
