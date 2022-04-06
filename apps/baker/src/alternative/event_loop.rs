@@ -294,11 +294,7 @@ fn process_ops(
 ) {
     for op in ops {
         // the operation does not belong to
-        let on_time = if this_level.contains(&op.branch) {
-            true
-        } else if live_blocks.contains(&op.branch) {
-            false
-        } else {
+        if !this_level.contains(&op.branch) && !live_blocks.contains(&op.branch) {
             slog::warn!(srv.log, " .  the op is ahead, or very outdated {op:?}");
             ahead_ops.entry(op.branch.clone()).or_default().push(op);
             continue;
@@ -306,10 +302,6 @@ fn process_ops(
         match op.kind() {
             None => slog::error!(srv.log, " .  unclassified operation {op:?}"),
             Some(OperationKind::Preendorsement(content)) => {
-                if !on_time {
-                    slog::warn!(srv.log, " .  outdated preendorsement {op:?}");
-                    continue;
-                }
                 if let Some(validator) = dy.map.validator(content.level, content.slot, op) {
                     let event = tb::Event::PreVoted(SlotsInfo::block_id(&content), validator, now);
                     let (new_actions, records) = state.handle(&dy, event);
@@ -318,10 +310,6 @@ fn process_ops(
                 }
             }
             Some(OperationKind::Endorsement(content)) => {
-                if !on_time {
-                    slog::warn!(srv.log, " .  outdated endorsement {op:?}");
-                    continue;
-                }
                 if let Some(validator) = dy.map.validator(content.level, content.slot, op) {
                     let event = tb::Event::Voted(SlotsInfo::block_id(&content), validator, now);
                     let (new_actions, records) = state.handle(&dy, event);
