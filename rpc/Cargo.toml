@@ -1,6 +1,6 @@
 [package]
 name = "rpc"
-version = "2.0.1"
+version = "2.1.0"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2021"
 rust-version = "1.58"
