@@ -18,7 +18,7 @@ use tokio::sync::mpsc::{channel, Sender};
 
 use crate::slack::SlackServer;
 
-use super::statistics::{EndorsementOperationSummary, LockedBTreeMap};
+use super::statistics::{EndorsementOperationSummary, FinalEndorsementSummary, LockedBTreeMap};
 
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
@@ -72,7 +72,7 @@ pub struct Head {
 pub struct DelegatesMonitor {
     node_addr: SocketAddr,
     delegates: Vec<String>,
-    endorsmenet_summary_storage: LockedBTreeMap<i32, EndorsementOperationSummary>,
+    endorsmenet_summary_storage: LockedBTreeMap<i32, FinalEndorsementSummary>,
     slack: Option<SlackServer>,
     log: Logger,
 }
@@ -81,7 +81,7 @@ impl DelegatesMonitor {
     pub fn new(
         node_addr: SocketAddr,
         delegates: Vec<String>,
-        endorsmenet_summary_storage: LockedBTreeMap<i32, EndorsementOperationSummary>,
+        endorsmenet_summary_storage: LockedBTreeMap<i32, FinalEndorsementSummary>,
         slack: Option<SlackServer>,
         log: Logger,
     ) -> Self {
@@ -317,7 +317,7 @@ impl DelegatesMonitor {
                     if was_failure {
                         if let Some(summary) = self.endorsmenet_summary_storage.get(level)? {
                             self.report_recover(format!(
-                                "`{delegate}` endorsed block on level `{level}` after failure\nSummary: {summary}"
+                                "`{delegate}` endorsed block on level `{level}` after failure\nSummary:\n {summary}"
                             ));
                         } else {
                             self.report_recover(format!(
@@ -331,7 +331,7 @@ impl DelegatesMonitor {
         }
         if let Some(summary) = self.endorsmenet_summary_storage.get(level)? {
             self.report_error(format!(
-                "Missed `{delegate}`'s endorsement for level `{level}`\nSummary: {}",
+                "Missed `{delegate}`'s endorsement for level `{level}`\nSummary:\n {}",
                 summary
             ));
         } else {
