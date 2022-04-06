@@ -149,7 +149,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                                         Some(())
                                     });
                             } else {
-                                let index = peer_intervals.len() - index - 1;
+                                let index = peer_intervals.len().saturating_sub(index + 1);
                                 peer_intervals.insert(
                                     index,
                                     PeerIntervalState {

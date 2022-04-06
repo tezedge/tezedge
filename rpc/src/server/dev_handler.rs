@@ -7,11 +7,12 @@ use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{context, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
 use anyhow::format_err;
-use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
+use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
 use crypto::PublicKeyWithHash;
 use hyper::{Body, Request, Response};
 use shell_automaton::service::{BlockApplyStats, BlockPeerStats};
 use slog::warn;
+use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use storage::persistent::Encoder;
@@ -392,10 +393,21 @@ pub async fn dev_shell_automaton_actions_graph_get(
 pub async fn dev_shell_automaton_mempool_operation_stats_get(
     _: Request<Body>,
     _: Params,
-    _: Query,
+    query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    make_json_response(&dev_services::get_shell_automaton_mempool_operation_stats(&env).await?)
+    let hash_filter = query
+        .get("hash")
+        .map(|v| {
+            v.iter()
+                .flat_map(|s| s.split(","))
+                .filter_map(|s| OperationHash::from_base58_check(s).ok())
+                .collect::<BTreeSet<_>>()
+        })
+        .filter(|v| !v.is_empty());
+    make_json_response(
+        &dev_services::get_shell_automaton_mempool_operation_stats(&env, hash_filter).await?,
+    )
 }
 
 pub async fn dev_shell_automaton_block_stats_graph_get(
@@ -446,12 +458,43 @@ pub async fn dev_shell_automaton_endorsements_status(
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    let block_hash = query
-        .get_str("block")
-        .map(BlockHash::from_base58_check)
-        .transpose()?;
+    let block_hash = query.get_hash("block_hash")?;
+    let payload_hash = query.get_hash("payload_hash")?;
+    let level = query.get_parsed("level")?;
+    let round = query.get_parsed("round")?;
+    let base_time = query.get_parsed("base_time")?;
     make_json_response(
-        &dev_services::get_shell_automaton_endorsements_status(block_hash, &env).await?,
+        &dev_services::get_shell_automaton_endorsements_status(
+            block_hash,
+            payload_hash,
+            level,
+            round,
+            base_time,
+            &env,
+        )
+        .await?,
+    )
+}
+
+pub async fn dev_shell_automaton_preendorsements_status(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let payload_hash = query.get_hash("payload_hash")?;
+    let level = query.get_parsed("level")?;
+    let round = query.get_parsed("round")?;
+    let base_time = query.get_parsed("base_time")?;
+    make_json_response(
+        &dev_services::get_shell_automaton_preendorsements_status(
+            payload_hash,
+            level,
+            round,
+            base_time,
+            &env,
+        )
+        .await?,
     )
 }
 
@@ -503,6 +546,10 @@ fn application_stats(hash: BlockHash, stats: BlockApplyStats, base_time: u64) ->
 
         "baker": stats.baker.and_then(|baker| baker.pk_hash().ok()).map(|pkh| pkh.to_string_representation()),
         "baker_priority": stats.priority,
+
+        "round": stats.round,
+        "payload_hash": stats.payload_hash,
+        "payload_round": stats.payload_round,
 
         "precheck_start": as_delta_or(stats.precheck_start),
         "precheck_end": as_delta_or(stats.precheck_end),

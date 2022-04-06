@@ -1,8 +1,9 @@
 [package]
 name = "monitoring"
-version = "2.0.0"
+version = "2.1.0"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2021"
+rust-version = "1.58"
 
 [dependencies]
 erased-serde = "0.3"

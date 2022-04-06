@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
     thread,
     time::Instant,
@@ -23,7 +23,10 @@ use tezos_messages::p2p::encoding::{
 
 use crate::Action;
 
-use crate::{request::RequestId, rpc::ValidBlocksQuery, storage::request::StorageRequestor, State};
+use crate::{
+    mempool::mempool_actions::ConsensusOperationMatcher, request::RequestId, rpc::ValidBlocksQuery,
+    storage::request::StorageRequestor, State,
+};
 
 use super::{
     statistics_service::ActionGraph, storage_service::StorageRequestPayloadKind, BlockApplyStats,
@@ -84,6 +87,7 @@ pub enum RpcRequest {
 
     GetMempoolOperationStats {
         channel: oneshot::Sender<crate::mempool::OperationsStats>,
+        hash_filter: Option<BTreeSet<OperationHash>>,
     },
     GetMempooEndrosementsStats {
         channel: oneshot::Sender<BTreeMap<OperationHash, crate::mempool::OperationStats>>,
@@ -118,7 +122,7 @@ pub enum RpcRequest {
         level: Option<Level>,
     },
     GetEndorsementsStatus {
-        block_hash: Option<BlockHash>,
+        matcher: ConsensusOperationMatcher,
     },
     GetStatsCurrentHeadStats {
         channel: oneshot::Sender<Vec<(BlockHash, BlockApplyStats)>>,

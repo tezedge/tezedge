@@ -1,8 +1,9 @@
 [package]
 name = "tezos_timing"
-version = "2.0.0"
+version = "2.1.0"
 authors = ["Sebastien Chapuis <sebastien@chapu.is>"]
 edition = "2021"
+rust-version = "1.58"
 
 [dependencies]
 crypto = { path = "../../crypto" }

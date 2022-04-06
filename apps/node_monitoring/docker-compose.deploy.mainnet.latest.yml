@@ -31,7 +31,7 @@ services:
       - "11001:11001/udp"  # debugger syslog port for tezos node
 
   tezedge-node:
-    image: tezedge/tezedge:v2.0.0-frame-pointers-enabled
+    image: tezedge/tezedge:v2.1.0-frame-pointers-enabled
     pid: host
     network_mode: host
     environment:

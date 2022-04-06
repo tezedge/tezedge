@@ -135,8 +135,20 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .respond(rpc_id, serde_json::Value::Null);
                     }
 
-                    RpcRequest::GetMempoolOperationStats { channel } => {
-                        let stats = store.state().mempool.operation_stats.clone();
+                    RpcRequest::GetMempoolOperationStats {
+                        channel,
+                        hash_filter,
+                    } => {
+                        let stats = &store.state().mempool.operation_stats;
+                        let stats = if let Some(hashes) = hash_filter {
+                            stats
+                                .iter()
+                                .filter(|(hash, _)| hashes.contains(hash))
+                                .map(|(hash, stat)| (hash.clone(), stat.clone()))
+                                .collect()
+                        } else {
+                            stats.clone()
+                        };
                         let _ = channel.send(stats);
                     }
                     RpcRequest::GetBlockStats { channel } => {
@@ -230,9 +242,8 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             rpc_id,
                         });
                     }
-                    RpcRequest::GetEndorsementsStatus { block_hash } => {
-                        store
-                            .dispatch(MempoolRpcEndorsementsStatusGetAction { rpc_id, block_hash });
+                    RpcRequest::GetEndorsementsStatus { matcher } => {
+                        store.dispatch(MempoolRpcEndorsementsStatusGetAction { rpc_id, matcher });
                     }
 
                     RpcRequest::GetStatsCurrentHeadStats {

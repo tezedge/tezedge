@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::mem;
 use std::net::SocketAddr;
 
-use crypto::hash::{BlockHash, OperationHash};
+use crypto::hash::{BlockHash, OperationHash, ProtocolHash};
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 use tezos_messages::protocol::SupportedProtocol;
@@ -14,12 +14,11 @@ use tezos_protocol_ipc_client::ProtocolServiceError;
 use crate::block_applier::BlockApplierApplyState;
 use crate::mempool::PrevalidatorAction;
 use crate::peers::remove::PeersRemoveAction;
-use crate::prechecker::PrecheckerState;
 use crate::{Action, ActionWithMeta, State};
 
 use super::{
     mempool_actions::*,
-    mempool_state::{HeadState, MempoolOperation, OperationStream},
+    mempool_state::{HeadState, MempoolOperation, OperationStream, MAX_REFUSED_OPERATIONS},
 };
 use super::{
     OperationNodeCurrentHeadStats, OperationState, OperationStats, OperationValidationResult,
@@ -28,6 +27,9 @@ use crate::prechecker::prechecker_actions::{
     PrecheckerPrecheckOperationRequestAction, PrecheckerPrecheckOperationResponse,
     PrecheckerPrecheckOperationResponseAction, PrecheckerPrevalidate,
 };
+
+/// Number of levels to keep endorsements/preendorsements.
+const OPERATION_STATUS_RETAIN_LEVELS: i32 = 4 * 60 * 24;
 
 pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
     if state.config.disable_mempool {
@@ -84,11 +86,24 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 for v in &result.result.refused {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                        while mempool_state.validated_operations.refused.len()
+                            >= MAX_REFUSED_OPERATIONS
+                        {
+                            let hash = match mempool_state.validated_operations.refused.pop_front()
+                            {
+                                Some(v) => v.hash,
+                                None => break,
+                            };
+                            mempool_state.validated_operations.ops.remove(&hash);
+                        }
                         mempool_state
                             .validated_operations
-                            .refused_ops
+                            .ops
                             .insert(v.hash.clone(), op);
-                        mempool_state.validated_operations.refused.push(v.clone());
+                        mempool_state
+                            .validated_operations
+                            .refused
+                            .push_back(v.clone());
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -117,6 +132,19 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 for v in &result.result.branch_refused {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                        while mempool_state.validated_operations.branch_refused.len()
+                            >= MAX_REFUSED_OPERATIONS
+                        {
+                            let hash = match mempool_state
+                                .validated_operations
+                                .branch_refused
+                                .pop_front()
+                            {
+                                Some(v) => v.hash,
+                                None => break,
+                            };
+                            mempool_state.validated_operations.ops.remove(&hash);
+                        }
                         mempool_state
                             .validated_operations
                             .ops
@@ -124,7 +152,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .branch_refused
-                            .push(v.clone());
+                            .push_back(v.clone());
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -153,6 +181,19 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 for v in &result.result.branch_delayed {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                        while mempool_state.validated_operations.branch_delayed.len()
+                            >= MAX_REFUSED_OPERATIONS
+                        {
+                            let hash = match mempool_state
+                                .validated_operations
+                                .branch_delayed
+                                .pop_front()
+                            {
+                                Some(v) => v.hash,
+                                None => break,
+                            };
+                            mempool_state.validated_operations.ops.remove(&hash);
+                        }
                         mempool_state
                             .validated_operations
                             .ops
@@ -160,7 +201,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .validated_operations
                             .branch_delayed
-                            .push(v.clone());
+                            .push_back(v.clone());
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -189,11 +230,24 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 for v in &result.result.outdated {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                        while mempool_state.validated_operations.outdated.len()
+                            >= MAX_REFUSED_OPERATIONS
+                        {
+                            let hash = match mempool_state.validated_operations.outdated.pop_front()
+                            {
+                                Some(v) => v.hash,
+                                None => break,
+                            };
+                            mempool_state.validated_operations.ops.remove(&hash);
+                        }
                         mempool_state
                             .validated_operations
-                            .refused_ops
+                            .ops
                             .insert(v.hash.clone(), op);
-                        mempool_state.validated_operations.outdated.push(v.clone());
+                        mempool_state
+                            .validated_operations
+                            .outdated
+                            .push_back(v.clone());
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
@@ -227,17 +281,24 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             // TODO: get from protocol
             const TTL: i32 = 120;
 
-            let (block, block_operations, apply_result, retry) = match &state.block_applier.current
-            {
-                BlockApplierApplyState::Success {
-                    block,
-                    block_operations,
-                    apply_result,
-                    retry,
-                    ..
-                } => (block, block_operations, apply_result, retry),
-                _ => return,
-            };
+            let (block, block_operations, apply_result, retry, protocol) =
+                match &state.block_applier.current {
+                    BlockApplierApplyState::Success {
+                        block,
+                        block_operations,
+                        apply_result,
+                        retry,
+                        block_additional_data,
+                        ..
+                    } => (
+                        block,
+                        block_operations,
+                        apply_result,
+                        retry,
+                        &block_additional_data.protocol_hash,
+                    ),
+                    _ => return,
+                };
 
             // Remove operations that are included in applied block.
             let operation_hashes = block_operations
@@ -276,7 +337,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
 
             // TODO currently supported protocols cache is mainained in the prechecker part
-            if should_skip_block_with_retry(&state.prechecker, &block.hash, retry) {
+            if should_skip_block_with_retry(&block.hash, protocol, retry) {
                 slog::info!(
                     &state.log,
                     "Block `{new_block}` applied after retry, not using it as current head",
@@ -318,10 +379,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
 
-            // for (_, op) in &mempool_state.pending_operations {
-            //     mempool_state.wait_prevalidator_operations.push(op.clone());
-            // }
-
             let level = block.header.level().saturating_sub(TTL);
 
             // `drain_filter` is unstable for now
@@ -329,7 +386,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 for op in ops {
                     mempool_state.pending_operations.remove(op);
                     mempool_state.validated_operations.ops.remove(op);
-                    mempool_state.validated_operations.refused_ops.remove(op);
                     mempool_state
                         .validated_operations
                         .applied
@@ -362,46 +418,16 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
-            block_hash,
+            block_hash: _,
+            block_header,
             message,
-            level,
-            timestamp,
-            ..
         }) => {
-            mempool_state.first_current_head = false;
-            if let Some(local_head_state) = &mempool_state.local_head_state {
-                if *level == local_head_state.header.level() + 1
-                    && mempool_state
-                        .latest_current_head
-                        .as_ref()
-                        .map_or(true, |hash| hash != block_hash)
-                {
-                    // new current_head
-                    // remove older statuses
-                    if let Some((l, _)) = mempool_state.old_operations_state.back() {
-                        if *l < level - 20 {
-                            // TODO how much?
-                            mempool_state.old_operations_state.pop_back();
-                        }
-                    }
-                    // insert previously current statuses
-                    let old_state = std::mem::take(&mut mempool_state.operations_state);
-                    if let Some(local_head_state) = &mempool_state.local_head_state {
-                        mempool_state
-                            .old_operations_state
-                            .push_front((local_head_state.header.level(), old_state));
-                    }
-                    mempool_state.latest_current_head = Some(block_hash.clone());
-                    mempool_state.first_current_head = true;
-                    mempool_state.first_current_head_time = action.time_as_nanos();
-                }
-            }
-
+            let level = block_header.level();
             let pending = message.pending().iter().cloned();
             let known_valid = message.known_valid().iter().cloned();
 
             let peer = mempool_state.peer_state.entry(*address).or_default();
-            let ops = mempool_state.level_to_operation.entry(*level).or_default();
+            let ops = mempool_state.level_to_operation.entry(level).or_default();
 
             for hash in pending.chain(known_valid) {
                 let known = mempool_state.pending_operations.contains_key(&hash)
@@ -413,18 +439,21 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         peer.requesting_full_content.insert(hash.clone());
                     }
 
-                    mempool_state.operations_state.insert(
-                        hash.clone(),
-                        MempoolOperation::received(
-                            *timestamp,
-                            mempool_state.first_current_head_time,
-                            action,
-                        ),
-                    );
+                    mempool_state
+                        .operations_state
+                        .insert(hash.clone(), MempoolOperation::received(level, action));
                 }
                 // of course peer knows about it, because he sent us it
                 peer.seen_operations.insert(hash);
             }
+
+            mempool_state.operations_state.retain(|_, operation| {
+                level - operation.level < OPERATION_STATUS_RETAIN_LEVELS
+                    && operation
+                        .operation_decoded_contents
+                        .as_ref()
+                        .map_or(true, |c| c.is_endorsement() || c.is_preendorsement())
+            });
         }
         Action::MempoolMarkOperationsAsPending(MempoolMarkOperationsAsPendingAction {
             address,
@@ -482,16 +511,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state
                 .pending_operations
                 .insert(operation_hash.clone(), operation.clone());
-            if let Some(local_head_state) = mempool_state.local_head_state.as_ref() {
-                mempool_state.operations_state.insert(
-                    operation_hash.clone(),
-                    MempoolOperation::injected(
-                        local_head_state.header.timestamp().into(),
-                        mempool_state.first_current_head_time,
-                        action,
-                    ),
-                );
-            }
+            mempool_state.operations_state.insert(
+                operation_hash.clone(),
+                MempoolOperation::injected(level, action),
+            );
 
             let (block_level, block_timestamp) = match &mempool_state.local_head_state {
                 Some(local_head_state) => (
@@ -592,12 +615,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     if let Some(op) = mempool_state.pending_operations.remove(&errored.hash) {
                         mempool_state
                             .validated_operations
-                            .refused_ops
+                            .ops
                             .insert(errored.hash.clone(), op);
                         mempool_state
                             .validated_operations
                             .refused
-                            .push(errored.as_errored());
+                            .push_back(errored.as_errored());
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&errored.hash) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
@@ -650,6 +673,28 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 PrecheckerPrecheckOperationResponse::Error(_) => {
                     // TODO
+                }
+            }
+        }
+        Action::MempoolBroadcast(MempoolBroadcastAction {
+            send_operations: true,
+            ..
+        }) => {
+            let mut peers_seen_ops = state
+                .peers
+                .iter_handshaked()
+                .filter_map(|(addr, _)| mempool_state.peer_state.get(addr))
+                .map(|peer_state| &peer_state.seen_operations);
+            if let Some(first) = peers_seen_ops.next() {
+                let seen_by_all_peers = peers_seen_ops.fold(first.clone(), |a, ops| {
+                    a.intersection(ops).cloned().collect()
+                });
+                for (op, _) in mempool_state.validated_operations.ops.iter() {
+                    if seen_by_all_peers.contains(op) {
+                        if let Some(operation_state) = mempool_state.operations_state.get_mut(op) {
+                            *operation_state = operation_state.broadcast_not_needed();
+                        }
+                    }
                 }
             }
         }
@@ -897,20 +942,16 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
 /// - it has been applied successfully after failed attempt because of context mismatch
 ///
 fn should_skip_block_with_retry(
-    state: &PrecheckerState,
-    block_hash: &BlockHash,
+    _block_hash: &BlockHash,
+    protocol_hash: &ProtocolHash,
     error: &Option<ProtocolServiceError>,
 ) -> bool {
-    if !error.as_ref().map_or(
-        false,
-        ProtocolServiceError::is_cache_context_hash_mismatch_error,
-    ) {
-        return false;
+    if let Some(err) = error {
+        if err.is_cache_context_hash_mismatch_error() {
+            if let Ok(proto) = SupportedProtocol::try_from(protocol_hash) {
+                return proto == SupportedProtocol::Proto011;
+            }
+        }
     }
-    let protocol = state
-        .protocol_version_cache
-        .next_protocol_versions
-        .get(block_hash)
-        .map(|(_, p)| p);
-    protocol.map_or(false, |p| *p == SupportedProtocol::Proto011)
+    false
 }

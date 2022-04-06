@@ -33,6 +33,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Nothing.
 
+## [2.1.0] - 2022-04-06
+
+### Added
+
+- Support for preendorsements UI.
+- Bounds for operations in mempool.
+
+### Fixed
+
+- Fixed issue with node being disconnected from all peers.
+- Fixed support for Ithaca endorsements UI.
+- Fixed wrong duration in action statistics.
+
 ## [2.0.0] - 2022-03-31
 
 ### Changed
@@ -773,7 +786,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.0.0...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.1.0...develop
+[2.1.0]: https://github.com/tezedge/tezedge/releases/v2.1.0
 [2.0.0]: https://github.com/tezedge/tezedge/releases/v2.0.0
 [1.19.0]: https://github.com/tezedge/tezedge/releases/v1.19.0
 [1.18.1]: https://github.com/tezedge/tezedge/releases/v1.18.1

@@ -1,8 +1,9 @@
 [package]
 name = "edgekv"
-version = "2.0.0"
+version = "2.1.0"
 authors = ["Mambisi Zempare <mambisi.zempare@viablesystems.io>"]
 edition = "2021"
+rust-version = "1.58"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

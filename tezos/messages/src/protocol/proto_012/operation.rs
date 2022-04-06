@@ -85,6 +85,74 @@ impl TryFrom<P2POperation> for Operation {
     }
 }
 
+impl Operation {
+    pub fn is_endorsement(&self) -> bool {
+        self.as_endorsement().is_some()
+    }
+
+    pub fn as_endorsement(&self) -> Option<&EndorsementOperation> {
+        if let Some((Contents::Endorsement(endorsement), [])) = self.contents.split_first() {
+            Some(endorsement)
+        } else {
+            None
+        }
+    }
+
+    pub fn is_preendorsement(&self) -> bool {
+        self.as_preendorsement().is_some()
+    }
+
+    pub fn as_preendorsement(&self) -> Option<&PreendorsementOperation> {
+        if let Some((Contents::Preendorsement(preendorsement), [])) = self.contents.split_first() {
+            Some(preendorsement)
+        } else {
+            None
+        }
+    }
+
+    pub fn payload(&self) -> Option<&BlockPayloadHash> {
+        if let Some((contents, [])) = self.contents.split_first() {
+            match contents {
+                Contents::Endorsement(EndorsementOperation {
+                    block_payload_hash, ..
+                })
+                | Contents::Preendorsement(PreendorsementOperation {
+                    block_payload_hash, ..
+                }) => Some(block_payload_hash),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn level_round(&self) -> Option<(i32, i32)> {
+        if let Some((contents, [])) = self.contents.split_first() {
+            match contents {
+                Contents::Endorsement(EndorsementOperation { level, round, .. })
+                | Contents::Preendorsement(PreendorsementOperation { level, round, .. }) => {
+                    Some((*level, *round))
+                }
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn slot(&self) -> Option<u16> {
+        if let Some((contents, [])) = self.contents.split_first() {
+            match contents {
+                Contents::Endorsement(EndorsementOperation { slot, .. })
+                | Contents::Preendorsement(PreendorsementOperation { slot, .. }) => Some(*slot),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+}
+
 /// Operation contents.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct OperationContents {
@@ -260,6 +328,7 @@ Endorsement (tag 21)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InlinedEndorsementMempoolContents {
+    #[encoding(tag = 21)]
     Endorsement(InlinedEndorsementMempoolContentsEndorsementVariant),
 }
 
@@ -453,10 +522,10 @@ Preendorsement (tag 20)
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct PreendorsementOperation {
-    slot: u16,
-    level: i32,
-    round: i32,
-    block_payload_hash: BlockPayloadHash,
+    pub slot: u16,
+    pub level: i32,
+    pub round: i32,
+    pub block_payload_hash: BlockPayloadHash,
 }
 
 /**
@@ -483,10 +552,10 @@ Endorsement (tag 21)
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct EndorsementOperation {
-    slot: u16,
-    level: i32,
-    round: i32,
-    block_payload_hash: BlockPayloadHash,
+    pub slot: u16,
+    pub level: i32,
+    pub round: i32,
+    pub block_payload_hash: BlockPayloadHash,
 }
 
 /**

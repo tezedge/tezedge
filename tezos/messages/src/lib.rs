@@ -121,7 +121,7 @@ impl std::fmt::Display for Timestamp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.to_rfc3339() {
             Ok(ts) => ts.fmt(f),
-            Err(_) => Err(std::fmt::Error),
+            Err(err) => write!(f, "<invalid timestamp: {err}>"),
         }
     }
 }

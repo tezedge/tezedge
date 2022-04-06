@@ -8,7 +8,7 @@ use std::ops::{Deref, DerefMut};
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
-use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
+use crypto::hash::{BlockHash, BlockPayloadHash, CryptoboxPublicKeyHash};
 use storage::shell_automaton_action_meta_storage::ShellAutomatonActionStats;
 use tezos_api::ffi::{ApplyBlockExecutionTimestamps, ApplyBlockResponse};
 use tezos_messages::base::signature_public_key::SignaturePublicKey;
@@ -36,6 +36,9 @@ pub struct BlockApplyStats {
     pub injected: Option<u64>,
     pub baker: Option<SignaturePublicKey>,
     pub priority: Option<u16>,
+
+    pub payload_hash: Option<BlockPayloadHash>,
+    pub payload_round: Option<i32>,
 
     pub precheck_start: Option<u64>,
     pub precheck_end: Option<u64>,
@@ -219,15 +222,24 @@ impl Default for StatisticsService {
 }
 
 impl StatisticsService {
+    pub(crate) fn get_mut(&mut self, hash: &BlockHash) -> Option<&mut BlockApplyStats> {
+        self.blocks_apply.get_mut(hash)
+    }
+
     pub fn action_new(&mut self, action: &ActionWithMeta) {
         let pred_action_id = self.last_action_id.replace(action.id).unwrap_or(action.id);
         let pred_action_kind = self.last_action_kind.replace(action.action.kind());
         let action_kind = action.action.kind();
         let duration = u64::from(action.id) - u64::from(pred_action_id);
 
+        let pred_action_kind = match pred_action_kind {
+            Some(v) => v,
+            None => return,
+        };
+
         let stats = self
             .action_kind_stats
-            .entry(action_kind)
+            .entry(pred_action_kind)
             .or_insert_with(|| ShellAutomatonActionStats {
                 total_calls: 0,
                 total_duration: 0,
@@ -235,11 +247,9 @@ impl StatisticsService {
         stats.total_calls += 1;
         stats.total_duration += duration;
 
-        if let Some(pred_action_kind) = pred_action_kind {
-            self.action_graph[pred_action_kind as usize]
-                .next_actions
-                .insert(action_kind as usize);
-        }
+        self.action_graph[pred_action_kind as usize]
+            .next_actions
+            .insert(action_kind as usize);
     }
 
     pub fn action_kind_stats(&self) -> &BTreeMap<ActionKind, ShellAutomatonActionStats> {

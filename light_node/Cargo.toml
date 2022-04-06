@@ -1,8 +1,9 @@
 [package]
 name = "light-node"
-version = "2.0.0"
+version = "2.1.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2021"
+rust-version = "1.58"
 default-run = "light-node"
 
 [dependencies]

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::{BlockHash, ChainId, OperationHash};
+use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
 use tezos_api::ffi::{Applied, Errored, OperationProtocolDataJsonWithErrorListJson};
 use tezos_messages::{
     p2p::encoding::{
@@ -12,14 +12,12 @@ use tezos_messages::{
 };
 
 use crate::{
-    prechecker::{PrecheckerOperation, PrecheckerOperationState},
-    rights::EndorsingRights,
-    EnablingCondition, State,
+    prechecker::PrecheckerOperationState, rights::EndorsingRights, EnablingCondition, State,
 };
 
 use super::{
     EndorsementValidationError, Key, OperationDecodedContents, PrecheckerError,
-    PrecheckerResponseError, SupportedProtocolState,
+    PrecheckerResponseError,
 };
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
@@ -164,44 +162,9 @@ pub struct PrecheckerPrecheckOperationInitAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerGetProtocolVersionAction {
-    pub key: Key,
-}
-
-impl EnablingCondition<State> for PrecheckerGetProtocolVersionAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        matches!(
-            state.prechecker.operations.get(&self.key),
-            Some(PrecheckerOperation {
-                state: PrecheckerOperationState::Init,
-                ..
-            })
-        )
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerProtocolVersionReadyAction {
-    pub key: Key,
-}
-
-impl EnablingCondition<State> for PrecheckerProtocolVersionReadyAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        matches!(
-            state.prechecker.operations.get(&self.key),
-            Some(PrecheckerOperation {
-                state: PrecheckerOperationState::PendingProtocolVersion { .. },
-                ..
-            })
-        )
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerDecodeOperationAction {
     pub key: Key,
+    pub protocol: SupportedProtocol,
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
@@ -305,69 +268,6 @@ pub struct PrecheckerCacheAppliedBlockAction {
 impl EnablingCondition<State> for PrecheckerCacheAppliedBlockAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerSetNextBlockProtocolAction {
-    pub proto: u8,
-}
-
-impl EnablingCondition<State> for PrecheckerSetNextBlockProtocolAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        state
-            .prechecker
-            .next_protocol
-            .as_ref()
-            .map_or(true, |(proto, _)| proto + 1 == self.proto)
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerQueryNextBlockProtocolAction {
-    pub proto: u8,
-    pub block_hash: BlockHash,
-}
-
-impl EnablingCondition<State> for PrecheckerQueryNextBlockProtocolAction {
-    /// The action is enabled if protocol number exists but protocol data is not available.
-    fn is_enabled(&self, state: &State) -> bool {
-        state
-            .prechecker
-            .next_protocol
-            .as_ref()
-            .map_or(true, |(proto, state)| {
-                (*proto == self.proto && matches!(state, SupportedProtocolState::None))
-                    || proto + 1 == self.proto
-            })
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerNextBlockProtocolReadyAction {
-    pub block_hash: BlockHash,
-    pub supported_protocol: SupportedProtocol,
-}
-
-impl EnablingCondition<State> for PrecheckerNextBlockProtocolReadyAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        state.prechecker.next_protocol.as_ref().map_or(false, |(_, state)| matches!(state, SupportedProtocolState::Requesting(hash) if hash == &self.block_hash))
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerNextBlockProtocolErrorAction {
-    pub block_hash: BlockHash,
-    pub error: PrecheckerError,
-}
-
-impl EnablingCondition<State> for PrecheckerNextBlockProtocolErrorAction {
-    fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }
@@ -486,6 +386,34 @@ impl EnablingCondition<State> for PrecheckerProtocolNeededAction {
 impl EnablingCondition<State> for PrecheckerErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct PrecheckerPrecheckBlockAction {
+    pub block_hash: BlockHash,
+    pub block_header: BlockHeader,
+}
+
+impl EnablingCondition<State> for PrecheckerPrecheckBlockAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        !state.prechecker.blocks_cache.contains_key(&self.block_hash)
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct PrecheckerCacheProtocolAction {
+    pub block_hash: BlockHash,
+    pub proto: u8,
+    pub protocol_hash: ProtocolHash,
+    pub next_protocol_hash: ProtocolHash,
+}
+
+impl EnablingCondition<State> for PrecheckerCacheProtocolAction {
+    fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }

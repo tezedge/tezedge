@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::OperationHash;
 use redux_rs::Store;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -19,24 +20,18 @@ use tezos_messages::p2p::{
 
 use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
 
-use crate::{block_applier::BlockApplierApplyState, current_head_precheck::CurrentHeadState};
 use crate::{
-    current_head_precheck::CurrentHeadPrecheckSuccessAction,
+    block_applier::BlockApplierApplyState,
+    current_head_precheck::{CurrentHeadPrecheckSuccessAction, CurrentHeadState},
+    mempool::{mempool_state::OperationState, PrevalidatorAction},
     peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
-    prechecker::prechecker_actions::{PrecheckerApplied, PrecheckerErrored},
-};
-use crate::{
-    mempool::mempool_state::OperationState,
     prechecker::prechecker_actions::{
-        PrecheckerPrecacheEndorsingRightsAction, PrecheckerPrecheckOperationRequestAction,
-        PrecheckerPrecheckOperationResponse, PrecheckerPrecheckOperationResponseAction,
-        PrecheckerSetNextBlockProtocolAction,
+        PrecheckerApplied, PrecheckerErrored, PrecheckerPrecheckBlockAction,
+        PrecheckerPrecheckOperationRequestAction, PrecheckerPrecheckOperationResponse,
+        PrecheckerPrecheckOperationResponseAction,
     },
     rights::Slot,
-};
-use crate::{mempool::PrevalidatorAction, service::protocol_runner_service::ProtocolRunnerResult};
-use crate::{
-    service::{ProtocolRunnerService, RpcService},
+    service::{protocol_runner_service::ProtocolRunnerResult, ProtocolRunnerService, RpcService},
     Action, ActionWithMeta, Service, State,
 };
 
@@ -44,6 +39,7 @@ use super::{
     mempool_actions::MempoolRpcEndorsementsStatusGetAction,
     mempool_actions::*,
     monitored_operation::{MempoolOperations, MonitoredOperation},
+    BroadcastState, MempoolOperation, OperationKind,
 };
 
 pub fn mempool_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithMeta)
@@ -74,6 +70,7 @@ where
                 store.dispatch(PrevalidatorAction::Error(err.to_string()));
             }
             ProtocolRunnerResult::BeginConstruction((_token, Ok(res))) => {
+                // FIXME: doesn't differentiate between ForPrevalidator and ForMempool
                 store.dispatch(PrevalidatorAction::PrevalidatorReady(res.clone()));
             }
             ProtocolRunnerResult::ValidateOperation((_token, Ok(res))) => {
@@ -148,7 +145,6 @@ where
                     let streams = store.state().mempool.operation_streams.clone();
                     for stream in streams {
                         let ops = &store.state().mempool.validated_operations.ops;
-                        let refused_ops = &store.state().mempool.validated_operations.refused_ops;
                         // `PrevalidatorAction::OperationValidated` action can happens only
                         // if we have a prevalidator
                         let prevalidator = match store.state().mempool.prevalidator.as_ref() {
@@ -183,11 +179,7 @@ where
                         };
                         let resp = std::iter::empty()
                             .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
-                            .chain(MonitoredOperation::collect_errored(
-                                refused,
-                                refused_ops,
-                                &prot,
-                            ))
+                            .chain(MonitoredOperation::collect_errored(refused, ops, &prot))
                             .chain(MonitoredOperation::collect_errored(
                                 branch_delayed,
                                 ops,
@@ -200,6 +192,9 @@ where
                             ))
                             .chain(MonitoredOperation::collect_errored(outdated, ops, &prot))
                             .collect::<Vec<_>>();
+                        if resp.is_empty() {
+                            return;
+                        }
                         if let Ok(json) = serde_json::to_value(resp) {
                             store
                                 .service()
@@ -247,11 +242,8 @@ where
                     store.dispatch(MempoolRecvDoneAction {
                         address: *address,
                         block_hash,
-                        prev_block_hash: current_head.current_block_header().predecessor().clone(),
+                        block_header: current_head.current_block_header().clone(),
                         message,
-                        level: current_head.current_block_header().level(),
-                        timestamp: current_head.current_block_header().timestamp().into(),
-                        proto: current_head.current_block_header().proto(),
                     });
                 }
                 PeerMessage::Operation(ref op) => {
@@ -339,68 +331,34 @@ where
         Action::MempoolRegisterOperationsStream(act) => {
             // TODO(vlad): duplicated code
             let ops = &store.state().mempool.validated_operations.ops;
-            let refused_ops = &store.state().mempool.validated_operations.refused_ops;
             let prot = match &store.state().mempool.prevalidator {
                 Some(prevalidator) => prevalidator.protocol.to_base58_check(),
                 None => return,
             };
-            let applied = if act.applied {
-                store
-                    .state()
-                    .mempool
-                    .validated_operations
-                    .applied
-                    .as_slice()
-            } else {
-                &[]
-            };
-            let refused = if act.refused {
-                store
-                    .state()
-                    .mempool
-                    .validated_operations
-                    .refused
-                    .as_slice()
-            } else {
-                &[]
-            };
-            let branch_delayed = if act.branch_delayed {
-                store
-                    .state()
-                    .mempool
-                    .validated_operations
-                    .branch_delayed
-                    .as_slice()
-            } else {
-                &[]
-            };
-            let branch_refused = if act.branch_refused {
-                store
-                    .state()
-                    .mempool
-                    .validated_operations
-                    .branch_refused
-                    .as_slice()
-            } else {
-                &[]
-            };
-            let outdated = if act.outdated {
-                store
-                    .state()
-                    .mempool
-                    .validated_operations
-                    .outdated
-                    .as_slice()
-            } else {
-                &[]
-            };
+            let validated_operations = &store.state().mempool.validated_operations;
+            let applied = validated_operations
+                .applied
+                .iter()
+                .take_while(|_| act.applied);
+            let refused = validated_operations
+                .refused
+                .iter()
+                .take_while(|_| act.refused);
+            let branch_delayed = validated_operations
+                .branch_delayed
+                .iter()
+                .take_while(|_| act.branch_delayed);
+            let branch_refused = validated_operations
+                .branch_refused
+                .iter()
+                .take_while(|_| act.branch_refused);
+            let outdated = validated_operations
+                .outdated
+                .iter()
+                .take_while(|_| act.outdated);
             let resp = std::iter::empty()
                 .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
-                .chain(MonitoredOperation::collect_errored(
-                    refused,
-                    refused_ops,
-                    &prot,
-                ))
+                .chain(MonitoredOperation::collect_errored(refused, ops, &prot))
                 .chain(MonitoredOperation::collect_errored(
                     branch_delayed,
                     ops,
@@ -414,7 +372,6 @@ where
                 .chain(MonitoredOperation::collect_errored(outdated, ops, &prot))
                 .collect::<Vec<_>>();
             if let Ok(json) = serde_json::to_value(&resp) {
-                slog::trace!(&store.state().log, "============\n{:#?}", resp);
                 store.service().rpc().respond_stream(act.rpc_id, Some(json));
             }
         }
@@ -441,30 +398,33 @@ where
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
-            prev_block_hash,
-            proto,
-            level,
+            block_hash,
+            block_header,
             ..
         }) => {
+            store.dispatch(PrecheckerPrecheckBlockAction {
+                block_hash: block_hash.clone(),
+                block_header: block_header.clone(),
+            });
+            // TODO enable this when rights calculation is implemented
+            // let prev_block_hash = block_header.predecessor();
+            // let level = block_header.level();
             // Ask prechecker to precache endorsing rights for new level, using latest applied block
-            if store.state().mempool.first_current_head
-                && crate::prechecker::prechecking_enabled(store.state(), prev_block_hash)
-            {
-                if let Some(current_head) = store
-                    .state
-                    .get()
-                    .mempool
-                    .local_head_state
-                    .as_ref()
-                    .map(|lhs| lhs.hash.clone())
-                {
-                    store.dispatch(PrecheckerPrecacheEndorsingRightsAction {
-                        current_head,
-                        level: *level,
-                    });
-                }
-                store.dispatch(PrecheckerSetNextBlockProtocolAction { proto: *proto });
-            }
+            // if crate::prechecker::prechecking_enabled(store.state(), prev_block_hash) {
+            //     if let Some(current_head) = store
+            //         .state
+            //         .get()
+            //         .mempool
+            //         .local_head_state
+            //         .as_ref()
+            //         .map(|lhs| lhs.hash.clone())
+            //     {
+            //         store.dispatch(PrecheckerPrecacheEndorsingRightsAction {
+            //             current_head,
+            //             level,
+            //         });
+            //     }
+            // }
             if let Some(peer) = store.state().mempool.peer_state.get(address) {
                 if !peer.requesting_full_content.is_empty() {
                     store.dispatch(MempoolGetOperationsAction { address: *address });
@@ -489,7 +449,13 @@ where
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
         | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
-            if crate::prechecker::prechecking_enabled(store.state(), operation.branch()) {
+            let is_consensus_operation = matches!(
+                OperationKind::from_operation_content_raw(operation.data().as_ref()),
+                OperationKind::Preendorsement | OperationKind::Endorsement
+            );
+            if is_consensus_operation
+                && crate::prechecker::prechecking_enabled(store.state(), operation.branch())
+            {
                 store.dispatch(PrecheckerPrecheckOperationRequestAction {
                     operation: operation.clone(),
                 });
@@ -809,43 +775,49 @@ where
 
         Action::MempoolRpcEndorsementsStatusGet(MempoolRpcEndorsementsStatusGetAction {
             rpc_id,
-            block_hash: _,
+            matcher,
         }) => {
-            #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-            struct OpStatus {
-                state: OperationState,
-                broadcast: bool,
-                slot: Slot,
-                #[serde(flatten)]
-                times: HashMap<String, i64>,
-            }
-
-            let status = store
-                .state
-                .get()
-                .mempool
-                .operations_state
-                .iter()
-                .filter_map(|(op, state)| {
-                    if let Some(slot) = state.endorsement_slot() {
-                        let mut times = state.times.clone();
-                        if let Some(t) = times.get("received_contents_time").cloned() {
-                            times.insert("received_time".to_string(), t);
-                        }
-                        let status = OpStatus {
-                            state: state.state,
-                            broadcast: state.broadcast,
-                            slot,
-                            times: state.times.clone(),
-                        };
-                        Some((op.clone(), status))
-                    } else {
-                        None
-                    }
-                })
-                .collect::<BTreeMap<_, _>>();
+            let status = collect_operations(&store.state().mempool.operations_state, matcher);
             store.service.rpc().respond(*rpc_id, status);
         }
         _ => (),
     }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+struct OpStatus {
+    state: OperationState,
+    broadcast: BroadcastState,
+    slot: Option<Slot>,
+    #[serde(flatten)]
+    operation: Option<serde_json::Value>,
+    #[serde(flatten)]
+    times: HashMap<String, u64>,
+}
+
+fn collect_operations<M>(
+    operations_state: &BTreeMap<OperationHash, MempoolOperation>,
+    matcher: &M,
+) -> BTreeMap<OperationHash, OpStatus>
+where
+    M: MempoolOperationMatcher,
+{
+    operations_state
+        .iter()
+        .filter(|(_, state)| matcher.matches(state))
+        .map(|(op, state)| {
+            let mut times = state.times.clone();
+            if let Some(t) = times.get("received_contents_time").cloned() {
+                times.insert("received_time".to_string(), t);
+            }
+            let status = OpStatus {
+                state: state.state,
+                broadcast: state.broadcast,
+                slot: state.endorsement_slot(),
+                operation: state.as_json(),
+                times: state.times.clone(),
+            };
+            (op.clone(), status)
+        })
+        .collect::<BTreeMap<_, _>>()
 }

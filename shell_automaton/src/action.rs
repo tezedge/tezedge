@@ -35,6 +35,7 @@ use crate::peer::message::write::*;
 use crate::peer::remote_requests::block_header_get::*;
 use crate::peer::remote_requests::block_operations_get::*;
 use crate::peer::remote_requests::current_branch_get::*;
+use crate::peer::requests::potential_peers_get::*;
 use crate::peer::{
     PeerCurrentHeadUpdateAction, PeerTryReadLoopFinishAction, PeerTryReadLoopStartAction,
     PeerTryWriteLoopFinishAction, PeerTryWriteLoopStartAction,
@@ -400,6 +401,12 @@ pub enum Action {
 
     PeerCurrentHeadUpdate(PeerCurrentHeadUpdateAction),
 
+    PeerRequestsPotentialPeersGetInit(PeerRequestsPotentialPeersGetInitAction),
+    PeerRequestsPotentialPeersGetPending(PeerRequestsPotentialPeersGetPendingAction),
+    PeerRequestsPotentialPeersGetError(PeerRequestsPotentialPeersGetErrorAction),
+    PeerRequestsPotentialPeersGetSuccess(PeerRequestsPotentialPeersGetSuccessAction),
+    PeerRequestsPotentialPeersGetFinish(PeerRequestsPotentialPeersGetFinishAction),
+
     PeerRemoteRequestsBlockHeaderGetEnqueue(PeerRemoteRequestsBlockHeaderGetEnqueueAction),
     PeerRemoteRequestsBlockHeaderGetInitNext(PeerRemoteRequestsBlockHeaderGetInitNextAction),
     PeerRemoteRequestsBlockHeaderGetPending(PeerRemoteRequestsBlockHeaderGetPendingAction),
@@ -500,10 +507,9 @@ pub enum Action {
 
     PrecheckerPrecheckOperationRequest(PrecheckerPrecheckOperationRequestAction),
     PrecheckerPrecheckOperationResponse(PrecheckerPrecheckOperationResponseAction),
+    PrecheckerPrecheckBlock(PrecheckerPrecheckBlockAction),
     PrecheckerCacheAppliedBlock(PrecheckerCacheAppliedBlockAction),
     PrecheckerPrecheckOperationInit(PrecheckerPrecheckOperationInitAction),
-    PrecheckerGetProtocolVersion(PrecheckerGetProtocolVersionAction),
-    PrecheckerProtocolVersionReady(PrecheckerProtocolVersionReadyAction),
     PrecheckerDecodeOperation(PrecheckerDecodeOperationAction),
     PrecheckerOperationDecoded(PrecheckerOperationDecodedAction),
     PrecheckerWaitForBlockPrechecked(PrecheckerWaitForBlockPrecheckedAction),
@@ -518,11 +524,8 @@ pub enum Action {
     PrecheckerProtocolNeeded(PrecheckerProtocolNeededAction),
     PrecheckerError(PrecheckerErrorAction),
     PrecheckerPrecacheEndorsingRights(PrecheckerPrecacheEndorsingRightsAction),
-    PrecheckerSetNextBlockProtocol(PrecheckerSetNextBlockProtocolAction),
-    PrecheckerQueryNextBlockProtocol(PrecheckerQueryNextBlockProtocolAction),
-    PrecheckerNextBlockProtocolReady(PrecheckerNextBlockProtocolReadyAction),
-    PrecheckerNextBlockProtocolError(PrecheckerNextBlockProtocolErrorAction),
     PrecheckerPruneOperation(PrecheckerPruneOperationAction),
+    PrecheckerCacheProtocol(PrecheckerCacheProtocolAction),
 
     RightsGet(RightsGetAction),
     RightsRpcGet(RightsRpcGetAction),

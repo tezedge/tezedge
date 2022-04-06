@@ -22,6 +22,13 @@ use crate::{
     prechecker::OperationDecodedContents, rights::Slot, service::rpc_service::RpcId, ActionWithMeta,
 };
 
+/// https://gitlab.com/tezedge/tezos/-/blob/v12.2/src/lib_shell/prevalidator.ml#L219
+///
+/// Bound for the refused (refused, branch_refused, branch_delayed, outdated)
+/// operations stored inside mempool. They will be FIFO queues and if the
+/// bound is reached and we add operation, oldest one will be removed.
+pub const MAX_REFUSED_OPERATIONS: usize = 2048;
+
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolState {
     // TODO(vlad): instant
@@ -52,17 +59,7 @@ pub struct MempoolState {
 
     pub operation_stats: OperationsStats,
 
-    pub old_operations_state: VecDeque<(Level, BTreeMap<OperationHash, MempoolOperation>)>,
     pub operations_state: BTreeMap<OperationHash, MempoolOperation>,
-
-    /// Hash of the latest applied block
-    pub latest_current_head: Option<BlockHash>,
-
-    /// First current_head for the current level.
-    pub first_current_head: bool,
-
-    /// Timestamp of the first latest CurrentHead message
-    pub first_current_head_time: u64,
 }
 
 impl MempoolState {
@@ -97,16 +94,15 @@ pub struct OperationStream {
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct ValidatedOperations {
     pub ops: HashMap<OperationHash, Operation>,
-    pub refused_ops: HashMap<OperationHash, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
     pub applied: Vec<Applied>,
     // cannot be included in the next head of the chain, but it could be included in a descendant
-    pub branch_delayed: Vec<Errored>,
+    pub branch_delayed: VecDeque<Errored>,
     // might be applied on a different branch if a reorganization happens
-    pub branch_refused: Vec<Errored>,
-    pub refused: Vec<Errored>,
-    pub outdated: Vec<Errored>,
+    pub branch_refused: VecDeque<Errored>,
+    pub refused: VecDeque<Errored>,
+    pub outdated: VecDeque<Errored>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -520,65 +516,44 @@ impl OperationKind {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum BroadcastState {
+    Pending,
+    Broadcast,
+    NotNeeded,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperation {
-    pub block_timestamp: i64,
-    pub first_current_head: i64,
+    pub level: Level,
     pub state: OperationState,
-    pub broadcast: bool,
+    pub broadcast: BroadcastState,
     pub operation_decoded_contents: Option<OperationDecodedContents>,
     #[serde(flatten)]
-    pub times: HashMap<String, i64>,
+    pub times: HashMap<String, u64>,
 }
 
 impl MempoolOperation {
-    fn time_offset_from(action: &ActionWithMeta, base: i64) -> i64 {
-        action.time_as_nanos() as i64 - base
-    }
-
-    fn time_offset(&self, action: &ActionWithMeta) -> i64 {
-        Self::time_offset_from(action, self.first_current_head)
-    }
-
-    pub(super) fn received(
-        mut block_timestamp: i64,
-        first_current_head: u64,
-        action: &ActionWithMeta,
-    ) -> Self {
+    pub(super) fn received(level: Level, action: &ActionWithMeta) -> Self {
         let state = OperationState::ReceivedHash;
-        block_timestamp *= 1_000_000_000;
-        let first_current_head = first_current_head as i64;
         Self {
-            block_timestamp,
-            first_current_head,
+            level,
             operation_decoded_contents: None,
             state,
-            broadcast: false,
-            times: HashMap::from([(
-                state.time_name(),
-                Self::time_offset_from(action, first_current_head),
-            )]),
+            broadcast: BroadcastState::Pending,
+            times: HashMap::from([(state.time_name(), action.time_as_nanos())]),
         }
     }
 
-    pub(super) fn injected(
-        mut block_timestamp: i64,
-        first_current_head: u64,
-        action: &ActionWithMeta,
-    ) -> Self {
+    pub(super) fn injected(level: Level, action: &ActionWithMeta) -> Self {
         let state = OperationState::ReceivedContents; // TODO use separate id
-        block_timestamp *= 1_000_000_000;
-        let first_current_head = first_current_head as i64;
         Self {
-            block_timestamp,
-            first_current_head,
+            level,
             operation_decoded_contents: None,
             state,
-            broadcast: false,
-            times: HashMap::from([(
-                state.time_name(),
-                Self::time_offset_from(action, first_current_head),
-            )]),
+            broadcast: BroadcastState::Pending,
+            times: HashMap::from([(state.time_name(), action.time_as_nanos())]),
         }
     }
 
@@ -589,7 +564,7 @@ impl MempoolOperation {
     ) -> Self {
         let state = OperationState::Decoded;
         let mut times = self.times.clone();
-        times.insert(state.time_name(), self.time_offset(action));
+        times.insert(state.time_name(), action.time_as_nanos());
         Self {
             times,
             state,
@@ -600,7 +575,7 @@ impl MempoolOperation {
 
     pub(super) fn next_state(&self, state: OperationState, action: &ActionWithMeta) -> Self {
         let mut times = self.times.clone();
-        times.insert(state.time_name(), self.time_offset(action));
+        times.insert(state.time_name(), action.time_as_nanos());
         Self {
             times,
             state,
@@ -610,18 +585,31 @@ impl MempoolOperation {
 
     pub(super) fn broadcast(&self, action: &ActionWithMeta) -> Self {
         let mut times = self.times.clone();
-        if !self.broadcast {
-            times.insert("broadcast_time".to_string(), self.time_offset(action));
+        if !matches!(self.broadcast, BroadcastState::Broadcast) {
+            times.insert("broadcast_time".to_string(), action.time_as_nanos());
         }
         Self {
             times,
-            broadcast: true,
+            broadcast: BroadcastState::Broadcast,
+            ..self.clone()
+        }
+    }
+
+    pub(super) fn broadcast_not_needed(&self) -> Self {
+        Self {
+            broadcast: BroadcastState::NotNeeded,
             ..self.clone()
         }
     }
 
     pub(super) fn endorsement_slot(&self) -> Option<Slot> {
         self.operation_decoded_contents.as_ref()?.endorsement_slot()
+    }
+
+    pub(super) fn as_json(&self) -> Option<serde_json::Value> {
+        self.operation_decoded_contents
+            .as_ref()
+            .map(OperationDecodedContents::as_json)
     }
 }
 

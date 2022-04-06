@@ -15,7 +15,7 @@ pub use prechecker_effects::prechecker_effects;
 
 mod prechecker_validator;
 pub use prechecker_validator::*;
-use tezos_messages::protocol::SupportedProtocol;
+use tezos_messages::{p2p::encoding::block_header::BlockHeader, protocol::SupportedProtocol};
 
 use crate::State;
 
@@ -24,13 +24,30 @@ pub(crate) fn prechecking_enabled(state: &State, prev_block: &BlockHash) -> bool
     !state.config.disable_endorsements_precheck
         && state
             .prechecker
-            .protocol_version_cache
-            .next_protocol_versions
+            .protocol_cache
             .get(prev_block)
-            .map_or(false, |(_, supported_protocol)| {
+            .map_or(false, |(_, _, next_protocol)| {
                 matches!(
-                    supported_protocol,
-                    SupportedProtocol::Proto010 | SupportedProtocol::Proto011
+                    SupportedProtocol::try_from(next_protocol),
+                    Ok(SupportedProtocol::Proto010)
+                        | Ok(SupportedProtocol::Proto011)
+                        | Ok(SupportedProtocol::Proto012)
                 )
             })
+}
+
+pub(super) fn protocol_for_block(
+    block: &BlockHeader,
+    prechecker_state: &PrecheckerState,
+) -> Option<SupportedProtocol> {
+    prechecker_state
+        .proto_cache
+        .get(&block.proto())
+        .or_else(|| {
+            prechecker_state
+                .protocol_cache
+                .get(block.predecessor())
+                .map(|(_, _, next_protocol_hash)| next_protocol_hash)
+        })
+        .and_then(|protocol| SupportedProtocol::try_from(protocol).ok())
 }
