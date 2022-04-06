@@ -676,6 +676,28 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
         }
+        Action::MempoolBroadcast(MempoolBroadcastAction {
+            send_operations: true,
+            ..
+        }) => {
+            let mut peers_seen_ops = state
+                .peers
+                .iter_handshaked()
+                .filter_map(|(addr, _)| mempool_state.peer_state.get(addr))
+                .map(|peer_state| &peer_state.seen_operations);
+            if let Some(first) = peers_seen_ops.next() {
+                let seen_by_all_peers = peers_seen_ops.fold(first.clone(), |a, ops| {
+                    a.intersection(ops).cloned().collect()
+                });
+                for (op, _) in mempool_state.validated_operations.ops.iter() {
+                    if seen_by_all_peers.contains(op) {
+                        if let Some(operation_state) = mempool_state.operations_state.get_mut(op) {
+                            *operation_state = operation_state.broadcast_not_needed();
+                        }
+                    }
+                }
+            }
+        }
         Action::MempoolBroadcastDone(MempoolBroadcastDoneAction {
             address,
             known_valid,

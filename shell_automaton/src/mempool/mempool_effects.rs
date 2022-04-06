@@ -39,7 +39,7 @@ use super::{
     mempool_actions::MempoolRpcEndorsementsStatusGetAction,
     mempool_actions::*,
     monitored_operation::{MempoolOperations, MonitoredOperation},
-    MempoolOperation, OperationKind,
+    BroadcastState, MempoolOperation, OperationKind,
 };
 
 pub fn mempool_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithMeta)
@@ -787,7 +787,7 @@ where
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 struct OpStatus {
     state: OperationState,
-    broadcast: bool,
+    broadcast: BroadcastState,
     slot: Option<Slot>,
     #[serde(flatten)]
     operation: Option<serde_json::Value>,

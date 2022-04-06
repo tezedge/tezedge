@@ -516,11 +516,19 @@ impl OperationKind {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum BroadcastState {
+    Pending,
+    Broadcast,
+    NotNeeded,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperation {
     pub level: Level,
     pub state: OperationState,
-    pub broadcast: bool,
+    pub broadcast: BroadcastState,
     pub operation_decoded_contents: Option<OperationDecodedContents>,
     #[serde(flatten)]
     pub times: HashMap<String, u64>,
@@ -533,7 +541,7 @@ impl MempoolOperation {
             level,
             operation_decoded_contents: None,
             state,
-            broadcast: false,
+            broadcast: BroadcastState::Pending,
             times: HashMap::from([(state.time_name(), action.time_as_nanos())]),
         }
     }
@@ -544,7 +552,7 @@ impl MempoolOperation {
             level,
             operation_decoded_contents: None,
             state,
-            broadcast: false,
+            broadcast: BroadcastState::Pending,
             times: HashMap::from([(state.time_name(), action.time_as_nanos())]),
         }
     }
@@ -577,12 +585,19 @@ impl MempoolOperation {
 
     pub(super) fn broadcast(&self, action: &ActionWithMeta) -> Self {
         let mut times = self.times.clone();
-        if !self.broadcast {
+        if !matches!(self.broadcast, BroadcastState::Broadcast) {
             times.insert("broadcast_time".to_string(), action.time_as_nanos());
         }
         Self {
             times,
-            broadcast: true,
+            broadcast: BroadcastState::Broadcast,
+            ..self.clone()
+        }
+    }
+
+    pub(super) fn broadcast_not_needed(&self) -> Self {
+        Self {
+            broadcast: BroadcastState::NotNeeded,
             ..self.clone()
         }
     }
