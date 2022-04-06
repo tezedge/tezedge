@@ -225,9 +225,14 @@ impl StatisticsService {
         let action_kind = action.action.kind();
         let duration = u64::from(action.id) - u64::from(pred_action_id);
 
+        let pred_action_kind = match pred_action_kind {
+            Some(v) => v,
+            None => return,
+        };
+
         let stats = self
             .action_kind_stats
-            .entry(action_kind)
+            .entry(pred_action_kind)
             .or_insert_with(|| ShellAutomatonActionStats {
                 total_calls: 0,
                 total_duration: 0,
@@ -235,11 +240,9 @@ impl StatisticsService {
         stats.total_calls += 1;
         stats.total_duration += duration;
 
-        if let Some(pred_action_kind) = pred_action_kind {
-            self.action_graph[pred_action_kind as usize]
-                .next_actions
-                .insert(action_kind as usize);
-        }
+        self.action_graph[pred_action_kind as usize]
+            .next_actions
+            .insert(action_kind as usize);
     }
 
     pub fn action_kind_stats(&self) -> &BTreeMap<ActionKind, ShellAutomatonActionStats> {
