@@ -378,7 +378,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
             } = &store.state.get().block_applier.current
             {
                 (
-                    block.clone(),
+                    (**block).clone(),
                     block_additional_data.protocol_hash.clone(),
                     block_additional_data.next_protocol_hash.clone(),
                 )

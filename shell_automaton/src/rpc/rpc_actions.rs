@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::Arc;
-
 use crypto::hash::{BlockHash, ProtocolHash};
 use storage::BlockHeaderWithHash;
 
@@ -63,7 +61,7 @@ impl EnablingCondition<State> for RpcMonitorValidBlocksAction {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RpcReplyValidBlockAction {
     pub rpc_id: RpcId,
-    pub block: Arc<BlockHeaderWithHash>,
+    pub block: BlockHeaderWithHash,
     pub protocol: ProtocolHash,
     pub next_protocol: ProtocolHash,
 }

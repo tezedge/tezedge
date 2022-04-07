@@ -234,7 +234,7 @@ where
                     if let Some(rpc_id) = *injector_rpc_id {
                         store.service.rpc().respond(rpc_id, serde_json::Value::Null);
                     }
-                    let new_head = block.clone();
+                    let new_head = (**block).clone();
                     let payload_hash =
                         serde_json::Value::from_str(&apply_result.block_header_proto_json)
                             .ok()

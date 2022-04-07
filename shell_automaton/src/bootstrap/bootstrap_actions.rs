@@ -234,20 +234,9 @@ pub struct BootstrapPeersBlockHeadersGetSuccessAction {}
 
 impl EnablingCondition<State> for BootstrapPeersBlockHeadersGetSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
-        let current_head = match state.current_head.get() {
-            Some(v) => v,
-            None => return false,
-        };
         match &state.bootstrap {
-            BootstrapState::PeersBlockHeadersGetPending {
-                main_chain,
-                main_chain_last_level,
-                peer_intervals,
-                ..
-            } => {
+            BootstrapState::PeersBlockHeadersGetPending { peer_intervals, .. } => {
                 peer_intervals.is_empty()
-                    && main_chain_last_level - main_chain.len() as Level
-                        <= current_head.header.level()
             }
             _ => false,
         }
