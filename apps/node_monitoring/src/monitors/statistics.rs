@@ -6,6 +6,7 @@ use std::{
 };
 
 use itertools::Itertools;
+use itertools::FoldWhile::{Continue, Done};
 use num::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use slog::{debug, Logger};
@@ -77,6 +78,8 @@ pub struct StatisticsMonitor {
     pub endorsmenet_summary_storage: LockedBTreeMap<i32, FinalEndorsementSummary>,
     pub application_statistics_storage: LockedBTreeMap<String, BlockApplicationStatistics>,
     pub preendorsement_statistics_storage: LockedBTreeMap<PayloadHash, OperationStats>,
+    pub preendorsement_summary_storage: LockedBTreeMap<PayloadHash, PreendorsementOperationSummary>,
+    pub preendoesement_quorum_summary_storage: LockedBTreeMap<PayloadHash, PreendorsementQuorumSummary>,
     pub delegates: Vec<String>,
     pub last_seen_current_head: Option<String>,
     pub last_seen_round_0_head: Option<String>,
@@ -95,6 +98,8 @@ impl StatisticsMonitor {
             endorsmenet_summary_storage,
             application_statistics_storage: LockedBTreeMap::new(),
             preendorsement_statistics_storage: LockedBTreeMap::new(),
+            preendorsement_summary_storage: LockedBTreeMap::new(),
+            preendoesement_quorum_summary_storage: LockedBTreeMap::new(),
             delegates,
             last_seen_current_head: None,
             last_seen_round_0_head: None,
@@ -166,13 +171,23 @@ impl StatisticsMonitor {
             None
         };
 
-        let preendorsement_quorum_summary = PreendorsementQuorumSummary::new(
-            round_summary.clone(),
-            preendorsmenent_statuses.clone(),
-            endorsing_rights_for_level.clone(),
-            round_0_application_stats,
-            constants.consensus_threshold,
-        );
+        let preendorsement_quorum_summary = if let Some(preendorsement_quorum_summary) = self.preendoesement_quorum_summary_storage.get(block_payload_hash.clone())? {
+            preendorsement_quorum_summary
+        } else {
+            let preendorsement_quorum_summary = PreendorsementQuorumSummary::new(
+                round_summary.clone(),
+                preendorsmenent_statuses.clone(),
+                endorsing_rights_for_level.clone(),
+                round_0_application_stats,
+                constants.consensus_threshold,
+            );
+
+            // only save when quorum is actually reached!
+            if preendorsement_quorum_summary.is_quorum_reached() {
+                self.preendoesement_quorum_summary_storage.insert(block_payload_hash.clone(), preendorsement_quorum_summary.clone())?;
+            }
+            preendorsement_quorum_summary
+        };
 
         for delegate in &self.delegates {
             if let Some(delegate_rigths) = self
@@ -192,12 +207,12 @@ impl StatisticsMonitor {
                         "Preendorsement op hash: {injected_preendorsement_op_hash}"
                     );
 
-                    // if there is already a preendorsement for the payload hash use that
-                    let injected_preendorsement = if let Some(preendorsement_stats) = self
-                        .preendorsement_statistics_storage
+                    // if there is already a preendorsement summary for the payload hash use that
+                    let preendorsement_operation_summary = if let Some(preendorsement_operation_summary) = self
+                        .preendorsement_summary_storage
                         .get(block_payload_hash.clone())?
                     {
-                        Some(preendorsement_stats)
+                        preendorsement_operation_summary
                     } else {
                         // else get preendorsement operation stats from the node
                         let preendorsement_stats = self
@@ -207,15 +222,19 @@ impl StatisticsMonitor {
                             self.preendorsement_statistics_storage
                                 .insert(block_payload_hash.clone(), stats)?;
                         };
-                        preendorsement_stats
-                    };
 
-                    let preendorsement_operation_summary = PreendorsementOperationSummary::new(
-                        round_summary.clone(),
-                        current_head_timestamp.clone(),
-                        injected_preendorsement.clone(),
-                        block_application_stats.clone(),
-                    );
+                        let preendorsement_operation_summary = PreendorsementOperationSummary::new(
+                            round_summary.clone(),
+                            current_head_timestamp.clone(),
+                            preendorsement_stats.clone(),
+                            block_application_stats.clone(),
+                        );
+
+                        self.preendorsement_summary_storage
+                            .insert(block_payload_hash.clone(), preendorsement_operation_summary.clone())?;
+
+                        preendorsement_operation_summary
+                    };
 
                     if let Some(injected_endorsement_op_hash) = endorsmenent_statuses
                         .iter()
@@ -478,15 +497,26 @@ pub struct PreendorsementQuorumSummary {
 
 impl Display for PreendorsementQuorumSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "Preendorsement quorum reached for block {} on level {} in round {} with payload hash {} in {}",
-            self.round_summary.block_hash,
-            self.round_summary.block_level,
-            self.round_summary.block_round,
-            self.round_summary.block_payload_hash,
-            convert_time_to_unit_string(self.preendorsement_quorum_reached),
-        )
+        if self.is_quorum_reached() {
+            writeln!(
+                f,
+                "Preendorsement quorum reached for block {} on level {} in round {} with payload hash {} in {}",
+                self.round_summary.block_hash,
+                self.round_summary.block_level,
+                self.round_summary.block_round,
+                self.round_summary.block_payload_hash,
+                convert_time_to_unit_string(self.preendorsement_quorum_reached),
+            )
+        } else {
+            writeln!(
+                f,
+                "Preendorsement quorum not reached for block {} on level {} in round {} with payload hash {}",
+                self.round_summary.block_hash,
+                self.round_summary.block_level,
+                self.round_summary.block_round,
+                self.round_summary.block_payload_hash,
+            )
+        }
     }
 }
 
@@ -498,7 +528,7 @@ impl PreendorsementQuorumSummary {
         block_application_stats: Option<BlockApplicationStatistics>,
         threshold: u64,
     ) -> Self {
-        let preendorsement_quorum_timestamp = endorsing_rights.and_then(|rights| {
+        let preendorsement_quorum = endorsing_rights.map(|rights| {
             let endorsing_powers = rights.endorsement_powers();
             statuses
                 .values()
@@ -511,17 +541,27 @@ impl PreendorsementQuorumSummary {
                             .map(|applied_time| (*power, applied_time))
                     })
                 })
-                .reduce(
-                    |(mut acc, mut applied_time), (power, current_applied_time)| {
-                        acc += power;
-                        if u64::from(acc) < threshold {
-                            applied_time = current_applied_time;
-                        }
-                        (acc, applied_time)
-                    },
-                )
-                .map(|(_, applied_time)| applied_time as i64)
+                .fold_while((0, 0), |(acc, _), (power, current_applied_time)| {
+                    if acc < threshold {
+                        Continue((acc + u64::from(power), current_applied_time))
+                    } else {
+                        Done((acc, current_applied_time))
+                    }
+                })
+                .into_inner()
         });
+
+        let (endorsing_power, preendorsement_quorum_timestamp) = if let Some((endorsing_power, quorum_timestamp)) = preendorsement_quorum {
+            if endorsing_power > threshold {
+                (Some(endorsing_power), Some(quorum_timestamp as i64))
+            } else {
+                (Some(endorsing_power), None)
+            }
+        } else {
+            (None, None)
+        };
+
+        println!("Endorsing power at the end of quorum calculation: {:#?}", endorsing_power);
 
         let preendorsement_quorum_reached =
             preendorsement_quorum_timestamp.and_then(|quorum_time| {
@@ -535,6 +575,10 @@ impl PreendorsementQuorumSummary {
             preendorsement_quorum_timestamp,
             preendorsement_quorum_reached,
         }
+    }
+
+    pub fn is_quorum_reached(&self) -> bool {
+        self.preendorsement_quorum_reached.is_some()
     }
 }
 
@@ -1008,6 +1052,8 @@ where
 
 #[cfg(test)]
 mod test {
+    use crate::monitors::delegate::DelegateEndorsingRights;
+
     use super::*;
 
     #[test]
@@ -1094,5 +1140,110 @@ mod test {
     }
 
     #[test]
-    fn test_quorum_reached() {}
+    fn test_quorum_reached() {
+        let round_summary = RoundSummary::new("Block1", 1, 0, "PayloadHash1");
+
+        let endorsing_rights = EndorsingRights {
+            level: 1,
+            delegates: vec![
+                DelegateEndorsingRights {
+                    delegate: String::from("baker1"),
+                    first_slot: 0,
+                    endorsing_power: 25,
+                },
+                DelegateEndorsingRights {
+                    delegate: String::from("baker2"),
+                    first_slot: 50,
+                    endorsing_power: 10,
+                },
+                DelegateEndorsingRights {
+                    delegate: String::from("baker3"),
+                    first_slot: 25,
+                    endorsing_power: 25,
+                },
+                DelegateEndorsingRights {
+                    delegate: String::from("baker4"),
+                    first_slot: 60,
+                    endorsing_power: 40,
+                },
+            ]
+        };
+
+        let block_application_stats = BlockApplicationStatistics {
+            block_timestamp: 1000,
+            ..Default::default()
+        };
+
+        // Case where quorum should not be reachable just yet
+        let mut statuses: BTreeMap<String, EndorsementStatus> = vec![
+            (
+                String::from("Ophash1"),
+                EndorsementStatus {
+                    slot: 0,
+                    applied_time: Some(1020),
+                    state: String::from("applied"),
+                    ..Default::default()
+                }
+            ),
+        ].into_iter().collect();
+
+        let quorum_summary = PreendorsementQuorumSummary::new(round_summary.clone(), statuses.clone(), Some(endorsing_rights.clone()), Some(block_application_stats.clone()), 50);
+
+        
+        assert_eq!(quorum_summary.preendorsement_quorum_reached, None);
+        assert_eq!(quorum_summary.preendorsement_quorum_timestamp, None);
+
+        // insert a preendoesement with enough power to reach quorum
+        statuses.insert(String::from("Ophash2"), EndorsementStatus {
+            slot: 60,
+            applied_time: Some(1100),
+            state: String::from("applied"),
+            ..Default::default()
+        });
+
+        let quorum_summary = PreendorsementQuorumSummary::new(round_summary, statuses.clone(), Some(endorsing_rights), Some(block_application_stats), 50);
+
+        assert_eq!(quorum_summary.preendorsement_quorum_reached, Some(100));
+        assert_eq!(quorum_summary.preendorsement_quorum_timestamp, Some(1100));
+
+        // insert another preendorsement, the quorum is already reached, so the result should stay the same
+        statuses.insert(String::from("Ophash3"), EndorsementStatus {
+            slot: 25,
+            applied_time: Some(1200),
+            state: String::from("applied"),
+            ..Default::default()
+        });
+
+        assert_eq!(quorum_summary.preendorsement_quorum_reached, Some(100));
+        assert_eq!(quorum_summary.preendorsement_quorum_timestamp, Some(1100));
+
+        // (
+            //     String::from("Ophash2"),
+                // EndorsementStatus {
+                //     slot: 50,
+                //     applied_time: Some(100),
+                //     state: String::from("applied"),
+                //     ..Default::default()
+                // }
+            // ),
+            // (
+            //     String::from("Ophash3"),
+            //     EndorsementStatus {
+            //         slot: 60,
+            //         applied_time: Some(125),
+            //         state: String::from("applied"),
+            //         ..Default::default()
+            //     }
+            // ),
+            // (
+            //     String::from("Ophash4"),
+            //     EndorsementStatus {
+            //         slot: 25,
+            //         applied_time: Some(98),
+            //         state: String::from("applied"),
+            //         ..Default::default()
+            //     }
+            // ),
+    }
+    
 }

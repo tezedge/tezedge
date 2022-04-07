@@ -31,9 +31,9 @@ struct BakingRights {
 #[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
 pub struct DelegateEndorsingRights {
-    delegate: String,
-    first_slot: u16,
-    endorsing_power: u16,
+    pub delegate: String,
+    pub first_slot: u16,
+    pub endorsing_power: u16,
 }
 
 impl DelegateEndorsingRights {
@@ -45,7 +45,7 @@ impl DelegateEndorsingRights {
 #[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
 pub struct EndorsingRights {
-    level: i32,
+    pub level: i32,
     pub delegates: Vec<DelegateEndorsingRights>,
 }
 
