@@ -503,24 +503,24 @@ impl PreendorsementQuorumSummary {
             statuses
                 .values()
                 .filter(|stats| stats.state == "applied")
-                .sorted_by_key(|val| val.received_hash_time)
+                .sorted_by_key(|val| val.applied_time)
                 .filter_map(|status| {
                     endorsing_powers.get(&status.slot).and_then(|power| {
                         status
-                            .received_hash_time
-                            .map(|receive_time| (*power, receive_time))
+                            .applied_time
+                            .map(|applied_time| (*power, applied_time))
                     })
                 })
                 .reduce(
-                    |(mut acc, mut receive_time), (power, current_receive_time)| {
+                    |(mut acc, mut applied_time), (power, current_applied_time)| {
                         acc += power;
                         if u64::from(acc) < threshold {
-                            receive_time = current_receive_time;
+                            applied_time = current_applied_time;
                         }
-                        (acc, receive_time)
+                        (acc, applied_time)
                     },
                 )
-                .map(|(_, receive_time)| receive_time as i64)
+                .map(|(_, applied_time)| applied_time as i64)
         });
 
         let preendorsement_quorum_reached =
@@ -1004,36 +1004,6 @@ where
     } else {
         String::from("Failed")
     }
-}
-
-fn quorum_reached(
-    statuses: BTreeMap<String, EndorsementStatus>,
-    endorsing_rights: Option<EndorsingRights>,
-    threshold: u64,
-) -> Option<i64> {
-    endorsing_rights.and_then(|rights| {
-        let endorsing_powers = rights.endorsement_powers();
-        statuses
-            .values()
-            .sorted_by_key(|val| val.received_hash_time)
-            .filter_map(|status| {
-                endorsing_powers.get(&status.slot).and_then(|power| {
-                    status
-                        .received_hash_time
-                        .map(|receive_time| (*power, receive_time))
-                })
-            })
-            .reduce(
-                |(mut acc, mut receive_time), (power, current_receive_time)| {
-                    acc += power;
-                    if u64::from(acc) < threshold {
-                        receive_time = current_receive_time;
-                    }
-                    (acc, receive_time)
-                },
-            )
-            .map(|(_, receive_time)| receive_time as i64)
-    })
 }
 
 #[cfg(test)]
