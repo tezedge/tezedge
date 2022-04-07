@@ -488,10 +488,14 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("IP:PORT")
             .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
             .validator(|v| {
-                let err_count = v.split(',')
-                    .map(|ip_port| ip_port.parse::<SocketAddr>())
-                    .filter(|v| v.is_err())
-                    .count();
+                let err_count = if v.is_empty() {
+                    0
+                } else {
+                    v.split(',')
+                        .map(|ip_port| ip_port.parse::<SocketAddr>())
+                        .filter(|v| v.is_err())
+                        .count()
+                };
                 if err_count == 0 {
                     Ok(())
                 } else {
@@ -1159,10 +1163,14 @@ impl Environment {
                 bootstrap_peers: args
                     .value_of("peers")
                     .map(|peers_str| {
-                        peers_str
-                            .split(',')
-                            .map(|ip_port| ip_port.parse().expect("Was expecting IP:PORT"))
-                            .collect()
+                        if peers_str.is_empty() {
+                            vec![]
+                        } else {
+                            peers_str
+                                .split(',')
+                                .map(|ip_port| ip_port.parse().expect("Was expecting IP:PORT"))
+                                .collect()
+                        }
                     })
                     .unwrap_or_default(),
                 current_head_level_override: args
