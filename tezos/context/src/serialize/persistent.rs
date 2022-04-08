@@ -75,6 +75,7 @@ enum RelativeOffsetLength {
 struct CommitHeader {
     parent_offset_length: RelativeOffsetLength,
     root_offset_length: RelativeOffsetLength,
+    #[allow(dead_code)]
     author_length: ObjectLength,
     is_parent_exist: bool,
     #[skip]
@@ -750,6 +751,30 @@ fn serialize_inode(
     Ok(offset)
 }
 
+fn compute_absolute_offset(
+    object_offset: AbsoluteOffset,
+    relative_offset: u64,
+) -> Result<AbsoluteOffset, DeserializationError> {
+    let object_offset = object_offset.as_u64();
+
+    // Check for overflow
+    let absolute_offset: u64 = object_offset
+        .checked_sub(relative_offset as u64)
+        .ok_or(DeserializationError::InvalidRelativeOffset)?;
+
+    // An offset cannot be zero (each file contains a header)
+    if absolute_offset == 0 {
+        return Err(DeserializationError::AbsoluteOffsetIsZero);
+    }
+
+    // Don't handle offsets more than 6 bytes
+    if absolute_offset & 0xFFFFFFFFFFFF != absolute_offset {
+        return Err(DeserializationError::AbsoluteOffsetIsTooBig);
+    }
+
+    Ok(absolute_offset.into())
+}
+
 fn deserialize_offset(
     data: &[u8],
     offset_length: RelativeOffsetLength,
@@ -757,32 +782,30 @@ fn deserialize_offset(
 ) -> Result<(AbsoluteOffset, usize), DeserializationError> {
     use DeserializationError::*;
 
-    let object_offset = object_offset.as_u64();
-
     match offset_length {
         RelativeOffsetLength::OneByte => {
             let byte = data.get(0).ok_or(UnexpectedEOF)?;
             let relative_offset: u8 = u8::from_le_bytes([*byte]);
-            let absolute_offset: u64 = object_offset - relative_offset as u64;
-            Ok((absolute_offset.into(), 1))
+            let absolute_offset = compute_absolute_offset(object_offset, relative_offset as u64)?;
+            Ok((absolute_offset, 1))
         }
         RelativeOffsetLength::TwoBytes => {
             let bytes = data.get(..2).ok_or(UnexpectedEOF)?;
             let relative_offset: u16 = u16::from_le_bytes(bytes.try_into()?);
-            let absolute_offset: u64 = object_offset - relative_offset as u64;
-            Ok((absolute_offset.into(), 2))
+            let absolute_offset = compute_absolute_offset(object_offset, relative_offset as u64)?;
+            Ok((absolute_offset, 2))
         }
         RelativeOffsetLength::FourBytes => {
             let bytes = data.get(..4).ok_or(UnexpectedEOF)?;
             let relative_offset: u32 = u32::from_le_bytes(bytes.try_into()?);
-            let absolute_offset: u64 = object_offset - relative_offset as u64;
-            Ok((absolute_offset.into(), 4))
+            let absolute_offset = compute_absolute_offset(object_offset, relative_offset as u64)?;
+            Ok((absolute_offset, 4))
         }
         RelativeOffsetLength::EightBytes => {
             let bytes = data.get(..8).ok_or(UnexpectedEOF)?;
             let relative_offset: u64 = u64::from_le_bytes(bytes.try_into()?);
-            let absolute_offset: u64 = object_offset - relative_offset;
-            Ok((absolute_offset.into(), 8))
+            let absolute_offset = compute_absolute_offset(object_offset, relative_offset as u64)?;
+            Ok((absolute_offset, 8))
         }
     }
 }
@@ -923,7 +946,7 @@ fn deserialize_directory(
 
                 pos += blob_inline_length;
 
-                DirEntry::new_commited(kind, None, Some(Object::Blob(blob_id)))
+                DirEntry::new_commited(DirEntryKind::Blob, None, Some(Object::Blob(blob_id)))
             } else {
                 let bytes = data.get(pos..).ok_or(UnexpectedEOF)?;
                 let (absolute_offset, nbytes) =
@@ -953,7 +976,7 @@ pub fn read_object_length(
 ) -> Result<(usize, usize), DeserializationError> {
     use DeserializationError::*;
 
-    match header.length() {
+    match header.length_or_err().map_err(|_| InvalidObjectLength)? {
         ObjectLength::OneByte => {
             let length = data.get(1).copied().ok_or(UnexpectedEOF)? as usize;
             Ok((1 + 1, length))
@@ -1012,6 +1035,7 @@ pub fn deserialize_object(
             let parent_commit_ref = if header.is_parent_exist() {
                 let data = bytes.get(pos..).ok_or(UnexpectedEOF)?;
                 let (parent_commit_hash, nbytes) = deserialize_hash_id(data)?;
+                let parent_commit_hash = parent_commit_hash.ok_or(MissingHash)?;
 
                 pos += nbytes;
 
@@ -1022,7 +1046,7 @@ pub fn deserialize_object(
                 pos += nbytes;
 
                 Some(ObjectReference::new(
-                    parent_commit_hash,
+                    Some(parent_commit_hash),
                     Some(parent_absolute_offset),
                 ))
             } else {
@@ -1050,7 +1074,10 @@ pub fn deserialize_object(
 
             pos += 8;
 
-            let author_length: usize = match header.author_length() {
+            let author_length: usize = match header
+                .author_length_or_err()
+                .map_err(|_| InvalidAuthorLength)?
+            {
                 ObjectLength::OneByte => {
                     let author_length: u8 = *bytes.get(pos).ok_or(UnexpectedEOF)?;
                     pos += 1;
