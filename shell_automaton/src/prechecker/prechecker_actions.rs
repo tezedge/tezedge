@@ -54,7 +54,7 @@ pub enum PrecheckerPrecheckOperationResponse {
     /// Prechecker cannot decide if the operation is correct. Protocol based prevalidator is needed.
     Prevalidate(PrecheckerPrevalidate),
     /// Error occurred while prechecking the operation.
-    Error(PrecheckerResponseError),
+    Error(PrecheckerResponseError, Option<OperationHash>),
 }
 
 impl PrecheckerPrecheckOperationResponse {
@@ -65,7 +65,7 @@ impl PrecheckerPrecheckOperationResponse {
             PrecheckerPrecheckOperationResponse::Prevalidate(prevalidate) => {
                 Some(&prevalidate.hash)
             }
-            PrecheckerPrecheckOperationResponse::Error(_) => None,
+            PrecheckerPrecheckOperationResponse::Error(_, hash) => hash.as_ref(),
         }
     }
 }
@@ -156,12 +156,12 @@ impl PrecheckerPrecheckOperationResponseAction {
         }
     }
 
-    pub(super) fn error<E>(error: E) -> Self
+    pub(super) fn error<E>(error: E, operation: Option<OperationHash>) -> Self
     where
         E: Into<PrecheckerResponseError>,
     {
         Self {
-            response: PrecheckerPrecheckOperationResponse::Error(error.into()),
+            response: PrecheckerPrecheckOperationResponse::Error(error.into(), operation),
         }
     }
 }

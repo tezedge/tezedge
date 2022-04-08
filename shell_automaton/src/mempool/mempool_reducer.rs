@@ -387,17 +387,18 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             for hash in pending.chain(known_valid) {
                 let known = mempool_state.pending_operations.contains_key(&hash)
+                    || mempool_state.prechecking_operations.contains(&hash)
                     || mempool_state.validated_operations.ops.contains_key(&hash);
 
                 if !known {
                     ops.push(hash.clone());
                     if !mempool_state.pending_full_content.contains(&hash) {
                         peer.requesting_full_content.insert(hash.clone());
+                        mempool_state
+                            .operations_state
+                            .insert(hash.clone(), MempoolOperation::received(level, action));
                     }
 
-                    mempool_state
-                        .operations_state
-                        .insert(hash.clone(), MempoolOperation::received(level, action));
                 }
                 // of course peer knows about it, because he sent us it
                 peer.seen_operations.insert(hash);
@@ -414,6 +415,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { hash, operation }) => {
             if !mempool_state.pending_full_content.remove(hash) {
                 // TODO(vlad): received operation, but we did not requested it, what should we do?
+                // We might already processed it.
+                return;
             }
 
             if !state.config.disable_endorsements_precheck
@@ -531,6 +534,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         ) => {
             if let Some(hash) = response.operation_hash() {
                 mempool_state.prechecking_operations.remove(hash);
+            } else {
+                eprintln!("==== {response:#?}");
             }
             match response {
                 PrecheckerPrecheckOperationResponse::Applied(applied) => {
@@ -639,7 +644,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .pending_operations
                         .insert(hash.clone(), operation.clone());
                 }
-                PrecheckerPrecheckOperationResponse::Error(_) => {
+                PrecheckerPrecheckOperationResponse::Error(..) => {
                     // TODO
                 }
             }

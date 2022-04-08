@@ -66,7 +66,7 @@ where
             let binary_encoding = match operation.as_bytes() {
                 Ok(bytes) => bytes,
                 Err(err) => {
-                    store.dispatch(PrecheckerPrecheckOperationResponseAction::error(err));
+                    store.dispatch(PrecheckerPrecheckOperationResponseAction::error(err, None));
                     return;
                 }
             };
@@ -74,14 +74,14 @@ where
             let hash = match blake2b::digest_256(&binary_encoding) {
                 Ok(hash) => hash,
                 Err(err) => {
-                    store.dispatch(PrecheckerPrecheckOperationResponseAction::error(err));
+                    store.dispatch(PrecheckerPrecheckOperationResponseAction::error(err, None));
                     return;
                 }
             };
             let key = match hash.try_into() {
                 Ok(hash) => Key { operation: hash },
                 Err(err) => {
-                    store.dispatch(PrecheckerPrecheckOperationResponseAction::error(err));
+                    store.dispatch(PrecheckerPrecheckOperationResponseAction::error(err, None));
                     return;
                 }
             };
@@ -501,6 +501,7 @@ where
                             error!(log, "Getting endorsing rights failed"; "operation" => key.to_string(), "error" => err.to_string());
                             store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
                                 err.clone(),
+                                Some(key.operation.clone()),
                             ));
                         }
                         PrecheckerError::UnsupportedProtocol(_) => {
@@ -514,6 +515,7 @@ where
                         PrecheckerError::Storage(err) => {
                             store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
                                 err.clone(),
+                                Some(key.operation.clone()),
                             ));
                         }
                         PrecheckerError::MissingBlockHeader(_)
@@ -521,6 +523,7 @@ where
                         | PrecheckerError::OperationContentsDecode(_) => {
                             store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
                                 error.clone(),
+                                Some(key.operation.clone()),
                             ));
                         }
                     }
