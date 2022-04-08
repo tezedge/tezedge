@@ -53,6 +53,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
             state.current_head = CurrentHeadState::Rehydrated {
                 head,
                 head_pred,
+                payload_hash: None,
                 block_metadata_hash,
                 ops_metadata_hash,
             };
@@ -68,7 +69,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
             state.current_head = CurrentHeadState::Rehydrated {
                 head: content.new_head.as_ref().clone(),
                 head_pred,
-
+                payload_hash: content.payload_hash.clone(),
                 block_metadata_hash: content.block_metadata_hash.clone(),
                 ops_metadata_hash: content.ops_metadata_hash.clone(),
             };

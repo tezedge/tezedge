@@ -5,7 +5,9 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockMetadataHash, OperationMetadataListListHash, ProtocolHash};
+use crypto::hash::{
+    BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash, ProtocolHash,
+};
 use storage::BlockHeaderWithHash;
 
 use crate::protocol_runner::ProtocolRunnerState;
@@ -102,7 +104,7 @@ pub struct CurrentHeadUpdateAction {
     pub new_head: Arc<BlockHeaderWithHash>,
     pub protocol: ProtocolHash,
     pub next_protocol: ProtocolHash,
-
+    pub payload_hash: Option<BlockPayloadHash>,
     pub block_metadata_hash: Option<BlockMetadataHash>,
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
