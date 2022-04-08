@@ -74,11 +74,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
                     }
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
-                        if let MempoolOperation {
-                            state: OperationState::Decoded,
-                            ..
-                        } = operation_state
-                        {
+                        if matches!(
+                            operation_state.state,
+                            OperationState::Decoded | OperationState::BranchDelayed
+                        ) {
                             *operation_state =
                                 operation_state.next_state(OperationState::Applied, action);
                         }
@@ -120,11 +119,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
                     }
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
-                        if let MempoolOperation {
-                            state: OperationState::Decoded,
-                            ..
-                        } = operation_state
-                        {
+                        if matches!(operation_state.state, OperationState::Decoded) {
                             *operation_state =
                                 operation_state.next_state(OperationState::Refused, action);
                         }
@@ -169,11 +164,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
                     }
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
-                        if let MempoolOperation {
-                            state: OperationState::Decoded,
-                            ..
-                        } = operation_state
-                        {
+                        if matches!(operation_state.state, OperationState::Decoded) {
                             *operation_state =
                                 operation_state.next_state(OperationState::BranchRefused, action);
                         }
@@ -218,11 +209,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
                     }
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
-                        if let MempoolOperation {
-                            state: OperationState::Decoded,
-                            ..
-                        } = operation_state
-                        {
+                        if matches!(operation_state.state, OperationState::Decoded) {
                             *operation_state =
                                 operation_state.next_state(OperationState::BranchDelayed, action);
                         }
@@ -264,11 +251,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
                     }
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
-                        if let MempoolOperation {
-                            state: OperationState::Decoded,
-                            ..
-                        } = operation_state
-                        {
+                        if matches!(operation_state.state, OperationState::Decoded) {
                             *operation_state =
                                 operation_state.next_state(OperationState::Outdated, action);
                         }
@@ -585,11 +568,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
                     }
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
-                        if let MempoolOperation {
-                            state: OperationState::Decoded,
-                            ..
-                        } = operation_state
-                        {
+                        if matches!(operation_state.state, OperationState::Decoded) {
                             *operation_state =
                                 operation_state.next_state(OperationState::Prechecked, action);
                         }
@@ -626,14 +605,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
                     }
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
-                        if let MempoolOperation {
-                            state: OperationState::Decoded,
-                            ..
-                        } = operation_state
-                        {
-                            let next =
+                        if matches!(operation_state.state, OperationState::Decoded) {
+                            *operation_state =
                                 operation_state.next_state(OperationState::PrecheckRefused, action);
-                            *operation_state = next;
                         }
                     }
                     let current_head_level = mempool_state
