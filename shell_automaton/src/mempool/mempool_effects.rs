@@ -8,28 +8,33 @@ use std::{
     sync::Arc,
 };
 
-use tezos_messages::p2p::{
-    binary_message::MessageHash,
-    encoding::{
-        current_head::{CurrentHeadMessage, GetCurrentHeadMessage},
-        mempool::Mempool,
-        operation::{GetOperationsMessage, OperationMessage},
-        peer::{PeerMessage, PeerMessageResponse},
+use tezos_messages::{
+    p2p::{
+        binary_message::MessageHash,
+        encoding::{
+            current_head::{CurrentHeadMessage, GetCurrentHeadMessage},
+            mempool::Mempool,
+            operation::{GetOperationsMessage, OperationMessage},
+            peer::{PeerMessage, PeerMessageResponse},
+        },
     },
+    protocol::{proto_010, proto_011, proto_012},
 };
 
 use crate::{
-    block_applier::BlockApplierApplyState,
     current_head_precheck::{CurrentHeadPrecheckSuccessAction, CurrentHeadState},
     mempool::mempool_state::OperationState,
     peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
-    prechecker::prechecker_actions::{
-        PrecheckerApplied, PrecheckerErrored, PrecheckerPrecheckBlockAction,
-        PrecheckerPrecheckOperationRequestAction, PrecheckerPrecheckOperationResponse,
-        PrecheckerPrecheckOperationResponseAction,
+    prechecker::{
+        prechecker_actions::{
+            PrecheckerApplied, PrecheckerErrored, PrecheckerPrecheckBlockAction,
+            PrecheckerPrecheckOperationRequestAction, PrecheckerPrecheckOperationResponse,
+            PrecheckerPrecheckOperationResponseAction,
+        },
+        OperationDecodedContents,
     },
     rights::Slot,
-    service::{protocol_runner_service::ProtocolRunnerResult, ProtocolRunnerService, RpcService},
+    service::RpcService,
     Action, ActionWithMeta, Service, State,
 };
 
@@ -155,7 +160,17 @@ where
                     });
                 }
                 PeerMessage::Operation(ref op) => {
+                    let hash = match op.message_typed_hash() {
+                        Ok(v) => v,
+                        Err(err) => {
+                            // TODO(vlad): peer send bad operation, should log the error,
+                            // maybe should disconnect the peer
+                            let _ = err;
+                            return;
+                        }
+                    };
                     store.dispatch(MempoolOperationRecvDoneAction {
+                        hash,
                         operation: op.clone().into(),
                     });
                 }
@@ -323,9 +338,111 @@ where
                 });
             }
         }
-        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { .. })
-        | Action::MempoolOperationInject(MempoolOperationInjectAction { .. }) => {
-            store.dispatch(MempoolOperationValidateNextAction {});
+        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { hash, operation })
+        | Action::MempoolOperationInject(MempoolOperationInjectAction {
+            hash, operation, ..
+        }) => {
+            if store.state().mempool.prechecking_operations.contains(hash) {
+                store.dispatch(PrecheckerPrecheckOperationRequestAction {
+                    operation: operation.clone(),
+                });
+            } else {
+                store.dispatch(MempoolOperationValidateNextAction {});
+            }
+        }
+        Action::PrecheckerPrecheckOperationResponse(
+            PrecheckerPrecheckOperationResponseAction { response },
+        ) => {
+            match response {
+                PrecheckerPrecheckOperationResponse::Applied(PrecheckerApplied {
+                    operation_decoded_contents,
+                    hash,
+                    ..
+                })
+                | PrecheckerPrecheckOperationResponse::Refused(PrecheckerErrored {
+                    operation_decoded_contents,
+                    hash,
+                    ..
+                }) => {
+                    store.dispatch(MempoolBroadcastAction {
+                        send_operations: true,
+                        prechecked_head: Some(operation_decoded_contents.branch().clone()),
+                    });
+
+                    // respond to injection RPC
+                    let resp = if store.state().mempool.local_head_state.is_some() {
+                        serde_json::Value::Null
+                    } else {
+                        serde_json::Value::String("head is not ready".to_string())
+                    };
+                    let to_respond = store.state().mempool.injected_rpc_ids.clone();
+                    for rpc_id in to_respond {
+                        store.service().rpc().respond(rpc_id, resp.clone());
+                    }
+                    store.dispatch(MempoolRpcRespondAction {});
+
+                    // respond to mempool_operations
+                    let streams = store.state().mempool.operation_streams.clone();
+                    if streams.is_empty() {
+                        return;
+                    }
+
+                    let protocol = match operation_decoded_contents {
+                        OperationDecodedContents::Proto010(_) => proto_010::PROTOCOL_HASH,
+                        OperationDecodedContents::Proto011(_) => proto_011::PROTOCOL_HASH,
+                        OperationDecodedContents::Proto012(_) => proto_012::PROTOCOL_HASH,
+                    };
+
+                    let (protocol_data, protocol_data_parse_error) = if let Some(json_object) =
+                        operation_decoded_contents.as_json().as_object()
+                    {
+                        (
+                            json_object
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect::<HashMap<_, _>>(),
+                            Option::<String>::None,
+                        )
+                    } else {
+                        (
+                            HashMap::new(),
+                            Some("Cannot interpred protocol data as object".to_string()),
+                        )
+                    };
+                    let error =
+                        if let PrecheckerPrecheckOperationResponse::Refused(PrecheckerErrored {
+                            error,
+                            ..
+                        }) = response
+                        {
+                            vec![error.clone()]
+                        } else {
+                            Vec::new()
+                        };
+
+                    let monitored_operation = MonitoredOperation::new(
+                        operation_decoded_contents.branch(),
+                        protocol_data,
+                        protocol,
+                        hash,
+                        error,
+                        protocol_data_parse_error,
+                    );
+
+                    if let Ok(json) = serde_json::to_value(vec![monitored_operation]) {
+                        for stream in streams {
+                            store
+                                .service()
+                                .rpc()
+                                .respond_stream(stream.rpc_id, Some(json.clone()));
+                        }
+                    }
+                }
+                PrecheckerPrecheckOperationResponse::Prevalidate(_) => {
+                    store.dispatch(MempoolOperationValidateNextAction {});
+                }
+                _ => (),
+            }
         }
         Action::MempoolBroadcast(MempoolBroadcastAction {
             send_operations,

@@ -191,7 +191,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         let injected_timestamp = store.monotonic_to_time(injected);
                         store.dispatch(MempoolOperationInjectAction {
                             operation,
-                            operation_hash,
+                            hash: operation_hash,
                             rpc_id,
                             injected_timestamp,
                         });

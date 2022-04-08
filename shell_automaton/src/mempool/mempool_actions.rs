@@ -69,6 +69,7 @@ impl EnablingCondition<State> for MempoolMarkOperationsAsPendingAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperationRecvDoneAction {
+    pub hash: OperationHash,
     pub operation: Operation,
 }
 
@@ -83,7 +84,7 @@ impl EnablingCondition<State> for MempoolOperationRecvDoneAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperationInjectAction {
     pub operation: Operation,
-    pub operation_hash: OperationHash,
+    pub hash: OperationHash,
     pub rpc_id: RpcId,
     pub injected_timestamp: u64,
 }

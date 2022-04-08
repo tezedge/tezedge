@@ -5,14 +5,13 @@ use std::collections::BTreeSet;
 use std::mem;
 use std::net::SocketAddr;
 
-use crypto::hash::{BlockHash, OperationHash, ProtocolHash};
+use crypto::hash::OperationHash;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
-use tezos_messages::protocol::SupportedProtocol;
-use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::block_applier::BlockApplierApplyState;
 use crate::peers::remove::PeersRemoveAction;
+use crate::prechecker::prechecking_enabled;
 use crate::{Action, ActionWithMeta, State};
 
 use super::validator::MempoolValidatorValidateResult;
@@ -21,7 +20,8 @@ use super::{
     mempool_state::{HeadState, MempoolOperation, OperationStream, MAX_REFUSED_OPERATIONS},
 };
 use super::{
-    OperationNodeCurrentHeadStats, OperationState, OperationStats, OperationValidationResult,
+    OperationKind, OperationNodeCurrentHeadStats, OperationState, OperationStats,
+    OperationValidationResult,
 };
 use crate::prechecker::prechecker_actions::{
     PrecheckerPrecheckOperationResponse, PrecheckerPrecheckOperationResponseAction,
@@ -260,24 +260,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
         Action::BlockApplierApplySuccess(_) => {
-            let (block, block_operations, apply_result, retry, protocol) =
-                match &state.block_applier.current {
-                    BlockApplierApplyState::Success {
-                        block,
-                        block_operations,
-                        apply_result,
-                        retry,
-                        block_additional_data,
-                        ..
-                    } => (
-                        block,
-                        block_operations,
-                        apply_result,
-                        retry,
-                        &block_additional_data.protocol_hash,
-                    ),
-                    _ => return,
-                };
+            let block_operations = match &state.block_applier.current {
+                BlockApplierApplyState::Success {
+                    block_operations, ..
+                } => block_operations,
+                _ => return,
+            };
 
             // Remove operations that are included in applied block.
             let operation_hashes = block_operations
@@ -423,38 +411,39 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .pending_full_content
                 .extend(peer.requesting_full_content.drain());
         }
-        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation, .. }) => {
-            let operation_hash = match operation.message_typed_hash() {
-                Ok(v) => v,
-                Err(err) => {
-                    // TODO(vlad): peer send bad operation, should log the error,
-                    // maybe should disconnect the peer
-                    let _ = err;
-                    return;
-                }
-            };
-            if let Some(operation_state) = mempool_state.operations_state.get_mut(&operation_hash) {
-                if let MempoolOperation {
-                    state: OperationState::ReceivedHash,
-                    ..
-                } = operation_state
-                {
-                    *operation_state =
-                        operation_state.next_state(OperationState::ReceivedContents, action);
-                }
-            }
-
-            if !mempool_state.pending_full_content.remove(&operation_hash) {
+        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { hash, operation }) => {
+            if !mempool_state.pending_full_content.remove(hash) {
                 // TODO(vlad): received operation, but we did not requested it, what should we do?
             }
 
-            mempool_state
-                .pending_operations
-                .insert(operation_hash, operation.clone());
+            if !state.config.disable_endorsements_precheck
+                && prechecking_enabled(&state.prechecker, operation.branch())
+                && matches!(
+                    OperationKind::from_operation_content_raw(operation.data().as_ref()),
+                    OperationKind::Preendorsement | OperationKind::Endorsement
+                )
+            {
+                mempool_state.prechecking_operations.insert(hash.clone());
+                if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
+                    if let MempoolOperation {
+                        state: OperationState::ReceivedHash,
+                        ..
+                    } = operation_state
+                    {
+                        *operation_state =
+                            operation_state.next_state(OperationState::ReceivedContents, action);
+                    }
+                }
+            } else {
+                mempool_state
+                    .pending_operations
+                    .insert(hash.clone(), operation.clone());
+                mempool_state.operations_state.remove(hash);
+            }
         }
         Action::MempoolOperationInject(MempoolOperationInjectAction {
             operation,
-            operation_hash,
+            hash: operation_hash,
             rpc_id,
             injected_timestamp,
         }) => {
@@ -468,13 +457,25 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state
                 .injecting_rpc_ids
                 .insert(operation_hash.clone(), *rpc_id);
-            mempool_state
-                .pending_operations
-                .insert(operation_hash.clone(), operation.clone());
-            mempool_state.operations_state.insert(
-                operation_hash.clone(),
-                MempoolOperation::injected(level, action),
+
+            let is_consensus_operation = matches!(
+                OperationKind::from_operation_content_raw(operation.data().as_ref()),
+                OperationKind::Preendorsement | OperationKind::Endorsement
             );
+
+            if is_consensus_operation {
+                mempool_state
+                    .prechecking_operations
+                    .insert(operation_hash.clone());
+                mempool_state.operations_state.insert(
+                    operation_hash.clone(),
+                    MempoolOperation::injected(level, action),
+                );
+            } else {
+                mempool_state
+                    .pending_operations
+                    .insert(operation_hash.clone(), operation.clone());
+            }
 
             let (block_level, block_timestamp) = match &mempool_state.local_head_state {
                 Some(local_head_state) => (
@@ -528,6 +529,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::PrecheckerPrecheckOperationResponse(
             PrecheckerPrecheckOperationResponseAction { response },
         ) => {
+            if let Some(hash) = response.operation_hash() {
+                mempool_state.prechecking_operations.remove(hash);
+            }
             match response {
                 PrecheckerPrecheckOperationResponse::Applied(applied) => {
                     let hash = &applied.hash;
@@ -614,6 +618,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 PrecheckerPrecheckOperationResponse::Prevalidate(PrecheckerPrevalidate {
                     hash,
+                    operation,
                 }) => {
                     let current_head_level = mempool_state
                         .local_head_state
@@ -630,6 +635,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             current_head_level,
                             OperationValidationResult::Prevalidate,
                         );
+                    mempool_state
+                        .pending_operations
+                        .insert(hash.clone(), operation.clone());
                 }
                 PrecheckerPrecheckOperationResponse::Error(_) => {
                     // TODO
@@ -883,25 +891,4 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
         }
         _ => {}
     };
-}
-
-/// Checks if the block should be skipped using as the mempool head.
-///
-/// Block should be skipped iff
-/// - it has 012_PtHangz2 protocol
-/// - it has been applied successfully after failed attempt because of context mismatch
-///
-fn should_skip_block_with_retry(
-    _block_hash: &BlockHash,
-    protocol_hash: &ProtocolHash,
-    error: &Option<ProtocolServiceError>,
-) -> bool {
-    if let Some(err) = error {
-        if err.is_cache_context_hash_mismatch_error() {
-            if let Ok(proto) = SupportedProtocol::try_from(protocol_hash) {
-                return proto == SupportedProtocol::Proto011;
-            }
-        }
-    }
-    false
 }

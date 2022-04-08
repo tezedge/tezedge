@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     net::SocketAddr,
 };
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{
-    BlockHash, BlockMetadataHash, CryptoboxPublicKeyHash, OperationHash,
-    OperationMetadataListListHash,
-};
+use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::encoding::{
     block_header::{BlockHeader, Level},
@@ -53,6 +50,7 @@ pub struct MempoolState {
     pub(super) pending_full_content: HashSet<OperationHash>,
     // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: HashMap<OperationHash, Operation>,
+    pub(super) prechecking_operations: BTreeSet<OperationHash>,
     pub validated_operations: ValidatedOperations,
     // track ttl
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,

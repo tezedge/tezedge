@@ -57,6 +57,19 @@ pub enum PrecheckerPrecheckOperationResponse {
     Error(PrecheckerResponseError),
 }
 
+impl PrecheckerPrecheckOperationResponse {
+    pub(crate) fn operation_hash(&self) -> Option<&OperationHash> {
+        match self {
+            PrecheckerPrecheckOperationResponse::Applied(applied) => Some(&applied.hash),
+            PrecheckerPrecheckOperationResponse::Refused(refused) => Some(&refused.hash),
+            PrecheckerPrecheckOperationResponse::Prevalidate(prevalidate) => {
+                Some(&prevalidate.hash)
+            }
+            PrecheckerPrecheckOperationResponse::Error(_) => None,
+        }
+    }
+}
+
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerApplied {
@@ -102,6 +115,7 @@ impl PrecheckerErrored {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerPrevalidate {
     pub hash: OperationHash,
+    pub operation: Operation,
 }
 
 impl PrecheckerPrecheckOperationResponseAction {
@@ -133,11 +147,11 @@ impl PrecheckerPrecheckOperationResponseAction {
         }
     }
 
-    #[allow(dead_code)]
-    pub(super) fn prevalidate(operation_hash: &OperationHash) -> Self {
+    pub(super) fn prevalidate(operation: Operation, hash: OperationHash) -> Self {
         Self {
             response: PrecheckerPrecheckOperationResponse::Prevalidate(PrecheckerPrevalidate {
-                hash: operation_hash.clone(),
+                operation,
+                hash,
             }),
         }
     }

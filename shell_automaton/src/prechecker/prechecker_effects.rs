@@ -445,12 +445,14 @@ where
             }
         }
         Action::PrecheckerProtocolNeeded(PrecheckerProtocolNeededAction { key, .. }) => {
-            if let Some(PrecheckerOperationState::ProtocolNeeded { .. }) =
-                prechecker_state_operations.get(key).map(|op| &op.state)
-            {
-                store.dispatch(PrecheckerPrecheckOperationResponseAction::prevalidate(
-                    &key.operation,
-                ));
+            if let Some(op) = prechecker_state_operations.get(key) {
+                if matches!(op.state, PrecheckerOperationState::ProtocolNeeded {}) {
+                    let operation = op.operation.clone();
+                    store.dispatch(PrecheckerPrecheckOperationResponseAction::prevalidate(
+                        operation,
+                        key.operation.clone(),
+                    ));
+                }
             }
             store.dispatch(PrecheckerPruneOperationAction { key: key.clone() });
         }
@@ -492,33 +494,35 @@ where
             store.dispatch(PrecheckerPruneOperationAction { key: key.clone() });
         }
         Action::PrecheckerError(PrecheckerErrorAction { key, error }) => {
-            if let Some(PrecheckerOperationState::Error { .. }) =
-                prechecker_state_operations.get(key).map(|op| &op.state)
-            {
-                match error {
-                    PrecheckerError::EndorsingRights(err) => {
-                        error!(log, "Getting endorsing rights failed"; "operation" => key.to_string(), "error" => err.to_string());
-                        store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
-                            err.clone(),
-                        ));
-                    }
-                    PrecheckerError::UnsupportedProtocol(_) => {
-                        store.dispatch(PrecheckerPrecheckOperationResponseAction::prevalidate(
-                            &key.operation,
-                        ));
-                    }
+            if let Some(op) = prechecker_state_operations.get(key) {
+                if matches!(op.state, PrecheckerOperationState::Error { .. }) {
+                    match error {
+                        PrecheckerError::EndorsingRights(err) => {
+                            error!(log, "Getting endorsing rights failed"; "operation" => key.to_string(), "error" => err.to_string());
+                            store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
+                                err.clone(),
+                            ));
+                        }
+                        PrecheckerError::UnsupportedProtocol(_) => {
+                            let operation = op.operation.clone();
+                            store.dispatch(PrecheckerPrecheckOperationResponseAction::prevalidate(
+                                operation,
+                                key.operation.clone(),
+                            ));
+                        }
 
-                    PrecheckerError::Storage(err) => {
-                        store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
-                            err.clone(),
-                        ));
-                    }
-                    PrecheckerError::MissingBlockHeader(_)
-                    | PrecheckerError::MissingProtocol(_)
-                    | PrecheckerError::OperationContentsDecode(_) => {
-                        store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
-                            error.clone(),
-                        ));
+                        PrecheckerError::Storage(err) => {
+                            store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
+                                err.clone(),
+                            ));
+                        }
+                        PrecheckerError::MissingBlockHeader(_)
+                        | PrecheckerError::MissingProtocol(_)
+                        | PrecheckerError::OperationContentsDecode(_) => {
+                            store.dispatch(PrecheckerPrecheckOperationResponseAction::error(
+                                error.clone(),
+                            ));
+                        }
                     }
                 }
             }
