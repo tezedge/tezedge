@@ -235,10 +235,14 @@ where
                     let new_head = block.clone();
                     let protocol = block_additional_data.protocol_hash.clone();
                     let next_protocol = block_additional_data.next_protocol_hash.clone();
+                    let block_metadata_hash = block_additional_data.block_metadata_hash().clone();
+                    let ops_metadata_hash = block_additional_data.ops_metadata_hash().clone();
                     store.dispatch(CurrentHeadUpdateAction {
                         new_head,
                         protocol,
                         next_protocol,
+                        block_metadata_hash,
+                        ops_metadata_hash,
                     });
                 }
                 _ => return,

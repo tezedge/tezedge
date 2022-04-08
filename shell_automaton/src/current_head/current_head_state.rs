@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::{BlockHash, BlockMetadataHash, OperationMetadataListListHash};
 use storage::BlockHeaderWithHash;
 
 use crate::request::RequestId;
@@ -27,11 +28,19 @@ pub enum CurrentHeadState {
         time: u64,
         head: BlockHeaderWithHash,
         head_pred: Option<BlockHeaderWithHash>,
+
+        block_metadata_hash: Option<BlockMetadataHash>,
+        ops_metadata_hash: Option<OperationMetadataListListHash>,
     },
 
     Rehydrated {
         head: BlockHeaderWithHash,
         head_pred: Option<BlockHeaderWithHash>,
+
+        // Needed for mempool prevalidator's begin construction
+        // for prevalidation request.
+        block_metadata_hash: Option<BlockMetadataHash>,
+        ops_metadata_hash: Option<OperationMetadataListListHash>,
     },
 }
 
@@ -46,6 +55,10 @@ impl CurrentHeadState {
             Self::Rehydrated { head, .. } => Some(head),
             _ => None,
         }
+    }
+
+    pub fn get_hash(&self) -> Option<&BlockHash> {
+        self.get().map(|v| &v.hash)
     }
 
     pub fn get_pred(&self) -> Option<&BlockHeaderWithHash> {

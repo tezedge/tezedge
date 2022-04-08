@@ -74,6 +74,9 @@ fn data(chain_level: Level) -> (Cluster, Vec<BlockHeaderWithHash>) {
     state.current_head = CurrentHeadState::Rehydrated {
         head: chain.last().unwrap().clone(),
         head_pred: chain.iter().rev().nth(1).cloned(),
+
+        block_metadata_hash: None,
+        ops_metadata_hash: None,
     };
     state.bootstrap = BootstrapState::Finished {
         time: 0,
@@ -82,10 +85,6 @@ fn data(chain_level: Level) -> (Cluster, Vec<BlockHeaderWithHash>) {
     state.mempool.local_head_state = Some(HeadState {
         header: (*chain.last().unwrap().header).clone(),
         hash: chain.last().unwrap().hash.clone(),
-        prevalidator_ready: true,
-
-        metadata_hash: None,
-        ops_metadata_hash: None,
     });
 
     (Cluster::new(state, initial_time), chain)

@@ -12,7 +12,7 @@ use crypto::hash::{
     BlockHash, BlockMetadataHash, CryptoboxPublicKeyHash, OperationHash,
     OperationMetadataListListHash,
 };
-use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
+use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::p2p::encoding::{
     block_header::{BlockHeader, Level},
     operation::Operation,
@@ -22,6 +22,8 @@ use crate::{
     prechecker::OperationDecodedContents, rights::Slot, service::rpc_service::RpcId, ActionWithMeta,
 };
 
+use super::validator::MempoolValidatorState;
+
 /// https://gitlab.com/tezedge/tezos/-/blob/v12.2/src/lib_shell/prevalidator.ml#L219
 ///
 /// Bound for the refused (refused, branch_refused, branch_delayed, outdated)
@@ -29,12 +31,13 @@ use crate::{
 /// bound is reached and we add operation, oldest one will be removed.
 pub const MAX_REFUSED_OPERATIONS: usize = 2048;
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct MempoolState {
+    pub validator: MempoolValidatorState,
+
     // TODO(vlad): instant
     pub running_since: Option<()>,
     //
-    pub prevalidator: Option<PrevalidatorWrapper>,
     // performing rpc
     pub(super) injecting_rpc_ids: HashMap<OperationHash, RpcId>,
     // performed rpc
@@ -74,11 +77,6 @@ impl MempoolState {
 pub struct HeadState {
     pub header: BlockHeader,
     pub hash: BlockHash,
-    // prevalidator for the head is created
-    pub prevalidator_ready: bool,
-
-    pub metadata_hash: Option<BlockMetadataHash>,
-    pub ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -37,3 +37,9 @@ pub enum ProtocolRunnerState {
     /// Shutdown successfully completed
     ShutdownSuccess,
 }
+
+impl ProtocolRunnerState {
+    pub fn is_ready(&self) -> bool {
+        matches!(self, Self::Ready(_))
+    }
+}

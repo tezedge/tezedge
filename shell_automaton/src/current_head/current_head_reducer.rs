@@ -29,16 +29,33 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 time: action.time_as_nanos(),
                 head: content.head.clone(),
                 head_pred: content.head_pred.clone(),
+                block_metadata_hash: content.block_metadata_hash.clone(),
+                ops_metadata_hash: content.ops_metadata_hash.clone(),
             };
         }
         Action::CurrentHeadRehydrated(_) => {
-            let (head, head_pred) = match &state.current_head {
-                CurrentHeadState::RehydrateSuccess {
-                    head, head_pred, ..
-                } => (head.clone(), head_pred.clone()),
-                _ => return,
+            let (head, head_pred, block_metadata_hash, ops_metadata_hash) =
+                match &state.current_head {
+                    CurrentHeadState::RehydrateSuccess {
+                        head,
+                        head_pred,
+                        block_metadata_hash,
+                        ops_metadata_hash,
+                        ..
+                    } => (
+                        head.clone(),
+                        head_pred.clone(),
+                        block_metadata_hash.clone(),
+                        ops_metadata_hash.clone(),
+                    ),
+                    _ => return,
+                };
+            state.current_head = CurrentHeadState::Rehydrated {
+                head,
+                head_pred,
+                block_metadata_hash,
+                ops_metadata_hash,
             };
-            state.current_head = CurrentHeadState::Rehydrated { head, head_pred };
         }
         Action::CurrentHeadUpdate(content) => {
             let head_pred = state
@@ -51,6 +68,9 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
             state.current_head = CurrentHeadState::Rehydrated {
                 head: content.new_head.as_ref().clone(),
                 head_pred,
+
+                block_metadata_hash: content.block_metadata_hash.clone(),
+                ops_metadata_hash: content.ops_metadata_hash.clone(),
             };
         }
         _ => {}

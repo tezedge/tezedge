@@ -18,12 +18,10 @@ use tezos_messages::p2p::{
     },
 };
 
-use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
-
 use crate::{
     block_applier::BlockApplierApplyState,
     current_head_precheck::{CurrentHeadPrecheckSuccessAction, CurrentHeadState},
-    mempool::{mempool_state::OperationState, PrevalidatorAction},
+    mempool::mempool_state::OperationState,
     peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
     prechecker::prechecker_actions::{
         PrecheckerApplied, PrecheckerErrored, PrecheckerPrecheckBlockAction,
@@ -39,7 +37,8 @@ use super::{
     mempool_actions::MempoolRpcEndorsementsStatusGetAction,
     mempool_actions::*,
     monitored_operation::{MempoolOperations, MonitoredOperation},
-    BroadcastState, MempoolOperation, OperationKind,
+    validator::{MempoolValidatorInitAction, MempoolValidatorValidateInitAction},
+    BroadcastState, MempoolOperation,
 };
 
 pub fn mempool_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithMeta)
@@ -64,148 +63,78 @@ where
         return;
     }
     match &action.action {
-        Action::ProtocolRunnerResponse(resp) => match &resp.result {
-            ProtocolRunnerResult::BeginConstruction((_token, Err(err)))
-            | ProtocolRunnerResult::ValidateOperation((_token, Err(err))) => {
-                store.dispatch(PrevalidatorAction::Error(err.to_string()));
-            }
-            ProtocolRunnerResult::BeginConstruction((_token, Ok(res))) => {
-                // FIXME: doesn't differentiate between ForPrevalidator and ForMempool
-                store.dispatch(PrevalidatorAction::PrevalidatorReady(res.clone()));
-            }
-            ProtocolRunnerResult::ValidateOperation((_token, Ok(res))) => {
-                // If the predecessor hash doesn't match, this is an outdated request
-                // and it must be ignored.
-                if let Some(local_head_state) = &store.state().mempool.local_head_state {
-                    if res.prevalidator.predecessor == local_head_state.hash {
-                        store.dispatch(PrevalidatorAction::OperationValidated(res.clone()));
-                    } else {
-                        slog::debug!(&store.state().log, "Got stale operation validation result";
-                            "validated_for" => res.prevalidator.predecessor.to_base58_check(),
-                            "current_mempool_head" => local_head_state.header.predecessor().to_base58_check());
-                    }
-                } else {
-                    slog::debug!(
-                        &store.state().log,
-                        "Got operation validation result, but there is no mempool.local_head_state"
-                    );
-                }
-            }
-            _ => (),
-        },
-        Action::MempoolFlush(MempoolFlushAction {}) => {
+        Action::MempoolOperationValidateNext(_) => {
             let mempool_state = &store.state().mempool;
-            let ops = mempool_state
-                .pending_operations
-                .iter()
-                .map(|(_, op)| op.clone())
-                .collect::<Vec<_>>();
-            for operation in ops {
-                store.dispatch(MempoolValidateStartAction { operation });
-            }
+
+            let (op_hash, op_content) = match mempool_state.pending_operations.iter().nth(0) {
+                Some(v) => (v.0.clone(), v.1.clone()),
+                None => return,
+            };
+
+            store.dispatch(MempoolValidatorValidateInitAction {
+                op_hash,
+                op_content,
+            });
         }
-        Action::Prevalidator(act) => {
-            match act {
-                PrevalidatorAction::PrevalidatorReady(_) => {
-                    store.dispatch(MempoolFlushAction {});
+        Action::MempoolValidatorReady(_) => {
+            store.dispatch(MempoolOperationValidateNextAction {});
+        }
+        Action::MempoolValidatorValidateSuccess(content) => {
+            if content.result.is_applied() {
+                let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
+
+                for address in addresses {
+                    if store
+                        .state()
+                        .mempool
+                        .has_peer_seen_op(address, &content.op_hash)
+                    {
+                        continue;
+                    }
+
+                    store.dispatch(MempoolSendValidatedAction {
+                        address,
+                        known_valid: vec![content.op_hash.clone()],
+                    });
                 }
-                PrevalidatorAction::OperationValidated(response) => {
-                    let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
+            }
 
-                    for address in addresses {
-                        let state = store.state();
-                        let applied_iter = response.result.applied.iter();
-                        let applied_to_send_iter = applied_iter.map(|v| &v.hash);
-
-                        let branch_delayed_iter = response.result.branch_delayed.iter();
-                        let consensus_ops_branch_delayed_iter = branch_delayed_iter
-                            .filter(|v| v.is_endorsement.unwrap_or(false))
-                            .map(|v| &v.hash);
-
-                        let known_valid = applied_to_send_iter
-                            .chain(consensus_ops_branch_delayed_iter)
-                            .filter(|hash| !state.mempool.has_peer_seen_op(address, hash))
-                            .cloned()
-                            .collect();
-
-                        store.dispatch(MempoolSendValidatedAction {
-                            address,
-                            known_valid,
-                        });
+            // respond
+            let ids = store.state().mempool.injected_rpc_ids.clone();
+            for rpc_id in ids {
+                store
+                    .service()
+                    .rpc()
+                    .respond(rpc_id, serde_json::Value::Null);
+            }
+            store.dispatch(MempoolRpcRespondAction {});
+            store.dispatch(MempoolOperationValidateNextAction {});
+            let streams = store.state().mempool.operation_streams.clone();
+            for stream in streams {
+                let ops = &store.state().mempool.validated_operations.ops;
+                // `PrevalidatorAction::OperationValidated` action can happens only
+                // if we have a prevalidator
+                let prevalidator = match store.state().mempool.validator.prevalidator() {
+                    Some(v) => v,
+                    None => return,
+                };
+                let prot = prevalidator.protocol.to_base58_check();
+                let resp: Vec<_> = match content.result.as_result() {
+                    Ok(applied) => {
+                        MonitoredOperation::collect_applied([applied], ops, &prot).collect()
                     }
-                    // respond
-                    let ids = store.state().mempool.injected_rpc_ids.clone();
-                    for rpc_id in ids {
-                        store
-                            .service()
-                            .rpc()
-                            .respond(rpc_id, serde_json::Value::Null);
+                    Err(errored) => {
+                        MonitoredOperation::collect_errored([errored], ops, &prot).collect()
                     }
-                    store.dispatch(MempoolRpcRespondAction {});
-                    let streams = store.state().mempool.operation_streams.clone();
-                    for stream in streams {
-                        let ops = &store.state().mempool.validated_operations.ops;
-                        // `PrevalidatorAction::OperationValidated` action can happens only
-                        // if we have a prevalidator
-                        let prevalidator = match store.state().mempool.prevalidator.as_ref() {
-                            Some(v) => v,
-                            None => return,
-                        };
-                        let prot = prevalidator.protocol.to_base58_check();
-                        let applied = if stream.applied {
-                            response.result.applied.as_slice()
-                        } else {
-                            &[]
-                        };
-                        let refused = if stream.refused {
-                            response.result.refused.as_slice()
-                        } else {
-                            &[]
-                        };
-                        let branch_delayed = if stream.branch_delayed {
-                            response.result.branch_delayed.as_slice()
-                        } else {
-                            &[]
-                        };
-                        let branch_refused = if stream.branch_refused {
-                            response.result.branch_refused.as_slice()
-                        } else {
-                            &[]
-                        };
-                        let outdated = if stream.outdated {
-                            response.result.outdated.as_slice()
-                        } else {
-                            &[]
-                        };
-                        let resp = std::iter::empty()
-                            .chain(MonitoredOperation::collect_applied(applied, ops, &prot))
-                            .chain(MonitoredOperation::collect_errored(refused, ops, &prot))
-                            .chain(MonitoredOperation::collect_errored(
-                                branch_delayed,
-                                ops,
-                                &prot,
-                            ))
-                            .chain(MonitoredOperation::collect_errored(
-                                branch_refused,
-                                ops,
-                                &prot,
-                            ))
-                            .chain(MonitoredOperation::collect_errored(outdated, ops, &prot))
-                            .collect::<Vec<_>>();
-                        if resp.is_empty() {
-                            return;
-                        }
-                        if let Ok(json) = serde_json::to_value(resp) {
-                            store
-                                .service()
-                                .rpc()
-                                .respond_stream(stream.rpc_id, Some(json));
-                        }
-                    }
+                };
+                if resp.is_empty() {
+                    return;
                 }
-                PrevalidatorAction::PrevalidatorForMempoolReady(_) => (), // TODO?
-                PrevalidatorAction::Error(err) => {
-                    slog::warn!(&store.state().log, "Prevalidator error: {}", err)
+                if let Ok(json) = serde_json::to_value(resp) {
+                    store
+                        .service()
+                        .rpc()
+                        .respond_stream(stream.rpc_id, Some(json));
                 }
             }
         }
@@ -223,27 +152,6 @@ where
                         send_operations: true,
                         requested_explicitly: true,
                         prechecked_head: None,
-                    });
-                }
-                PeerMessage::CurrentHead(ref current_head) => {
-                    if store.state().mempool.running_since.is_none() {
-                        return;
-                    }
-                    if current_head.chain_id().ne(&store.state().config.chain_id) {
-                        return;
-                    }
-
-                    let block_hash = match current_head.current_block_header().message_typed_hash()
-                    {
-                        Ok(hash) => hash,
-                        Err(_) => return,
-                    };
-                    let message = current_head.current_mempool().clone();
-                    store.dispatch(MempoolRecvDoneAction {
-                        address: *address,
-                        block_hash,
-                        block_header: current_head.current_block_header().clone(),
-                        message,
                     });
                 }
                 PeerMessage::Operation(ref op) => {
@@ -271,52 +179,6 @@ where
             }
         }
         Action::BlockApplierApplySuccess(_) => {
-            let chain_id = store.state().config.chain_id.clone();
-            let (block, apply_result) = match &store.state().block_applier.current {
-                BlockApplierApplyState::Success {
-                    block,
-                    apply_result,
-                    ..
-                } => (block, apply_result),
-                _ => return,
-            };
-
-            if let Some(local_head_state) = store.state().mempool.local_head_state.as_ref() {
-                if local_head_state.hash != block.hash {
-                    let req = BeginConstructionRequest {
-                        chain_id,
-                        predecessor: local_head_state.header.clone(),
-                        predecessor_hash: local_head_state.hash.clone(),
-                        protocol_data: None,
-                        predecessor_block_metadata_hash: local_head_state.metadata_hash.clone(),
-                        predecessor_ops_metadata_hash: local_head_state.ops_metadata_hash.clone(),
-                    };
-                    store
-                        .service()
-                        .prevalidator()
-                        .begin_construction_for_prevalidation(req);
-                    return;
-                }
-            }
-
-            if store.state().mempool.running_since.is_some() {
-                let req = BeginConstructionRequest {
-                    chain_id,
-                    predecessor: (*block.header).clone(),
-                    predecessor_hash: block.hash.clone(),
-                    protocol_data: None,
-                    predecessor_block_metadata_hash: apply_result.block_metadata_hash.clone(),
-                    predecessor_ops_metadata_hash: apply_result.ops_metadata_hash.clone(),
-                };
-                store
-                    .service()
-                    .prevalidator()
-                    .begin_construction_for_prevalidation(req);
-                store.dispatch(MempoolBroadcastAction {
-                    send_operations: false,
-                    prechecked_head: None,
-                });
-            }
             // close streams
             let streams = store.state().mempool.operation_streams.clone();
             store.dispatch(MempoolUnregisterOperationsStreamsAction {});
@@ -328,10 +190,24 @@ where
                 store.service().rpc().respond_stream(stream.rpc_id, None);
             }
         }
+        Action::ProtocolRunnerReady(_) => {
+            if store.state().mempool.running_since.is_some() {
+                store.dispatch(MempoolValidatorInitAction {});
+            }
+        }
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+            if store.state().mempool.running_since.is_some() {
+                store.dispatch(MempoolBroadcastAction {
+                    send_operations: false,
+                    prechecked_head: None,
+                });
+                store.dispatch(MempoolValidatorInitAction {});
+            }
+        }
         Action::MempoolRegisterOperationsStream(act) => {
             // TODO(vlad): duplicated code
             let ops = &store.state().mempool.validated_operations.ops;
-            let prot = match &store.state().mempool.prevalidator {
+            let prot = match &store.state().mempool.validator.prevalidator() {
                 Some(prevalidator) => prevalidator.protocol.to_base58_check(),
                 None => return,
             };
@@ -377,7 +253,7 @@ where
         }
         Action::MempoolGetPendingOperations(MempoolGetPendingOperationsAction { rpc_id }) => {
             let empty = MempoolOperations::default();
-            let prevalidator = match &store.state().mempool.prevalidator {
+            let prevalidator = match store.state().mempool.validator.prevalidator() {
                 Some(v) => v,
                 None => {
                     store.service().rpc().respond(*rpc_id, empty);
@@ -447,136 +323,9 @@ where
                 });
             }
         }
-        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { operation })
-        | Action::MempoolOperationInject(MempoolOperationInjectAction { operation, .. }) => {
-            let is_consensus_operation = matches!(
-                OperationKind::from_operation_content_raw(operation.data().as_ref()),
-                OperationKind::Preendorsement | OperationKind::Endorsement
-            );
-            if is_consensus_operation
-                && crate::prechecker::prechecking_enabled(store.state(), operation.branch())
-            {
-                store.dispatch(PrecheckerPrecheckOperationRequestAction {
-                    operation: operation.clone(),
-                });
-            } else {
-                store.dispatch(MempoolValidateStartAction {
-                    operation: operation.clone(),
-                });
-            }
-        }
-        Action::PrecheckerPrecheckOperationResponse(
-            PrecheckerPrecheckOperationResponseAction { response },
-        ) => {
-            match response {
-                PrecheckerPrecheckOperationResponse::Applied(PrecheckerApplied {
-                    operation_decoded_contents,
-                    hash,
-                    ..
-                })
-                | PrecheckerPrecheckOperationResponse::Refused(PrecheckerErrored {
-                    operation_decoded_contents,
-                    hash,
-                    ..
-                }) => {
-                    store.dispatch(MempoolBroadcastAction {
-                        send_operations: true,
-                        prechecked_head: Some(operation_decoded_contents.branch().clone()),
-                    });
-
-                    // respond to injection RPC
-                    let resp = if store.state().mempool.local_head_state.is_some() {
-                        serde_json::Value::Null
-                    } else {
-                        serde_json::Value::String("head is not ready".to_string())
-                    };
-                    let to_respond = store.state().mempool.injected_rpc_ids.clone();
-                    for rpc_id in to_respond {
-                        store.service().rpc().respond(rpc_id, resp.clone());
-                    }
-                    store.dispatch(MempoolRpcRespondAction {});
-
-                    // respond to mempool_operations
-                    let streams = store.state().mempool.operation_streams.clone();
-                    if streams.is_empty() {
-                        return;
-                    }
-
-                    if let Some(prevalidator) = store.state().mempool.prevalidator.as_ref() {
-                        let (protocol_data, protocol_data_parse_error) = if let Some(json_object) =
-                            operation_decoded_contents.as_json().as_object()
-                        {
-                            (
-                                json_object
-                                    .iter()
-                                    .map(|(k, v)| (k.clone(), v.clone()))
-                                    .collect::<HashMap<_, _>>(),
-                                Option::<String>::None,
-                            )
-                        } else {
-                            (
-                                HashMap::new(),
-                                Some("Cannot interpred protocol data as object".to_string()),
-                            )
-                        };
-                        let error = if let PrecheckerPrecheckOperationResponse::Refused(
-                            PrecheckerErrored { error, .. },
-                        ) = response
-                        {
-                            vec![error.clone()]
-                        } else {
-                            Vec::new()
-                        };
-
-                        let protocol = prevalidator.protocol.to_base58_check();
-                        let monitored_operation = MonitoredOperation::new(
-                            operation_decoded_contents.branch(),
-                            protocol_data,
-                            &protocol,
-                            hash,
-                            error,
-                            protocol_data_parse_error,
-                        );
-
-                        if let Ok(json) = serde_json::to_value(vec![monitored_operation]) {
-                            for stream in streams {
-                                store
-                                    .service()
-                                    .rpc()
-                                    .respond_stream(stream.rpc_id, Some(json.clone()));
-                            }
-                        }
-                    }
-                }
-                PrecheckerPrecheckOperationResponse::Prevalidate(prevalidate) => {
-                    if let Some(operation) = store
-                        .state
-                        .get()
-                        .mempool
-                        .pending_operations
-                        .get(&prevalidate.hash)
-                        .cloned()
-                    {
-                        store.dispatch(MempoolValidateStartAction { operation });
-                    } else {
-                        // TODO
-                    }
-                }
-                _ => (),
-            }
-        }
-        Action::MempoolValidateStart(MempoolValidateStartAction { operation }) => {
-            let mempool_state = &store.state().mempool;
-            if let Some(prevalidator) = &mempool_state.prevalidator {
-                let validate_req = ValidateOperationRequest {
-                    prevalidator: prevalidator.clone(),
-                    operation: operation.clone(),
-                };
-                store
-                    .service()
-                    .prevalidator()
-                    .validate_operation_for_prevalidation(validate_req);
-            }
+        Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { .. })
+        | Action::MempoolOperationInject(MempoolOperationInjectAction { .. }) => {
+            store.dispatch(MempoolOperationValidateNextAction {});
         }
         Action::MempoolBroadcast(MempoolBroadcastAction {
             send_operations,
@@ -612,13 +361,9 @@ where
             address,
             known_valid,
         }) => {
-            let head_state = match store.state().mempool.local_head_state.clone() {
-                Some(v) => v,
-                None => {
-                    // should always have current head here
-                    // TODO(vlad): should be forbidden by enabling condition
-                    return;
-                }
+            let current_head_header = match store.state().current_head.get() {
+                Some(v) => (*v.header).clone(),
+                None => return,
             };
 
             let current_mempool = Mempool::new(known_valid.clone(), vec![]);
@@ -627,7 +372,7 @@ where
             }
             let message = CurrentHeadMessage::new(
                 store.state().config.chain_id.clone(),
-                head_state.header,
+                current_head_header,
                 current_mempool,
             );
             let message = Arc::new(PeerMessageResponse::from(message));

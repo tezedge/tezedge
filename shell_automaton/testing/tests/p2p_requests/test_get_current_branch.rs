@@ -70,6 +70,8 @@ fn data(current_head_level: Level) -> (Cluster, Vec<BlockHeaderWithHash>) {
     state.current_head = CurrentHeadState::Rehydrated {
         head: chain.last().unwrap().clone(),
         head_pred: chain.iter().rev().nth(1).cloned(),
+        block_metadata_hash: None,
+        ops_metadata_hash: None,
     };
 
     (Cluster::new(state, initial_time), chain)

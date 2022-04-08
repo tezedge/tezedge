@@ -55,7 +55,7 @@ use crate::peer::disconnection::{PeerDisconnectAction, PeerDisconnectedAction};
 
 use crate::peer::handshaking::*;
 
-use crate::mempool::PrevalidatorAction;
+use crate::mempool::validator::*;
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
 use crate::peers::check::timeouts::{
@@ -482,14 +482,11 @@ pub enum Action {
     BootstrapFinished(BootstrapFinishedAction),
     BootstrapFromPeerCurrentHead(BootstrapFromPeerCurrentHeadAction),
 
-    Prevalidator(PrevalidatorAction),
-
     MempoolRecvDone(MempoolRecvDoneAction),
     MempoolGetOperations(MempoolGetOperationsAction),
     MempoolMarkOperationsAsPending(MempoolMarkOperationsAsPendingAction),
     MempoolOperationRecvDone(MempoolOperationRecvDoneAction),
     MempoolOperationInject(MempoolOperationInjectAction),
-    MempoolValidateStart(MempoolValidateStartAction),
     MempoolRpcRespond(MempoolRpcRespondAction),
     MempoolRegisterOperationsStream(MempoolRegisterOperationsStreamAction),
     MempoolUnregisterOperationsStreams(MempoolUnregisterOperationsStreamsAction),
@@ -499,9 +496,18 @@ pub enum Action {
     MempoolBroadcast(MempoolBroadcastAction),
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
     MempoolGetPendingOperations(MempoolGetPendingOperationsAction),
-    MempoolFlush(MempoolFlushAction),
     MempoolOperationDecoded(MempoolOperationDecodedAction),
     MempoolRpcEndorsementsStatusGet(MempoolRpcEndorsementsStatusGetAction),
+    MempoolOperationValidateNext(MempoolOperationValidateNextAction),
+
+    MempoolValidatorInit(MempoolValidatorInitAction),
+    MempoolValidatorPending(MempoolValidatorPendingAction),
+    MempoolValidatorSuccess(MempoolValidatorSuccessAction),
+    MempoolValidatorReady(MempoolValidatorReadyAction),
+
+    MempoolValidatorValidateInit(MempoolValidatorValidateInitAction),
+    MempoolValidatorValidatePending(MempoolValidatorValidatePendingAction),
+    MempoolValidatorValidateSuccess(MempoolValidatorValidateSuccessAction),
 
     BlockInject(BlockInjectAction),
 
