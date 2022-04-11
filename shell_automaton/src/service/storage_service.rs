@@ -129,7 +129,11 @@ pub enum StorageResponseSuccess {
     CycleMetaGetSuccess(CycleKey, Option<CycleData>),
 
     /// Returns: `(CurrentHead, CurrentHeadPredecessor)`.
-    CurrentHeadGetSuccess(BlockHeaderWithHash, Option<BlockHeaderWithHash>),
+    CurrentHeadGetSuccess(
+        BlockHeaderWithHash,
+        Option<BlockHeaderWithHash>,
+        BlockAdditionalData,
+    ),
 
     BlockHeaderPutSuccess(bool),
     BlockOperationsPutSuccess(bool),
@@ -313,17 +317,23 @@ impl StorageServiceDefault {
                             })
                         })
                         .unwrap_or_else(|| storage::hydrate_current_head(&chain_id, &storage))
+                        .map_err(StorageError::from)
                         .and_then(|head| {
                             let pred = if head.header.level() > 0 {
                                 block_storage.get(head.header.predecessor())?
                             } else {
                                 None
                             };
-                            Ok((head, pred))
+                            let additional_data = block_meta_storage
+                                .get_additional_data(&head.hash)?
+                                .ok_or(StorageError("missing additional_data".to_owned()))?;
+                            Ok((head, pred, additional_data))
                         });
                     match result {
-                        Ok((head, pred)) => Ok(CurrentHeadGetSuccess(head, pred)),
-                        Err(err) => Err(CurrentHeadGetError(err.into())),
+                        Ok((head, pred, additional_data)) => {
+                            Ok(CurrentHeadGetSuccess(head, pred, additional_data))
+                        }
+                        Err(err) => Err(CurrentHeadGetError(err)),
                     }
                 }
 

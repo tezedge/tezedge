@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+pub mod validator;
+
 mod mempool_state;
 pub use self::mempool_state::*;
 

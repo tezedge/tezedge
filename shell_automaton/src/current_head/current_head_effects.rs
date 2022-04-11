@@ -46,10 +46,13 @@ where
             }
 
             match &content.response.result {
-                Ok(StorageResponseSuccess::CurrentHeadGetSuccess(head, pred)) => {
+                Ok(StorageResponseSuccess::CurrentHeadGetSuccess(head, pred, additional_data)) => {
                     store.dispatch(CurrentHeadRehydrateSuccessAction {
                         head: head.clone(),
                         head_pred: pred.clone(),
+
+                        block_metadata_hash: additional_data.block_metadata_hash().clone(),
+                        ops_metadata_hash: additional_data.ops_metadata_hash().clone(),
                     });
                 }
                 Err(StorageResponseError::CurrentHeadGetError(error)) => {

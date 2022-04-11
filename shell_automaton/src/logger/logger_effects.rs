@@ -19,7 +19,8 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
             slog::info!(log, "CurrentHead Updated";
                 "level" => content.new_head.header.level(),
                 "hash" => content.new_head.hash.to_string(),
-                "fitness" => display_fitness(content.new_head.header.fitness()));
+                "fitness" => display_fitness(content.new_head.header.fitness()),
+                "payload_hash" => format!("{:?}", content.payload_hash.as_ref()));
             slog::debug!(log, "CurrentHead Updated - full header";
                 "new_head" => slog::FnValue(|_| format!("{:?}", content.new_head)));
         }

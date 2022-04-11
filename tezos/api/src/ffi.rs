@@ -179,6 +179,7 @@ pub struct BeginApplicationResponse {
     pub result: String,
 }
 
+// TODO: check if all the field are needed.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BeginConstructionRequest {
     pub chain_id: ChainId,

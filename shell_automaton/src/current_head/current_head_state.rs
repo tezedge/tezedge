@@ -1,8 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::BlockPayloadHash;
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::{BlockHash, BlockMetadataHash, OperationMetadataListListHash};
 use storage::BlockHeaderWithHash;
 
 use crate::request::RequestId;
@@ -27,11 +29,20 @@ pub enum CurrentHeadState {
         time: u64,
         head: BlockHeaderWithHash,
         head_pred: Option<BlockHeaderWithHash>,
+
+        block_metadata_hash: Option<BlockMetadataHash>,
+        ops_metadata_hash: Option<OperationMetadataListListHash>,
     },
 
     Rehydrated {
         head: BlockHeaderWithHash,
         head_pred: Option<BlockHeaderWithHash>,
+
+        payload_hash: Option<BlockPayloadHash>,
+        // Needed for mempool prevalidator's begin construction
+        // for prevalidation request.
+        block_metadata_hash: Option<BlockMetadataHash>,
+        ops_metadata_hash: Option<OperationMetadataListListHash>,
     },
 }
 
@@ -48,9 +59,20 @@ impl CurrentHeadState {
         }
     }
 
+    pub fn get_hash(&self) -> Option<&BlockHash> {
+        self.get().map(|v| &v.hash)
+    }
+
     pub fn get_pred(&self) -> Option<&BlockHeaderWithHash> {
         match self {
             Self::Rehydrated { head_pred, .. } => head_pred.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn payload_hash(&self) -> Option<&BlockPayloadHash> {
+        match self {
+            Self::Rehydrated { payload_hash, .. } => payload_hash.as_ref(),
             _ => None,
         }
     }

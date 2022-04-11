@@ -22,6 +22,9 @@ where
 {
     match &action.action {
         Action::PeerMessageReadSuccess(PeerMessageReadSuccessAction { message, .. }) => {
+            if !block_prechecking_enabled(store.state()) {
+                return;
+            }
             let current_head = if let PeerMessage::CurrentHead(current_head) = message.message() {
                 current_head
             } else {
@@ -45,6 +48,9 @@ where
             block_header,
             ..
         }) => {
+            if !block_prechecking_enabled(store.state()) {
+                return;
+            }
             store.dispatch(CurrentHeadReceivedAction {
                 block_hash: block_hash.clone(),
                 block_header: block_header.as_ref().clone(),

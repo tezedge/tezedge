@@ -15,7 +15,7 @@ use shell_automaton::block_applier;
 use shell_automaton::current_head_precheck;
 use shell_automaton::fuzzing::state_singleton::FUZZER_STATE;
 use shell_automaton::mempool::mempool_actions;
-use shell_automaton::mempool::PrevalidatorAction;
+use shell_automaton::mempool::validator as mempool_validator;
 use shell_automaton::peers::init::PeersInitAction;
 use shell_automaton::prechecker::prechecker_actions;
 use shell_automaton::protocol_runner;
@@ -843,7 +843,6 @@ enum MempoolActionTest {
     TestMempoolMarkOperationsAsPendingAction(mempool_actions::MempoolMarkOperationsAsPendingAction),
     TestMempoolOperationRecvDoneAction(mempool_actions::MempoolOperationRecvDoneAction),
     TestMempoolOperationInjectAction(mempool_actions::MempoolOperationInjectAction),
-    TestMempoolValidateStartAction(mempool_actions::MempoolValidateStartAction),
     TestMempoolRpcRespondAction(mempool_actions::MempoolRpcRespondAction),
     TestMempoolRegisterOperationsStreamAction(
         mempool_actions::MempoolRegisterOperationsStreamAction,
@@ -857,12 +856,19 @@ enum MempoolActionTest {
     TestMempoolBroadcastAction(mempool_actions::MempoolBroadcastAction),
     TestMempoolBroadcastDoneAction(mempool_actions::MempoolBroadcastDoneAction),
     TestMempoolGetPendingOperationsAction(mempool_actions::MempoolGetPendingOperationsAction),
-    TestMempoolFlushAction(mempool_actions::MempoolFlushAction),
     TestMempoolOperationDecodedAction(mempool_actions::MempoolOperationDecodedAction),
     TestMempoolRpcEndorsementsStatusGetAction(
         mempool_actions::MempoolRpcEndorsementsStatusGetAction,
     ),
     TestMempoolBlockInjectAction(mempool_actions::BlockInjectAction),
+    TestMempoolOperationValidateNext(mempool_actions::MempoolOperationValidateNextAction),
+    TestMempoolValidatorInit(mempool_validator::MempoolValidatorInitAction),
+    TestMempoolValidatorPending(mempool_validator::MempoolValidatorPendingAction),
+    TestMempoolValidatorSuccess(mempool_validator::MempoolValidatorSuccessAction),
+    TestMempoolValidatorReady(mempool_validator::MempoolValidatorReadyAction),
+    TestMempoolValidatorValidateInit(mempool_validator::MempoolValidatorValidateInitAction),
+    TestMempoolValidatorValidatePending(mempool_validator::MempoolValidatorValidatePendingAction),
+    TestMempoolValidatorValidateSuccess(mempool_validator::MempoolValidatorValidateSuccessAction),
 }
 
 impl MempoolActionTest {
@@ -873,7 +879,6 @@ impl MempoolActionTest {
             Self::TestMempoolMarkOperationsAsPendingAction(a) => a.into(),
             Self::TestMempoolOperationRecvDoneAction(a) => a.into(),
             Self::TestMempoolOperationInjectAction(a) => a.into(),
-            Self::TestMempoolValidateStartAction(a) => a.into(),
             Self::TestMempoolRpcRespondAction(a) => a.into(),
             Self::TestMempoolRegisterOperationsStreamAction(a) => a.into(),
             Self::TestMempoolUnregisterOperationsStreamsAction(a) => a.into(),
@@ -883,10 +888,17 @@ impl MempoolActionTest {
             Self::TestMempoolBroadcastAction(a) => a.into(),
             Self::TestMempoolBroadcastDoneAction(a) => a.into(),
             Self::TestMempoolGetPendingOperationsAction(a) => a.into(),
-            Self::TestMempoolFlushAction(a) => a.into(),
             Self::TestMempoolOperationDecodedAction(a) => a.into(),
             Self::TestMempoolRpcEndorsementsStatusGetAction(a) => a.into(),
             Self::TestMempoolBlockInjectAction(a) => a.into(),
+            Self::TestMempoolOperationValidateNext(a) => a.into(),
+            Self::TestMempoolValidatorInit(a) => a.into(),
+            Self::TestMempoolValidatorPending(a) => a.into(),
+            Self::TestMempoolValidatorSuccess(a) => a.into(),
+            Self::TestMempoolValidatorReady(a) => a.into(),
+            Self::TestMempoolValidatorValidateInit(a) => a.into(),
+            Self::TestMempoolValidatorValidatePending(a) => a.into(),
+            Self::TestMempoolValidatorValidateSuccess(a) => a.into(),
         }
     }
 }
@@ -1021,7 +1033,6 @@ enum ControlActionTest {
     TestP2pServerEvent(P2pServerEvent),
     TestP2pPeerEvent(P2pPeerEvent),
     TestWakeupEvent(WakeupEvent),
-    TestProtocolAction(PrevalidatorAction),
     TestShutdownInitAction(ShutdownInitAction),
     TestShutdownPendingAction(ShutdownPendingAction),
     TestShutdownSuccessAction(ShutdownSuccessAction),
@@ -1045,7 +1056,6 @@ impl ControlActionTest {
             Self::TestP2pServerEvent(a) => a.into(),
             Self::TestP2pPeerEvent(a) => a.into(),
             Self::TestWakeupEvent(a) => a.into(),
-            Self::TestProtocolAction(a) => a.into(),
             Self::TestShutdownInitAction(a) => a.into(),
             Self::TestShutdownPendingAction(a) => a.into(),
             Self::TestShutdownSuccessAction(a) => a.into(),

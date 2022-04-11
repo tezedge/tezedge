@@ -3,9 +3,11 @@
 
 use std::sync::Arc;
 
-use crypto::hash::ProtocolHash;
 use serde::{Deserialize, Serialize};
 
+use crypto::hash::{
+    BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash, ProtocolHash,
+};
 use storage::BlockHeaderWithHash;
 
 use crate::protocol_runner::ProtocolRunnerState;
@@ -69,6 +71,9 @@ impl EnablingCondition<State> for CurrentHeadRehydrateErrorAction {
 pub struct CurrentHeadRehydrateSuccessAction {
     pub head: BlockHeaderWithHash,
     pub head_pred: Option<BlockHeaderWithHash>,
+
+    pub block_metadata_hash: Option<BlockMetadataHash>,
+    pub ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
 impl EnablingCondition<State> for CurrentHeadRehydrateSuccessAction {
@@ -99,6 +104,9 @@ pub struct CurrentHeadUpdateAction {
     pub new_head: Arc<BlockHeaderWithHash>,
     pub protocol: ProtocolHash,
     pub next_protocol: ProtocolHash,
+    pub payload_hash: Option<BlockPayloadHash>,
+    pub block_metadata_hash: Option<BlockMetadataHash>,
+    pub ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
 impl EnablingCondition<State> for CurrentHeadUpdateAction {
