@@ -43,7 +43,7 @@ use super::{
     mempool_actions::*,
     monitored_operation::{MempoolOperations, MonitoredOperation},
     validator::{MempoolValidatorInitAction, MempoolValidatorValidateInitAction},
-    BroadcastState, MempoolOperation,
+    BroadcastState, MempoolOperation, OperationKind,
 };
 
 pub fn mempool_effects<S>(store: &mut Store<State, S, Action>, action: &ActionWithMeta)
@@ -69,10 +69,38 @@ where
     }
     match &action.action {
         Action::MempoolOperationValidateNext(_) => {
-            let mempool_state = &store.state().mempool;
+            let mempool = &store.state().mempool;
 
-            let (op_hash, op_content) = match mempool_state.pending_operations.iter().next() {
-                Some(v) => (v.0.clone(), v.1.clone()),
+            // Find operation with highest priority.
+            let (op_hash, op_content) = match mempool
+                .injecting_rpc_ids
+                .iter()
+                .filter_map(|(op_hash, _)| {
+                    mempool
+                        .pending_operations
+                        .get(op_hash)
+                        .map(|content| (10, op_hash, content))
+                })
+                .chain(
+                    mempool
+                        .pending_operations
+                        .iter()
+                        .map(|(op_hash, op_content)| {
+                            let priority = match OperationKind::from_operation_content_raw(
+                                op_content.data().as_ref(),
+                            ) {
+                                OperationKind::Endorsement | OperationKind::EndorsementWithSlot => {
+                                    9
+                                }
+                                OperationKind::Preendorsement => 8,
+                                _ => 0,
+                            };
+                            (priority, op_hash, op_content)
+                        }),
+                )
+                .max_by_key(|(priority, _, _)| *priority)
+            {
+                Some(v) => (v.1.clone(), v.2.clone()),
                 None => return,
             };
 
