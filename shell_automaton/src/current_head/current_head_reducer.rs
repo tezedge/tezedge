@@ -50,28 +50,40 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                     ),
                     _ => return,
                 };
-            state.current_head = CurrentHeadState::Rehydrated {
-                head,
-                head_pred,
-                payload_hash: None,
-                block_metadata_hash,
-                ops_metadata_hash,
-            };
+
+            state.current_head = CurrentHeadState::rehydrated(head, head_pred);
+            state
+                .current_head
+                .set_block_metadata_hash(block_metadata_hash)
+                .set_ops_metadata_hash(ops_metadata_hash);
         }
         Action::CurrentHeadUpdate(content) => {
+            let mut applied_blocks = match &mut state.current_head {
+                CurrentHeadState::Rehydrated { applied_blocks, .. } => {
+                    std::mem::take(applied_blocks)
+                }
+                _ => return,
+            };
+            let head = content.new_head.clone();
             let head_pred = state
                 .current_head
                 .get()
-                .filter(|pred| &pred.hash == content.new_head.header.predecessor())
+                .filter(|pred| &pred.hash == head.header.predecessor())
                 .or_else(|| state.current_head.get_pred())
-                .filter(|pred| &pred.hash == content.new_head.header.predecessor())
+                .filter(|pred| &pred.hash == head.header.predecessor())
+                .or_else(|| applied_blocks.get(head.header.predecessor()))
                 .cloned();
+
+            applied_blocks.insert(head.hash.clone(), head.clone());
+            applied_blocks.retain(|_, b| b.header.level() + 1 >= head.header.level());
+
             state.current_head = CurrentHeadState::Rehydrated {
-                head: content.new_head.as_ref().clone(),
+                head,
                 head_pred,
                 payload_hash: content.payload_hash.clone(),
                 block_metadata_hash: content.block_metadata_hash.clone(),
                 ops_metadata_hash: content.ops_metadata_hash.clone(),
+                applied_blocks,
             };
         }
         _ => {}

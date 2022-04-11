@@ -404,20 +404,11 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                     let pred_level = block.header.level() - 1;
                     let pred_hash = block.header.predecessor();
                     let current_level = current_head.header.level();
-                    if pred_level > current_level {
-                    } else if pred_level == current_level {
-                        if pred_hash == &current_head.hash {
-                            peer_intervals[index]
-                                .current
-                                .to_finished(action.time_as_nanos(), content.peer);
-                        }
-                    } else if current_level - 1 == pred_level {
-                        if pred_hash == current_head.header.predecessor() {
-                            // allow current head(1 level) reorg
-                            peer_intervals[index]
-                                .current
-                                .to_finished(action.time_as_nanos(), content.peer);
-                        }
+                    if state.current_head.is_applied(pred_hash) {
+                        peer_intervals[index]
+                            .current
+                            .to_finished(action.time_as_nanos(), content.peer);
+                    } else if pred_level >= current_level - 1 {
                     } else if pred_level >= 0 && current_level - 2 == pred_level {
                         let head_pred = state.current_head.get_pred();
                         let is_predecessor = head_pred.map_or(false, |head_pred| {

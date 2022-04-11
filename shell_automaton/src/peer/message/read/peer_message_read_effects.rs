@@ -301,7 +301,7 @@ where
                                 "peer" => format!("{}", content.address),
                                 "key" => format!("{:?}", key));
                         } else {
-                            slog::warn!(&state.log, "Peer - Too many block header requests!";
+                            slog::warn!(&state.log, "Peer - Too many block operations requests!";
                                 "peer" => format!("{}", content.address),
                                 "key" => format!("{:?}", key),
                                 "current_requested_block_headers_len" => msg.get_operations_for_blocks().len(),
