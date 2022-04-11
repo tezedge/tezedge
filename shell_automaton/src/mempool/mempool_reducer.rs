@@ -398,7 +398,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .operations_state
                             .insert(hash.clone(), MempoolOperation::received(level, action));
                     }
-
                 }
                 // of course peer knows about it, because he sent us it
                 peer.seen_operations.insert(hash);
@@ -419,8 +418,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 return;
             }
 
-            if !state.config.disable_endorsements_precheck
-                && prechecking_enabled(&state.prechecker, operation.branch())
+            if prechecking_enabled(&state.prechecker, operation.branch())
                 && matches!(
                     OperationKind::from_operation_content_raw(operation.data().as_ref()),
                     OperationKind::Preendorsement | OperationKind::Endorsement
@@ -461,12 +459,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .injecting_rpc_ids
                 .insert(operation_hash.clone(), *rpc_id);
 
-            let is_consensus_operation = matches!(
-                OperationKind::from_operation_content_raw(operation.data().as_ref()),
-                OperationKind::Preendorsement | OperationKind::Endorsement
-            );
-
-            if is_consensus_operation {
+            if prechecking_enabled(&state.prechecker, operation.branch())
+                && matches!(
+                    OperationKind::from_operation_content_raw(operation.data().as_ref()),
+                    OperationKind::Preendorsement | OperationKind::Endorsement
+                )
+            {
                 mempool_state
                     .prechecking_operations
                     .insert(operation_hash.clone());
