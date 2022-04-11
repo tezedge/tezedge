@@ -71,7 +71,7 @@ where
         Action::MempoolOperationValidateNext(_) => {
             let mempool_state = &store.state().mempool;
 
-            let (op_hash, op_content) = match mempool_state.pending_operations.iter().nth(0) {
+            let (op_hash, op_content) = match mempool_state.pending_operations.iter().next() {
                 Some(v) => (v.0.clone(), v.1.clone()),
                 None => return,
             };

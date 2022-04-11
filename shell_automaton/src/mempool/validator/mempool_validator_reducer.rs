@@ -80,7 +80,7 @@ pub fn mempool_validator_reducer(state: &mut State, action: &ActionWithMeta) {
                         op_content: op_content.clone(),
                     };
                 }
-                _ => return,
+                _ => (),
             }
         }
         Action::MempoolValidatorValidateSuccess(content) => {
@@ -98,7 +98,7 @@ pub fn mempool_validator_reducer(state: &mut State, action: &ActionWithMeta) {
                         protocol_preapply_end: content.protocol_preapply_end,
                     };
                 }
-                _ => return,
+                _ => (),
             }
         }
         _ => {}

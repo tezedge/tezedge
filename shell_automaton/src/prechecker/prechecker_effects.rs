@@ -135,7 +135,7 @@ where
                         };
                         store.dispatch(PrecheckerDecodeOperationAction {
                             key: key.clone(),
-                            protocol: protocol.clone(),
+                            protocol,
                         });
                     }
                     PrecheckerOperationState::Applied { .. } => {
