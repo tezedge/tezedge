@@ -276,11 +276,13 @@ impl StatisticsMonitor {
                             Some(preendorsement_quorum_summary.clone()),
                             None,
                         );
+                        debug!(self.log, "Summary: {final_endorsement_summary}");
                         self.endorsmenet_summary_storage
                             .insert(*current_head.level() as i32, final_endorsement_summary)?;
                     }
                 } else {
                     let final_endorsement_summary = FinalEndorsementSummary::new(None, None, None);
+                    debug!(self.log, "Summary: {final_endorsement_summary}");
                     self.endorsmenet_summary_storage
                         .insert(*current_head.level() as i32, final_endorsement_summary)?;
                 }
@@ -416,7 +418,19 @@ impl EndorsementOperationSummary {
             endorsement_op_stat.clone().and_then(|stats| {
                 stats
                     .injected_timestamp
-                    .map(|endorsement_inject_time| (endorsement_inject_time as i64) - quorum_time)
+                    .and_then(|endorsement_inject_time| {
+                        block_stats.map(|block_stats| {
+                            if (block_stats.block_timestamp as i64) > quorum_time {
+                                (endorsement_inject_time - block_stats.block_timestamp) as i64
+                            } else {
+                                (endorsement_inject_time as i64) - quorum_time
+                            }
+                        })
+                    })
+
+                // stats
+                //     .injected_timestamp
+                //     .map(|endorsement_inject_time| (endorsement_inject_time as i64) - quorum_time)
             })
         });
 
@@ -528,28 +542,77 @@ impl PreendorsementQuorumSummary {
         block_application_stats: Option<BlockApplicationStatistics>,
         threshold: u64,
     ) -> Self {
+        // Uses only applied time
+        // let preendorsement_quorum = endorsing_rights.map(|rights| {
+        //     let endorsing_powers = rights.endorsement_powers();
+        //     statuses
+        //         .values()
+        //         .filter(|stats| stats.state == "applied")
+        //         .sorted_by_key(|val| val.applied_time)
+        //         .filter_map(|status| {
+        //             endorsing_powers.get(&status.slot).and_then(|power| {
+        //                 status
+        //                     .applied_time
+        //                     .map(|applied_time| (*power, applied_time))
+        //             })
+        //         })
+        //         .fold_while((0, 0), |(acc, _), (power, current_applied_time)| {
+        //             if acc < threshold {
+        //                 Continue((acc + u64::from(power), current_applied_time))
+        //             } else {
+        //                 Done((acc, current_applied_time))
+        //             }
+        //         })
+        //         .into_inner()
+        // });
+
+        // Uses branch_delayed time or applied_time
         let preendorsement_quorum = endorsing_rights.map(|rights| {
             let endorsing_powers = rights.endorsement_powers();
             statuses
                 .values()
-                .filter(|stats| stats.state == "applied")
-                .sorted_by_key(|val| val.applied_time)
                 .filter_map(|status| {
                     endorsing_powers.get(&status.slot).and_then(|power| {
-                        status
-                            .applied_time
-                            .map(|applied_time| (*power, applied_time))
+                        status.branch_delayed_time.map(|branch_delayed_time| (*power, branch_delayed_time))
+                        .or_else(|| status.applied_time.map(|applied_time| (*power, applied_time)))
                     })
                 })
-                .fold_while((0, 0), |(acc, _), (power, current_applied_time)| {
+                .sorted_by_key(|val| val.1)
+                .fold_while((0, 0), |(acc, time), (power, current_time)| {
                     if acc < threshold {
-                        Continue((acc + u64::from(power), current_applied_time))
+                        Continue((acc + u64::from(power), current_time))
                     } else {
-                        Done((acc, current_applied_time))
+                        Done((acc, time))
                     }
                 })
                 .into_inner()
         });
+
+        // Uses received contetnts / receive hash time
+        // let preendorsement_quorum = endorsing_rights.map(|rights| {
+        //     let endorsing_powers = rights.endorsement_powers();
+        //     statuses
+        //         .values()
+        //         .filter_map(|status| {
+        //             endorsing_powers.get(&status.slot).and_then(|power| {
+        //                 // filter here so we avoid another unnecessary iteration
+        //                 if status.state == "applied" || status.state == "branch_delayed" {
+        //                     status.received_hash_time.map(|received_hash_time| (*power, received_hash_time))
+        //                 } else {
+        //                     None
+        //                 }
+        //             })
+        //         })
+        //         .sorted_by_key(|val| val.1)
+        //         .fold_while((0, 0), |(acc, time), (power, current_time)| {
+        //             if acc < threshold {
+        //                 Continue((acc + u64::from(power), current_time))
+        //             } else {
+        //                 Done((acc, time))
+        //             }
+        //         })
+        //         .into_inner()
+        // });
 
         let (endorsing_power, preendorsement_quorum_timestamp) = if let Some((endorsing_power, quorum_timestamp)) = preendorsement_quorum {
             if endorsing_power > threshold {
@@ -1007,7 +1070,21 @@ pub struct EndorsementStatus {
     pub received_hash_time: Option<u64>,
     pub slot: u16,
     pub state: String,
-    pub broadcast: bool,
+    pub broadcast: BroadcastState,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum BroadcastState {
+    Pending,
+    Broadcast,
+    NotNeeded,
+}
+
+impl Default for BroadcastState {
+    fn default() -> Self {
+        Self::Pending
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, EnumIter, Serialize, Deserialize)]
@@ -1154,7 +1231,7 @@ mod test {
                 DelegateEndorsingRights {
                     delegate: String::from("baker2"),
                     first_slot: 50,
-                    endorsing_power: 10,
+                    endorsing_power: 50,
                 },
                 DelegateEndorsingRights {
                     delegate: String::from("baker3"),
@@ -1201,7 +1278,7 @@ mod test {
             ..Default::default()
         });
 
-        let quorum_summary = PreendorsementQuorumSummary::new(round_summary, statuses.clone(), Some(endorsing_rights), Some(block_application_stats), 50);
+        let quorum_summary = PreendorsementQuorumSummary::new(round_summary.clone(), statuses.clone(), Some(endorsing_rights.clone()), Some(block_application_stats.clone()), 50);
 
         assert_eq!(quorum_summary.preendorsement_quorum_reached, Some(100));
         assert_eq!(quorum_summary.preendorsement_quorum_timestamp, Some(1100));
@@ -1217,11 +1294,25 @@ mod test {
         assert_eq!(quorum_summary.preendorsement_quorum_reached, Some(100));
         assert_eq!(quorum_summary.preendorsement_quorum_timestamp, Some(1100));
 
+
+        // insert another preendorsement, this time one that was received earlier as branch_delayed
+        statuses.insert(String::from("Ophash4"), EndorsementStatus {
+            slot: 50,
+            branch_delayed_time: Some(1050),
+            state: String::from("applied"),
+            ..Default::default()
+        });
+
+        let quorum_summary = PreendorsementQuorumSummary::new(round_summary, statuses.clone(), Some(endorsing_rights), Some(block_application_stats), 50);
+
+        assert_eq!(quorum_summary.preendorsement_quorum_reached, Some(50));
+        assert_eq!(quorum_summary.preendorsement_quorum_timestamp, Some(1050));
+
         // (
             //     String::from("Ophash2"),
                 // EndorsementStatus {
                 //     slot: 50,
-                //     applied_time: Some(100),
+                //     received_hash_time: Some(100),
                 //     state: String::from("applied"),
                 //     ..Default::default()
                 // }
@@ -1230,7 +1321,7 @@ mod test {
             //     String::from("Ophash3"),
             //     EndorsementStatus {
             //         slot: 60,
-            //         applied_time: Some(125),
+            //         received_hash_time: Some(125),
             //         state: String::from("applied"),
             //         ..Default::default()
             //     }
@@ -1239,7 +1330,7 @@ mod test {
             //     String::from("Ophash4"),
             //     EndorsementStatus {
             //         slot: 25,
-            //         applied_time: Some(98),
+            //         received_hash_time: Some(98),
             //         state: String::from("applied"),
             //         ..Default::default()
             //     }
