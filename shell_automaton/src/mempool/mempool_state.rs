@@ -36,7 +36,7 @@ pub struct MempoolState {
     pub running_since: Option<()>,
     //
     // performing rpc
-    pub(super) injecting_rpc_ids: HashMap<OperationHash, RpcId>,
+    pub(super) injecting_rpc_ids: BTreeMap<OperationHash, RpcId>,
     // performed rpc
     pub(super) injected_rpc_ids: Vec<RpcId>,
     // operation streams requested by baker
@@ -45,9 +45,9 @@ pub struct MempoolState {
     pub local_head_state: Option<HeadState>,
     pub branch_changed: bool,
     // let's track what our peers know, and what we waiting from them
-    pub(super) peer_state: HashMap<SocketAddr, PeerState>,
+    pub(super) peer_state: BTreeMap<SocketAddr, PeerState>,
     // we sent GetOperations and pending full content of those operations
-    pub(super) pending_full_content: HashSet<OperationHash>,
+    pub(super) pending_full_content: BTreeSet<OperationHash>,
     // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: MempoolPendingOperations,
     pub(super) prechecking_operations: BTreeSet<OperationHash>,
@@ -56,7 +56,7 @@ pub struct MempoolState {
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
 
     /// Last 120 (TTL) predecessor blocks.
-    pub last_predecessor_blocks: HashMap<BlockHash, i32>,
+    pub last_predecessor_blocks: BTreeMap<BlockHash, i32>,
 
     pub operation_stats: OperationsStats,
 
@@ -148,7 +148,7 @@ pub struct OperationStream {
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct ValidatedOperations {
-    pub ops: HashMap<OperationHash, Operation>,
+    pub ops: BTreeMap<OperationHash, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
     pub applied: Vec<Applied>,
@@ -165,12 +165,12 @@ pub struct PeerState {
     // we received mempool from the peer and gonna send GetOperations
     pub(super) requesting_full_content: HashSet<OperationHash>,
     // those operations are known to the peer, should not rebroadcast
-    pub(super) seen_operations: HashSet<OperationHash>,
+    pub(super) seen_operations: BTreeSet<OperationHash>,
 }
 
 pub type OperationsStats = BTreeMap<OperationHash, OperationStats>;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct OperationStats {
     /// First time we saw this operation in the current head.
     pub kind: Option<OperationKind>,
@@ -180,22 +180,13 @@ pub struct OperationStats {
     /// (time_validation_finished, validation_result, prevalidation_duration)
     pub validation_result: Option<(u64, OperationValidationResult, Option<u64>, Option<u64>)>,
     pub validations: Vec<OperationValidationStats>,
-    pub nodes: HashMap<CryptoboxPublicKeyHash, OperationNodeStats>,
+    pub nodes: BTreeMap<CryptoboxPublicKeyHash, OperationNodeStats>,
     pub injected_timestamp: Option<u64>,
 }
 
 impl OperationStats {
     pub fn new() -> Self {
-        Self {
-            kind: None,
-            min_time: None,
-            first_block_timestamp: None,
-            validation_started: None,
-            validation_result: None,
-            validations: vec![],
-            nodes: HashMap::new(),
-            injected_timestamp: None,
-        }
+        Default::default()
     }
 
     /// Sets operation kind if not already set.
@@ -424,12 +415,6 @@ impl OperationStats {
     }
     pub fn injected(&mut self, time: &u64) {
         self.injected_timestamp = Some(*time);
-    }
-}
-
-impl Default for OperationStats {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

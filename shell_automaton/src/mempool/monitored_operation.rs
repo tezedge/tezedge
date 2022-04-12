@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -23,7 +23,7 @@ pub struct MempoolOperations {
 
 fn convert_applied(
     applied: &[Applied],
-    operations: &HashMap<OperationHash, Operation>,
+    operations: &BTreeMap<OperationHash, Operation>,
 ) -> Vec<HashMap<String, Value>> {
     applied
         .iter()
@@ -49,7 +49,7 @@ fn convert_applied(
 
 fn convert_errored<'a>(
     errored: impl IntoIterator<Item = &'a Errored>,
-    operations: &HashMap<OperationHash, Operation>,
+    operations: &BTreeMap<OperationHash, Operation>,
     protocol: &ProtocolHash,
 ) -> Vec<Value> {
     errored
@@ -107,7 +107,7 @@ impl MempoolOperations {
         branch_delayed: impl IntoIterator<Item = &'a Errored>,
         branch_refused: impl IntoIterator<Item = &'a Errored>,
         outdated: impl IntoIterator<Item = &'a Errored>,
-        operations: &HashMap<OperationHash, Operation>,
+        operations: &BTreeMap<OperationHash, Operation>,
         protocol: &ProtocolHash,
     ) -> Self {
         MempoolOperations {
@@ -154,7 +154,7 @@ impl<'a> MonitoredOperation<'a> {
 
     pub fn collect_applied(
         applied: impl IntoIterator<Item = &'a Applied> + 'a,
-        operations: &'a HashMap<OperationHash, Operation>,
+        operations: &'a BTreeMap<OperationHash, Operation>,
         protocol_hash: &'a str,
     ) -> impl Iterator<Item = MonitoredOperation<'a>> + 'a {
         applied.into_iter().filter_map(move |applied_op| {
@@ -177,7 +177,7 @@ impl<'a> MonitoredOperation<'a> {
 
     pub fn collect_errored(
         errored: impl IntoIterator<Item = &'a Errored> + 'a,
-        operations: &'a HashMap<OperationHash, Operation>,
+        operations: &'a BTreeMap<OperationHash, Operation>,
         protocol_hash: &'a str,
     ) -> impl Iterator<Item = MonitoredOperation<'a>> + 'a {
         errored.into_iter().filter_map(move |errored_op| {
@@ -205,7 +205,8 @@ impl<'a> MonitoredOperation<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, convert::TryInto};
+    use std::collections::BTreeMap;
+    use std::convert::TryInto;
 
     use assert_json_diff::assert_json_eq;
     use serde_json::json;
@@ -225,7 +226,7 @@ mod tests {
             }
         ];
 
-        let mut operations = HashMap::new();
+        let mut operations = BTreeMap::new();
         // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
         operations.insert(
             "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into().unwrap(),
@@ -261,7 +262,7 @@ mod tests {
             }
         ];
 
-        let mut operations = HashMap::new();
+        let mut operations = BTreeMap::new();
         // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
         operations.insert(
             "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into().unwrap(),
@@ -304,7 +305,7 @@ mod tests {
             }
         ];
 
-        let mut operations = HashMap::new();
+        let mut operations = BTreeMap::new();
         // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
         operations.insert(
             "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into().unwrap(),
