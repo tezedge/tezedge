@@ -347,9 +347,8 @@ where
                 store.dispatch(PrecheckerPrecheckOperationRequestAction {
                     operation: operation.clone(),
                 });
-            } else {
-                store.dispatch(MempoolOperationValidateNextAction {});
             }
+            store.dispatch(MempoolOperationValidateNextAction {});
         }
         Action::PrecheckerPrecheckOperationResponse(
             PrecheckerPrecheckOperationResponseAction { response },
