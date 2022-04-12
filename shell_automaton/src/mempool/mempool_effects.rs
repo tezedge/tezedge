@@ -71,7 +71,8 @@ where
         Action::MempoolOperationValidateNext(_) => {
             let mempool_state = &store.state().mempool;
 
-            let (op_hash, op_content) = match mempool_state.pending_operations.iter().next() {
+            // Find operation with highest priority.
+            let (op_hash, op_content) = match mempool_state.next_for_prevalidation() {
                 Some(v) => (v.0.clone(), v.1.clone()),
                 None => return,
             };

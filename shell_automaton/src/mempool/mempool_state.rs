@@ -36,7 +36,7 @@ pub struct MempoolState {
     pub running_since: Option<()>,
     //
     // performing rpc
-    pub(super) injecting_rpc_ids: HashMap<OperationHash, RpcId>,
+    pub(super) injecting_rpc_ids: BTreeMap<OperationHash, RpcId>,
     // performed rpc
     pub(super) injected_rpc_ids: Vec<RpcId>,
     // operation streams requested by baker
@@ -45,18 +45,18 @@ pub struct MempoolState {
     pub local_head_state: Option<HeadState>,
     pub branch_changed: bool,
     // let's track what our peers know, and what we waiting from them
-    pub(super) peer_state: HashMap<SocketAddr, PeerState>,
+    pub(super) peer_state: BTreeMap<SocketAddr, PeerState>,
     // we sent GetOperations and pending full content of those operations
-    pub(super) pending_full_content: HashSet<OperationHash>,
+    pub(super) pending_full_content: BTreeSet<OperationHash>,
     // operations that passed basic checks, sent to protocol validator
-    pub(super) pending_operations: HashMap<OperationHash, Operation>,
+    pub(super) pending_operations: MempoolPendingOperations,
     pub(super) prechecking_operations: BTreeSet<OperationHash>,
     pub validated_operations: ValidatedOperations,
     // track ttl
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
 
     /// Last 120 (TTL) predecessor blocks.
-    pub last_predecessor_blocks: HashMap<BlockHash, i32>,
+    pub last_predecessor_blocks: BTreeMap<BlockHash, i32>,
 
     pub operation_stats: OperationsStats,
 
@@ -68,6 +68,65 @@ impl MempoolState {
         self.peer_state
             .get(&peer)
             .map_or(false, |p| p.seen_operations.contains(op_hash))
+    }
+
+    /// Get next operation with highest priority for prevalidation.
+    pub fn next_for_prevalidation(&self) -> Option<(&OperationHash, &Operation)> {
+        self.injecting_rpc_ids
+            .iter()
+            .find_map(|(hash, _)| {
+                self.pending_operations
+                    .get(hash)
+                    .map(|content| (hash, content))
+            })
+            .or_else(|| self.pending_operations.next_for_prevalidation())
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct MempoolPendingOperations {
+    ops: BTreeMap<OperationHash, Operation>,
+    consensus_ops: BTreeSet<OperationHash>,
+}
+
+impl MempoolPendingOperations {
+    pub fn is_empty(&self) -> bool {
+        self.ops.is_empty()
+    }
+
+    pub fn contains_key(&self, key: &OperationHash) -> bool {
+        self.ops.contains_key(key)
+    }
+
+    pub fn get(&self, key: &OperationHash) -> Option<&Operation> {
+        self.ops.get(key)
+    }
+
+    pub fn insert(&mut self, key: OperationHash, value: Operation) {
+        let op_kind = OperationKind::from_operation_content_raw(value.data().as_ref());
+        let is_new = self.ops.insert(key.clone(), value).is_none();
+        if is_new && op_kind.is_consensus_operation() {
+            self.consensus_ops.insert(key);
+        }
+    }
+
+    /// Remove an operation from pending queue.
+    pub fn remove(&mut self, key: &OperationHash) -> Option<Operation> {
+        self.consensus_ops.remove(key);
+        self.ops.remove(key)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&OperationHash, &Operation)> {
+        self.ops.iter()
+    }
+
+    /// Get next operation with highest priority for prevalidation.
+    pub fn next_for_prevalidation(&self) -> Option<(&OperationHash, &Operation)> {
+        self.consensus_ops
+            .iter()
+            .filter_map(|hash| self.ops.get(hash).map(|content| (hash, content)))
+            .chain(self.ops.iter())
+            .next()
     }
 }
 
@@ -89,7 +148,7 @@ pub struct OperationStream {
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct ValidatedOperations {
-    pub ops: HashMap<OperationHash, Operation>,
+    pub ops: BTreeMap<OperationHash, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
     pub applied: Vec<Applied>,
@@ -106,12 +165,12 @@ pub struct PeerState {
     // we received mempool from the peer and gonna send GetOperations
     pub(super) requesting_full_content: HashSet<OperationHash>,
     // those operations are known to the peer, should not rebroadcast
-    pub(super) seen_operations: HashSet<OperationHash>,
+    pub(super) seen_operations: BTreeSet<OperationHash>,
 }
 
 pub type OperationsStats = BTreeMap<OperationHash, OperationStats>;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct OperationStats {
     /// First time we saw this operation in the current head.
     pub kind: Option<OperationKind>,
@@ -121,22 +180,13 @@ pub struct OperationStats {
     /// (time_validation_finished, validation_result, prevalidation_duration)
     pub validation_result: Option<(u64, OperationValidationResult, Option<u64>, Option<u64>)>,
     pub validations: Vec<OperationValidationStats>,
-    pub nodes: HashMap<CryptoboxPublicKeyHash, OperationNodeStats>,
+    pub nodes: BTreeMap<CryptoboxPublicKeyHash, OperationNodeStats>,
     pub injected_timestamp: Option<u64>,
 }
 
 impl OperationStats {
     pub fn new() -> Self {
-        Self {
-            kind: None,
-            min_time: None,
-            first_block_timestamp: None,
-            validation_started: None,
-            validation_result: None,
-            validations: vec![],
-            nodes: HashMap::new(),
-            injected_timestamp: None,
-        }
+        Default::default()
     }
 
     /// Sets operation kind if not already set.
@@ -365,12 +415,6 @@ impl OperationStats {
     }
     pub fn injected(&mut self, time: &u64) {
         self.injected_timestamp = Some(*time);
-    }
-}
-
-impl Default for OperationStats {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
