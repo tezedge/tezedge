@@ -49,7 +49,7 @@ pub struct MempoolState {
     // we sent GetOperations and pending full content of those operations
     pub(super) pending_full_content: HashSet<OperationHash>,
     // operations that passed basic checks, sent to protocol validator
-    pub(super) pending_operations: HashMap<OperationHash, Operation>,
+    pub(super) pending_operations: MempoolPendingOperations,
     pub(super) prechecking_operations: BTreeSet<OperationHash>,
     pub validated_operations: ValidatedOperations,
     // track ttl
@@ -68,6 +68,65 @@ impl MempoolState {
         self.peer_state
             .get(&peer)
             .map_or(false, |p| p.seen_operations.contains(op_hash))
+    }
+
+    /// Get next operation with highest priority for prevalidation.
+    pub fn next_for_prevalidation(&self) -> Option<(&OperationHash, &Operation)> {
+        self.injecting_rpc_ids
+            .iter()
+            .find_map(|(hash, _)| {
+                self.pending_operations
+                    .get(hash)
+                    .map(|content| (hash, content))
+            })
+            .or_else(|| self.pending_operations.next_for_prevalidation())
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct MempoolPendingOperations {
+    ops: BTreeMap<OperationHash, Operation>,
+    consensus_ops: BTreeSet<OperationHash>,
+}
+
+impl MempoolPendingOperations {
+    pub fn is_empty(&self) -> bool {
+        self.ops.is_empty()
+    }
+
+    pub fn contains_key(&self, key: &OperationHash) -> bool {
+        self.ops.contains_key(key)
+    }
+
+    pub fn get(&self, key: &OperationHash) -> Option<&Operation> {
+        self.ops.get(key)
+    }
+
+    pub fn insert(&mut self, key: OperationHash, value: Operation) {
+        let op_kind = OperationKind::from_operation_content_raw(value.data().as_ref());
+        let is_new = self.ops.insert(key.clone(), value).is_none();
+        if is_new && op_kind.is_consensus_operation() {
+            self.consensus_ops.insert(key);
+        }
+    }
+
+    /// Remove an operation from pending queue.
+    pub fn remove(&mut self, key: &OperationHash) -> Option<Operation> {
+        self.consensus_ops.remove(key);
+        self.ops.remove(key)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&OperationHash, &Operation)> {
+        self.ops.iter()
+    }
+
+    /// Get next operation with highest priority for prevalidation.
+    pub fn next_for_prevalidation(&self) -> Option<(&OperationHash, &Operation)> {
+        self.consensus_ops
+            .iter()
+            .filter_map(|hash| self.ops.get(hash).map(|content| (hash, content)))
+            .chain(self.ops.iter())
+            .next()
     }
 }
 
