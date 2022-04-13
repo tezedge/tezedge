@@ -45,6 +45,7 @@ pub enum Protocol {
     Florence,
     Granada,
     Hangzhou,
+    Ithaca,
 }
 
 impl Protocol {
@@ -63,6 +64,7 @@ impl Protocol {
             Protocol::Florence => "florence",
             Protocol::Granada => "granada",
             Protocol::Hangzhou => "hangzhou",
+            Protocol::Ithaca => "ithaca",
         }
     }
 
@@ -82,6 +84,7 @@ impl Protocol {
             "florence" => Some(Protocol::Florence),
             "granada" => Some(Protocol::Granada),
             "hangzhou" => Some(Protocol::Hangzhou),
+            "ithaca" => Some(Protocol::Ithaca),
             _ => None,
         }
     }
@@ -102,6 +105,7 @@ const PROTO_HASH_EDO: &str = "PtEdo2ZkT9oKpimTah6x2embF25oss54njMuPzkJTEi5RqfdZF
 const PROTO_HASH_FLORENCE: &str = "PsFLorenaUUuikDWvMDr6fGBRG8kt3e3D3fHoXK1j1BFRxeSH4i";
 const PROTO_HASH_GRANADA: &str = "PtGRANADsDU8R9daYKAgWnQYAJ64omN1o3KMGVCykShA97vQbvV";
 const PROTO_HASH_HANGZHOU: &str = "PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx";
+const PROTO_HASH_ITHACA: &str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
 const PROTOCOLS: &[(&str, Protocol)] = &[
     (PROTO_HASH_GENESIS, Protocol::Genesis),
@@ -117,6 +121,7 @@ const PROTOCOLS: &[(&str, Protocol)] = &[
     (PROTO_HASH_FLORENCE, Protocol::Florence),
     (PROTO_HASH_GRANADA, Protocol::Granada),
     (PROTO_HASH_HANGZHOU, Protocol::Hangzhou),
+    (PROTO_HASH_ITHACA, Protocol::Ithaca),
 ];
 
 #[derive(Debug)]
