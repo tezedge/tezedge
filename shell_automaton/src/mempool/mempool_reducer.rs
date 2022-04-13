@@ -23,7 +23,10 @@ use super::{
     OperationKind, OperationNodeCurrentHeadStats, OperationState, OperationStats,
     OperationValidationResult,
 };
-use crate::prechecker::prechecker_actions::PrecheckerPrecheckOperationResponseAction;
+use crate::prechecker::prechecker_actions::{
+    PrecheckerPrecheckOperationResponse, PrecheckerPrecheckOperationResponseAction,
+    PrecheckerPrevalidate,
+};
 
 /// Number of levels to keep endorsements/preendorsements.
 const OPERATION_STATUS_RETAIN_LEVELS: i32 = 120;
@@ -432,11 +435,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             operation_state.next_state(OperationState::ReceivedContents, action);
                     }
                 }
+            } else {
+                mempool_state.operations_state.remove(hash);
             }
             mempool_state
                 .pending_operations
                 .insert(hash.clone(), operation.clone());
-            mempool_state.operations_state.remove(hash);
         }
         Action::MempoolOperationInject(MempoolOperationInjectAction {
             operation,
@@ -530,117 +534,117 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             } else {
                 eprintln!("==== {response:#?}");
             }
-            // match response {
-            //     PrecheckerPrecheckOperationResponse::Applied(applied) => {
-            //         let hash = &applied.hash;
-            //         if let Some(op) = mempool_state.pending_operations.remove(hash) {
-            //             mempool_state
-            //                 .validated_operations
-            //                 .ops
-            //                 .insert(hash.clone(), op);
-            //             mempool_state
-            //                 .validated_operations
-            //                 .applied
-            //                 .push(applied.as_applied());
-            //         }
-            //         if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(hash) {
-            //             mempool_state.injected_rpc_ids.push(rpc_id);
-            //         }
-            //         if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
-            //             if let MempoolOperation {
-            //                 state: OperationState::Decoded,
-            //                 ..
-            //             } = operation_state
-            //             {
-            //                 *operation_state =
-            //                     operation_state.next_state(OperationState::Prechecked, action);
-            //             }
-            //         }
-            //         let current_head_level = mempool_state
-            //             .local_head_state
-            //             .as_ref()
-            //             .map(|v| v.header.level());
-            //         mempool_state
-            //             .operation_stats
-            //             .entry(hash.clone())
-            //             .or_insert_with(OperationStats::new)
-            //             .validation_finished(
-            //                 action.time_as_nanos(),
-            //                 None,
-            //                 None,
-            //                 current_head_level,
-            //                 OperationValidationResult::Prechecked,
-            //             );
-            //     }
-            //     PrecheckerPrecheckOperationResponse::Refused(errored) => {
-            //         let hash = &errored.hash;
-            //         if let Some(op) = mempool_state.pending_operations.remove(&errored.hash) {
-            //             mempool_state
-            //                 .validated_operations
-            //                 .ops
-            //                 .insert(errored.hash.clone(), op);
-            //             mempool_state
-            //                 .validated_operations
-            //                 .refused
-            //                 .push_back(errored.as_errored());
-            //         }
-            //         if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&errored.hash) {
-            //             mempool_state.injected_rpc_ids.push(rpc_id);
-            //         }
-            //         if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
-            //             if let MempoolOperation {
-            //                 state: OperationState::Decoded,
-            //                 ..
-            //             } = operation_state
-            //             {
-            //                 let next =
-            //                     operation_state.next_state(OperationState::PrecheckRefused, action);
-            //                 *operation_state = next;
-            //             }
-            //         }
-            //         let current_head_level = mempool_state
-            //             .local_head_state
-            //             .as_ref()
-            //             .map(|v| v.header.level());
-            //         mempool_state
-            //             .operation_stats
-            //             .entry(hash.clone())
-            //             .or_insert_with(OperationStats::new)
-            //             .validation_finished(
-            //                 action.time_as_nanos(),
-            //                 None,
-            //                 None,
-            //                 current_head_level,
-            //                 OperationValidationResult::PrecheckRefused,
-            //             );
-            //     }
-            //     PrecheckerPrecheckOperationResponse::Prevalidate(PrecheckerPrevalidate {
-            //         hash,
-            //         operation,
-            //     }) => {
-            //         let current_head_level = mempool_state
-            //             .local_head_state
-            //             .as_ref()
-            //             .map(|v| v.header.level());
-            //         mempool_state
-            //             .operation_stats
-            //             .entry(hash.clone())
-            //             .or_insert_with(OperationStats::new)
-            //             .validation_finished(
-            //                 action.time_as_nanos(),
-            //                 None,
-            //                 None,
-            //                 current_head_level,
-            //                 OperationValidationResult::Prevalidate,
-            //             );
-            //         mempool_state
-            //             .pending_operations
-            //             .insert(hash.clone(), operation.clone());
-            //     }
-            //     PrecheckerPrecheckOperationResponse::Error(..) => {
-            //         // TODO
-            //     }
-            // }
+            match response {
+                PrecheckerPrecheckOperationResponse::Applied(applied) => {
+                    let hash = &applied.hash;
+                    // if let Some(op) = mempool_state.pending_operations.remove(hash) {
+                    //     mempool_state
+                    //         .validated_operations
+                    //         .ops
+                    //         .insert(hash.clone(), op);
+                    //     mempool_state
+                    //         .validated_operations
+                    //         .applied
+                    //         .push(applied.as_applied());
+                    // }
+                    // if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(hash) {
+                    //     mempool_state.injected_rpc_ids.push(rpc_id);
+                    // }
+                    if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
+                        if let MempoolOperation {
+                            state: OperationState::Decoded,
+                            ..
+                        } = operation_state
+                        {
+                            *operation_state =
+                                operation_state.next_state(OperationState::Prechecked, action);
+                        }
+                    }
+                    // let current_head_level = mempool_state
+                    //     .local_head_state
+                    //     .as_ref()
+                    //     .map(|v| v.header.level());
+                    // mempool_state
+                    //     .operation_stats
+                    //     .entry(hash.clone())
+                    //     .or_insert_with(OperationStats::new)
+                    //     .validation_finished(
+                    //         action.time_as_nanos(),
+                    //         None,
+                    //         None,
+                    //         current_head_level,
+                    //         OperationValidationResult::Prechecked,
+                    //     );
+                }
+                PrecheckerPrecheckOperationResponse::Refused(errored) => {
+                    let hash = &errored.hash;
+                    // if let Some(op) = mempool_state.pending_operations.remove(&errored.hash) {
+                    //     mempool_state
+                    //         .validated_operations
+                    //         .ops
+                    //         .insert(errored.hash.clone(), op);
+                    //     mempool_state
+                    //         .validated_operations
+                    //         .refused
+                    //         .push_back(errored.as_errored());
+                    // }
+                    // if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&errored.hash) {
+                    //     mempool_state.injected_rpc_ids.push(rpc_id);
+                    // }
+                    if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
+                        if let MempoolOperation {
+                            state: OperationState::Decoded,
+                            ..
+                        } = operation_state
+                        {
+                            let next =
+                                operation_state.next_state(OperationState::PrecheckRefused, action);
+                            *operation_state = next;
+                        }
+                    }
+                    // let current_head_level = mempool_state
+                    //     .local_head_state
+                    //     .as_ref()
+                    //     .map(|v| v.header.level());
+                    // mempool_state
+                    //     .operation_stats
+                    //     .entry(hash.clone())
+                    //     .or_insert_with(OperationStats::new)
+                    //     .validation_finished(
+                    //         action.time_as_nanos(),
+                    //         None,
+                    //         None,
+                    //         current_head_level,
+                    //         OperationValidationResult::PrecheckRefused,
+                    //     );
+                }
+                PrecheckerPrecheckOperationResponse::Prevalidate(PrecheckerPrevalidate {
+                    hash: _,
+                    operation: _,
+                }) => {
+                    // let current_head_level = mempool_state
+                    //     .local_head_state
+                    //     .as_ref()
+                    //     .map(|v| v.header.level());
+                    // mempool_state
+                    //     .operation_stats
+                    //     .entry(hash.clone())
+                    //     .or_insert_with(OperationStats::new)
+                    //     .validation_finished(
+                    //         action.time_as_nanos(),
+                    //         None,
+                    //         None,
+                    //         current_head_level,
+                    //         OperationValidationResult::Prevalidate,
+                    //     );
+                    // mempool_state
+                    //     .pending_operations
+                    //     .insert(hash.clone(), operation.clone());
+                }
+                PrecheckerPrecheckOperationResponse::Error(..) => {
+                    // TODO
+                }
+            }
         }
         Action::MempoolBroadcast(MempoolBroadcastAction {
             send_operations: true,
