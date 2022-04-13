@@ -44,17 +44,56 @@ impl Decoder for ShellAutomatonActionMetaKey {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct ShellAutomatonActionStats {
     /// Total number of times this action kind was executed.
     pub total_calls: u64,
     /// Sum of durations from this action till the next one in nanoseconds.
     pub total_duration: u64,
+    /// Max duration.
+    pub max_duration: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct ShellAutomatonActionStatsForRanges {
+    pub under_1_us: ShellAutomatonActionStats,
+    pub under_10_us: ShellAutomatonActionStats,
+    pub under_50_us: ShellAutomatonActionStats,
+    pub under_100_us: ShellAutomatonActionStats,
+    pub under_500_us: ShellAutomatonActionStats,
+    pub under_1_ms: ShellAutomatonActionStats,
+    pub under_5_ms: ShellAutomatonActionStats,
+    pub above_5_ms: ShellAutomatonActionStats,
+}
+
+impl ShellAutomatonActionStatsForRanges {
+    pub fn add(&mut self, duration: u64) {
+        let stats = if duration <= 1_000 {
+            &mut self.under_1_us
+        } else if duration <= 10_000 {
+            &mut self.under_10_us
+        } else if duration <= 50_000 {
+            &mut self.under_50_us
+        } else if duration <= 100_000 {
+            &mut self.under_100_us
+        } else if duration <= 500_000 {
+            &mut self.under_500_us
+        } else if duration <= 1_000_000 {
+            &mut self.under_1_ms
+        } else if duration <= 5_000_000 {
+            &mut self.under_5_ms
+        } else {
+            &mut self.above_5_ms
+        };
+        stats.total_calls += 1;
+        stats.total_duration += duration;
+        stats.max_duration = std::cmp::max(stats.max_duration, duration);
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct ShellAutomatonActionsStats {
-    pub stats: HashMap<String, ShellAutomatonActionStats>,
+    pub stats: HashMap<String, ShellAutomatonActionStatsForRanges>,
 }
 
 impl ShellAutomatonActionsStats {
@@ -63,8 +102,8 @@ impl ShellAutomatonActionsStats {
     }
 }
 
-impl From<HashMap<String, ShellAutomatonActionStats>> for ShellAutomatonActionsStats {
-    fn from(stats: HashMap<String, ShellAutomatonActionStats>) -> Self {
+impl From<HashMap<String, ShellAutomatonActionStatsForRanges>> for ShellAutomatonActionsStats {
+    fn from(stats: HashMap<String, ShellAutomatonActionStatsForRanges>) -> Self {
         Self { stats }
     }
 }

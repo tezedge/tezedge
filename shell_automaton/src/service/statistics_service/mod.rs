@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crypto::hash::{BlockHash, BlockPayloadHash, CryptoboxPublicKeyHash};
-use storage::shell_automaton_action_meta_storage::ShellAutomatonActionStats;
+use storage::shell_automaton_action_meta_storage::ShellAutomatonActionStatsForRanges;
 use tezos_api::ffi::{ApplyBlockExecutionTimestamps, ApplyBlockResponse};
 use tezos_messages::base::signature_public_key::SignaturePublicKey;
 use tezos_messages::p2p::encoding::block_header::Level;
@@ -198,7 +198,7 @@ pub enum StorageRequestFinishedStatus {
 pub struct StatisticsService {
     last_action_id: Option<ActionId>,
     last_action_kind: Option<ActionKind>,
-    action_kind_stats: BTreeMap<ActionKind, ShellAutomatonActionStats>,
+    action_kind_stats: BTreeMap<ActionKind, ShellAutomatonActionStatsForRanges>,
     action_graph: ActionGraph,
 
     blocks_apply: BlocksApplyStats,
@@ -237,22 +237,17 @@ impl StatisticsService {
             None => return,
         };
 
-        let stats = self
-            .action_kind_stats
+        self.action_kind_stats
             .entry(pred_action_kind)
-            .or_insert_with(|| ShellAutomatonActionStats {
-                total_calls: 0,
-                total_duration: 0,
-            });
-        stats.total_calls += 1;
-        stats.total_duration += duration;
+            .or_default()
+            .add(duration);
 
         self.action_graph[pred_action_kind as usize]
             .next_actions
             .insert(action_kind as usize);
     }
 
-    pub fn action_kind_stats(&self) -> &BTreeMap<ActionKind, ShellAutomatonActionStats> {
+    pub fn action_kind_stats(&self) -> &BTreeMap<ActionKind, ShellAutomatonActionStatsForRanges> {
         &self.action_kind_stats
     }
 
