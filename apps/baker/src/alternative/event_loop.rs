@@ -425,7 +425,14 @@ fn perform(
                     vec![],
                     vec![],
                 ];
+                let mut hashes = BTreeSet::new();
                 for op in payload.operations {
+                    op.hash.as_ref().unwrap();
+                    if let Some(hash) = &op.hash {
+                        if !hashes.insert(hash.clone()) {
+                            continue;
+                        }
+                    }
                     match op.kind() {
                         None => {
                             slog::warn!(log, " .  unclassified operation {op:?}");
