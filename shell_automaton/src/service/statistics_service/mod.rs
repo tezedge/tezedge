@@ -195,9 +195,16 @@ pub enum StorageRequestFinishedStatus {
 }
 
 #[derive(Debug)]
+struct ActionStackItem {
+    kind: ActionKind,
+    depth: u32,
+}
+
+#[derive(Debug)]
 pub struct StatisticsService {
     last_action_id: Option<ActionId>,
     last_action_kind: Option<ActionKind>,
+    actions_stack: Vec<ActionStackItem>,
     action_kind_stats: BTreeMap<ActionKind, ShellAutomatonActionStats>,
     action_graph: ActionGraph,
 
@@ -212,6 +219,7 @@ impl Default for StatisticsService {
         Self {
             last_action_id: Default::default(),
             last_action_kind: Default::default(),
+            actions_stack: Default::default(),
             action_kind_stats: Default::default(),
             action_graph: Default::default(),
             blocks_apply: Default::default(),
@@ -232,24 +240,35 @@ impl StatisticsService {
         let action_kind = action.action.kind();
         let duration = u64::from(action.id) - u64::from(pred_action_id);
 
-        let pred_action_kind = match pred_action_kind {
-            Some(v) => v,
-            None => return,
-        };
+        if let Some(pred_action_kind) = pred_action_kind {
+            let stats = self
+                .action_kind_stats
+                .entry(pred_action_kind)
+                .or_insert_with(|| ShellAutomatonActionStats {
+                    total_calls: 0,
+                    total_duration: 0,
+                });
+            stats.total_calls += 1;
+            stats.total_duration += duration;
+        }
 
-        let stats = self
-            .action_kind_stats
-            .entry(pred_action_kind)
-            .or_insert_with(|| ShellAutomatonActionStats {
-                total_calls: 0,
-                total_duration: 0,
-            });
-        stats.total_calls += 1;
-        stats.total_duration += duration;
+        while let Some(pred_action) = self.actions_stack.last() {
+            if pred_action.depth < action.depth {
+                break;
+            }
+            self.actions_stack.pop();
+        }
 
-        self.action_graph[pred_action_kind as usize]
-            .next_actions
-            .insert(action_kind as usize);
+        if let Some(pred_action) = self.actions_stack.last() {
+            self.action_graph[pred_action.kind as usize]
+                .next_actions
+                .insert(action_kind as usize);
+        }
+
+        self.actions_stack.push(ActionStackItem {
+            kind: action_kind,
+            depth: action.depth,
+        });
     }
 
     pub fn action_kind_stats(&self) -> &BTreeMap<ActionKind, ShellAutomatonActionStats> {
