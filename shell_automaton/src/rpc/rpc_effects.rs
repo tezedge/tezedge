@@ -122,6 +122,31 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .rpc()
                             .respond(rpc_id, serde_json::Value::Null);
                     }
+                    RpcRequest::GetActionKindStatsForBlocks {
+                        channel,
+                        level_filter,
+                    } => {
+                        let data = store
+                            .service()
+                            .statistics()
+                            .map(|s| {
+                                s.action_kind_stats_for_blocks()
+                                    .iter()
+                                    .filter(|s| {
+                                        level_filter
+                                            .as_ref()
+                                            .map_or(true, |levels| levels.contains(&s.block_level))
+                                    })
+                                    .cloned()
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let _ = channel.send(data);
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
+                    }
                     RpcRequest::GetActionGraph { channel } => {
                         let data = store
                             .service

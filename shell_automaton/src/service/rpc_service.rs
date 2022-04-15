@@ -21,15 +21,16 @@ use tezos_messages::p2p::encoding::{
     operation::Operation,
 };
 
-use crate::Action;
-
 use crate::{
     mempool::mempool_actions::ConsensusOperationMatcher, request::RequestId, rpc::ValidBlocksQuery,
-    storage::request::StorageRequestor, State,
+    storage::request::StorageRequestor,
 };
+use crate::{Action, State};
 
 use super::{
-    statistics_service::ActionGraph, storage_service::StorageRequestPayloadKind, BlockApplyStats,
+    statistics_service::{ActionGraph, ActionKindStatsForBlock},
+    storage_service::StorageRequestPayloadKind,
+    BlockApplyStats,
 };
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
@@ -80,6 +81,10 @@ pub enum RpcRequest {
     },
     GetActionKindStats {
         channel: oneshot::Sender<ShellAutomatonActionsStats>,
+    },
+    GetActionKindStatsForBlocks {
+        channel: oneshot::Sender<Vec<ActionKindStatsForBlock>>,
+        level_filter: Option<BTreeSet<Level>>,
     },
     GetActionGraph {
         channel: oneshot::Sender<ActionGraph>,

@@ -10,6 +10,7 @@ use crypto::hash::{BlockPayloadHash, ContractKt1Hash, OperationHash};
 use serde::{Deserialize, Serialize};
 use shell_automaton::mempool::{OperationKind, OperationValidationResult};
 use shell_automaton::service::rpc_service::RpcShellAutomatonActionsRaw;
+use shell_automaton::service::statistics_service::ActionKindStatsForBlock;
 use shell_automaton::{Action, ActionWithMeta};
 use slog::Logger;
 use std::borrow::Cow;
@@ -696,6 +697,22 @@ pub(crate) async fn get_shell_automaton_actions_stats(
         .send(RpcShellAutomatonMsg::GetActionKindStats { channel: tx })
         .await;
     Ok(rx.await?.stats)
+}
+
+pub(crate) async fn get_shell_automaton_actions_stats_for_blocks(
+    env: &RpcServiceEnvironment,
+    level_filter: Option<BTreeSet<Level>>,
+) -> anyhow::Result<Vec<ActionKindStatsForBlock>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetActionKindStatsForBlocks {
+            channel: tx,
+            level_filter,
+        })
+        .await;
+    Ok(rx.await?)
 }
 
 pub(crate) async fn get_shell_automaton_actions_graph(
