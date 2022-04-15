@@ -2,192 +2,310 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryFrom,
-    time::Duration,
 };
 
 use crypto::{
-    base58::FromBase58CheckError,
     blake2b::Blake2bError,
-    hash::{BlockHash, BlockPayloadHash, FromBytesError, OperationHash, ProtocolHash, Signature},
+    hash::{BlockHash, BlockPayloadHash, FromBytesError, OperationHash},
 };
-use redux_rs::ActionId;
 use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
 use tezos_messages::{
-    p2p::{
-        binary_message::BinaryRead,
-        encoding::{
-            block_header::{BlockHeader, Level},
-            operation::Operation,
-        },
+    p2p::encoding::{block_header::Level, operation::Operation},
+    protocol::{
+        proto_010, proto_011,
+        proto_012::{self, operation::OperationVerifyError},
+        SupportedProtocol, UnsupportedProtocolError,
     },
-    protocol::{SupportedProtocol, UnsupportedProtocolError},
 };
 
-use crate::{
-    rights::{Delegate, EndorsingRights, RightsError, Slot},
-    storage::kv_block_additional_data::Error as BlockAdditionalDataStorageError,
-};
+use crate::rights::{Delegate, RightsError, Slot};
 
-use super::{EndorsementValidationError, OperationProtocolData};
+use super::{operation_contents::OperationDecodedContents, Round};
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Hash)]
-#[serde(into = "String", try_from = "String")]
-pub struct Key {
-    pub operation: OperationHash,
+pub struct EndorsementBranch {
+    pub predecessor: BlockHash,
+    pub level: Level,
+    pub round: Round,
+    pub payload_hash: BlockPayloadHash,
 }
 
-impl From<&OperationHash> for Key {
-    fn from(op: &OperationHash) -> Self {
-        Self {
-            operation: op.clone(),
-        }
-    }
-}
-
-impl From<Key> for String {
-    fn from(source: Key) -> Self {
-        source.operation.to_base58_check()
-    }
-}
-
-impl TryFrom<String> for Key {
-    type Error = FromBase58CheckError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        OperationHash::from_base58_check(&value).map(|operation| Self { operation })
-    }
-}
-
-impl std::fmt::Display for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.operation.to_base58_check())
-    }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerState {
-    pub operations: HashMap<Key, PrecheckerOperation>,
-    pub blocks_cache: BTreeMap<BlockHash, (ActionId, BlockHeader)>,
-    pub proto_cache: BTreeMap<u8, ProtocolHash>,
-    pub protocol_cache: BTreeMap<BlockHash, (ActionId, ProtocolHash, ProtocolHash)>,
+    pub endorsement_branch: Option<EndorsementBranch>,
+    pub operations: HashMap<OperationHash, Result<PrecheckerOperation, PrecheckerError>>,
+    pub cached_operations: CachedOperations,
+    pub proto_cache: BTreeMap<u8, SupportedProtocol>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub enum SupportedProtocolState {
-    None,
-    Requesting(BlockHash),
-    Ready(SupportedProtocol),
-}
+impl PrecheckerState {
+    pub(super) fn state(&self, hash: &OperationHash) -> Option<&PrecheckerOperationState> {
+        let r = self.operations.get(hash)?;
+        let op = r.as_ref().ok()?;
+        Some(&op.state)
+    }
 
-impl Default for SupportedProtocolState {
-    fn default() -> Self {
-        Self::None
+    pub(crate) fn result(&self, hash: &OperationHash) -> Option<PrecheckerResult> {
+        self.operations
+            .get(hash)
+            .and_then(|r| r.as_ref().ok())
+            .and_then(|op| PrecheckerResult::try_from(op).ok())
+    }
+
+    pub(crate) fn operation(&self, hash: &OperationHash) -> Option<&Operation> {
+        self.operations
+            .get(hash)
+            .and_then(|r| r.as_ref().ok())
+            .map(PrecheckerOperation::operation)
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ProtocolVersionCache {
-    pub time: Duration,
-    /// Mapping from block hash to next protocol, to be used to get protocol
-    /// for incoming current head basing on its predecessor.
-    pub next_protocol_versions: BTreeMap<BlockHash, (ActionId, SupportedProtocol)>,
+#[derive(Debug)]
+pub(crate) struct PrecheckerResult<'a> {
+    operation: &'a Operation,
+    contents: Option<&'a OperationDecodedContents>,
+    kind: PrecheckerResultKind<'a>,
 }
 
-impl Default for ProtocolVersionCache {
-    fn default() -> ProtocolVersionCache {
-        Self {
-            time: Duration::from_secs(600),
-            next_protocol_versions: Default::default(),
-        }
+#[derive(Debug)]
+pub(crate) enum PrecheckerResultKind<'a> {
+    Applied,
+    Outdated,
+    Refused(&'a PrecheckerError),
+    BranchRefused,
+    BranchDelayed,
+}
+
+impl<'a> TryFrom<&'a PrecheckerOperation> for PrecheckerResult<'a> {
+    type Error = ();
+
+    fn try_from(source: &'a PrecheckerOperation) -> Result<Self, Self::Error> {
+        let result = match &source.state {
+            PrecheckerOperationState::Applied {
+                operation_decoded_contents,
+            } => PrecheckerResult {
+                operation: &source.operation,
+                contents: Some(operation_decoded_contents),
+                kind: PrecheckerResultKind::Applied,
+            },
+            PrecheckerOperationState::Outdated {
+                operation_decoded_contents,
+            } => PrecheckerResult {
+                operation: &source.operation,
+                contents: Some(operation_decoded_contents),
+                kind: PrecheckerResultKind::Outdated,
+            },
+            PrecheckerOperationState::Refused {
+                operation_decoded_contents,
+                error,
+            } => PrecheckerResult {
+                operation: &source.operation,
+                contents: operation_decoded_contents.as_ref(),
+                kind: PrecheckerResultKind::Refused(error),
+            },
+            PrecheckerOperationState::BranchDelayed {
+                operation_decoded_contents,
+                ..
+            } => PrecheckerResult {
+                operation: &source.operation,
+                contents: Some(operation_decoded_contents),
+                kind: PrecheckerResultKind::BranchDelayed,
+            },
+            PrecheckerOperationState::BranchRefused {
+                operation_decoded_contents,
+            } => PrecheckerResult {
+                operation: &source.operation,
+                contents: Some(operation_decoded_contents),
+                kind: PrecheckerResultKind::BranchRefused,
+            },
+            _ => return Err(()),
+        };
+        Ok(result)
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrevalidatorEndorsementOperation {
-    pub branch: BlockHash,
-    pub signature: Signature,
-    pub level: Level,
-    pub signed_contents: Vec<u8>,
-}
+impl<'a> PrecheckerResult<'a> {
+    pub(crate) fn branch(&self) -> &BlockHash {
+        self.operation.branch()
+    }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrevalidatorEndorsementWithSlotOperation {
-    pub branch: BlockHash,
-    pub signature: Signature,
-    pub level: Level,
-    pub signed_contents: Vec<u8>,
-}
+    pub(crate) fn level(&self) -> Option<Level> {
+        self.contents
+            .and_then(OperationDecodedContents::level_round)
+            .map(|(level, _)| level)
+    }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub enum OperationDecodedContents {
-    Proto010(tezos_messages::protocol::proto_010::operation::Operation),
-    Proto011(tezos_messages::protocol::proto_011::operation::Operation),
-    Proto012(tezos_messages::protocol::proto_012::operation::Operation),
-}
+    pub(crate) fn protocol_data(&self) -> serde_json::Value {
+        self.contents
+            .map_or(serde_json::Value::Null, |contents| contents.as_json())
+    }
 
-impl OperationDecodedContents {
-    pub(super) fn endorsement_level(&self) -> Option<Level> {
-        match self {
-            OperationDecodedContents::Proto010(operation) => operation.endorsement_level(),
-            OperationDecodedContents::Proto011(operation) => operation.endorsement_level(),
-            OperationDecodedContents::Proto012(operation) => operation.endorsement_level(),
+    pub(crate) fn error(&self) -> Option<String> {
+        match &self.kind {
+            PrecheckerResultKind::Applied => None,
+            PrecheckerResultKind::Outdated => Some("operation is too old".into()),
+            PrecheckerResultKind::Refused(error) => Some(error.to_string()),
+            PrecheckerResultKind::BranchRefused => {
+                Some("operation does not match the branch".into())
+            }
+            PrecheckerResultKind::BranchDelayed => {
+                Some("operation does not match current branch".into())
+            }
         }
+    }
+
+    pub(crate) fn protocol_as_str(&self) -> &'static str {
+        match self.contents {
+            Some(OperationDecodedContents::Proto010(_)) => proto_010::PROTOCOL_HASH,
+            Some(OperationDecodedContents::Proto011(_)) => proto_011::PROTOCOL_HASH,
+            Some(OperationDecodedContents::Proto012(_)) => proto_012::PROTOCOL_HASH,
+            None => "<no protocol>",
+        }
+    }
+
+    pub(crate) fn operation(&self) -> &'a Operation {
+        self.operation
+    }
+
+    pub(crate) fn contents(&self) -> Option<&'a OperationDecodedContents> {
+        self.contents
+    }
+
+    pub(crate) fn kind(&self) -> &PrecheckerResultKind {
+        &self.kind
     }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerOperation {
-    pub start: ActionId,
     pub operation: Operation,
-    pub operation_binary_encoding: Vec<u8>,
     pub state: PrecheckerOperationState,
+}
+
+impl PrecheckerOperation {
+    pub(super) fn new(operation: Operation, protocol: SupportedProtocol) -> Self {
+        Self {
+            operation,
+            state: PrecheckerOperationState::Init { protocol },
+        }
+    }
+
+    fn operation(&self) -> &Operation {
+        &self.operation
+    }
+
+    pub(super) fn level(&self) -> Option<Level> {
+        self.state
+            .contents()
+            .and_then(OperationDecodedContents::level_round)
+            .map(|(level, _)| level)
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TenderbakeConsensusContents {
+    pub level: Level,
+    pub round: Round,
+    pub payload_hash: BlockPayloadHash,
+    pub slot: Slot,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, strum_macros::AsRefStr)]
 pub enum PrecheckerOperationState {
-    Init,
-    PendingContentDecoding,
-    DecodedContentReady {
+    Init {
+        protocol: SupportedProtocol,
+    },
+    Decoded {
         operation_decoded_contents: OperationDecodedContents,
     },
-    PendingBlockPrechecked {
+    TenderbakeConsensus {
         operation_decoded_contents: OperationDecodedContents,
+        consensus_contents: TenderbakeConsensusContents,
+        endorsing_rights_verified: bool,
     },
-    BlockPrecheckedReady {
+    TenderbakePendingRights {
         operation_decoded_contents: OperationDecodedContents,
-    },
-    PendingBlockApplied {
-        operation_decoded_contents: OperationDecodedContents,
-    },
-    BlockAppliedReady {
-        operation_decoded_contents: OperationDecodedContents,
-    },
-    PendingEndorsingRights {
-        operation_decoded_contents: OperationDecodedContents,
-    },
-    EndorsingRightsReady {
-        operation_decoded_contents: OperationDecodedContents,
-        endorsing_rights: EndorsingRights,
-    },
-    PendingOperationPrechecking {
-        operation_decoded_contents: OperationDecodedContents,
-        endorsing_rights: EndorsingRights,
+        consensus_contents: TenderbakeConsensusContents,
+        endorsing_rights_verified: bool,
     },
     Applied {
         operation_decoded_contents: OperationDecodedContents,
     },
     Refused {
-        operation_decoded_contents: OperationDecodedContents,
-        error: EndorsementValidationError,
-    },
-    ProtocolNeeded,
-    Error {
+        operation_decoded_contents: Option<OperationDecodedContents>,
         error: PrecheckerError,
     },
+    BranchRefused {
+        operation_decoded_contents: OperationDecodedContents,
+    },
+    BranchDelayed {
+        operation_decoded_contents: OperationDecodedContents,
+        endorsing_rights_verified: bool,
+    },
+    Outdated {
+        operation_decoded_contents: OperationDecodedContents,
+    },
+    ProtocolNeeded,
+}
+
+impl PrecheckerOperationState {
+    pub(super) fn is_result(&self) -> bool {
+        match self {
+            PrecheckerOperationState::Applied { .. }
+            | PrecheckerOperationState::Refused { .. }
+            | PrecheckerOperationState::BranchRefused { .. }
+            | PrecheckerOperationState::BranchDelayed { .. }
+            | PrecheckerOperationState::Outdated { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub(super) fn caching_level(&self) -> Option<Level> {
+        if let PrecheckerOperationState::BranchDelayed {
+            operation_decoded_contents,
+            ..
+        } = self
+        {
+            operation_decoded_contents
+                .level_round()
+                .map(|(level, _)| level)
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn contents(&self) -> Option<&OperationDecodedContents> {
+        match self {
+            PrecheckerOperationState::Decoded {
+                operation_decoded_contents,
+            }
+            | PrecheckerOperationState::TenderbakeConsensus {
+                operation_decoded_contents,
+                ..
+            }
+            | PrecheckerOperationState::Applied {
+                operation_decoded_contents,
+            }
+            | PrecheckerOperationState::BranchRefused {
+                operation_decoded_contents,
+            }
+            | PrecheckerOperationState::BranchDelayed {
+                operation_decoded_contents,
+                ..
+            }
+            | PrecheckerOperationState::Outdated {
+                operation_decoded_contents,
+            } => Some(operation_decoded_contents),
+            PrecheckerOperationState::Refused {
+                operation_decoded_contents,
+                ..
+            } => operation_decoded_contents.as_ref(),
+            _ => None,
+        }
+    }
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
@@ -205,8 +323,8 @@ pub enum PrecheckerResponseError {
     Decode(#[from] BinaryReaderError),
     #[error("Unknown protocol: {0}")]
     Protocol(#[from] UnsupportedProtocolError),
-    #[error("Storage error: {0}")]
-    Storage(#[from] BlockAdditionalDataStorageError),
+    // #[error("Storage error: {0}")]
+    // Storage(#[from] BlockAdditionalDataStorageError),
     #[error("Error: `{0}`")]
     Other(#[from] PrecheckerError),
 }
@@ -220,25 +338,44 @@ impl From<BinaryWriterError> for PrecheckerResponseError {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum PrecheckerError {
-    #[error("Missing block header for operation `{0}`")]
-    MissingBlockHeader(BlockHash),
-    #[error("Missing protocol for block `{0}`")]
-    MissingProtocol(BlockHash),
+    #[error("Error decoding protocol specific operation contents: `{0}`")]
+    OperationContentsDecode(#[from] BinaryReaderError),
     #[error("Unsupported protocol: `{0}`")]
     UnsupportedProtocol(#[from] UnsupportedProtocolError),
-    #[error("Error decoding protocol specific operation contents: {0}")]
-    OperationContentsDecode(#[from] BinaryReaderError),
-    #[error("Error getting endorsing rights: {0}")]
+    #[error("Error getting endorsing rights: `{0}`")]
     EndorsingRights(#[from] RightsError),
-    #[error("Storage error: {0}")]
-    Storage(#[from] BlockAdditionalDataStorageError),
+    #[error("Signature does not match")]
+    SignatureVerificationError,
+    #[error(transparent)]
+    Consensus(#[from] ConsensusOperationError),
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub enum ConsensusOperationError {
+    #[error("Incorrect slot: `{0}`")]
+    IncorrectSlot(Slot),
+    #[error("Signature verification error: `{0}`")]
+    SignatureVerificationError(String),
+    #[error("Signature does not match")]
+    SignatureMismatch,
+    #[error("Wrong branch for consensus operation")]
+    WrongBranch,
+    #[error("Consensus operation for competing proposal")]
+    CompetingProposal,
+}
+
+impl From<OperationVerifyError> for ConsensusOperationError {
+    fn from(error: OperationVerifyError) -> Self {
+        Self::SignatureVerificationError(error.to_string())
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum PrecheckerValidationError {
     #[error("Error parsing operation content: {0}")]
     DecodingError(#[from] BinaryReaderError),
-    #[error("Delegate {0:?} does not have endorsing rights")]
+    #[error("Delegate `{0}` does not have endorsing rights")]
     NoEndorsingRights(Delegate),
     #[error("Failed to verify the operation's signature")]
     SignatureError,
@@ -246,111 +383,26 @@ pub enum PrecheckerValidationError {
     InlinedSignatureError,
 }
 
-impl OperationDecodedContents {
-    pub(super) fn parse(
-        encoded: &[u8],
-        proto: &SupportedProtocol,
-    ) -> Result<Self, PrecheckerError> {
-        Ok(match proto {
-            SupportedProtocol::Proto010 => Self::Proto010(
-                tezos_messages::protocol::proto_010::operation::Operation::from_bytes(encoded)?,
-            ),
-            SupportedProtocol::Proto011 => Self::Proto011(
-                tezos_messages::protocol::proto_011::operation::Operation::from_bytes(encoded)?,
-            ),
-            SupportedProtocol::Proto012 => Self::Proto012(
-                tezos_messages::protocol::proto_012::operation::Operation::from_bytes(encoded)?,
-            ),
-            _ => {
-                return Err(PrecheckerError::UnsupportedProtocol(
-                    UnsupportedProtocolError {
-                        protocol: proto.protocol_hash(),
-                    },
-                ));
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct CachedOperations(BTreeMap<Level, BTreeSet<OperationHash>>);
+
+impl CachedOperations {
+    pub(super) fn insert(&mut self, level: Level, operation: OperationHash) {
+        self.0.entry(level).or_default().insert(operation);
+    }
+
+    pub(super) fn remove_older(&mut self, level: Level) -> Vec<OperationHash> {
+        let to_remove = self
+            .0
+            .keys()
+            .filter_map(|l| if *l < level { Some(*l) } else { None })
+            .collect::<Vec<_>>();
+        let mut result: Vec<OperationHash> = Vec::new();
+        for l in to_remove {
+            if let Some(removed) = self.0.remove(&l) {
+                result.extend(removed.into_iter());
             }
-        })
-    }
-
-    pub(crate) fn branch(&self) -> &BlockHash {
-        match self {
-            OperationDecodedContents::Proto010(op) => &op.branch,
-            OperationDecodedContents::Proto011(op) => &op.branch,
-            OperationDecodedContents::Proto012(op) => &op.branch,
         }
-    }
-
-    #[allow(unused)]
-    pub(crate) fn payload(&self) -> Option<&BlockPayloadHash> {
-        match self {
-            OperationDecodedContents::Proto012(op) => op.payload(),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn level_round(&self) -> Option<(i32, i32)> {
-        match self {
-            OperationDecodedContents::Proto012(op) => op.level_round(),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn is_endorsement(&self) -> bool {
-        match self {
-            OperationDecodedContents::Proto010(operation) => operation.is_endorsement(),
-            OperationDecodedContents::Proto011(operation) => operation.is_endorsement(),
-            OperationDecodedContents::Proto012(operation) => operation.is_endorsement(),
-        }
-    }
-
-    pub(crate) fn is_preendorsement(&self) -> bool {
-        match self {
-            OperationDecodedContents::Proto012(operation) => operation.is_preendorsement(),
-            _ => false,
-        }
-    }
-
-    pub(crate) fn endorsement_slot(&self) -> Option<Slot> {
-        match self {
-            OperationDecodedContents::Proto010(operation) => {
-                operation.as_endorsement().map(|e| e.slot)
-            }
-            OperationDecodedContents::Proto011(operation) => {
-                operation.as_endorsement().map(|e| e.slot)
-            }
-            OperationDecodedContents::Proto012(operation) => operation.slot(),
-        }
-    }
-
-    pub(crate) fn as_json(&self) -> serde_json::Value {
-        match self {
-            OperationDecodedContents::Proto010(operation) => operation.as_json(),
-            OperationDecodedContents::Proto011(operation) => operation.as_json(),
-            OperationDecodedContents::Proto012(operation) => operation.as_json(),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use crypto::hash::OperationHash;
-
-    use super::Key;
-
-    #[test]
-    fn can_serialize_hash_map() {
-        let hash_map = HashMap::from([(
-            Key {
-                operation: OperationHash::from_base58_check(
-                    "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ",
-                )
-                .unwrap(),
-            },
-            true,
-        )]);
-        let json = serde_json::to_string(&hash_map).unwrap();
-        let deserialized: HashMap<_, _> = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized, hash_map);
+        result
     }
 }

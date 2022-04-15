@@ -139,9 +139,9 @@ fn precheck_block_header(
     let (unsigned, signature) =
         encoded.split_at(encoded.len().saturating_sub(Signature::hash_size()));
     let signature = Signature::try_from(signature)?;
-    let watermark = SignatureWatermark::BlockHeader(chain_id.clone());
+    let watermark = SignatureWatermark::BlockHeader(chain_id);
     for (priority, delegate) in priorities.iter().enumerate() {
-        if delegate.verify_signature(&signature, &watermark, unsigned)? {
+        if delegate.verify_signature(&signature, watermark.clone(), [unsigned.as_ref()])? {
             return Ok(Some((delegate.clone(), priority as u16)));
         }
     }

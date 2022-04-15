@@ -10,6 +10,7 @@ use std::{
 
 use slog::{error, trace, warn, FnValue};
 use storage::cycle_storage::CycleData;
+use tezos_api::ffi::{ProtocolRpcRequest, RpcMethod, RpcRequest};
 use tezos_messages::{
     base::{
         signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash},
@@ -18,20 +19,25 @@ use tezos_messages::{
     protocol::SupportedProtocol,
 };
 
-use crate::rights::{BakingRights, Delegate};
+use crate::{
+    rights::{BakingRightsOld, Delegate},
+    service::{protocol_runner_service::ProtocolRunnerResult, ProtocolRunnerService},
+};
 use crate::{
     service::RpcService,
     storage::{
-        kv_block_additional_data, kv_block_header, kv_constants, kv_cycle_eras,
+        kv_block_additional_data, kv_block_header, kv_constants,
         kv_cycle_meta::{self, CycleKey},
     },
     Action, ActionWithMeta, Service, Store,
 };
 
 use super::{
+    cycle_delegates::rights_cycle_delegates_actions::*,
+    cycle_eras::rights_cycle_eras_actions::*,
     rights_actions::*,
     utils::{baking_rights_owner, endorser_rights_owner, get_cycle, Position, TezosPRNGError},
-    EndorsingRights, ProtocolConstants, RightsInput, RightsRequest, RightsRpcError, Slot,
+    EndorsingRightsOld, ProtocolConstants, RightsInput, RightsRequest, RightsRpcError, Slot,
 };
 
 pub fn rights_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -53,7 +59,7 @@ where
                         .cloned()
                     {
                         trace!(log, "Baking rights using cache"; "key" => FnValue(|_| format!("{:?}", key)));
-                        store.dispatch(RightsBakingReadyAction {
+                        store.dispatch(RightsBakingOldReadyAction {
                             key: key.clone(),
                             baking_rights,
                         });
@@ -61,16 +67,14 @@ where
                     }
                 }
                 RightsInput::Endorsing(_) => {
-                    if let Some((_, endorsing_rights)) = key
+                    if let Some((_, _)) = key
                         .level()
                         .as_ref()
                         .and_then(|level| cache.endorsing.get(level))
-                        .cloned()
                     {
                         trace!(log, "Endorsing rights using cache"; "key" => FnValue(|_| format!("{:?}", key)));
                         store.dispatch(RightsEndorsingReadyAction {
                             key: key.clone(),
-                            endorsing_rights,
                         });
                         return;
                     }
@@ -88,7 +92,7 @@ where
         Action::RightsRpcGet(RightsRpcGetAction { key, .. }) => {
             store.dispatch(RightsGetAction { key: key.clone() });
         }
-        Action::RightsBakingReady(RightsBakingReadyAction { baking_rights, key }) => {
+        Action::RightsBakingOldReady(RightsBakingOldReadyAction { baking_rights, key }) => {
             for rpc_id in store
                 .state
                 .get()
@@ -120,7 +124,7 @@ where
             }
             store.dispatch(RightsRpcPruneAction { key: key.clone() });
         }
-        Action::RightsEndorsingReady(RightsEndorsingReadyAction {
+        Action::RightsEndorsingOldReady(RightsEndorsingOldReadyAction {
             endorsing_rights,
             key,
         }) => {
@@ -375,28 +379,55 @@ where
         Action::RightsProtocolConstantsReady(RightsProtocolConstantsReadyAction {
             key, ..
         }) => {
-            if let Some(RightsRequest::ProtocolConstantsReady { .. }) = requests.get(key) {
+            if let Some(RightsRequest::ProtocolConstantsReady {
+                ..
+            }) = requests.get(key)
+            {
                 store.dispatch(RightsGetCycleErasAction { key: key.clone() });
             }
         }
 
         // get cycle eras from kv store
         Action::RightsGetCycleEras(RightsGetCycleErasAction { key }) => {
-            if let Some(RightsRequest::PendingCycleEras { proto_hash, .. }) = requests.get(key) {
-                let key = proto_hash.clone();
-                store.dispatch(kv_cycle_eras::StorageCycleErasGetAction::new(key));
+            match requests.get(key) {
+                Some(RightsRequest::PendingCycleEras {
+                    proto_hash,
+                    block_header,
+                    ..
+                }) => {
+                    let protocol_hash = proto_hash.clone();
+                    let block_header = block_header.clone();
+                    store.dispatch(RightsCycleErasGetAction {
+                        protocol_hash,
+                        block_hash: key.block().clone(),
+                        block_header,
+                    });
+                }
+                Some(RightsRequest::CycleErasReady {
+                    ..
+                }) => {
+                    store.dispatch(RightsGetCycleAction { key: key.clone() });
+                }
+                _ => {}
             }
         }
-        Action::StorageCycleErasOk(kv_cycle_eras::StorageCycleErasOkAction { key, value }) => {
+        Action::RightsCycleErasSuccess(RightsCycleErasSuccessAction { protocol_hash }) => {
+            let cycle_eras = if let Some(v) = store
+                .state
+                .get()
+                .rights
+                .cycle_eras
+                .get_result(protocol_hash)
+            {
+                v.clone()
+            } else {
+                return;
+            };
             for key in requests
                 .iter()
                 .filter_map(|(rights_key, request)| {
-                    if let RightsRequest::PendingCycleEras { proto_hash, .. } = request {
-                        if proto_hash == key {
-                            Some(rights_key)
-                        } else {
-                            None
-                        }
+                    if matches!(request, RightsRequest::PendingCycleEras { proto_hash, .. } if proto_hash == protocol_hash ) {
+                        Some(rights_key)
                     } else {
                         None
                     }
@@ -406,23 +437,22 @@ where
             {
                 store.dispatch(RightsCycleErasReadyAction {
                     key,
-                    cycle_eras: value.clone(),
+                    cycle_eras: cycle_eras.clone(),
                 });
             }
         }
-        Action::StorageCycleErasError(kv_cycle_eras::StorageCycleErasErrorAction {
-            key,
-            error,
-        }) => {
+        Action::RightsCycleErasError(RightsCycleErasErrorAction { protocol_hash }) => {
+            let cycle_eras_error =
+                if let Some(v) = store.state.get().rights.cycle_eras.get_error(protocol_hash) {
+                    v.clone()
+                } else {
+                    return;
+                };
             for key in requests
                 .iter()
                 .filter_map(|(rights_key, request)| {
-                    if let RightsRequest::PendingCycleEras { proto_hash, .. } = request {
-                        if proto_hash == key {
-                            Some(rights_key)
-                        } else {
-                            None
-                        }
+                    if matches!(request, RightsRequest::PendingCycleEras { proto_hash, .. } if proto_hash == protocol_hash ) {
+                        Some(rights_key)
                     } else {
                         None
                     }
@@ -432,7 +462,7 @@ where
             {
                 store.dispatch(RightsErrorAction {
                     key,
-                    error: error.clone().into(),
+                    error: cycle_eras_error.clone().into(),
                 });
             }
         }
@@ -478,10 +508,16 @@ where
             }
         }
         Action::RightsCycleReady(RightsCycleReadyAction { key, .. }) => {
-            if let Some(RightsRequest::CycleReady { .. }) = requests.get(key) {
-                store.dispatch(RightsGetCycleDataAction { key: key.clone() });
+            if let Some(RightsRequest::CycleReady { protocol, .. }) = requests.get(key) {
+                if protocol < &SupportedProtocol::Proto012 {
+                    store.dispatch(RightsGetCycleDataAction { key: key.clone() });
+                } else {
+                    store.dispatch(RightsGetCycleDelegatesAction { key: key.clone() });
+                }
             }
         }
+
+        // pre-Ithaca
 
         // get cycle data kv store
         Action::RightsGetCycleData(RightsGetCycleDataAction { key }) => {
@@ -573,9 +609,9 @@ where
                                        "duration" => FnValue(|_| dur.as_millis())
                                 );
                                 let level = *level;
-                                store.dispatch(RightsBakingReadyAction {
+                                store.dispatch(RightsBakingOldReadyAction {
                                     key: key.clone(),
-                                    baking_rights: BakingRights { level, priorities },
+                                    baking_rights: BakingRightsOld { level, priorities },
                                 });
                             }
                             Err(err) => {
@@ -598,9 +634,9 @@ where
                                        "duration" => FnValue(|_| dur.as_millis())
                                 );
                                 let level = *level;
-                                store.dispatch(RightsEndorsingReadyAction {
+                                store.dispatch(RightsEndorsingOldReadyAction {
                                     key: key.clone(),
-                                    endorsing_rights: EndorsingRights {
+                                    endorsing_rights: EndorsingRightsOld {
                                         level,
                                         slot_to_delegate,
                                         delegate_to_slots,
@@ -618,6 +654,100 @@ where
                 }
             }
         }
+
+        // Ithaca
+
+        Action::RightsGetCycleDelegates(RightsGetCycleDelegatesAction { key }) => {
+            match requests.get(key) {
+                Some(RightsRequest::PendingCycleDelegates {
+                    cycle,
+                    block_header,
+                    ..
+                }) => {
+                    let cycle = *cycle;
+                    let block_header = block_header.clone();
+                    store.dispatch(RightsCycleDelegatesGetAction { cycle, block_header });
+                }
+                Some(RightsRequest::CycleDelegatesReady { .. }) => {
+                    store.dispatch(RightsCalculateIthacaAction { key: key.clone() });
+                }
+                _ => {}
+            }
+        }
+        Action::RightsCycleDelegatesSuccess(RightsCycleDelegatesSuccessAction { cycle, delegates }) => {
+            for key in requests.iter().filter_map(|(k, v)| if matches!(v, RightsRequest::PendingCycleDelegates { cycle: c, .. } if c == cycle) { Some(k) } else { None }).cloned().collect::<Vec<_>>() {
+                store.dispatch(RightsCycleDelegatesReadyAction { key, delegates: delegates.clone() });
+            }
+        }
+        Action::RightsCycleDelegatesError(RightsCycleDelegatesErrorAction { cycle, error }) => {
+            for key in requests.iter().filter_map(|(k, v)| if matches!(v, RightsRequest::PendingCycleDelegates { cycle: c, .. } if c == cycle) { Some(k) } else { None }).cloned().collect::<Vec<_>>() {
+                store.dispatch(RightsErrorAction { key, error: error.clone().into() });
+            }
+        }
+
+        Action::RightsCycleDelegatesReady(RightsCycleDelegatesReadyAction { key, .. }) => {
+            store.dispatch(RightsCalculateIthacaAction { key: key.clone() });
+        }
+
+        Action::RightsCalculateIthaca(RightsCalculateIthacaAction { key }) => {
+            if let Some(RightsRequest::PendingRightsCalculationIthaca { block_header, level, .. } ) = requests.get(key)
+            {
+                let req = ProtocolRpcRequest {
+                    block_header: block_header.clone(),
+                    chain_arg: "main".to_string(),
+                    chain_id: store.state().config.chain_id.clone(),
+                    request: RpcRequest {
+                        body: String::new(),
+                        accept: None,
+                        content_type: None,
+                        context_path: format!(
+                            "/chains/main/blocks/head/helpers/endorsing_rights?level={level}"
+                        ),
+                        meth: RpcMethod::GET,
+                    },
+                };
+                let token = store.service.protocol_runner().get_endorsing_rights(req);
+                store.dispatch(RightsContextRequestedAction { key: key.clone(), token });
+            }
+        }
+        Action::ProtocolRunnerResponse(resp) => match &resp.result {
+            ProtocolRunnerResult::GetEndorsingRights((token, result)) => {
+                if let Some(key) = requests.iter().find_map(|(k, v)| {
+                    if matches!(v, RightsRequest::PendingRightsFromContextIthaca { token: t, .. } if token == t) {
+                        Some(k)
+                    } else {
+                        None
+                    }
+                }).cloned() {
+                    match result {
+                        Ok(Ok(result)) => {
+                                store.dispatch(RightsIthacaContextSuccessAction {
+                                    key,
+                                    endorsing_rights: result.clone(),
+                                });
+                        }
+                        Ok(Err(err)) => {
+                            store.dispatch(RightsErrorAction {
+                                key,
+                                error: err.clone().into(),
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        Action::RightsIthacaContextSuccess(RightsIthacaContextSuccessAction { key, .. }) => {
+            if let Some(RightsRequest::EndorsingReady(_)) = requests.get(key) {
+                store.dispatch(RightsEndorsingReadyAction {
+                    key: key.clone(),
+                });
+            }
+        }
+
+
         Action::RightsError(RightsErrorAction { key, error }) => {
             warn!(log, "Error getting rights"; "key" => format!("{:?}", key), "error" => error.to_string());
             for rpc_id in store

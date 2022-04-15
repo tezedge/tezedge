@@ -32,6 +32,17 @@ pub mod proto_010;
 pub mod proto_011;
 pub mod proto_012;
 
+/// Trait for protocol specific items that can be converted from generic shell item.
+pub trait FromShell<T> {
+    /// Error while converting from shell to protocol.
+    type Error;
+
+    /// Converts shell item into this protocol specific one.
+    fn convert_from(shell: &T) -> Result<Self, Self::Error>
+    where
+        Self: Sized;
+}
+
 lazy_static! {
     pub static ref SUPPORTED_PROTOCOLS: HashMap<String, SupportedProtocol> = init();
 }

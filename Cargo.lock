@@ -4050,6 +4050,7 @@ dependencies = [
  "mio",
  "networking",
  "nix",
+ "nom 6.1.2",
  "num-bigint 0.3.3",
  "once_cell",
  "rand 0.7.3",

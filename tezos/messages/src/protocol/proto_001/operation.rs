@@ -4,8 +4,6 @@
 //! Operation contents. This is the contents of the opaque field [super::operation::Operation::data].
 //! See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-operation-alpha-contents-determined-from-data-8-bit-tag].
 
-use std::convert::TryFrom;
-
 use crypto::hash::{
     BlockHash, ContextHash, ContractKt1Hash, ContractTz1Hash, HashTrait, OperationListListHash,
     ProtocolHash, Signature,
@@ -26,6 +24,7 @@ use crate::Timestamp;
 use crate::p2p::encoding::{
     block_header::Level, fitness::Fitness, operation::Operation as P2POperation,
 };
+use crate::protocol::FromShell;
 
 /// Operation contents.
 /// See [https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#operation-alpha-specific].
@@ -37,10 +36,10 @@ pub struct Operation {
     pub signature: Signature,
 }
 
-impl TryFrom<P2POperation> for Operation {
+impl FromShell<P2POperation> for Operation {
     type Error = BinaryReaderError;
 
-    fn try_from(operation: P2POperation) -> Result<Self, Self::Error> {
+    fn convert_from(operation: &P2POperation) -> Result<Self, Self::Error> {
         use crate::p2p::binary_message::BinaryRead;
         let branch = operation.branch().clone();
         let OperationContents {
@@ -64,10 +63,10 @@ pub struct OperationContents {
     pub signature: Signature,
 }
 
-impl TryFrom<P2POperation> for OperationContents {
+impl FromShell<P2POperation> for OperationContents {
     type Error = BinaryReaderError;
 
-    fn try_from(operation: P2POperation) -> Result<Self, Self::Error> {
+    fn convert_from(operation: &P2POperation) -> Result<Self, Self::Error> {
         use crate::p2p::binary_message::BinaryRead;
         let OperationContents {
             contents,
@@ -469,8 +468,6 @@ mod tests {
 	    ($name:ident, $branch:literal, $signature:literal, $contents:ident, $contents_assert:block) => {
             #[test]
             fn $name() -> Result<()> {
-                use std::convert::TryInto;
-
                 let bytes = read_data(stringify!($name))?;
 
                 let Operation {
@@ -491,7 +488,7 @@ mod tests {
                     branch,
                     $contents,
                     signature,
-                } = operation.try_into()?;
+                } = Operation::convert_from(&operation)?;
                 assert_eq!(
                     branch.to_base58_check(),
                     $branch
@@ -504,7 +501,7 @@ mod tests {
                 let OperationContents {
                     $contents,
                     signature,
-                } = operation.clone().try_into()?;
+                } = OperationContents::convert_from(&operation)?;
                 assert_eq!(signature.to_base58_check(), $signature);
                 assert_eq!($contents.len(), 1);
                 $contents_assert;

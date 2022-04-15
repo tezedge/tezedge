@@ -3,6 +3,7 @@
 
 use crypto::hash::{BlockHash, ChainId};
 use std::collections::HashMap;
+use std::time::Instant;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 use crate::block_applier::BlockApplierApplyState;
@@ -30,6 +31,7 @@ use super::BootstrapState;
 pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     match &action.action {
         Action::WakeupEvent(_) => {
+            let wakeup_timestamp = Instant::now();
             while let Ok((msg, rpc_id)) = store.service().rpc().try_recv_stream() {
                 match msg {
                     RpcRequestStream::Bootstrapped => {
@@ -219,6 +221,12 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         operation_hash,
                         injected,
                     } => {
+                        let now = Instant::now();
+                        slog::debug!(
+                            store.state().log,
+                            "Injected operation `{operation_hash}` reached statemachine in {:?}, {:?} since wakeup event",
+                            now - injected, now - wakeup_timestamp
+                        );
                         let injected_timestamp = store.monotonic_to_time(injected);
                         store.dispatch(MempoolOperationInjectAction {
                             operation,

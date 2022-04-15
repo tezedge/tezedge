@@ -13,7 +13,7 @@ use tezos_messages::{
     p2p::{binary_message::BinaryWrite, encoding::block_header::Level},
 };
 
-use crate::rights::{Delegate, EndorsingRights};
+use crate::rights::{Delegate, EndorsingRightsOld};
 
 use super::OperationDecodedContents;
 
@@ -149,7 +149,7 @@ pub(super) trait EndorsementValidator {
         &self,
         chain_id: &ChainId,
         block_hash: &BlockHash,
-        rights: &EndorsingRights,
+        rights: &EndorsingRightsOld,
         log: &Logger,
     ) -> Result<Applied, Refused>;
 }
@@ -159,7 +159,7 @@ impl EndorsementValidator for OperationDecodedContents {
         &self,
         chain_id: &ChainId,
         block_hash: &BlockHash,
-        rights: &EndorsingRights,
+        rights: &EndorsingRightsOld,
         log: &Logger,
     ) -> Result<Applied, Refused> {
         let result = match self {
@@ -194,7 +194,7 @@ fn validate_endorsement_010_granada(
     operation: &tezos_messages::protocol::proto_010::operation::Operation,
     chain_id: &ChainId,
     block_hash: &BlockHash,
-    rights: &EndorsingRights,
+    rights: &EndorsingRightsOld,
     log: &Logger,
 ) -> Result<(), EndorsementValidationError> {
     use tezos_messages::protocol::proto_010::operation::*;
@@ -236,7 +236,7 @@ fn validate_endorsement_011_hangzhou(
     operation: &tezos_messages::protocol::proto_011::operation::Operation,
     chain_id: &ChainId,
     block_hash: &BlockHash,
-    rights: &EndorsingRights,
+    rights: &EndorsingRightsOld,
     log: &Logger,
 ) -> Result<(), EndorsementValidationError> {
     use tezos_messages::protocol::proto_011::operation::*;
@@ -278,7 +278,7 @@ fn validate_inlined_endorsement(
     endorsement: &tezos_messages::protocol::proto_005_2::operation::InlinedEndorsement,
     block_hash: &BlockHash,
     slot: u16,
-    rights: &EndorsingRights,
+    rights: &EndorsingRightsOld,
     chain_id: &ChainId,
     start: Instant,
     log: &Logger,
@@ -309,8 +309,8 @@ fn validate_inlined_endorsement(
     let verifying = Instant::now();
     match delegate.verify_signature(
         signature,
-        &SignatureWatermark::Endorsement(chain_id.clone()),
-        encoded,
+        SignatureWatermark::Endorsement(chain_id),
+        [encoded.as_ref()],
     ) {
         Ok(true) => (),
         Ok(_) => return Err(EndorsementValidationError::InlinedSignatureMismatch),

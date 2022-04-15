@@ -220,7 +220,7 @@ pub struct ValidateOperationResponse {
 pub type OperationProtocolDataJson = String;
 pub type ErrorListJson = String;
 
-trait HasOperationHash {
+pub trait HasOperationHash {
     fn operation_hash(&self) -> &OperationHash;
 }
 
@@ -819,6 +819,13 @@ impl ProtocolRpcResponse {
             ProtocolRpcResponse::RPCNotFound(body) => body_or_empty(body),
             ProtocolRpcResponse::RPCOk(body) => body.clone(),
             ProtocolRpcResponse::RPCUnauthorized => "".to_string(),
+        }
+    }
+
+    pub fn ok_body_or(self) -> Result<String, Self> {
+        match self {
+            ProtocolRpcResponse::RPCOk(body) => Ok(body),
+            _ => Err(self),
         }
     }
 }

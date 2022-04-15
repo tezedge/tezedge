@@ -40,7 +40,10 @@ use crate::mempool::mempool_reducer;
 use crate::mempool::validator::mempool_validator_reducer;
 
 use crate::prechecker::prechecker_reducer;
-use crate::rights::rights_reducer;
+use crate::rights::{
+    cycle_delegates::rights_cycle_delegates_reducer, cycle_eras::rights_cycle_eras_reducer,
+    rights_reducer,
+};
 
 use crate::protocol_runner::init::context::protocol_runner_init_context_reducer;
 use crate::protocol_runner::init::context_ipc_server::protocol_runner_init_context_ipc_server_reducer;
@@ -125,6 +128,8 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         mempool_validator_reducer,
         mempool_reducer,
         rights_reducer,
+        rights_cycle_eras_reducer,
+        rights_cycle_delegates_reducer,
         current_head_precheck_reducer,
         stats_current_head_reducer,
         prechecker_reducer,

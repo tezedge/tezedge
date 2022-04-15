@@ -17,6 +17,9 @@ use tezos_messages::p2p::encoding::block_header::Level;
 
 mod utils;
 
+pub mod cycle_delegates;
+pub mod cycle_eras;
+
 /// Key identifying particular request for endorsing rights.
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -55,6 +58,18 @@ impl RightsKey {
         match self.0 {
             RightsInput::Baking(BakingRightsInput { level, .. }) => level,
             RightsInput::Endorsing(EndorsingRightsInput { level, .. }) => level,
+        }
+    }
+
+    pub(crate) fn endorsing_input(&self) -> Option<(&BlockHash, Option<&Level>)> {
+        if let RightsInput::Endorsing(EndorsingRightsInput {
+            level,
+            current_block_hash,
+        }) = &self.0
+        {
+            Some((current_block_hash, level.as_ref()))
+        } else {
+            None
         }
     }
 }
