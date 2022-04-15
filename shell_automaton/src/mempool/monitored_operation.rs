@@ -120,10 +120,11 @@ impl MempoolOperations {
 pub struct MonitoredOperation<'a> {
     branch: String,
     #[serde(flatten)]
-    protocol_data: HashMap<String, Value>,
+    protocol_data: Value,
     protocol: &'a str,
     hash: String,
-    error: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     protocol_data_parse_error: Option<String>,
 }
@@ -131,10 +132,10 @@ pub struct MonitoredOperation<'a> {
 impl<'a> MonitoredOperation<'a> {
     pub fn new(
         branch: &BlockHash,
-        protocol_data: HashMap<String, Value>,
+        protocol_data: Value,
         protocol: &'a str,
         hash: &OperationHash,
-        error: Vec<String>,
+        error: Option<String>,
         protocol_data_parse_error: Option<String>,
     ) -> MonitoredOperation<'a> {
         MonitoredOperation {
@@ -157,14 +158,14 @@ impl<'a> MonitoredOperation<'a> {
             let operation = operations.get(&applied_op.hash)?;
             let (protocol_data, err) = match serde_json::from_str(&applied_op.protocol_data_json) {
                 Ok(protocol_data) => (protocol_data, None),
-                Err(err) => (HashMap::default(), Some(err.to_string())),
+                Err(err) => (serde_json::Value::Null, Some(err.to_string())),
             };
             Some(MonitoredOperation {
                 branch: operation.branch().to_base58_check(),
                 protocol: protocol_hash,
                 hash: op_hash,
                 protocol_data,
-                error: vec![],
+                error: None,
                 protocol_data_parse_error: err,
             })
         })
@@ -181,7 +182,7 @@ impl<'a> MonitoredOperation<'a> {
             let json = &errored_op.protocol_data_json;
             let (protocol_data, err) = match serde_json::from_str(json) {
                 Ok(protocol_data) => (protocol_data, None),
-                Err(err) => (HashMap::default(), Some(err.to_string())),
+                Err(err) => (serde_json::Value::Null, Some(err.to_string())),
             };
             let ocaml_err = &errored_op.error_json;
             Some(MonitoredOperation {
@@ -189,7 +190,7 @@ impl<'a> MonitoredOperation<'a> {
                 protocol: protocol_hash,
                 hash: op_hash,
                 protocol_data,
-                error: vec![ocaml_err.clone()],
+                error: Some(ocaml_err.clone()),
                 protocol_data_parse_error: err,
             })
         })

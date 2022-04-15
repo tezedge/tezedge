@@ -8,30 +8,26 @@ use std::{
     sync::Arc,
 };
 
-use tezos_messages::{
-    p2p::{
-        binary_message::MessageHash,
-        encoding::{
-            current_head::{CurrentHeadMessage, GetCurrentHeadMessage},
-            mempool::Mempool,
-            operation::{GetOperationsMessage, OperationMessage},
-            peer::{PeerMessage, PeerMessageResponse},
-        },
+use tezos_messages::p2p::{
+    binary_message::MessageHash,
+    encoding::{
+        current_head::{CurrentHeadMessage, GetCurrentHeadMessage},
+        mempool::Mempool,
+        operation::{GetOperationsMessage, OperationMessage},
+        peer::{PeerMessage, PeerMessageResponse},
     },
-    protocol::{proto_010, proto_011, proto_012},
 };
 
 use crate::{
-    current_head_precheck::{CurrentHeadPrecheckSuccessAction, CurrentHeadState},
+    block_applier::BlockApplierApplyState,
     mempool::mempool_state::OperationState,
     peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
     prechecker::{
         prechecker_actions::{
-            PrecheckerApplied, PrecheckerErrored, PrecheckerPrecheckBlockAction,
-            PrecheckerPrecheckOperationRequestAction, PrecheckerPrecheckOperationResponse,
-            PrecheckerPrecheckOperationResponseAction,
+            PrecheckerCurrentHeadUpdateAction, PrecheckerPrecheckDelayedOperationAction,
+            PrecheckerPrecheckOperationAction,
         },
-        OperationDecodedContents,
+        PrecheckerResultKind,
     },
     rights::Slot,
     service::RpcService,
@@ -42,7 +38,10 @@ use super::{
     mempool_actions::MempoolRpcEndorsementsStatusGetAction,
     mempool_actions::*,
     monitored_operation::{MempoolOperations, MonitoredOperation},
-    validator::{MempoolValidatorInitAction, MempoolValidatorValidateInitAction},
+    validator::{
+        MempoolValidatorInitAction, MempoolValidatorValidateInitAction,
+        MempoolValidatorValidateResult,
+    },
     BroadcastState, MempoolOperation,
 };
 
@@ -125,13 +124,30 @@ where
                     None => return,
                 };
                 let prot = prevalidator.protocol.to_base58_check();
-                let resp: Vec<_> = match content.result.as_result() {
-                    Ok(applied) => {
+                let resp: Vec<_> = match &content.result {
+                    MempoolValidatorValidateResult::Applied(applied) if stream.applied => {
                         MonitoredOperation::collect_applied([applied], ops, &prot).collect()
                     }
-                    Err(errored) => {
+                    MempoolValidatorValidateResult::Applied(_) => {
+                        MonitoredOperation::collect_applied([], ops, &prot).collect()
+                    }
+                    MempoolValidatorValidateResult::Refused(errored) if stream.refused => {
                         MonitoredOperation::collect_errored([errored], ops, &prot).collect()
                     }
+                    MempoolValidatorValidateResult::BranchRefused(errored)
+                        if stream.branch_refused =>
+                    {
+                        MonitoredOperation::collect_errored([errored], ops, &prot).collect()
+                    }
+                    MempoolValidatorValidateResult::BranchDelayed(errored)
+                        if stream.branch_delayed =>
+                    {
+                        MonitoredOperation::collect_errored([errored], ops, &prot).collect()
+                    }
+                    MempoolValidatorValidateResult::Outdated(errored) if stream.outdated => {
+                        MonitoredOperation::collect_errored([errored], ops, &prot).collect()
+                    }
+                    _ => MonitoredOperation::collect_errored([], ops, &prot).collect(),
                 };
                 if resp.is_empty() {
                     return;
@@ -157,7 +173,6 @@ where
                         address: *address,
                         send_operations: true,
                         requested_explicitly: true,
-                        prechecked_head: None,
                     });
                 }
                 PeerMessage::Operation(ref op) => {
@@ -205,6 +220,26 @@ where
                     .respond_stream(stream.rpc_id, Some(serde_json::json!([])));
                 store.service().rpc().respond_stream(stream.rpc_id, None);
             }
+
+            if let BlockApplierApplyState::Success {
+                block,
+                block_additional_data,
+                payload_hash,
+                ..
+            } = &store.state.get().block_applier.current
+            {
+                let head = block.clone();
+                let protocol = block_additional_data.protocol_hash().clone();
+                let payload_hash = payload_hash.clone();
+                store.dispatch(PrecheckerCurrentHeadUpdateAction {
+                    head,
+                    protocol,
+                    payload_hash,
+                });
+                for hash in store.state().mempool.prechecking_delayed_operations.clone() {
+                    store.dispatch(PrecheckerPrecheckDelayedOperationAction { hash: hash.clone() });
+                }
+            }
         }
         Action::ProtocolRunnerReady(_) => {
             if store.state().mempool.running_since.is_some() {
@@ -215,7 +250,6 @@ where
             if store.state().mempool.running_since.is_some() {
                 store.dispatch(MempoolBroadcastAction {
                     send_operations: false,
-                    prechecked_head: None,
                 });
                 store.dispatch(MempoolValidatorInitAction {});
             }
@@ -290,33 +324,10 @@ where
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
-            block_hash,
-            block_header,
+            block_hash: _,
+            block_header: _,
             ..
         }) => {
-            store.dispatch(PrecheckerPrecheckBlockAction {
-                block_hash: block_hash.clone(),
-                block_header: block_header.clone(),
-            });
-            // TODO enable this when rights calculation is implemented
-            // let prev_block_hash = block_header.predecessor();
-            // let level = block_header.level();
-            // Ask prechecker to precache endorsing rights for new level, using latest applied block
-            // if crate::prechecker::prechecking_enabled(store.state(), prev_block_hash) {
-            //     if let Some(current_head) = store
-            //         .state
-            //         .get()
-            //         .mempool
-            //         .local_head_state
-            //         .as_ref()
-            //         .map(|lhs| lhs.hash.clone())
-            //     {
-            //         store.dispatch(PrecheckerPrecacheEndorsingRightsAction {
-            //             current_head,
-            //             level,
-            //         });
-            //     }
-            // }
             if let Some(peer) = store.state().mempool.peer_state.get(address) {
                 if !peer.requesting_full_content.is_empty() {
                     store.dispatch(MempoolGetOperationsAction { address: *address });
@@ -343,111 +354,87 @@ where
         | Action::MempoolOperationInject(MempoolOperationInjectAction {
             hash, operation, ..
         }) => {
-            if store.state().mempool.prechecking_operations.contains(hash) {
-                store.dispatch(PrecheckerPrecheckOperationRequestAction {
+            if let Some(proto) = store
+                .state()
+                .mempool
+                .prechecking_operations
+                .get(hash)
+                .cloned()
+            {
+                store.dispatch(PrecheckerPrecheckOperationAction {
+                    hash: hash.clone(),
                     operation: operation.clone(),
+                    proto,
                 });
             }
             store.dispatch(MempoolOperationValidateNextAction {});
         }
-        Action::PrecheckerPrecheckOperationResponse(
-            PrecheckerPrecheckOperationResponseAction { response },
-        ) => {
-            match response {
-                PrecheckerPrecheckOperationResponse::Applied(PrecheckerApplied {
-                    operation_decoded_contents,
-                    hash,
-                    ..
-                })
-                | PrecheckerPrecheckOperationResponse::Refused(PrecheckerErrored {
-                    operation_decoded_contents,
-                    hash,
-                    ..
-                }) => {
-                    store.dispatch(MempoolBroadcastAction {
-                        send_operations: true,
-                        prechecked_head: Some(operation_decoded_contents.branch().clone()),
-                    });
+        Action::PrecheckerOperationValidated(action) => {
+            if let Some(result) = store.state.get().prechecker.result(&action.hash) {
+                let kind = result.kind();
+                let is_applied = matches!(kind, PrecheckerResultKind::Applied { .. });
 
-                    // respond to injection RPC
-                    let resp = if store.state().mempool.local_head_state.is_some() {
-                        serde_json::Value::Null
-                    } else {
-                        serde_json::Value::String("head is not ready".to_string())
-                    };
-                    let to_respond = store.state().mempool.injected_rpc_ids.clone();
-                    for rpc_id in to_respond {
-                        store.service().rpc().respond(rpc_id, resp.clone());
-                    }
-                    store.dispatch(MempoolRpcRespondAction {});
+                // respond to injection/operation RPC
+                let to_respond = store.state().mempool.injected_rpc_ids.clone();
+                for rpc_id in to_respond {
+                    store.service.rpc().respond(rpc_id, serde_json::Value::Null);
+                }
 
-                    // respond to mempool_operations
-                    let streams = store.state().mempool.operation_streams.clone();
-                    if streams.is_empty() {
-                        return;
-                    }
+                // respond to `monitor_operations` RPC
 
-                    let protocol = match operation_decoded_contents {
-                        OperationDecodedContents::Proto010(_) => proto_010::PROTOCOL_HASH,
-                        OperationDecodedContents::Proto011(_) => proto_011::PROTOCOL_HASH,
-                        OperationDecodedContents::Proto012(_) => proto_012::PROTOCOL_HASH,
-                    };
-
-                    let (protocol_data, protocol_data_parse_error) = if let Some(json_object) =
-                        operation_decoded_contents.as_json().as_object()
-                    {
-                        (
-                            json_object
-                                .iter()
-                                .map(|(k, v)| (k.clone(), v.clone()))
-                                .collect::<HashMap<_, _>>(),
-                            Option::<String>::None,
-                        )
-                    } else {
-                        (
-                            HashMap::new(),
-                            Some("Cannot interpred protocol data as object".to_string()),
-                        )
-                    };
-                    let error =
-                        if let PrecheckerPrecheckOperationResponse::Refused(PrecheckerErrored {
-                            error,
-                            ..
-                        }) = response
-                        {
-                            vec![error.clone()]
-                        } else {
-                            Vec::new()
-                        };
-
+                let streams = store.state.get().mempool.operation_streams.clone();
+                if !streams.is_empty() {
                     let monitored_operation = MonitoredOperation::new(
-                        operation_decoded_contents.branch(),
-                        protocol_data,
-                        protocol,
-                        hash,
-                        error,
-                        protocol_data_parse_error,
+                        result.branch(),
+                        result.protocol_data(),
+                        result.protocol_as_str(),
+                        &action.hash,
+                        result.error(),
+                        None,
                     );
 
                     if let Ok(json) = serde_json::to_value(vec![monitored_operation]) {
                         for stream in streams {
+                            if !(matches!(kind, PrecheckerResultKind::Applied if stream.applied)
+                                || matches!(kind, PrecheckerResultKind::Outdated if stream.outdated)
+                                || matches!(kind, PrecheckerResultKind::Refused(_) if stream.refused)
+                                || matches!(kind, PrecheckerResultKind::BranchRefused if stream.branch_refused)
+                                || matches!(kind, PrecheckerResultKind::BranchDelayed if stream.branch_delayed))
+                            {
+                                continue;
+                            }
                             store
-                                .service()
+                                .service
                                 .rpc()
                                 .respond_stream(stream.rpc_id, Some(json.clone()));
                         }
                     }
                 }
-                PrecheckerPrecheckOperationResponse::Prevalidate(_) => {
-                    store.dispatch(MempoolOperationValidateNextAction {});
+
+                store.dispatch(MempoolRpcRespondAction {});
+
+                // broadcast operation
+                if is_applied {
+                    let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
+
+                    for address in addresses {
+                        if store
+                            .state()
+                            .mempool
+                            .has_peer_seen_op(address, &action.hash)
+                        {
+                            continue;
+                        }
+
+                        store.dispatch(MempoolSendValidatedAction {
+                            address,
+                            known_valid: vec![action.hash.clone()],
+                        });
+                    }
                 }
-                _ => (),
             }
         }
-        Action::MempoolBroadcast(MempoolBroadcastAction {
-            send_operations,
-            prechecked_head,
-        }) => {
+        Action::MempoolBroadcast(MempoolBroadcastAction { send_operations }) => {
             let addresses = store
                 .state()
                 .peers
@@ -459,7 +446,6 @@ where
                     address,
                     send_operations: *send_operations,
                     requested_explicitly: false,
-                    prechecked_head: prechecked_head.clone(),
                 });
             }
         }
@@ -508,54 +494,36 @@ where
             address,
             send_operations,
             requested_explicitly,
-            prechecked_head,
         }) => {
-            let applied_block = match store.state().current_head.get() {
-                Some(v) => v,
-                None => return,
-            };
-            let (block_is_applied, header, head_hash) = match prechecked_head.as_ref() {
-                Some(prechecked_head) if prechecked_head != &applied_block.hash => {
-                    if let Some(CurrentHeadState::Prechecked { block_header, .. }) =
-                        store.state().current_heads.candidates.get(prechecked_head)
-                    {
-                        (false, block_header, prechecked_head)
-                    } else {
-                        return;
-                    }
-                }
-                _ => (true, &*applied_block.header, &applied_block.hash),
+            let (header, head_hash) = if let Some(head) = store.state().current_head.get() {
+                (&head.header, &head.hash)
+            } else {
+                return;
             };
 
-            // TODO(vlad): for debug
-            let debug = false;
             let known_valid = if *requested_explicitly {
-                if debug {
-                    vec![]
-                } else {
-                    let delayed_endorsements = store
-                        .state()
-                        .mempool
-                        .validated_operations
-                        .branch_delayed
-                        .iter()
-                        .filter_map(|v| {
-                            if v.is_endorsement {
-                                Some(v.hash.clone())
-                            } else {
-                                None
-                            }
-                        });
-                    store
-                        .state()
-                        .mempool
-                        .validated_operations
-                        .applied
-                        .iter()
-                        .map(|v| v.hash.clone())
-                        .chain(delayed_endorsements)
-                        .collect::<Vec<_>>()
-                }
+                let delayed_endorsements = store
+                    .state()
+                    .mempool
+                    .validated_operations
+                    .branch_delayed
+                    .iter()
+                    .filter_map(|v| {
+                        if v.is_endorsement {
+                            Some(v.hash.clone())
+                        } else {
+                            None
+                        }
+                    });
+                store
+                    .state()
+                    .mempool
+                    .validated_operations
+                    .applied
+                    .iter()
+                    .map(|v| v.hash.clone())
+                    .chain(delayed_endorsements)
+                    .collect::<Vec<_>>()
             } else {
                 let seen_operations_default = Default::default();
                 let seen_operations = match store.state().mempool.peer_state.get(address) {
@@ -568,11 +536,8 @@ where
                     .validated_operations
                     .ops
                     .iter()
-                    .filter_map(|(hash, op)| {
-                        if !seen_operations.contains(hash)
-                            // when broadcasting prechecked head, only include operations for that head
-                            && (block_is_applied || head_hash == op.branch())
-                        {
+                    .filter_map(|(hash, _op)| {
+                        if !seen_operations.contains(hash) {
                             Some(hash.clone())
                         } else {
                             None
@@ -581,8 +546,7 @@ where
                     .collect::<Vec<_>>()
             };
 
-            // TODO(vlad):
-            let pending = if *requested_explicitly && !debug {
+            let pending = if *requested_explicitly {
                 store
                     .state()
                     .mempool
@@ -610,7 +574,7 @@ where
             };
             let message = CurrentHeadMessage::new(
                 store.state().config.chain_id.clone(),
-                header.clone(),
+                header.as_ref().clone(),
                 mempool,
             );
             let message = Arc::new(PeerMessageResponse::from(message));
@@ -624,17 +588,6 @@ where
                 known_valid,
             });
         }
-        Action::CurrentHeadPrecheckSuccess(CurrentHeadPrecheckSuccessAction {
-            block_hash,
-            injected,
-            ..
-        }) if !injected && !store.state().config.disable_block_precheck => {
-            store.dispatch(MempoolBroadcastAction {
-                send_operations: false,
-                prechecked_head: Some(block_hash.clone()),
-            });
-        }
-
         Action::MempoolRpcEndorsementsStatusGet(MempoolRpcEndorsementsStatusGetAction {
             rpc_id,
             matcher,

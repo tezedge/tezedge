@@ -1,431 +1,230 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
-use tezos_api::ffi::{Applied, Errored};
-use tezos_messages::{
-    p2p::encoding::{
-        block_header::{BlockHeader, Level},
-        operation::Operation,
-    },
-    protocol::SupportedProtocol,
-};
+use std::sync::Arc;
 
-use crate::{
-    prechecker::PrecheckerOperationState, rights::EndorsingRights, EnablingCondition, State,
-};
+use crypto::hash::{BlockHash, BlockPayloadHash, OperationHash, ProtocolHash};
+use storage::BlockHeaderWithHash;
+use tezos_messages::p2p::encoding::{block_header::Level, operation::Operation};
 
-use super::{
-    EndorsementValidationError, Key, OperationDecodedContents, PrecheckerError,
-    PrecheckerResponseError,
-};
+use crate::{EnablingCondition, State};
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+use super::{EndorsementBranch, PrecheckerOperationState};
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerPrecheckOperationRequestAction {
-    pub operation: Operation,
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct PrecheckerCurrentHeadUpdateAction {
+    pub head: Arc<BlockHeaderWithHash>,
+    pub protocol: ProtocolHash,
+    pub payload_hash: Option<BlockPayloadHash>,
 }
 
-impl EnablingCondition<State> for PrecheckerPrecheckOperationRequestAction {
+impl EnablingCondition<State> for PrecheckerCurrentHeadUpdateAction {
     fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerPrecheckOperationResponseAction {
-    pub response: PrecheckerPrecheckOperationResponse,
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct PrecheckerStoreEndorsementBranchAction {
+    pub endorsement_branch: Option<EndorsementBranch>,
 }
 
-impl EnablingCondition<State> for PrecheckerPrecheckOperationResponseAction {
+impl EnablingCondition<State> for PrecheckerStoreEndorsementBranchAction {
     fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub enum PrecheckerPrecheckOperationResponse {
-    /// The operation can be applied.
-    Applied(PrecheckerApplied),
-    /// The operation cannot be applied.
-    Refused(PrecheckerErrored),
-    /// Prechecker cannot decide if the operation is correct. Protocol based prevalidator is needed.
-    Prevalidate(PrecheckerPrevalidate),
-    /// Error occurred while prechecking the operation.
-    Error(PrecheckerResponseError, Option<OperationHash>),
-}
-
-impl PrecheckerPrecheckOperationResponse {
-    pub(crate) fn operation_hash(&self) -> Option<&OperationHash> {
-        match self {
-            PrecheckerPrecheckOperationResponse::Applied(applied) => Some(&applied.hash),
-            PrecheckerPrecheckOperationResponse::Refused(refused) => Some(&refused.hash),
-            PrecheckerPrecheckOperationResponse::Prevalidate(prevalidate) => {
-                Some(&prevalidate.hash)
+macro_rules! from_hash_ref {
+    ($action:ident) => {
+        impl From<&OperationHash> for $action {
+            fn from(source: &OperationHash) -> Self {
+                Self {
+                    hash: source.clone(),
+                }
             }
-            PrecheckerPrecheckOperationResponse::Error(_, hash) => hash.as_ref(),
         }
-    }
+    };
 }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerApplied {
-    pub hash: OperationHash,
-    pub operation_decoded_contents: OperationDecodedContents,
-}
-
-impl PrecheckerApplied {
-    pub fn as_applied(&self) -> Applied {
-        Applied {
-            hash: self.hash.clone(),
-            protocol_data_json: self.operation_decoded_contents.as_json().to_string(),
-        }
-    }
-}
-
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerErrored {
-    pub hash: OperationHash,
-    pub operation_decoded_contents: OperationDecodedContents,
-    pub error: String,
-}
-
-impl PrecheckerErrored {
-    pub fn is_endorsement(&self) -> bool {
-        self.operation_decoded_contents.is_endorsement()
-    }
-
-    pub fn as_errored(&self) -> Errored {
-        Errored {
-            hash: self.hash.clone(),
-            is_endorsement: self.is_endorsement(),
-            protocol_data_json: self.operation_decoded_contents.as_json().to_string(),
-            error_json: self.error.clone(),
-        }
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerPrevalidate {
+pub struct PrecheckerPrecheckOperationAction {
     pub hash: OperationHash,
     pub operation: Operation,
+    pub proto: u8,
 }
 
-impl PrecheckerPrecheckOperationResponseAction {
-    pub(super) fn valid(
-        operation_hash: &OperationHash,
-        operation_decoded_contents: OperationDecodedContents,
-    ) -> Self {
-        let applied = PrecheckerApplied {
-            hash: operation_hash.clone(),
-            operation_decoded_contents,
-        };
-        Self {
-            response: PrecheckerPrecheckOperationResponse::Applied(applied),
-        }
-    }
-
-    pub(super) fn reject(
-        operation_hash: &OperationHash,
-        operation_decoded_contents: OperationDecodedContents,
-        error: String,
-    ) -> Self {
-        let errored = PrecheckerErrored {
-            hash: operation_hash.clone(),
-            error,
-            operation_decoded_contents,
-        };
-        Self {
-            response: PrecheckerPrecheckOperationResponse::Refused(errored),
-        }
-    }
-
-    pub(super) fn prevalidate(operation: Operation, hash: OperationHash) -> Self {
-        Self {
-            response: PrecheckerPrecheckOperationResponse::Prevalidate(PrecheckerPrevalidate {
-                operation,
-                hash,
-            }),
-        }
-    }
-
-    pub(super) fn error<E>(error: E, operation: Option<OperationHash>) -> Self
-    where
-        E: Into<PrecheckerResponseError>,
-    {
-        Self {
-            response: PrecheckerPrecheckOperationResponse::Error(error.into(), operation),
-        }
+impl EnablingCondition<State> for PrecheckerPrecheckOperationAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let prechecker_state = &state.prechecker;
+        !prechecker_state.operations.contains_key(&self.hash)
+            && prechecker_state.proto_cache.contains_key(&self.proto)
     }
 }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerPrecheckOperationInitAction {
-    pub key: Key,
-    pub operation: Operation,
-    pub operation_binary_encoding: Vec<u8>,
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct PrecheckerPrecheckDelayedOperationAction {
+    pub hash: OperationHash,
 }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+impl EnablingCondition<State> for PrecheckerPrecheckDelayedOperationAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct PrecheckerDecodeOperationAction {
-    pub key: Key,
-    pub protocol: SupportedProtocol,
+    pub hash: OperationHash,
 }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerOperationDecodedAction {
-    pub key: Key,
-    pub contents: OperationDecodedContents,
+impl EnablingCondition<State> for PrecheckerDecodeOperationAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let prechecker_state = &state.prechecker;
+        matches!(
+            prechecker_state.state(&self.hash),
+            Some(PrecheckerOperationState::Init { .. })
+        )
+    }
 }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+from_hash_ref!(PrecheckerDecodeOperationAction);
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerWaitForBlockPrecheckedAction {
-    pub key: Key,
-    pub branch: BlockHash,
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct PrecheckerCategorizeOperationAction {
+    pub hash: OperationHash,
 }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerBlockPrecheckedAction {
-    pub key: Key,
+impl EnablingCondition<State> for PrecheckerCategorizeOperationAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        matches!(
+            state.prechecker.state(&self.hash),
+            Some(PrecheckerOperationState::Decoded { .. })
+        )
+    }
 }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerWaitForBlockAppliedAction {
-    pub key: Key,
-    pub branch: BlockHash,
-}
+from_hash_ref!(PrecheckerCategorizeOperationAction);
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerBlockAppliedAction {
-    pub key: Key,
-}
-
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerGetEndorsingRightsAction {
-    pub key: Key,
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerEndorsingRightsReadyAction {
-    pub key: Key,
-    pub endorsing_rights: EndorsingRights,
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerValidateEndorsementAction {
-    pub key: Key,
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerEndorsementValidationAppliedAction {
-    pub key: Key,
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerEndorsementValidationRefusedAction {
-    pub key: Key,
-    pub error: EndorsementValidationError,
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerProtocolNeededAction {
-    pub key: Key,
+    pub hash: OperationHash,
 }
+
+impl EnablingCondition<State> for PrecheckerProtocolNeededAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        matches!(
+            state.prechecker.state(&self.hash),
+            Some(PrecheckerOperationState::ProtocolNeeded)
+        )
+    }
+}
+
+from_hash_ref!(PrecheckerProtocolNeededAction);
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct PrecheckerValidateOperationAction {
+    pub hash: OperationHash,
+}
+
+impl EnablingCondition<State> for PrecheckerValidateOperationAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        matches!(
+            state.prechecker.state(&self.hash),
+            Some(PrecheckerOperationState::TenderbakeConsensus { .. })
+                | Some(PrecheckerOperationState::TenderbakePendingRights { .. })
+        )
+    }
+}
+
+from_hash_ref!(PrecheckerValidateOperationAction);
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct PrecheckerOperationValidatedAction {
+    pub hash: OperationHash,
+}
+
+impl EnablingCondition<State> for PrecheckerOperationValidatedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        state
+            .prechecker
+            .state(&self.hash)
+            .map_or(false, PrecheckerOperationState::is_result)
+    }
+}
+
+from_hash_ref!(PrecheckerOperationValidatedAction);
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerErrorAction {
-    pub key: Key,
-    pub error: PrecheckerError,
+    pub hash: OperationHash,
 }
 
-impl PrecheckerErrorAction {
-    pub(super) fn new<E>(key: Key, error: E) -> Self
-    where
-        E: Into<PrecheckerError>,
-    {
-        Self {
-            key,
-            error: error.into(),
-        }
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerCacheAppliedBlockAction {
-    pub block_hash: BlockHash,
-    pub chain_id: ChainId,
-    pub block_header: BlockHeader,
-}
-
-impl EnablingCondition<State> for PrecheckerCacheAppliedBlockAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerPrecacheEndorsingRightsAction {
-    pub current_head: BlockHash,
-    pub level: Level,
-}
-
-impl EnablingCondition<State> for PrecheckerPrecacheEndorsingRightsAction {
-    fn is_enabled(&self, _state: &State) -> bool {
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct PrecheckerPruneOperationAction {
-    pub key: Key,
-}
-
-impl EnablingCondition<State> for PrecheckerPruneOperationAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        match state.prechecker.operations.get(&self.key) {
-            Some(op) => matches!(
-                op.state,
-                PrecheckerOperationState::Applied { .. }
-                    | PrecheckerOperationState::Refused { .. }
-                    | PrecheckerOperationState::ProtocolNeeded
-            ),
-            None => false,
-        }
-    }
-}
-
-impl EnablingCondition<State> for PrecheckerPrecheckOperationInitAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerDecodeOperationAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerOperationDecodedAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerWaitForBlockPrecheckedAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerBlockPrecheckedAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerWaitForBlockAppliedAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerBlockAppliedAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerGetEndorsingRightsAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerEndorsingRightsReadyAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerValidateEndorsementAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerEndorsementValidationAppliedAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerEndorsementValidationRefusedAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-impl EnablingCondition<State> for PrecheckerProtocolNeededAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
 impl EnablingCondition<State> for PrecheckerErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
+        state
+            .prechecker
+            .operations
+            .get(&self.hash)
+            .map_or(false, Result::is_err)
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-pub struct PrecheckerPrecheckBlockAction {
-    pub block_hash: BlockHash,
-    pub block_header: BlockHeader,
-}
-
-impl EnablingCondition<State> for PrecheckerPrecheckBlockAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        !state.prechecker.blocks_cache.contains_key(&self.block_hash)
-    }
-}
+from_hash_ref!(PrecheckerErrorAction);
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct PrecheckerCacheProtocolAction {
-    pub block_hash: BlockHash,
     pub proto: u8,
     pub protocol_hash: ProtocolHash,
-    pub next_protocol_hash: ProtocolHash,
 }
 
 impl EnablingCondition<State> for PrecheckerCacheProtocolAction {
-    fn is_enabled(&self, _state: &State) -> bool {
-        true
+    fn is_enabled(&self, state: &State) -> bool {
+        !state.prechecker.proto_cache.contains_key(&self.proto)
     }
 }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct PrecheckerCacheDelayedOperationAction {
+    pub hash: OperationHash,
+}
+
+impl EnablingCondition<State> for PrecheckerCacheDelayedOperationAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        state
+            .prechecker
+            .state(&self.hash)
+            .map_or(false, |op_state| op_state.caching_level().is_some())
+    }
+}
+
+from_hash_ref!(PrecheckerCacheDelayedOperationAction);
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct PrecheckerPruneOperationAction {
+    pub hash: OperationHash,
+}
+
+impl EnablingCondition<State> for PrecheckerPruneOperationAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        state
+            .prechecker
+            .state(&self.hash)
+            .map_or(false, PrecheckerOperationState::is_result)
+    }
+}
+
+from_hash_ref!(PrecheckerPruneOperationAction);

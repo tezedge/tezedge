@@ -1,27 +1,32 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 
 use crypto::hash::ContextHash;
+use crypto::PublicKeyWithHash;
 use serde::{Deserialize, Serialize};
 
 use slog::Logger;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, CommitGenesisResult,
-    InitProtocolContextResult, PrevalidatorWrapper, TezosRuntimeConfiguration,
-    ValidateOperationRequest, ValidateOperationResponse,
+    InitProtocolContextResult, PrevalidatorWrapper, ProtocolRpcRequest, ProtocolRpcResponse,
+    TezosRuntimeConfiguration, ValidateOperationRequest, ValidateOperationResponse,
 };
 use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
+use tezos_messages::base::signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash};
+use tezos_messages::base::ConversionError;
 use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerError, ProtocolServiceError};
 use tezos_protocol_ipc_messages::{
     GenesisResultDataParams, InitProtocolContextParams, ProtocolMessage,
 };
 
 use crate::protocol_runner::ProtocolRunnerToken;
+use crate::rights::{EndorsingPower, Slot};
 
 use super::protocol_runner_service_worker::ProtocolRunnerServiceWorker;
 use super::service_async_channel::{
@@ -85,6 +90,27 @@ pub enum ProtocolRunnerResult {
         ),
     ),
 
+    GetContextRawBytes(
+        (
+            ProtocolRunnerToken,
+            Result<Result<Vec<u8>, ContextRawBytesError>, ProtocolServiceError>,
+        ),
+    ),
+
+    GetEndorsingRights(
+        (
+            ProtocolRunnerToken,
+            Result<EndorsingRightsResponse, ProtocolServiceError>,
+        ),
+    ),
+
+    GetCycleDelegates(
+        (
+            ProtocolRunnerToken,
+            Result<CycleDelegatesResponse, ProtocolServiceError>,
+        ),
+    ),
+
     ShutdownServer(Result<(), ProtocolRunnerError>),
 }
 
@@ -100,6 +126,9 @@ impl ProtocolRunnerResult {
             Self::ApplyBlock((token, _)) => Some(*token),
             Self::BeginConstruction((token, _)) => Some(*token),
             Self::ValidateOperation((token, _)) => Some(*token),
+            Self::GetContextRawBytes((token, _)) => Some(*token),
+            Self::GetEndorsingRights((token, _)) => Some(*token),
+            Self::GetCycleDelegates((token, _)) => Some(*token),
 
             Self::ShutdownServer(_) => None,
         }
@@ -148,6 +177,12 @@ pub trait ProtocolRunnerService {
     // TODO: pre_filter_operation
 
     fn validate_operation(&mut self, req: ValidateOperationRequest) -> ProtocolRunnerToken;
+
+    fn get_context_raw_bytes(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken;
+
+    fn get_endorsing_rights(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken;
+
+    fn get_cycle_delegates(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken;
 
     /// Notify status of protocol runner's and it's context initialization.
     fn notify_status(&mut self, initialized: bool);
@@ -307,6 +342,33 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
         token
     }
 
+    fn get_context_raw_bytes(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken {
+        let token = self.new_token();
+        let message = ProtocolMessage::GetContextRawBytes(req);
+        self.channel
+            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
+            .unwrap();
+        token
+    }
+
+    fn get_endorsing_rights(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken {
+        let token = self.new_token();
+        let message = ProtocolMessage::GetEndorsingRights(req);
+        self.channel
+            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
+            .unwrap();
+        token
+    }
+
+    fn get_cycle_delegates(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken {
+        let token = self.new_token();
+        let message = ProtocolMessage::GetCycleDelegates(req);
+        self.channel
+            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
+            .unwrap();
+        token
+    }
+
     fn notify_status(&mut self, initialized: bool) {
         let _ = self.status_sender.send(initialized);
     }
@@ -316,4 +378,152 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
             .blocking_send(ProtocolRunnerRequest::ShutdownServer(()))
             .unwrap();
     }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, thiserror::Error, serde::Serialize, serde::Deserialize)]
+#[error("error getting endorsing rights: {0}")]
+pub struct ProtocolRpcResponseError(String);
+
+impl From<ProtocolRpcResponse> for ProtocolRpcResponseError {
+    fn from(source: ProtocolRpcResponse) -> Self {
+        Self(match source {
+            ProtocolRpcResponse::RPCOk(_) => "ok_should_not_happen".into(),
+            ProtocolRpcResponse::RPCConflict(_) => "conflict".into(),
+            ProtocolRpcResponse::RPCCreated(_) => "created".into(),
+            ProtocolRpcResponse::RPCError(_) => "error".into(),
+            ProtocolRpcResponse::RPCForbidden(_) => "forbidden".into(),
+            ProtocolRpcResponse::RPCGone(_) => "gone".into(),
+            ProtocolRpcResponse::RPCNoContent => "no_content".into(),
+            ProtocolRpcResponse::RPCNotFound(_) => "not_found".into(),
+            ProtocolRpcResponse::RPCUnauthorized => "unauthorized".into(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, thiserror::Error, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub enum ContextRawBytesError {
+    #[error(transparent)]
+    Response(#[from] ProtocolRpcResponseError),
+    #[error("Error decoding bytes from JSON: {0}")]
+    JsonDecode(String),
+    #[error("Error decoding bytes from hex: {0}")]
+    HexDecode(String),
+}
+
+pub(super) fn context_raw_bytes_from_rpc_response(
+    res: ProtocolRpcResponse,
+) -> Result<Vec<u8>, ContextRawBytesError> {
+    let body = res.ok_body_or().map_err(ProtocolRpcResponseError::from)?;
+    let json_str = serde_json::from_str::<String>(&body)
+        .map_err(|err| ContextRawBytesError::JsonDecode(err.to_string()))?;
+    let bytes =
+        hex::decode(&json_str).map_err(|err| ContextRawBytesError::HexDecode(err.to_string()))?;
+    Ok(bytes)
+}
+
+pub type EndorsingRightsResponse = Result<EndorsingRights, EndorsingRightsError>;
+
+pub type EndorsingRights = Vec<EndorsingRightsLevel>;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct EndorsingRightsLevel {
+    pub level: i32,
+    pub delegates: Vec<EndorsingRightsDelegate>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct EndorsingRightsDelegate {
+    pub delegate: SignaturePublicKeyHash,
+    pub first_slot: Slot,
+    pub endorsing_power: EndorsingPower,
+}
+
+#[derive(Debug, Clone, thiserror::Error, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub enum EndorsingRightsError {
+    #[error(transparent)]
+    Response(#[from] ProtocolRpcResponseError),
+    #[error("JSON parse error: {0}")]
+    ToJson(String),
+    #[error(transparent)]
+    Conversion(#[from] ConversionError),
+}
+
+impl From<serde_json::Error> for EndorsingRightsError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::ToJson(error.to_string())
+    }
+}
+
+pub(super) fn endorsing_rights_from_rpc_response(
+    res: ProtocolRpcResponse,
+) -> EndorsingRightsResponse {
+    let body = res.ok_body_or().map_err(ProtocolRpcResponseError::from)?;
+
+    #[derive(serde::Deserialize)]
+    pub struct EndorsingRightsLevelJson {
+        pub level: i32,
+        pub delegates: Vec<EndorsingRightsDelegate>,
+        pub estimated_time: Option<String>,
+    }
+
+    let rights = serde_json::from_str::<Vec<EndorsingRightsLevelJson>>(&body)?;
+
+    let rights = rights
+        .into_iter()
+        .map(|erl| EndorsingRightsLevel {
+            level: erl.level,
+            delegates: erl.delegates,
+        })
+        .collect();
+
+    Ok(rights)
+}
+
+pub type CycleDelegatesResponse = Result<CycleDelegates, CycleDelegatesError>;
+
+pub type CycleDelegates = BTreeMap<SignaturePublicKeyHash, SignaturePublicKey>;
+
+#[derive(Debug, Clone, thiserror::Error, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub enum CycleDelegatesError {
+    #[error(transparent)]
+    Response(#[from] ProtocolRpcResponseError),
+    #[error("JSON parse error: {0}")]
+    ToJson(String),
+    #[error(transparent)]
+    Conversion(#[from] ConversionError),
+}
+
+impl From<serde_json::Error> for CycleDelegatesError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::ToJson(error.to_string())
+    }
+}
+
+pub(super) fn cycle_delegates_from_rpc_response(
+    res: ProtocolRpcResponse,
+) -> CycleDelegatesResponse {
+    let body = res.ok_body_or().map_err(ProtocolRpcResponseError::from)?;
+
+    #[derive(serde::Deserialize)]
+    struct ProtocolResultJson {
+        support: SupportJson,
+    }
+    #[derive(serde::Deserialize)]
+    struct SupportJson {
+        elements: Vec<SignaturePublicKey>,
+    }
+    let json = serde_json::from_str::<ProtocolResultJson>(&body)?;
+    let delegates = json
+        .support
+        .elements
+        .into_iter()
+        .map(|pk| pk.pk_hash().map(|pkh| (pkh, pk)))
+        .collect::<Result<_, _>>()?;
+    Ok(delegates)
 }

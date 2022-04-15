@@ -8,7 +8,10 @@ use crate::current_head::current_head_effects;
 use crate::current_head_precheck::current_head_precheck_effects;
 use crate::prechecker::prechecker_effects;
 use crate::protocol_runner::latest_context_hashes::protocol_runner_latest_context_hashes_effects;
-use crate::rights::rights_effects;
+use crate::rights::{
+    cycle_delegates::rights_cycle_delegates_effects, cycle_eras::rights_cycle_eras_effects,
+    rights_effects,
+};
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
 use crate::shutdown::shutdown_effects;
@@ -179,6 +182,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     rpc_effects(store, action);
 
     rights_effects(store, action);
+    rights_cycle_eras_effects(store, action);
+    rights_cycle_delegates_effects(store, action);
 
     current_head_precheck_effects(store, action);
 
