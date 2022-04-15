@@ -2,4 +2,5 @@
 // SPDX-License-Identifier: MIT
 
 pub mod alerts;
+pub mod delegate;
 pub mod resource;

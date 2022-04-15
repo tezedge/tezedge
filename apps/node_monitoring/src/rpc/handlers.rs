@@ -16,6 +16,7 @@ use crate::MEASUREMENTS_MAX_CAPACITY;
 const FE_CAPACITY: usize = 1000;
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct MeasurementOptions {
     tag: Option<String>,
     limit: Option<usize>,
@@ -37,7 +38,7 @@ pub async fn get_measurements(
                 .into_iter()
                 .chunks(every_nth)
                 .into_iter()
-                .map(|chunk| chunk.fold1(|m1, m2| m1.merge(m2)).unwrap_or_default())
+                .map(|chunk| chunk.reduce(|m1, m2| m1.merge(m2)).unwrap_or_default())
                 .take(options.limit.unwrap_or(MEASUREMENTS_MAX_CAPACITY))
                 .collect()
         } else if storage.len() > FE_CAPACITY {
@@ -48,7 +49,7 @@ pub async fn get_measurements(
                 .into_iter()
                 .chunks(chunk_by)
                 .into_iter()
-                .map(|chunk| chunk.fold1(|m1, m2| m1.merge(m2)).unwrap_or_default())
+                .map(|chunk| chunk.reduce(|m1, m2| m1.merge(m2)).unwrap_or_default())
                 .take(options.limit.unwrap_or(MEASUREMENTS_MAX_CAPACITY))
                 .collect()
         } else {
