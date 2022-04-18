@@ -78,17 +78,27 @@ where
 }
 
 fn notify_new_current_head<S: Service>(store: &mut Store<S>) {
-    let block = match store.state().current_head.get() {
-        Some(v) => v.clone().into(),
+    let state = store.state.get();
+    let block = match state.current_head.get() {
+        Some(v) => v,
         None => return,
     };
-    let chain_id = store.state().config.chain_id.clone().into();
-    let is_bootstrapped = store.state().is_bootstrapped();
-    let best_remote_level = store.state().best_remote_level();
-    let new_head =
-        NewCurrentHeadNotification::new(chain_id, block, is_bootstrapped, best_remote_level);
+    let chain_id = state.config.chain_id.clone().into();
+    let is_bootstrapped = state.is_bootstrapped();
+    let best_remote_level = state.best_remote_level();
+    let new_head = NewCurrentHeadNotification::new(
+        chain_id,
+        block.clone().into(),
+        is_bootstrapped,
+        best_remote_level,
+    );
+
     store
         .service
         .actors()
         .send(ActorsMessageTo::NewCurrentHead(new_head.into()));
+
+    if let Some(stats) = store.service.statistics() {
+        stats.current_head_update(state.time_as_nanos(), block);
+    }
 }

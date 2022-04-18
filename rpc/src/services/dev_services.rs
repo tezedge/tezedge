@@ -10,6 +10,7 @@ use crypto::hash::{BlockPayloadHash, ContractKt1Hash, OperationHash};
 use serde::{Deserialize, Serialize};
 use shell_automaton::mempool::{OperationKind, OperationValidationResult};
 use shell_automaton::service::rpc_service::RpcShellAutomatonActionsRaw;
+use shell_automaton::service::statistics_service::ActionKindStatsForBlock;
 use shell_automaton::{Action, ActionWithMeta};
 use slog::Logger;
 use std::borrow::Cow;
@@ -17,6 +18,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::convert::TryFrom;
 use std::vec;
+use storage::shell_automaton_action_meta_storage::ShellAutomatonActionStatsForRanges;
 
 use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
@@ -683,14 +685,7 @@ pub(crate) async fn get_shell_automaton_actions_reverse(
     .await?
 }
 
-pub(crate) type ShellAutomatonActionsStats = HashMap<String, ShellAutomatonActionStats>;
-
-#[derive(Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ShellAutomatonActionStats {
-    total_calls: u64,
-    total_duration: u64,
-}
+pub(crate) type ShellAutomatonActionsStats = HashMap<String, ShellAutomatonActionStatsForRanges>;
 
 pub(crate) async fn get_shell_automaton_actions_stats(
     env: &RpcServiceEnvironment,
@@ -701,20 +696,23 @@ pub(crate) async fn get_shell_automaton_actions_stats(
         .shell_automaton_sender()
         .send(RpcShellAutomatonMsg::GetActionKindStats { channel: tx })
         .await;
-    Ok(rx
-        .await?
-        .stats
-        .into_iter()
-        .map(|(k, v)| {
-            (
-                k,
-                ShellAutomatonActionStats {
-                    total_calls: v.total_calls,
-                    total_duration: v.total_duration,
-                },
-            )
+    Ok(rx.await?.stats)
+}
+
+pub(crate) async fn get_shell_automaton_actions_stats_for_blocks(
+    env: &RpcServiceEnvironment,
+    level_filter: Option<BTreeSet<Level>>,
+) -> anyhow::Result<Vec<ActionKindStatsForBlock>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetActionKindStatsForBlocks {
+            channel: tx,
+            level_filter,
         })
-        .collect())
+        .await;
+    Ok(rx.await?)
 }
 
 pub(crate) async fn get_shell_automaton_actions_graph(
