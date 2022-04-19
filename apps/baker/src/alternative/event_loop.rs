@@ -93,9 +93,8 @@ pub fn run(
                 vec![]
             }
             Ok(Event::Block(block)) => {
+                live_blocks = block.live_blocks.clone();
                 if block.level > dy.map.level() {
-                    // TODO: do not fetch live blocks for any block, only for new level block
-                    live_blocks = block.live_blocks.clone();
                     this_level.clear();
                     let delegates = srv.client.validators(block.level + 1)?;
                     dy.map.insert(block.level + 1, delegates);
