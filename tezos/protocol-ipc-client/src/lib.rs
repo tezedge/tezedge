@@ -346,6 +346,7 @@ impl ProtocolRunnerConnection {
     const DEFAULT_TIMEOUT_VERY_LONG: Duration = Duration::from_secs(60 * 30);
 
     const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(60 * 240);
+    const GET_CURRENT_HEAD_TIMEOUT: Duration = Self::APPLY_BLOCK_TIMEOUT; // Reloading the context from disk might takes a long time
     const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
     const BEGIN_APPLICATION_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
     const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
@@ -368,6 +369,20 @@ impl ProtocolRunnerConnection {
             ApplyBlockResult(result),
             ApplyBlockError,
             Some(Self::APPLY_BLOCK_TIMEOUT),
+        )
+    }
+
+    /// Get context's current head
+    pub async fn latest_context_hashes(
+        &mut self,
+        count: i64,
+    ) -> Result<Vec<ContextHash>, ProtocolServiceError> {
+        handle_request!(
+            self.io,
+            ContextGetLatestContextHashes(count),
+            ContextGetLatestContextHashesResult(result),
+            GetCurrentHeadError,
+            Some(Self::GET_CURRENT_HEAD_TIMEOUT),
         )
     }
 

@@ -78,6 +78,10 @@ use crate::rights::rights_actions::*;
 use crate::bootstrap::*;
 use crate::mempool::mempool_actions::*;
 
+use crate::protocol_runner::current_head::{
+    ProtocolRunnerCurrentHeadErrorAction, ProtocolRunnerCurrentHeadInitAction,
+    ProtocolRunnerCurrentHeadPendingAction, ProtocolRunnerCurrentHeadSuccessAction,
+};
 use crate::protocol_runner::init::context::{
     ProtocolRunnerInitContextAction, ProtocolRunnerInitContextErrorAction,
     ProtocolRunnerInitContextPendingAction, ProtocolRunnerInitContextSuccessAction,
@@ -231,6 +235,11 @@ pub enum Action {
     ProtocolRunnerSpawnServerPending(ProtocolRunnerSpawnServerPendingAction),
     ProtocolRunnerSpawnServerError(ProtocolRunnerSpawnServerErrorAction),
     ProtocolRunnerSpawnServerSuccess(ProtocolRunnerSpawnServerSuccessAction),
+
+    ProtocolRunnerCurrentHeadInit(ProtocolRunnerCurrentHeadInitAction),
+    ProtocolRunnerCurrentHeadPending(ProtocolRunnerCurrentHeadPendingAction),
+    ProtocolRunnerCurrentHeadError(ProtocolRunnerCurrentHeadErrorAction),
+    ProtocolRunnerCurrentHeadSuccess(ProtocolRunnerCurrentHeadSuccessAction),
 
     ProtocolRunnerInit(ProtocolRunnerInitAction),
 

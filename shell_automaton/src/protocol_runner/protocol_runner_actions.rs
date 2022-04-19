@@ -3,12 +3,11 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::protocol_runner::current_head::ProtocolRunnerCurrentHeadState;
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::storage::blocks::genesis::init::StorageBlocksGenesisInitState;
 use crate::{EnablingCondition, State};
-
-use super::init::ProtocolRunnerInitState;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -28,7 +27,7 @@ impl EnablingCondition<State> for ProtocolRunnerReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         matches!(
             &state.protocol_runner,
-            ProtocolRunnerState::Init(ProtocolRunnerInitState::Success { .. })
+            ProtocolRunnerState::GetCurrentHead(ProtocolRunnerCurrentHeadState::Success { .. })
         )
     }
 }

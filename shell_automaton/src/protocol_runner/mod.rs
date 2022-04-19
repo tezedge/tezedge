@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+pub mod current_head;
 pub mod init;
 pub mod spawn_server;
 

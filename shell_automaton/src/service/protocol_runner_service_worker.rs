@@ -249,6 +249,12 @@ impl ProtocolRunnerServiceWorker {
                     .send(ProtocolRunnerResult::BeginConstruction((token, res)))
                     .await;
             }
+            ProtocolMessage::ContextGetLatestContextHashes(count) => {
+                let res = conn.latest_context_hashes(count).await;
+                let _ = channel
+                    .send(ProtocolRunnerResult::GetCurrentHead((token, res)))
+                    .await;
+            }
             _other => {
                 // TODO: say which message
                 slog::warn!(

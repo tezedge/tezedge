@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use crate::current_head::CurrentHeadRehydrateInitAction;
+use crate::protocol_runner::current_head::{
+    ProtocolRunnerCurrentHeadInitAction, ProtocolRunnerCurrentHeadState,
+    ProtocolRunnerCurrentHeadSuccessAction,
+};
 use crate::protocol_runner::init::context::{
     ProtocolRunnerInitContextErrorAction, ProtocolRunnerInitContextState,
     ProtocolRunnerInitContextSuccessAction,
@@ -28,9 +32,8 @@ use super::init::context_ipc_server::{
 use super::init::ProtocolRunnerInitAction;
 use super::spawn_server::ProtocolRunnerSpawnServerInitAction;
 use super::{
-    ProtocolRunnerNotifyStatusAction, ProtocolRunnerReadyAction,
-    ProtocolRunnerResponseUnexpectedAction, ProtocolRunnerShutdownPendingAction,
-    ProtocolRunnerShutdownSuccessAction, ProtocolRunnerState,
+    ProtocolRunnerNotifyStatusAction, ProtocolRunnerResponseUnexpectedAction,
+    ProtocolRunnerShutdownPendingAction, ProtocolRunnerShutdownSuccessAction, ProtocolRunnerState,
 };
 
 pub fn protocol_runner_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -45,7 +48,7 @@ where
             store.dispatch(ProtocolRunnerInitAction {});
         }
         Action::ProtocolRunnerInitSuccess(_) => {
-            store.dispatch(ProtocolRunnerReadyAction {});
+            store.dispatch(ProtocolRunnerCurrentHeadInitAction {});
         }
         Action::ProtocolRunnerReady(_) => {
             if let ProtocolRunnerState::Ready(state) = &store.state.get().protocol_runner {
@@ -57,6 +60,7 @@ where
                         genesis_commit_hash,
                     });
                 }
+
                 store.dispatch(CurrentHeadRehydrateInitAction {});
                 store.dispatch(ProtocolRunnerNotifyStatusAction {});
             }
@@ -103,6 +107,37 @@ where
                             continue;
                         }
                     },
+                    ProtocolRunnerState::GetCurrentHead(state) => match state {
+                        ProtocolRunnerCurrentHeadState::Pending { .. } => match result {
+                            ProtocolRunnerResult::GetCurrentHead((
+                                token,
+                                Ok(latest_context_hashes),
+                            )) => {
+                                store.dispatch(ProtocolRunnerCurrentHeadSuccessAction {
+                                    token,
+                                    latest_context_hashes,
+                                });
+                                continue;
+                            }
+                            ProtocolRunnerResult::GetCurrentHead((token, Err(error))) => {
+                                slog::error!(&store.state().log, "failed to get context's latest commits";
+                                    "error" => format!("{:?}", error));
+                                store.dispatch(ProtocolRunnerCurrentHeadSuccessAction {
+                                    token,
+                                    latest_context_hashes: Vec::new(),
+                                });
+                                continue;
+                            }
+                            result => {
+                                store.dispatch(ProtocolRunnerResponseUnexpectedAction { result });
+                                continue;
+                            }
+                        },
+                        _ => {
+                            store.dispatch(ProtocolRunnerResponseUnexpectedAction { result });
+                            continue;
+                        }
+                    },
                     ProtocolRunnerState::Init(v) => v,
                     ProtocolRunnerState::Idle => {
                         store.dispatch(ProtocolRunnerResponseUnexpectedAction { result });
@@ -130,6 +165,7 @@ where
                         continue;
                     }
                 };
+
                 match init_state {
                     ProtocolRunnerInitState::Runtime(ProtocolRunnerInitRuntimeState::Pending {
                         ..

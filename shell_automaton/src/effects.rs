@@ -7,6 +7,7 @@ use crate::bootstrap::{bootstrap_effects, BootstrapCheckTimeoutsInitAction};
 use crate::current_head::current_head_effects;
 use crate::current_head_precheck::current_head_precheck_effects;
 use crate::prechecker::prechecker_effects;
+use crate::protocol_runner::current_head::protocol_runner_current_head_effects;
 use crate::rights::rights_effects;
 use crate::service::storage_service::{StorageRequest, StorageRequestPayload};
 use crate::service::{Service, StorageService};
@@ -117,6 +118,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     protocol_runner_effects(store, action);
 
     protocol_runner_spawn_server_effects(store, action);
+
+    protocol_runner_current_head_effects(store, action);
 
     protocol_runner_init_effects(store, action);
     protocol_runner_init_runtime_effects(store, action);
