@@ -115,6 +115,20 @@ where
         }
     }
 
+    pub fn deallocate_before(&mut self, index: usize) {
+        let (list_index, _) = self.get_indexes_at(index);
+        let list_index = list_index.saturating_sub(1);
+
+        let chunks = match self.list_of_chunks.get_mut(0..list_index) {
+            Some(chunks) => chunks,
+            None => return,
+        };
+
+        for chunk in chunks {
+            *chunk = Vec::new();
+        }
+    }
+
     pub fn extend_from(&mut self, other: &Self) {
         let our_length = self.list_of_chunks.len();
         let other_length = other.list_of_chunks.len();
@@ -281,6 +295,22 @@ impl<T, const CHUNK_CAPACITY: usize> ChunkedVec<T, CHUNK_CAPACITY> {
             chunks: self,
             index: start,
         }
+    }
+
+    // Impossible to make a `Self::iter_mut` without unsafe code:
+    // https://stackoverflow.com/q/63437935/5717561
+    // So we iterate with a closure instead
+    pub fn for_each_mut<F, E>(&mut self, mut fun: F) -> Result<(), E>
+    where
+        F: FnMut(&mut T) -> Result<(), E>,
+    {
+        for chunk in &mut self.list_of_chunks {
+            for elem in chunk {
+                fun(elem)?;
+            }
+        }
+
+        Ok(())
     }
 
     pub fn resize_with<F>(&mut self, new_len: usize, mut fun: F)

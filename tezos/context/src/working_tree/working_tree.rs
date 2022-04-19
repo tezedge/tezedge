@@ -50,6 +50,7 @@
 use std::{
     array::TryFromSliceError,
     collections::{HashMap, HashSet},
+    io::Write,
     sync::PoisonError,
     vec::IntoIter,
 };
@@ -91,7 +92,7 @@ pub struct PostCommitData {
     pub commit_ref: ObjectReference,
     pub batch: ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>,
     pub serialize_stats: Box<SerializeStats>,
-    pub output: Vec<u8>,
+    pub output: SerializeOutput,
 }
 
 #[derive(Default)]
@@ -157,7 +158,7 @@ impl PostCommitData {
             commit_ref: ObjectReference::new(Some(commit_hash), None),
             batch: ChunkedVec::<_, { BATCH_CHUNK_CAPACITY }>::empty(),
             serialize_stats: Default::default(),
-            output: Default::default(),
+            output: SerializeOutput::new(None),
         }
     }
 }
@@ -271,18 +272,12 @@ impl TreeWalkerLevel {
             }
         };
 
-        let repository = match root.index.repository.read() {
-            Ok(repo) => repo,
-            Err(e) => {
-                eprintln!("TreeWalkerLevel Failed to lock repository: {:?}", e);
-                return Vec::new();
-            }
-        };
-
         let fun = match order {
             FoldOrder::Sorted => Storage::dir_to_vec_sorted,
             FoldOrder::Undefined => Storage::dir_to_vec_unsorted,
         };
+
+        let repository = root.index.repository.read();
 
         match fun(&mut storage, dir_id, &mut strings, &*repository) {
             Ok(dir) => dir,
@@ -501,12 +496,83 @@ pub enum CheckObjectHashError {
     },
 }
 
+pub struct SerializeOutput {
+    bytes: Vec<u8>,
+    file_offset: Option<AbsoluteOffset>,
+}
+
+impl std::ops::Deref for SerializeOutput {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        self.bytes.as_slice()
+    }
+}
+
+impl std::ops::DerefMut for SerializeOutput {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.bytes.as_mut()
+    }
+}
+
+impl<Idx: std::slice::SliceIndex<[u8]>> std::ops::Index<Idx> for SerializeOutput {
+    type Output = Idx::Output;
+
+    fn index(&self, index: Idx) -> &Self::Output {
+        &self.bytes[index]
+    }
+}
+
+impl<Idx: std::slice::SliceIndex<[u8]>> std::ops::IndexMut<Idx> for SerializeOutput {
+    fn index_mut(&mut self, index: Idx) -> &mut Self::Output {
+        &mut self.bytes[index]
+    }
+}
+
+impl SerializeOutput {
+    pub fn new(file_offset: Option<AbsoluteOffset>) -> Self {
+        Self {
+            bytes: Vec::with_capacity(128 * 1024),
+            file_offset,
+        }
+    }
+
+    pub fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+        self.bytes.write_all(buf)?;
+
+        if let Some(offset) = self.file_offset.as_mut() {
+            *offset = offset.add_offset(buf.len() as u64);
+        };
+
+        Ok(())
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        self
+    }
+
+    pub fn current_offset(&self) -> Option<AbsoluteOffset> {
+        self.file_offset
+    }
+
+    pub fn push(&mut self, bytes: u8) {
+        self.bytes.push(bytes);
+
+        if let Some(offset) = self.file_offset.as_mut() {
+            *offset = offset.add_offset(1);
+        };
+    }
+
+    pub fn clear(&mut self) {
+        self.bytes.clear();
+    }
+}
+
 struct SerializingData<'a> {
     batch: ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>,
     repository: &'a mut ContextKeyValueStore,
-    serialized: Vec<u8>,
+    serialized: SerializeOutput,
     stats: Box<SerializeStats>,
-    offset: Option<AbsoluteOffset>,
     serialize_function: SerializeObjectSignature,
     dedup_objects: Option<HashMap<HashId, AbsoluteOffset>>,
 }
@@ -521,9 +587,8 @@ impl<'a> SerializingData<'a> {
         Self {
             batch: ChunkedVec::default(),
             repository,
-            serialized: Vec::with_capacity(2048),
+            serialized: SerializeOutput::new(offset),
             stats: Default::default(),
-            offset,
             serialize_function,
             dedup_objects: if enable_dedup_object {
                 Some(Default::default())
@@ -556,7 +621,7 @@ impl<'a> SerializingData<'a> {
         storage: &Storage,
         strings: &StringInterner,
     ) -> Result<Option<AbsoluteOffset>, MerkleError> {
-        (self.serialize_function)(
+        let result = (self.serialize_function)(
             object,
             object_hash_id,
             &mut self.serialized,
@@ -565,9 +630,15 @@ impl<'a> SerializingData<'a> {
             &mut self.stats,
             &mut self.batch,
             self.repository,
-            self.offset,
-        )
-        .map_err(Into::into)
+        )?;
+
+        if self.batch.len() >= BATCH_CHUNK_CAPACITY || self.serialized.len() >= 32 * 1024 * 1024 {
+            let batch = std::mem::take(&mut self.batch);
+            self.repository
+                .add_serialized_objects(batch, &mut self.serialized)?;
+        }
+
+        Ok(result)
     }
 }
 
@@ -677,7 +748,7 @@ impl WorkingTree {
     /// Returns the root hash of this working tree.
     pub fn hash(&self) -> Result<ObjectHash, MerkleError> {
         let storage = self.index.storage.borrow();
-        let mut repo = self.index.repository.write()?;
+        let mut repo = self.index.repository.write();
 
         let hash_id = match self.root {
             WorkingTreeRoot::Directory(_) => self.get_root_directory_hash(&mut *repo)?,
@@ -726,7 +797,7 @@ impl WorkingTree {
     ) -> Result<Vec<(String, WorkingTree)>, MerkleError> {
         let root = self.get_root_directory();
         let mut storage = self.index.storage.borrow_mut();
-        let repository = self.index.repository.read()?;
+        let repository = self.index.repository.read();
         let mut strings = self.index.get_string_interner()?;
 
         let dir_id = self.find_or_create_directory(root, key, &mut storage, &mut strings)?;
@@ -1053,7 +1124,7 @@ impl WorkingTree {
             return Ok(Object::Directory(self.get_root_directory()));
         }
 
-        let repository = self.index.repository.read()?;
+        let repository = self.index.repository.read();
         let dir_id = match new_dir_entry {
             None => storage.dir_remove(dir_id, last, strings, &*repository)?,
             Some(new_dir_entry) => {
@@ -1289,7 +1360,7 @@ impl WorkingTree {
             }
             Object::Directory(dir_id) => {
                 let dir = {
-                    let repository = self.index.repository.read()?;
+                    let repository = self.index.repository.read();
                     storage.dir_to_vec_unsorted(dir_id, strings, &*repository)?
                 };
 
@@ -1298,7 +1369,7 @@ impl WorkingTree {
 
                     let dir_hash = match object_hash_id {
                         Some(hash_id) => {
-                            let repository = self.index.repository.read()?;
+                            let repository = self.index.repository.read();
                             Some(repository.get_hash(hash_id.into())?.to_vec())
                         }
                         None => None,
@@ -1338,7 +1409,7 @@ impl WorkingTree {
                     let dir_entry = storage.get_dir_entry(dir_entry_id)?;
 
                     let object_hash_id = {
-                        let mut repository = self.index.repository.write()?;
+                        let mut repository = self.index.repository.write();
                         match dir_entry.object_hash_id(&mut *repository, storage, strings)? {
                             Some(hash_id) => {
                                 assert!(dir_entry.get_hash_id().is_ok());

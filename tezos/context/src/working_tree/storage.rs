@@ -752,6 +752,10 @@ impl ThinPointer {
             ThinPointerKind::FatPointer => ThinPointerValue::FatPointer(self.value().into()),
         }
     }
+
+    pub fn set_commited(&mut self, commited: bool) {
+        self.set_is_commited(commited);
+    }
 }
 
 /// A `DirectoryId` (8 bytes), `HashId` (6 bytes), or `AbsoluteOffset` (8 bytes).
@@ -1047,11 +1051,11 @@ type TempDirRange = Range<usize>;
 /// every checkout.
 pub struct Storage {
     /// An map `DirEntryId -> DirEntry`
-    nodes: IndexMap<DirEntryId, DirEntry, { DEFAULT_NODES_CAPACITY }>,
+    pub nodes: IndexMap<DirEntryId, DirEntry, { DEFAULT_NODES_CAPACITY }>,
     /// Concatenation of all directories in the working tree.
     /// The working tree has `DirectoryId` which refers to a subslice of this
     /// vector `directories`
-    directories: ChunkedVec<(StringId, DirEntryId), { DEFAULT_DIRECTORIES_CAPACITY }>,
+    pub directories: ChunkedVec<(StringId, DirEntryId), { DEFAULT_DIRECTORIES_CAPACITY }>,
     /// Temporary directories, this is used to avoid allocations when we
     /// manipulate `directories`
     /// For example, `Storage::insert` will create a new directory in `temp_dir`, once
@@ -1086,7 +1090,7 @@ pub struct Storage {
     /// This vector is growing very fast when manipulating inodes
     ///
     /// See `PointersId` and `Inode` for more information
-    thin_pointers: IndexMap<ThinPointerId, ThinPointer, { DEFAULT_THIN_POINTERS_CAPACITY }>,
+    pub thin_pointers: IndexMap<ThinPointerId, ThinPointer, { DEFAULT_THIN_POINTERS_CAPACITY }>,
     /// Contains big pointers
     /// It's either a `HashId` (6 bytes), an `AbsoluteOffset` (8 bytes) or a
     /// `DirectoryId` (8 bytes)
@@ -1094,7 +1098,7 @@ pub struct Storage {
     /// There are no duplicate in this vector.
     /// Many `ThinPointer` may refer to the same `FatPointerId`
     /// This makes the vector much smaller than `Self::thin_pointers`
-    fat_pointers: IndexMap<FatPointerId, FatPointer, { DEFAULT_FAT_POINTERS_CAPACITY }>,
+    pub fat_pointers: IndexMap<FatPointerId, FatPointer, { DEFAULT_FAT_POINTERS_CAPACITY }>,
     /// Store the `ObjectReference` of the inode pointers.
     ///
     /// This is used at commit time (when inodes are hashed and serialized)
@@ -1246,6 +1250,21 @@ impl Storage {
 
     pub fn add_dir_entry(&mut self, dir_entry: DirEntry) -> Result<DirEntryId, DirEntryIdError> {
         self.nodes.push(dir_entry).map_err(|_| DirEntryIdError)
+    }
+
+    pub fn clear(&mut self) {
+        self.nodes.clear();
+        self.directories.clear();
+        self.blobs.clear();
+        self.inodes.clear();
+        self.thin_pointers.clear();
+        self.fat_pointers.clear();
+        if !self.pointers_data.borrow().is_empty() {
+            self.pointers_data = Default::default();
+        }
+        if !self.offsets_to_hash_id.is_empty() {
+            self.offsets_to_hash_id = Default::default();
+        }
     }
 
     /// Set the `HashId` of `pointer` in `Self::pointers_data`
@@ -2129,6 +2148,16 @@ impl Storage {
             }
         }
         Ok(())
+    }
+
+    /// Load the full inode in `Self`
+    pub fn dir_full_load(
+        &mut self,
+        dir_id: DirectoryId,
+        strings: &mut StringInterner,
+        repository: &ContextKeyValueStore,
+    ) -> Result<(), MerkleError> {
+        self.dir_full_iterate_unsorted(dir_id, strings, repository, |_| Ok(()))
     }
 
     /// Iterate on `dir_id`.

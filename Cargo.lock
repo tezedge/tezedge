@@ -4500,6 +4500,7 @@ dependencies = [
  "crossbeam-channel",
  "crypto",
  "flate2",
+ "fs_extra",
  "hex",
  "ipc",
  "lazy_static",

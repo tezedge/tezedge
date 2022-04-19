@@ -78,6 +78,21 @@ impl Commit {
     pub fn set_root_offset(&mut self, offset: AbsoluteOffset) {
         self.root_ref.offset.replace(offset);
     }
+
+    pub fn parent_hash_id(&self) -> Option<HashId> {
+        self.parent_commit_ref.and_then(|p| p.hash_id_opt())
+    }
+
+    pub fn set_parent_hash_id(&mut self, hash_id: HashId) {
+        match self.parent_commit_ref.as_mut() {
+            Some(parent) => parent.set_hash_id(hash_id),
+            None => {
+                let mut obj_ref = ObjectReference::default();
+                obj_ref.set_hash_id(hash_id);
+                self.parent_commit_ref = Some(obj_ref);
+            }
+        }
+    }
 }
 
 /// An object in the context repository
@@ -108,6 +123,14 @@ impl From<HashId> for ObjectReference {
 impl ObjectReference {
     pub fn new(hash_id: Option<HashId>, offset: Option<AbsoluteOffset>) -> Self {
         Self { hash_id, offset }
+    }
+
+    pub fn set_offset(&mut self, offset: AbsoluteOffset) {
+        self.offset.replace(offset);
+    }
+
+    pub fn set_hash_id(&mut self, hash_id: HashId) {
+        self.hash_id.replace(hash_id);
     }
 
     pub fn offset(&self) -> AbsoluteOffset {
@@ -288,6 +311,12 @@ impl DirEntry {
             Object::Blob(blob_id) if blob_id.is_inline() => storage.get_blob(blob_id).ok(),
             _ => None,
         })
+    }
+
+    pub fn is_inlined_blob(&self) -> bool {
+        self.get_object()
+            .map(|object| matches!(object, Object::Blob(blob_id) if blob_id.is_inline()))
+            .unwrap_or(false)
     }
 
     /// Constructs a `DirEntry`s wrapping an object that is new, and has not been saved

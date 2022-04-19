@@ -3,14 +3,13 @@
 
 use std::{
     borrow::Cow,
-    collections::hash_map::DefaultHasher,
+    collections::{hash_map::DefaultHasher, VecDeque},
     convert::TryInto,
     hash::Hasher,
     io::{Read, Write},
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 
-#[cfg(test)]
 use super::inline_boxed_slice::InlinedBoxedSlice;
 
 use blake2::{
@@ -18,10 +17,12 @@ use blake2::{
     VarBlake2b,
 };
 use crypto::hash::{ContextHash, HashTrait};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 
 use crate::{
+    chunks::ChunkedVec,
     gc::NotGarbageCollected,
     hash::OBJECT_HASH_LEN,
     initializer::IndexInitializationError,
@@ -43,13 +44,13 @@ use crate::{
         shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
         storage::{DirEntryId, DirectoryOrInodeId, Storage},
         string_interner::{StringId, StringInterner},
-        working_tree::{PostCommitData, WorkingTree},
+        working_tree::{PostCommitData, SerializeOutput, WorkingTree},
         Object, ObjectReference,
     },
-    Map, ObjectHash,
+    ContextKeyValueStore, Map, ObjectHash,
 };
 
-use super::{hashes::HashesContainer, HashId, VacantObjectHash};
+use super::{hashes::HashesContainer, in_memory::BATCH_CHUNK_CAPACITY, HashId, VacantObjectHash};
 
 const FIRST_READ_OBJECT_LENGTH: usize = 4096;
 const SIZES_NUMBER_OF_LINES: usize = 10;
@@ -113,8 +114,8 @@ pub struct Persistent {
     big_strings_file: File<{ TAG_BIG_STRINGS }>,
 
     hashes: Hashes,
-    shapes: DirectoryShapes,
-    string_interner: StringInterner,
+    pub shapes: DirectoryShapes,
+    pub string_interner: StringInterner,
 
     pub context_hashes: Map<u64, ObjectReference>,
 
@@ -131,7 +132,7 @@ pub struct Persistent {
     /// This repeats 10 times
     sizes_file: File<{ TAG_SIZES }>,
     startup_check: bool,
-    last_commit_on_startup: Option<ObjectReference>,
+    last_commits_on_startup: VecDeque<ObjectReference>,
     read_statistics: Option<Mutex<ReadStatistics>>,
 }
 
@@ -181,6 +182,10 @@ impl Hashes {
             hashes_file,
             in_memory_bytes: Vec::with_capacity(1000),
         }
+    }
+
+    fn in_memory_len(&self) -> usize {
+        self.in_memory.in_memory_len()
     }
 
     fn get_hash(&self, hash_id: HashId) -> Result<Cow<ObjectHash>, DBError> {
@@ -283,7 +288,7 @@ impl Persistent {
             commit_counter: Default::default(),
             sizes_file,
             startup_check,
-            last_commit_on_startup: None,
+            last_commits_on_startup: VecDeque::default(),
             read_statistics: if read_mode {
                 Some(Mutex::new(ReadStatistics::default()))
             } else {
@@ -294,6 +299,10 @@ impl Persistent {
 
     pub fn enable_hash_dedup(&mut self) {
         self.hashes.in_memory.dedup_hashes = Some(Default::default());
+    }
+
+    pub fn hashes_in_memory_len(&self) -> usize {
+        self.hashes.in_memory_len()
     }
 
     pub fn compute_integrity(&mut self, output: &mut File<{ TAG_SIZES }>) -> std::io::Result<()> {
@@ -570,10 +579,17 @@ hashes_file={:?}, in sizes.db={:?}",
         Ok(hash_id.ok_or(DeserializationError::MissingHash)?)
     }
 
-    fn commit_to_disk(&mut self, data: &[u8]) -> Result<(), std::io::Error> {
+    pub fn append_to_disk(&mut self, data: &[u8]) -> Result<(), std::io::Error> {
         self.data_file.append(data)?;
 
         let strings = self.string_interner.serialize();
+
+        println!(
+            "APPEND STRINGS len={:?} big_len={:?}",
+            strings.strings.len(),
+            strings.big_strings.len()
+        );
+
         self.strings_file.append(&strings.strings)?;
         self.big_strings_file.append(&strings.big_strings)?;
 
@@ -582,6 +598,12 @@ hashes_file={:?}, in sizes.db={:?}",
         self.shape_index_file.append(&shapes.index)?;
 
         self.hashes.commit()?;
+
+        Ok(())
+    }
+
+    pub fn commit_to_disk(&mut self, data: &[u8]) -> Result<(), std::io::Error> {
+        self.append_to_disk(data)?;
 
         self.data_file.sync()?;
         self.strings_file.sync()?;
@@ -594,6 +616,15 @@ hashes_file={:?}, in sizes.db={:?}",
         self.update_sizes_to_disk(None)?;
 
         Ok(())
+    }
+
+    pub fn deallocate_strings_shapes(&mut self) {
+        self.shapes.deallocate_serialized();
+        self.string_interner.deallocate_serialized();
+    }
+
+    pub fn data_file_offset(&self) -> AbsoluteOffset {
+        self.data_file.offset()
     }
 
     fn update_sizes_to_disk(
@@ -683,18 +714,26 @@ hashes_file={:?}, in sizes.db={:?}",
         self.shapes = shapes;
         self.string_interner = string_interner;
         self.context_hashes = context_hashes.index;
-        self.last_commit_on_startup = context_hashes.last_commit;
+        self.last_commits_on_startup = context_hashes.last_commits;
         self.commit_counter = commit_counter;
 
         Ok(())
     }
 
     pub fn get_last_context_hash(&self) -> Option<ContextHash> {
-        let object_ref = self.last_commit_on_startup?;
-        let raw_hash = self.get_hash(object_ref).unwrap();
-        let context_hash = ContextHash::try_from_bytes(raw_hash.as_ref()).unwrap();
+        self.last_commits_on_startup
+            .back()
+            .cloned()
+            .map(|obj_ref| self.get_hash(obj_ref).ok())?
+            .map(|hash| ContextHash::try_from_bytes(hash.as_ref()).ok())?
+    }
 
-        Some(context_hash)
+    pub fn get_lastest_context_hashes(&self) -> Vec<ContextHash> {
+        self.last_commits_on_startup
+            .iter()
+            .filter_map(|obj_ref| self.get_hash(*obj_ref).ok())
+            .filter_map(|hash| ContextHash::try_from_bytes(hash.as_ref()).ok())
+            .collect()
     }
 
     pub fn get_file_sizes(&self) -> FileSizes {
@@ -722,6 +761,10 @@ hashes_file={:?}, in sizes.db={:?}",
             .get_vacant_object_hash()?
             .write_with(|entry| *entry = hash)?;
         Ok(hash_id)
+    }
+
+    pub fn set_is_commiting(&mut self) {
+        self.hashes.in_memory.set_is_commiting();
     }
 
     fn write_sizes_to_disk(
@@ -836,9 +879,12 @@ impl FileSizes {
     }
 }
 
+/// Number of last commits we keep as references in `DeserializedCommitIndex::last_commits`
+const NLAST_COMMITS: usize = 10;
+
 struct DeserializedCommitIndex {
     index: Map<u64, ObjectReference>,
-    last_commit: Option<ObjectReference>,
+    last_commits: VecDeque<ObjectReference>,
 }
 
 fn deserialize_commit_index(
@@ -852,7 +898,7 @@ fn deserialize_commit_index(
     let mut hash_id_bytes = [0u8; 8];
     let mut hash_offset_bytes = [0u8; 8];
     let mut commit_hash: ObjectHash = Default::default();
-    let mut last_commit = None;
+    let mut last_commits = VecDeque::with_capacity(NLAST_COMMITS);
 
     let mut commit_index_file = commit_index_file.buffered()?;
 
@@ -870,8 +916,12 @@ fn deserialize_commit_index(
         commit_index_file.read_exact(&mut commit_hash)?;
         offset += commit_hash.len() as u64;
 
+        if last_commits.len() == NLAST_COMMITS {
+            last_commits.pop_front();
+        }
+
         let object_reference = ObjectReference::new(HashId::new(hash_id), Some(hash_offset.into()));
-        last_commit = Some(object_reference);
+        last_commits.push_back(object_reference);
 
         let mut hasher = DefaultHasher::new();
         hasher.write(&commit_hash);
@@ -882,7 +932,7 @@ fn deserialize_commit_index(
 
     Ok(DeserializedCommitIndex {
         index: context_hashes,
-        last_commit,
+        last_commits,
     })
 }
 
@@ -913,6 +963,18 @@ impl KeyValueStoreBackend for Persistent {
         }
 
         Ok(())
+    }
+
+    fn latest_context_hashes(&self, count: i64) -> Result<Vec<ContextHash>, DBError> {
+        let mut latests = self.get_lastest_context_hashes();
+        latests.reverse();
+        latests.truncate(count.try_into().unwrap_or(0));
+        latests.reverse();
+        Ok(latests)
+    }
+
+    fn store_own_repository(&mut self, _repository: Arc<RwLock<ContextKeyValueStore>>) {
+        // no-op
     }
 
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
@@ -1115,6 +1177,16 @@ impl KeyValueStoreBackend for Persistent {
             .map_err(|err| DBError::CommitToDiskError { err })?;
 
         Ok((commit_hash, serialize_stats))
+    }
+
+    fn add_serialized_objects(
+        &mut self,
+        _batch: ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>,
+        output: &mut SerializeOutput,
+    ) -> Result<(), DBError> {
+        self.data_file.append(output.as_slice())?;
+        output.clear();
+        Ok(())
     }
 
     fn get_hash_id(&self, object_ref: ObjectReference) -> Result<HashId, DBError> {

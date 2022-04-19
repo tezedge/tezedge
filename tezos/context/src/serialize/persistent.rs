@@ -4,7 +4,7 @@
 //! Serialization/deserialization for objects in the Working Tree so that they can be
 //! saved/loaded to/from the repository.
 
-use std::{borrow::Cow, convert::TryInto, io::Write};
+use std::{borrow::Cow, convert::TryInto};
 
 use modular_bitfield::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,7 @@ use crate::{
             PointersId,
         },
         string_interner::StringInterner,
+        working_tree::SerializeOutput,
         Commit, DirEntryKind, ObjectReference,
     },
     ContextKeyValueStore,
@@ -151,7 +152,7 @@ fn get_relative_offset(
 }
 
 fn serialize_offset(
-    output: &mut Vec<u8>,
+    output: &mut SerializeOutput,
     relative_offset: RelativeOffset,
     offset_length: RelativeOffsetLength,
     stats: &mut SerializeStats,
@@ -189,7 +190,7 @@ fn serialize_shaped_directory(
     dir: &[(StringId, DirEntryId)],
     object_hash_id: HashId,
     offset: AbsoluteOffset,
-    output: &mut Vec<u8>,
+    output: &mut SerializeOutput,
     storage: &Storage,
     repository: &mut ContextKeyValueStore,
     stats: &mut SerializeStats,
@@ -244,14 +245,18 @@ fn serialize_shaped_directory(
         }
     }
 
-    write_object_header(output, start, ObjectTag::ShapedDirectory);
+    write_object_header(output, start, ObjectTag::ShapedDirectory)?;
 
     stats.add_shape(nblobs_inlined, blobs_length);
 
     Ok(())
 }
 
-fn write_object_header(output: &mut Vec<u8>, start: usize, tag: ObjectTag) {
+fn write_object_header(
+    output: &mut SerializeOutput,
+    start: usize,
+    tag: ObjectTag,
+) -> Result<(), SerializationError> {
     let length = output.len() - start;
 
     if length <= 0xFF {
@@ -280,7 +285,7 @@ fn write_object_header(output: &mut Vec<u8>, start: usize, tag: ObjectTag) {
         output[start] = header[0];
         output[start + 1..start + 3].copy_from_slice(&length.to_le_bytes());
     } else {
-        output.extend_from_slice(&[0, 0, 0]);
+        output.write_all(&[0, 0, 0])?;
 
         let end = output.len();
         output.copy_within(start + 2..end - 3, start + 5);
@@ -296,6 +301,8 @@ fn write_object_header(output: &mut Vec<u8>, start: usize, tag: ObjectTag) {
         output[start] = header[0];
         output[start + 1..start + 5].copy_from_slice(&length.to_le_bytes());
     }
+
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -303,7 +310,7 @@ fn serialize_directory_or_shape(
     dir: &[(StringId, DirEntryId)],
     object_hash_id: HashId,
     offset: AbsoluteOffset,
-    output: &mut Vec<u8>,
+    output: &mut SerializeOutput,
     storage: &Storage,
     repository: &mut ContextKeyValueStore,
     stats: &mut SerializeStats,
@@ -339,7 +346,7 @@ fn serialize_directory(
     dir: &[(StringId, DirEntryId)],
     object_hash_id: HashId,
     offset: AbsoluteOffset,
-    output: &mut Vec<u8>,
+    output: &mut SerializeOutput,
     storage: &Storage,
     repository: &mut ContextKeyValueStore,
     stats: &mut SerializeStats,
@@ -417,7 +424,7 @@ fn serialize_directory(
         }
     }
 
-    write_object_header(output, start, ObjectTag::Directory);
+    write_object_header(output, start, ObjectTag::Directory)?;
 
     stats.add_directory(keys_length, nblobs_inlined, blobs_length);
 
@@ -428,18 +435,17 @@ fn serialize_directory(
 pub fn serialize_object(
     object: &Object,
     object_hash_id: HashId,
-    output: &mut Vec<u8>,
+    output: &mut SerializeOutput,
     storage: &Storage,
     strings: &StringInterner,
     stats: &mut SerializeStats,
     _batch: &mut ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>,
     repository: &mut ContextKeyValueStore,
-    file_offset: Option<AbsoluteOffset>,
 ) -> Result<Option<AbsoluteOffset>, SerializationError> {
+    let mut offset = output
+        .current_offset()
+        .ok_or(SerializationError::MissingOffset)?;
     let start = output.len();
-
-    let file_offset = file_offset.ok_or(SerializationError::MissingOffset)?;
-    let mut offset: AbsoluteOffset = file_offset.add_offset(start as u64);
 
     match object {
         Object::Directory(dir_id) => {
@@ -451,7 +457,6 @@ pub fn serialize_object(
                     storage,
                     stats,
                     repository,
-                    file_offset,
                     strings,
                 )?;
             } else {
@@ -480,7 +485,7 @@ pub fn serialize_object(
             serialize_hash_id(object_hash_id, output, repository, stats)?;
             output.write_all(blob.as_ref())?;
 
-            write_object_header(output, start, ObjectTag::Blob);
+            write_object_header(output, start, ObjectTag::Blob)?;
 
             stats.add_blob(blob.len());
         }
@@ -554,7 +559,7 @@ pub fn serialize_object(
             // It's until the end of the slice
             output.write_all(commit.message.as_bytes())?;
 
-            write_object_header(output, start, ObjectTag::Commit);
+            write_object_header(output, start, ObjectTag::Commit)?;
         }
     };
 
@@ -639,12 +644,11 @@ impl PointersOffsetsHeader {
 #[allow(clippy::too_many_arguments)]
 fn serialize_inode(
     ptr_id: DirectoryOrInodeId,
-    output: &mut Vec<u8>,
+    output: &mut SerializeOutput,
     object_hash_id: HashId,
     storage: &Storage,
     stats: &mut SerializeStats,
     repository: &mut ContextKeyValueStore,
-    file_offset: AbsoluteOffset,
     strings: &StringInterner,
 ) -> Result<AbsoluteOffset, SerializationError> {
     use SerializationError::*;
@@ -687,22 +691,16 @@ fn serialize_inode(
                     continue;
                 }
 
-                let offset = serialize_inode(
-                    ptr_id,
-                    output,
-                    hash_id,
-                    storage,
-                    stats,
-                    repository,
-                    file_offset,
-                    strings,
-                )?;
+                let offset =
+                    serialize_inode(ptr_id, output, hash_id, storage, stats, repository, strings)?;
 
                 storage.pointer_set_offset(&pointer, offset)?;
             }
 
             let start = output.len();
-            offset = file_offset.add_offset(start as u64);
+            offset = output
+                .current_offset()
+                .ok_or(SerializationError::MissingOffset)?;
 
             // Replaced by ObjectHeader
             output.write_all(&[0, 0])?;
@@ -732,14 +730,15 @@ fn serialize_inode(
                 serialize_offset(output, relative_offset, offset_length, stats)?;
             }
 
-            write_object_header(output, start, ObjectTag::InodePointers);
+            write_object_header(output, start, ObjectTag::InodePointers)?;
         }
         DirectoryOrInodeId::Directory(dir_id) => {
             // We don't check if it's a new inode because the parent
             // caller (recursively) confirmed it's a new one.
 
-            let start = output.len();
-            offset = file_offset.add_offset(start as u64);
+            offset = output
+                .current_offset()
+                .ok_or(SerializationError::MissingOffset)?;
 
             let dir = storage.get_small_dir(dir_id)?;
             serialize_directory_or_shape(
@@ -1258,7 +1257,7 @@ mod tests {
             )
             .unwrap();
 
-        let mut bytes = Vec::with_capacity(1024);
+        let mut bytes = SerializeOutput::new(offset);
         let offset = serialize_object(
             &Object::Directory(dir_id),
             fake_hash_id,
@@ -1268,7 +1267,6 @@ mod tests {
             &mut stats,
             &mut batch,
             &mut repo,
-            offset,
         )
         .unwrap();
 
@@ -1315,10 +1313,9 @@ mod tests {
             )
             .unwrap();
 
-        let offset = repo.synchronize_data(&[], &bytes).unwrap();
+        repo.synchronize_data(&[], &bytes).unwrap();
         bytes.clear();
 
-        let mut bytes = Vec::with_capacity(1024);
         let offset = serialize_object(
             &Object::Directory(dir_id),
             fake_hash_id,
@@ -1328,7 +1325,6 @@ mod tests {
             &mut stats,
             &mut batch,
             &mut repo,
-            offset,
         )
         .unwrap();
 
@@ -1375,10 +1371,9 @@ mod tests {
             )
             .unwrap();
 
-        let offset = repo.synchronize_data(&[], &bytes).unwrap();
+        repo.synchronize_data(&[], &bytes).unwrap();
         bytes.clear();
 
-        let mut bytes = Vec::with_capacity(1024);
         let offset = serialize_object(
             &Object::Directory(dir_id),
             fake_hash_id,
@@ -1388,7 +1383,6 @@ mod tests {
             &mut stats,
             &mut batch,
             &mut repo,
-            offset,
         )
         .unwrap();
 
@@ -1409,7 +1403,9 @@ mod tests {
         // Not inlined value
         let blob_id = storage.add_blob_by_ref(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
 
-        let mut bytes = Vec::with_capacity(1024);
+        repo.synchronize_data(&[], &bytes).unwrap();
+        bytes.clear();
+
         let offset = serialize_object(
             &Object::Blob(blob_id),
             fake_hash_id,
@@ -1419,7 +1415,6 @@ mod tests {
             &mut stats,
             &mut batch,
             &mut repo,
-            Some(0.into()),
         )
         .unwrap();
 
@@ -1434,7 +1429,7 @@ mod tests {
 
         // Test Object::Commit
 
-        let offset = repo.synchronize_data(&[], &bytes).unwrap();
+        repo.synchronize_data(&[], &bytes).unwrap();
         bytes.clear();
 
         let commit = Commit {
@@ -1454,7 +1449,6 @@ mod tests {
             &mut stats,
             &mut batch,
             &mut repo,
-            offset,
         )
         .unwrap();
 
@@ -1468,7 +1462,7 @@ mod tests {
 
         // Test Object::Commit with no parent
 
-        let offset = repo.synchronize_data(&[], &bytes).unwrap();
+        repo.synchronize_data(&[], &bytes).unwrap();
         bytes.clear();
 
         let commit = Commit {
@@ -1488,7 +1482,6 @@ mod tests {
             &mut stats,
             &mut batch,
             &mut repo,
-            offset,
         )
         .unwrap();
 
@@ -1500,8 +1493,7 @@ mod tests {
             panic!();
         }
 
-        let offset = repo.synchronize_data(&[], &bytes).unwrap();
-
+        repo.synchronize_data(&[], &bytes).unwrap();
         bytes.clear();
 
         let mut offsets = Vec::with_capacity(32);
@@ -1527,14 +1519,7 @@ mod tests {
             let hash_id = HashId::new((index + 1) as u64).unwrap();
 
             let offset = serialize_inode(
-                ptr_id,
-                &mut bytes,
-                hash_id,
-                &storage,
-                &mut stats,
-                &mut repo,
-                offset.unwrap(),
-                &strings,
+                ptr_id, &mut bytes, hash_id, &storage, &mut stats, &mut repo, &strings,
             )
             .unwrap();
 
@@ -1551,19 +1536,14 @@ mod tests {
         let inode = storage.add_inode_pointers(100, 200, pointers).unwrap();
 
         let hash_id = HashId::new(123).unwrap();
+
         let offset = serialize_inode(
-            inode,
-            &mut bytes,
-            hash_id,
-            &storage,
-            &mut stats,
-            &mut repo,
-            offset.unwrap(),
-            &strings,
+            inode, &mut bytes, hash_id, &storage, &mut stats, &mut repo, &strings,
         )
         .unwrap();
 
         repo.synchronize_data(&[], &bytes).unwrap();
+        bytes.clear();
 
         let mut buffer = Vec::with_capacity(1000);
         let inode_bytes = repo
@@ -1596,7 +1576,7 @@ mod tests {
             panic!()
         }
 
-        let offset = repo.synchronize_data(&[], &bytes).unwrap();
+        repo.synchronize_data(&[], &bytes).unwrap();
         bytes.clear();
 
         // Test Inode::Value
@@ -1633,14 +1613,7 @@ mod tests {
         let inode_id = DirectoryOrInodeId::Directory(dir_id);
 
         let offset = serialize_inode(
-            inode_id,
-            &mut bytes,
-            hash_id,
-            &storage,
-            &mut stats,
-            &mut repo,
-            offset.unwrap(),
-            &strings,
+            inode_id, &mut bytes, hash_id, &storage, &mut stats, &mut repo, &strings,
         )
         .unwrap();
 
@@ -1698,7 +1671,7 @@ mod tests {
             )
             .unwrap();
 
-        let mut bytes = Vec::with_capacity(1024);
+        let mut bytes = SerializeOutput::new(Some(1.into()));
 
         let offset = serialize_object(
             &Object::Directory(dir_id),
@@ -1709,7 +1682,6 @@ mod tests {
             &mut stats,
             &mut batch,
             &mut repo,
-            Some(1.into()),
         )
         .unwrap();
 
@@ -1734,7 +1706,7 @@ mod tests {
             read_mode: false,
         })
         .expect("failed to create context");
-        let mut output = Vec::with_capacity(10);
+        let mut output = SerializeOutput::new(None);
         let mut stats = Default::default();
 
         let number = HashId::new(10101).unwrap();
