@@ -890,7 +890,7 @@ steps:
 # It also tests the snapshot functionality
 ##############################################################################################################
 kind: pipeline
-name: corr/replay-and-snapshot-009-florence
+name: corr/replay-and-snapshot-012-ithacanet
 
 trigger:
   branch:
@@ -898,7 +898,8 @@ trigger:
     - develop
 
 environment:
-  NETWORK: florencenet
+  NETWORK: ithacanet
+  BLOCK_LEVEL: 20000
 
 steps:
 
@@ -930,13 +931,22 @@ steps:
 
 - name: octez-node
   user: root
-  image: tezos/tezos:v9-release
+  image: tezos/tezos:v12-release
   detach: true
   volumes:
-    - name: octez-data
+    - name: data
       path: /data
   commands:
-    - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
+    - tezos-node config init --network $${NETWORK}
+    # TODO: use already generated identity instead of regenerating here.
+    - tezos-node snapshot import /data/octez-012-ithacanet-$${BLOCK_LEVEL}.snapshot --block BLR5WXgdQ4vLXxj3rcSG66afrcVQUvwPGxWz2CDu5HAZ7Jo9rNp
+    - tezos-node run --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
+
+- name: wait-for-octez-to-start
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=0 --nodes http://octez-node:8732
 
 - name: tezedge-node-bootstrap
   image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
@@ -997,7 +1007,7 @@ steps:
       --protocol-runner=./drone-cache/build_files/protocol-runner
       --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
       --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
-      --to-block BLJQc17Wxnhw7Mdd5VzFzmiqYfwYpvYUVnMesFKgGWSartAoQAC
+      --to-block BLR5WXgdQ4vLXxj3rcSG66afrcVQUvwPGxWz2CDu5HAZ7Jo9rNp
       --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
       --tezos-context-storage=tezedge
       --network=$${NETWORK}
@@ -1168,9 +1178,9 @@ image_pull_secrets:
 volumes:
   - name: cache
     temp: {}
-  - name: octez-data
+  - name: data
     host:
-      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
+      path: /usr/local/etc/tezedge-ci/data
 
 ##############################################################################################################
 # This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
