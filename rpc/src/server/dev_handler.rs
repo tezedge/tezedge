@@ -391,7 +391,7 @@ pub async fn dev_shell_automaton_actions_stats_for_blocks_get(
         v.iter()
             .flat_map(|s| s.split(","))
             .filter_map(|s| s.parse().ok())
-            .take(6)
+            .take(64)
             .collect::<BTreeSet<_>>()
     });
     make_json_response(

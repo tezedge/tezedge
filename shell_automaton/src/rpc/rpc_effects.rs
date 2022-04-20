@@ -130,13 +130,19 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .service()
                             .statistics()
                             .map(|s| {
+                                let smallest_level = level_filter
+                                    .as_ref()
+                                    .and_then(|levels| levels.iter().cloned().next())
+                                    .unwrap_or(0);
                                 s.action_kind_stats_for_blocks()
                                     .iter()
+                                    .take_while(|s| s.block_level + 2 > smallest_level)
                                     .filter(|s| {
                                         level_filter
                                             .as_ref()
                                             .map_or(true, |levels| levels.contains(&s.block_level))
                                     })
+                                    .take(64)
                                     .cloned()
                                     .collect()
                             })
