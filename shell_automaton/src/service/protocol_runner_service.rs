@@ -50,17 +50,17 @@ pub enum ProtocolRunnerResult {
     ),
     InitContextIpcServer((ProtocolRunnerToken, Result<(), ProtocolServiceError>)),
 
-    GetCurrentHead(
-        (
-            ProtocolRunnerToken,
-            Result<Vec<ContextHash>, ProtocolServiceError>,
-        ),
-    ),
-
     GenesisCommitResultGet(
         (
             ProtocolRunnerToken,
             Result<CommitGenesisResult, ProtocolServiceError>,
+        ),
+    ),
+
+    LatestContextHashesGet(
+        (
+            ProtocolRunnerToken,
+            Result<Vec<ContextHash>, ProtocolServiceError>,
         ),
     ),
 
@@ -95,8 +95,8 @@ impl ProtocolRunnerResult {
             Self::InitRuntime((token, _)) => Some(*token),
             Self::InitContext((token, _)) => Some(*token),
             Self::InitContextIpcServer((token, _)) => Some(*token),
-            Self::GetCurrentHead((token, _)) => Some(*token),
             Self::GenesisCommitResultGet((token, _)) => Some(*token),
+            Self::LatestContextHashesGet((token, _)) => Some(*token),
             Self::ApplyBlock((token, _)) => Some(*token),
             Self::BeginConstruction((token, _)) => Some(*token),
             Self::ValidateOperation((token, _)) => Some(*token),
@@ -138,9 +138,9 @@ pub trait ProtocolRunnerService {
         params: GenesisResultDataParams,
     ) -> ProtocolRunnerToken;
 
-    fn apply_block(&mut self, req: ApplyBlockRequest);
-
     fn get_latest_context_hashes(&mut self, count: i64) -> ProtocolRunnerToken;
+
+    fn apply_block(&mut self, req: ApplyBlockRequest);
 
     // Prevalidator
     fn begin_construction_for_prevalidation(
@@ -286,6 +286,15 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
         token
     }
 
+    fn get_latest_context_hashes(&mut self, count: i64) -> ProtocolRunnerToken {
+        let token = self.new_token();
+        let message = ProtocolMessage::ContextGetLatestContextHashes(count);
+        self.channel
+            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
+            .unwrap();
+        token
+    }
+
     fn apply_block(&mut self, req: ApplyBlockRequest) {
         let token = self.new_token();
         let message = ProtocolMessage::ApplyBlockCall(req);
@@ -350,14 +359,5 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
         self.channel
             .blocking_send(ProtocolRunnerRequest::ShutdownServer(()))
             .unwrap();
-    }
-
-    fn get_latest_context_hashes(&mut self, count: i64) -> ProtocolRunnerToken {
-        let token = self.new_token();
-        let message = ProtocolMessage::ContextGetLatestContextHashes(count);
-        self.channel
-            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
-            .unwrap();
-        token
     }
 }

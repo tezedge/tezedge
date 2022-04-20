@@ -228,7 +228,7 @@ impl fmt::Debug for StorageServiceDefault {
     }
 }
 
-fn find_block_matching_context_storage_impl(
+fn find_block_with_context_hash_impl(
     head_block_storage: BlockHeaderWithHash,
     latest_context_hashes: &[ContextHash],
     block_storage: &BlockStorage,
@@ -250,7 +250,12 @@ fn find_block_matching_context_storage_impl(
     Ok(Some(head))
 }
 
-fn find_block_matching_context_storage(
+/// Find a block with one of the `ContextHash` in `latest_context_hashes`
+///
+/// `head_block_storage` is the current head in the block storage.
+/// This iterates on each predecessor of `head_block_storage` until
+/// it founds a block with a matching `ContextHash`.
+fn find_block_with_context_hash(
     log: &slog::Logger,
     head_block_storage: BlockHeaderWithHash,
     latest_context_hashes: Vec<ContextHash>,
@@ -260,7 +265,7 @@ fn find_block_matching_context_storage(
         return Ok(head_block_storage);
     }
 
-    match find_block_matching_context_storage_impl(
+    match find_block_with_context_hash_impl(
         head_block_storage.clone(),
         &latest_context_hashes,
         block_storage,
@@ -368,17 +373,14 @@ impl StorageServiceDefault {
                         })
                         .unwrap_or_else(|| storage::hydrate_current_head(&chain_id, &storage))
                         .map_err(StorageError::from)
-                        .and_then(|head| {
-                            if level_override.is_none() {
-                                find_block_matching_context_storage(
-                                    &log,
-                                    head,
-                                    latest_context_hashes,
-                                    &block_storage,
-                                )
-                            } else {
-                                Ok(head)
-                            }
+                        .and_then(|head| match level_override {
+                            Some(_) => Ok(head),
+                            None => find_block_with_context_hash(
+                                &log,
+                                head,
+                                latest_context_hashes,
+                                &block_storage,
+                            ),
                         })
                         .and_then(|head| {
                             let pred = if head.header.level() > 0 {

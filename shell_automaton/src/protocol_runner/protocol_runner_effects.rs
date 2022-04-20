@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use crate::current_head::CurrentHeadRehydrateInitAction;
-use crate::protocol_runner::current_head::{
-    ProtocolRunnerCurrentHeadInitAction, ProtocolRunnerCurrentHeadState,
-    ProtocolRunnerCurrentHeadSuccessAction,
-};
 use crate::protocol_runner::init::context::{
     ProtocolRunnerInitContextErrorAction, ProtocolRunnerInitContextState,
     ProtocolRunnerInitContextSuccessAction,
@@ -15,6 +11,10 @@ use crate::protocol_runner::init::runtime::{
     ProtocolRunnerInitRuntimeSuccessAction,
 };
 use crate::protocol_runner::init::ProtocolRunnerInitState;
+use crate::protocol_runner::latest_context_hashes::{
+    ProtocolRunnerLatestContextHashesErrorAction, ProtocolRunnerLatestContextHashesInitAction,
+    ProtocolRunnerLatestContextHashesState, ProtocolRunnerLatestContextHashesSuccessAction,
+};
 use crate::protocol_runner::spawn_server::{
     ProtocolRunnerSpawnServerErrorAction, ProtocolRunnerSpawnServerState,
     ProtocolRunnerSpawnServerSuccessAction,
@@ -48,7 +48,7 @@ where
             store.dispatch(ProtocolRunnerInitAction {});
         }
         Action::ProtocolRunnerInitSuccess(_) => {
-            store.dispatch(ProtocolRunnerCurrentHeadInitAction {});
+            store.dispatch(ProtocolRunnerLatestContextHashesInitAction {});
         }
         Action::ProtocolRunnerReady(_) => {
             if let ProtocolRunnerState::Ready(state) = &store.state.get().protocol_runner {
@@ -107,24 +107,22 @@ where
                             continue;
                         }
                     },
-                    ProtocolRunnerState::GetCurrentHead(state) => match state {
-                        ProtocolRunnerCurrentHeadState::Pending { .. } => match result {
-                            ProtocolRunnerResult::GetCurrentHead((
+                    ProtocolRunnerState::LatestContextHashesGet(state) => match state {
+                        ProtocolRunnerLatestContextHashesState::Pending { .. } => match result {
+                            ProtocolRunnerResult::LatestContextHashesGet((
                                 token,
                                 Ok(latest_context_hashes),
                             )) => {
-                                store.dispatch(ProtocolRunnerCurrentHeadSuccessAction {
+                                store.dispatch(ProtocolRunnerLatestContextHashesSuccessAction {
                                     token,
                                     latest_context_hashes,
                                 });
                                 continue;
                             }
-                            ProtocolRunnerResult::GetCurrentHead((token, Err(error))) => {
-                                slog::error!(&store.state().log, "failed to get context's latest commits";
-                                    "error" => format!("{:?}", error));
-                                store.dispatch(ProtocolRunnerCurrentHeadSuccessAction {
+                            ProtocolRunnerResult::LatestContextHashesGet((token, Err(error))) => {
+                                store.dispatch(ProtocolRunnerLatestContextHashesErrorAction {
                                     token,
-                                    latest_context_hashes: Vec::new(),
+                                    error,
                                 });
                                 continue;
                             }

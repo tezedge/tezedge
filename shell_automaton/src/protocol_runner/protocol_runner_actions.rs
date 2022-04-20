@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol_runner::current_head::ProtocolRunnerCurrentHeadState;
+use crate::protocol_runner::latest_context_hashes::ProtocolRunnerLatestContextHashesState;
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::storage::blocks::genesis::init::StorageBlocksGenesisInitState;
@@ -27,7 +27,10 @@ impl EnablingCondition<State> for ProtocolRunnerReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         matches!(
             &state.protocol_runner,
-            ProtocolRunnerState::GetCurrentHead(ProtocolRunnerCurrentHeadState::Success { .. })
+            ProtocolRunnerState::LatestContextHashesGet(
+                ProtocolRunnerLatestContextHashesState::Success { .. }
+                    | ProtocolRunnerLatestContextHashesState::Error { .. }
+            )
         )
     }
 }

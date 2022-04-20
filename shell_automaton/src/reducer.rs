@@ -42,11 +42,11 @@ use crate::mempool::validator::mempool_validator_reducer;
 use crate::prechecker::prechecker_reducer;
 use crate::rights::rights_reducer;
 
-use crate::protocol_runner::current_head::protocol_runner_current_head_reducer;
 use crate::protocol_runner::init::context::protocol_runner_init_context_reducer;
 use crate::protocol_runner::init::context_ipc_server::protocol_runner_init_context_ipc_server_reducer;
 use crate::protocol_runner::init::protocol_runner_init_reducer;
 use crate::protocol_runner::init::runtime::protocol_runner_init_runtime_reducer;
+use crate::protocol_runner::latest_context_hashes::protocol_runner_latest_context_hashes_reducer;
 use crate::protocol_runner::protocol_runner_reducer;
 use crate::protocol_runner::spawn_server::protocol_runner_spawn_server_reducer;
 
@@ -90,7 +90,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         state,
         action,
         paused_loops_reducer,
-        protocol_runner_current_head_reducer,
+        protocol_runner_latest_context_hashes_reducer,
         protocol_runner_spawn_server_reducer,
         protocol_runner_init_reducer,
         protocol_runner_init_runtime_reducer,

@@ -132,7 +132,7 @@ pub struct Persistent {
     /// This repeats 10 times
     sizes_file: File<{ TAG_SIZES }>,
     startup_check: bool,
-    last_commits_on_startup: VecDeque<ObjectReference>,
+    lastest_commits_on_startup: VecDeque<ObjectReference>,
     read_statistics: Option<Mutex<ReadStatistics>>,
 }
 
@@ -288,7 +288,7 @@ impl Persistent {
             commit_counter: Default::default(),
             sizes_file,
             startup_check,
-            last_commits_on_startup: VecDeque::default(),
+            lastest_commits_on_startup: VecDeque::default(),
             read_statistics: if read_mode {
                 Some(Mutex::new(ReadStatistics::default()))
             } else {
@@ -584,12 +584,6 @@ hashes_file={:?}, in sizes.db={:?}",
 
         let strings = self.string_interner.serialize();
 
-        println!(
-            "APPEND STRINGS len={:?} big_len={:?}",
-            strings.strings.len(),
-            strings.big_strings.len()
-        );
-
         self.strings_file.append(&strings.strings)?;
         self.big_strings_file.append(&strings.big_strings)?;
 
@@ -714,14 +708,14 @@ hashes_file={:?}, in sizes.db={:?}",
         self.shapes = shapes;
         self.string_interner = string_interner;
         self.context_hashes = context_hashes.index;
-        self.last_commits_on_startup = context_hashes.last_commits;
+        self.lastest_commits_on_startup = context_hashes.last_commits;
         self.commit_counter = commit_counter;
 
         Ok(())
     }
 
     pub fn get_last_context_hash(&self) -> Option<ContextHash> {
-        self.last_commits_on_startup
+        self.lastest_commits_on_startup
             .back()
             .cloned()
             .map(|obj_ref| self.get_hash(obj_ref).ok())?
@@ -729,7 +723,7 @@ hashes_file={:?}, in sizes.db={:?}",
     }
 
     pub fn get_lastest_context_hashes(&self) -> Vec<ContextHash> {
-        self.last_commits_on_startup
+        self.lastest_commits_on_startup
             .iter()
             .filter_map(|obj_ref| self.get_hash(*obj_ref).ok())
             .filter_map(|hash| ContextHash::try_from_bytes(hash.as_ref()).ok())

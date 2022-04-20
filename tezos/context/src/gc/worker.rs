@@ -68,6 +68,15 @@ const NAPPLIED_BEFORE_COLLECT: usize = 100;
 /// are garbage collected
 pub const PRESERVE_BLOCK_LEVEL: u8 = 3;
 
+/// Default interval between snapshots: 12 hours
+const SNAPSHOT_DEFAULT_DELAY: Duration = Duration::from_secs(60 * 60 * 12);
+
+/// While creating a snapshot, we write to disk some datas to avoid keeping
+/// them in RAM. The following constants define when to write on disk.
+const SNAPSHOT_DATA_LIMIT: usize = 20_000_000;
+const SNAPSHOT_HASHES_LIMIT: usize = 625_000;
+const SNAPSHOT_STRINGS_LIMIT: usize = 10_000_000;
+
 /// Used for statistics
 ///
 /// Number of items in `GCThread::pending`.
@@ -261,6 +270,7 @@ enum GCError {
     StringNotFound,
     #[error("Unable to create a valid snapshot path")]
     InvalidSnapshotPath,
+    #[allow(dead_code)]
     #[error("Call to renameat2 failed with {error}")]
     RenameAt2Failed { error: std::io::Error },
 }
@@ -351,12 +361,12 @@ impl GCThread {
         hashes_view: SharedIndexMapView<HashId, Option<Box<ObjectHash>>, OBJECTS_CHUNK_CAPACITY>,
         configuration: InMemoryConfiguration,
     ) -> Self {
-        let delay_between_snapshot = match std::env::var("GC_TEZEDGE_DELAY_SNAPSHOT_SEC")
+        let delay_between_snapshot = match std::env::var("TEZEDGE_GC_DELAY_SNAPSHOT_SEC")
             .ok()
             .and_then(|d| d.parse().ok())
         {
             Some(delay_sec) => Duration::from_secs(delay_sec),
-            _ => Duration::from_secs(60 * 60 * 12), // 12 hours
+            _ => SNAPSHOT_DEFAULT_DELAY,
         };
 
         Self {
@@ -688,6 +698,10 @@ impl GCThread {
             .ok_or(GCError::InMemContextNotFound)
     }
 
+    /// Write data to disk when some limits have been reached
+    ///
+    /// This avoid keeping everything in memory before the snapshot
+    /// is fully completed.
     fn maybe_write_to_disk(
         &self,
         output: &mut SerializeOutput,
@@ -699,13 +713,14 @@ impl GCThread {
             .string_interner
             .new_bytes_since_last_serialize();
 
-        let data_limit_reached = data_len >= 20_000_000;
-        let hashes_limit_reached = hashes_len >= 625_000;
-        let strings_limit_reached = strings_len >= 10_000_000;
+        let data_limit_reached = data_len >= SNAPSHOT_DATA_LIMIT;
+        let hashes_limit_reached = hashes_len >= SNAPSHOT_HASHES_LIMIT;
+        let strings_limit_reached = strings_len >= SNAPSHOT_STRINGS_LIMIT;
 
         if data_limit_reached || hashes_limit_reached || strings_limit_reached {
             on_disk_repo.commit_to_disk(output).map_err(DBError::from)?;
             on_disk_repo.set_is_commiting();
+            // Deallocate strings and shapes that are already on disk, to save RAM
             on_disk_repo.deallocate_strings_shapes();
             output.clear();
         }
@@ -713,6 +728,9 @@ impl GCThread {
         Ok(())
     }
 
+    /// Find a commit at the current block level minus PRESERVE_BLOCK_LEVEL.
+    ///
+    /// This makes sure that we don't create a snapshot from a temporary branch.
     fn find_frozen_commit(&self, commit_hash_id: HashId, bytes: &mut Vec<u8>) -> Option<HashId> {
         let mut hash_id = commit_hash_id;
 
@@ -752,6 +770,11 @@ impl GCThread {
 
         let start = stack_hash_id.len();
 
+        // Collect all children of `hash_id` into `stack_hash_id`.
+        // Every child in `stack_hash_id` has a corresponding new reference
+        // in `stack_new_refs`:
+        // `stack_new_refs[X]` is the new reference of `stack_hash_id[X]` in
+        // the persistent context / snapshot.
         self.for_each_child(hash_id, bytes, &mut |hash_id| {
             stack_hash_id.push(hash_id);
             stack_new_refs.push(ObjectReference::default());
@@ -776,14 +799,17 @@ impl GCThread {
                 hash,
             )?;
 
+            // Set the new references of this object into `stack_new_refs`
             stack_new_refs[index] = new_obj_ref;
         }
 
+        // Copy the object (of `hash_id`) into `bytes`.
         bytes.clear();
         self.with_object(hash_id, |object_bytes| {
             bytes.extend_from_slice(object_bytes);
         })?;
 
+        // Deserialize the object
         let mut object = {
             let in_mem_repo = self.in_mem_repository()?.read();
             in_memory::deserialize_object(bytes, storage, strings, &*in_mem_repo)?
@@ -799,6 +825,7 @@ impl GCThread {
             _ => {}
         }
 
+        // Set every dir_entry/inode as non commited
         storage.nodes.for_each_mut::<_, GCError>(|dir_entry| {
             dir_entry.set_commited(false);
             Ok(())
@@ -816,6 +843,8 @@ impl GCThread {
                 Ok(())
             })?;
 
+        // Get the strings of the object, copy them into the persistent context
+        // This ensure that we only write in the snapshot the useds strings
         storage
             .directories
             .for_each_mut::<_, GCError>(|(string_id, _)| {
@@ -836,6 +865,7 @@ impl GCThread {
                 Ok(())
             })?;
 
+        // Replace old references (in-mem repo) with new ones (persistent repo)
         match &mut object {
             Object::Directory(dir_id) => {
                 let mut index = start;

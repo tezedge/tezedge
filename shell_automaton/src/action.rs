@@ -78,10 +78,6 @@ use crate::rights::rights_actions::*;
 use crate::bootstrap::*;
 use crate::mempool::mempool_actions::*;
 
-use crate::protocol_runner::current_head::{
-    ProtocolRunnerCurrentHeadErrorAction, ProtocolRunnerCurrentHeadInitAction,
-    ProtocolRunnerCurrentHeadPendingAction, ProtocolRunnerCurrentHeadSuccessAction,
-};
 use crate::protocol_runner::init::context::{
     ProtocolRunnerInitContextAction, ProtocolRunnerInitContextErrorAction,
     ProtocolRunnerInitContextPendingAction, ProtocolRunnerInitContextSuccessAction,
@@ -98,6 +94,10 @@ use crate::protocol_runner::init::runtime::{
 use crate::protocol_runner::init::{
     ProtocolRunnerInitAction, ProtocolRunnerInitCheckGenesisAppliedAction,
     ProtocolRunnerInitCheckGenesisAppliedSuccessAction, ProtocolRunnerInitSuccessAction,
+};
+use crate::protocol_runner::latest_context_hashes::{
+    ProtocolRunnerLatestContextHashesErrorAction, ProtocolRunnerLatestContextHashesInitAction,
+    ProtocolRunnerLatestContextHashesPendingAction, ProtocolRunnerLatestContextHashesSuccessAction,
 };
 use crate::protocol_runner::spawn_server::{
     ProtocolRunnerSpawnServerErrorAction, ProtocolRunnerSpawnServerInitAction,
@@ -236,10 +236,10 @@ pub enum Action {
     ProtocolRunnerSpawnServerError(ProtocolRunnerSpawnServerErrorAction),
     ProtocolRunnerSpawnServerSuccess(ProtocolRunnerSpawnServerSuccessAction),
 
-    ProtocolRunnerCurrentHeadInit(ProtocolRunnerCurrentHeadInitAction),
-    ProtocolRunnerCurrentHeadPending(ProtocolRunnerCurrentHeadPendingAction),
-    ProtocolRunnerCurrentHeadError(ProtocolRunnerCurrentHeadErrorAction),
-    ProtocolRunnerCurrentHeadSuccess(ProtocolRunnerCurrentHeadSuccessAction),
+    ProtocolRunnerLatestContextHashesInit(ProtocolRunnerLatestContextHashesInitAction),
+    ProtocolRunnerLatestContextHashesPending(ProtocolRunnerLatestContextHashesPendingAction),
+    ProtocolRunnerLatestContextHashesError(ProtocolRunnerLatestContextHashesErrorAction),
+    ProtocolRunnerLatestContextHashesSuccess(ProtocolRunnerLatestContextHashesSuccessAction),
 
     ProtocolRunnerInit(ProtocolRunnerInitAction),
 

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::protocol_runner::current_head::ProtocolRunnerCurrentHeadState;
+use crate::protocol_runner::latest_context_hashes::ProtocolRunnerLatestContextHashesState;
 use crate::{Action, ActionWithMeta, State};
 
 use super::{ProtocolRunnerReadyState, ProtocolRunnerState};
@@ -10,11 +10,18 @@ pub fn protocol_runner_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::ProtocolRunnerReady(_) => {
             let (genesis_commit_hash, latest_context_hashes) = match &state.protocol_runner {
-                ProtocolRunnerState::GetCurrentHead(ProtocolRunnerCurrentHeadState::Success {
-                    genesis_commit_hash,
-                    latest_context_hashes,
-                    ..
-                }) => (genesis_commit_hash.clone(), latest_context_hashes.clone()),
+                ProtocolRunnerState::LatestContextHashesGet(
+                    ProtocolRunnerLatestContextHashesState::Success {
+                        genesis_commit_hash,
+                        latest_context_hashes,
+                        ..
+                    }
+                    | ProtocolRunnerLatestContextHashesState::Error {
+                        genesis_commit_hash,
+                        latest_context_hashes,
+                        ..
+                    },
+                ) => (genesis_commit_hash.clone(), latest_context_hashes.clone()),
                 _ => return,
             };
 

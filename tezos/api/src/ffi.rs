@@ -183,12 +183,12 @@ pub struct BeginApplicationResponse {
 #[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum GetLastContextHashesError {
     #[error("Failed to get the latest context hashes: {message}!")]
-    FailedToGetCurrentHead { message: String },
+    FailedToGetLatestContextHashes { message: String },
 }
 
 impl From<TezosErrorTrace> for GetLastContextHashesError {
     fn from(error: TezosErrorTrace) -> Self {
-        GetLastContextHashesError::FailedToGetCurrentHead {
+        GetLastContextHashesError::FailedToGetLatestContextHashes {
             message: error.trace_json,
         }
     }
@@ -1060,8 +1060,8 @@ pub enum ProtocolError {
     DumpContextError { reason: DumpContextError },
     #[error("Failed when restoring the context from a dump: {reason}")]
     RestoreContextError { reason: RestoreContextError },
-    #[error("Failed to get context's current head: {reason}")]
-    GetCurrentHeadError { reason: GetLastContextHashesError },
+    #[error("Failed to get context's latest hashes: {reason}")]
+    GetLastContextHashesError { reason: GetLastContextHashesError },
 }
 
 impl ProtocolError {

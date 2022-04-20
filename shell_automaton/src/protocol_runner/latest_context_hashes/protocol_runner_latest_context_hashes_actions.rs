@@ -4,21 +4,21 @@
 use crypto::hash::ContextHash;
 use serde::{Deserialize, Serialize};
 
-use tezos_protocol_ipc_client::ProtocolRunnerError;
+use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::protocol_runner::init::ProtocolRunnerInitState;
 use crate::protocol_runner::{ProtocolRunnerState, ProtocolRunnerToken};
 use crate::{EnablingCondition, State};
 
-use super::ProtocolRunnerCurrentHeadState;
+use super::ProtocolRunnerLatestContextHashesState;
 
 pub const DEFAULT_NUMBER_OF_CONTEXT_HASHES: i64 = 10;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ProtocolRunnerCurrentHeadInitAction {}
+pub struct ProtocolRunnerLatestContextHashesInitAction {}
 
-impl EnablingCondition<State> for ProtocolRunnerCurrentHeadInitAction {
+impl EnablingCondition<State> for ProtocolRunnerLatestContextHashesInitAction {
     fn is_enabled(&self, state: &State) -> bool {
         matches!(
             &state.protocol_runner,
@@ -29,47 +29,53 @@ impl EnablingCondition<State> for ProtocolRunnerCurrentHeadInitAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ProtocolRunnerCurrentHeadPendingAction {
+pub struct ProtocolRunnerLatestContextHashesPendingAction {
     pub token: ProtocolRunnerToken,
 }
 
-impl EnablingCondition<State> for ProtocolRunnerCurrentHeadPendingAction {
+impl EnablingCondition<State> for ProtocolRunnerLatestContextHashesPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
         matches!(
             &state.protocol_runner,
-            ProtocolRunnerState::GetCurrentHead(ProtocolRunnerCurrentHeadState::Init { .. })
+            ProtocolRunnerState::LatestContextHashesGet(
+                ProtocolRunnerLatestContextHashesState::Init { .. }
+            )
         )
     }
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ProtocolRunnerCurrentHeadErrorAction {
+pub struct ProtocolRunnerLatestContextHashesErrorAction {
     pub token: ProtocolRunnerToken,
-    pub error: ProtocolRunnerError,
+    pub error: ProtocolServiceError,
 }
 
-impl EnablingCondition<State> for ProtocolRunnerCurrentHeadErrorAction {
+impl EnablingCondition<State> for ProtocolRunnerLatestContextHashesErrorAction {
     fn is_enabled(&self, state: &State) -> bool {
         matches!(
             &state.protocol_runner,
-            ProtocolRunnerState::GetCurrentHead(ProtocolRunnerCurrentHeadState::Pending { .. })
+            ProtocolRunnerState::LatestContextHashesGet(
+                ProtocolRunnerLatestContextHashesState::Pending { .. }
+            )
         )
     }
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ProtocolRunnerCurrentHeadSuccessAction {
+pub struct ProtocolRunnerLatestContextHashesSuccessAction {
     pub token: ProtocolRunnerToken,
     pub latest_context_hashes: Vec<ContextHash>,
 }
 
-impl EnablingCondition<State> for ProtocolRunnerCurrentHeadSuccessAction {
+impl EnablingCondition<State> for ProtocolRunnerLatestContextHashesSuccessAction {
     fn is_enabled(&self, state: &State) -> bool {
         matches!(
             &state.protocol_runner,
-            ProtocolRunnerState::GetCurrentHead(ProtocolRunnerCurrentHeadState::Pending { .. })
+            ProtocolRunnerState::LatestContextHashesGet(
+                ProtocolRunnerLatestContextHashesState::Pending { .. }
+            )
         )
     }
 }

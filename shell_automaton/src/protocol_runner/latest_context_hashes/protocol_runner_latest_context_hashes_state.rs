@@ -3,12 +3,12 @@
 
 use crypto::hash::ContextHash;
 use serde::{Deserialize, Serialize};
-use tezos_protocol_ipc_client::ProtocolRunnerError;
+use tezos_protocol_ipc_client::ProtocolServiceError;
 
 use crate::protocol_runner::ProtocolRunnerToken;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ProtocolRunnerCurrentHeadState {
+pub enum ProtocolRunnerLatestContextHashesState {
     Init {
         genesis_commit_hash: Option<ContextHash>,
     },
@@ -19,7 +19,8 @@ pub enum ProtocolRunnerCurrentHeadState {
     Error {
         genesis_commit_hash: Option<ContextHash>,
         token: ProtocolRunnerToken,
-        error: ProtocolRunnerError,
+        latest_context_hashes: Vec<ContextHash>,
+        error: ProtocolServiceError,
     },
     Success {
         genesis_commit_hash: Option<ContextHash>,

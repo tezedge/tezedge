@@ -252,7 +252,7 @@ impl ProtocolRunnerServiceWorker {
             ProtocolMessage::ContextGetLatestContextHashes(count) => {
                 let res = conn.latest_context_hashes(count).await;
                 let _ = channel
-                    .send(ProtocolRunnerResult::GetCurrentHead((token, res)))
+                    .send(ProtocolRunnerResult::LatestContextHashesGet((token, res)))
                     .await;
             }
             _other => {
