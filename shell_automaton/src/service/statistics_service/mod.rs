@@ -218,7 +218,7 @@ pub struct ActionStatsForBlocks {
 
 impl ActionStatsForBlocks {
     fn current_head_update(&mut self, time: u64, block: &BlockHeaderWithHash) {
-        while self.kind_stats.len() >= 120 {
+        while self.kind_stats.len() >= 20000 {
             self.kind_stats.pop_back();
         }
         self.kind_stats.push_front(ActionKindStatsForBlock {
