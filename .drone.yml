@@ -6258,7 +6258,7 @@ depends_on:
 # This pipeline bootstraps a tezedge node to 1000 and measures memory allocation peaks during that
 ##############################################################################################################
 kind: pipeline
-name: perf/memory-allocation-bootstrap-009-florence
+name: perf/memory-allocation-bootstrap-012-ithaca
 
 depends_on:
   - build-tezedge-binaries
@@ -6307,7 +6307,7 @@ steps:
         - 'drone-cache' # <- builds a cache from this directory
 
   - name: octez-node
-    image: tezos/tezos:v9-release
+    image: tezos/tezos:v12-release
     detach: true
     environment:
       TEZOS_NODE_DIR: /home/tezos/data
@@ -6315,9 +6315,9 @@ steps:
       - name: snapshots
         path: /snapshots
     commands:
-      - tezos-node config init --network florencenet
+      - tezos-node config init --network ithacanet
       - cp light_node/etc/drone/identities/identity_1.json $${TEZOS_NODE_DIR}/identity.json
-      - tezos-node snapshot import /snapshots/octez-009-florence-1000.snapshot --block BKqNZHy5CFYLD6v6BjDLrEavrkK4qH39hhrsD7QtbWcdnnwoYub
+      - tezos-node snapshot import /snapshots/octez-012-ithacanet-1000.snapshot --block BLHj43AWbZTVddpXX2bPpNenYckP1DZr3uRexQoNQAARLXXduS2
       - tezos-node run --no-bootstrap-peers
 
   - name: tezedge-new-node
@@ -6343,7 +6343,7 @@ steps:
       - >
         valgrind --tool=massif --massif-out-file=new-node.massif.out
         target/debug/light-node --protocol-runner target/debug/protocol-runner
-        --network florencenet --peers $${OCTEZ_IP}:9732
+        --network ithacanet --peers $${OCTEZ_IP}:9732
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 18732
         --websocket-address 0.0.0.0:4927
@@ -6392,7 +6392,7 @@ steps:
       - >
         valgrind --tool=massif --massif-out-file=old-node.massif.out
         target/debug/light-node --protocol-runner target/debug/protocol-runner
-        --network florencenet --peers $${OCTEZ_IP}:9732
+        --network ithacanet --peers $${OCTEZ_IP}:9732
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 18732
         --websocket-address 0.0.0.0:4927
@@ -6546,5 +6546,5 @@ depends_on:
   - corr/indexer-conseil-tezedge-009-florence
   - corr/indexer-tzkt-octez-009-florence
   - corr/indexer-tzkt-tezedge-009-florence
-  - perf/memory-allocation-bootstrap-009-florence
+  - perf/memory-allocation-bootstrap-012-ithaca
   - perf/bootstrap-time-012-ithaca
