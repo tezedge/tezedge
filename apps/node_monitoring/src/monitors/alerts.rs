@@ -164,7 +164,7 @@ impl Alerts {
                 if last_checked_head_level == current_head_level {
                     // report the alert trough slack if it was not already reported
                     if alert.reported {
-                        crit!(
+                        slog::warn!(
                             log,
                             "[{}] Node still STUCK, already reported. LEVEL: {}",
                             node_tag,
@@ -190,7 +190,7 @@ impl Alerts {
                             self.inner.replace(modified.clone());
                             return AlertResult::Incresed(modified);
                         } else {
-                            crit!(
+                            slog::warn!(
                                 log,
                                 "[{}] Node appears to be STUCK - LEVEL {}, time until alert: {}s",
                                 node_tag,
@@ -202,7 +202,7 @@ impl Alerts {
                     }
                 } else {
                     // When the node applies the next block, it becomes unstuck, report this
-                    crit!(
+                    slog::info!(
                         log,
                         "[{}] Node unstuck. Level: {}",
                         node_tag,
@@ -217,7 +217,7 @@ impl Alerts {
             } else {
                 // No alert was reported, node is stuck, insert alert, but do not notify trough slack, lets wait for the treshold
                 if last_checked_head_level == current_head_level {
-                    crit!(
+                    slog::warn!(
                         log,
                         "[{}]Node appears to be stuck on level {}, time until alert: {}s",
                         node_tag,

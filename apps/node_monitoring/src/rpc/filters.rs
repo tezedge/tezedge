@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use itertools::Itertools;
 use slog::Logger;
 use warp::Filter;
 
@@ -23,7 +22,7 @@ pub fn filters(
     let filters = resource_utilization_storage
         .into_iter()
         .map(|storage| get_measurements_filter(log.clone(), storage))
-        .fold1(|combined, filter| combined.or(filter).unify().boxed())
+        .reduce(|combined, filter| combined.or(filter).unify().boxed())
         .expect("Failed to create combined filters");
 
     filters.with(cors)

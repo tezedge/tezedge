@@ -9,13 +9,14 @@ use std::hash::Hash;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
-use thiserror::Error;
 use getset::Getters;
 use merge::Merge;
 use netinfo::Netinfo;
 use serde::Serialize;
+use slog::info;
 use slog::{error, warn, Logger};
 use sysinfo::{System, SystemExt};
+use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::display_info::{NodeInfo, OCamlDiskData, TezedgeDiskData};
@@ -44,6 +45,9 @@ pub enum ResourceMonitorError {
 
     #[error("An error occured while monitoring node disk usage, reason: {reason}")]
     DiskInfoError { reason: String },
+
+    #[error("An error occured while monitoring node process, reason: {reason}")]
+    ProcessInfoError { reason: String },
 }
 
 #[derive(Clone, Debug, Getters)]
@@ -223,12 +227,12 @@ impl ResourceUtilization {
         {
             Some(TezedgeDiskData::new(
                 cmp::max(tezedge_disk1.debugger(), tezedge_disk2.debugger()),
-                cmp::max(tezedge_disk1.context_storage(), tezedge_disk2.context_storage()),
-                cmp::max(tezedge_disk1.block_storage(), tezedge_disk2.block_storage()),
                 cmp::max(
-                    tezedge_disk1.context_stats(),
-                    tezedge_disk2.context_stats(),
+                    tezedge_disk1.context_storage(),
+                    tezedge_disk2.context_storage(),
                 ),
+                cmp::max(tezedge_disk1.block_storage(), tezedge_disk2.block_storage()),
+                cmp::max(tezedge_disk1.context_stats(), tezedge_disk2.context_stats()),
                 cmp::max(tezedge_disk1.main_db(), tezedge_disk2.main_db()),
             ))
         } else {
@@ -372,9 +376,40 @@ impl ResourceMonitor {
         for resource_storage in resource_utilization {
             let ResourceUtilizationStorage { node, storage } = resource_storage;
 
+            if let Some(pid) = node.check_process(system).map_err(|err| {
+                ResourceMonitorError::ProcessInfoError {
+                    reason: format!("Cannot obtain node process: {err}"),
+                }
+            })? {
+                if node.node_status() == &NodeStatus::Offline {
+                    info!(log, "[{}] Node process found: {}", node.tag(), pid);
+                }
+            } else {
+                if node.node_status() == &NodeStatus::Online {
+                    warn!(log, "[{}] Node process not found", node.tag());
+                    if let Some(slack) = slack {
+                        slack
+                            .send_message(&format!("[{}] Node is down", node.tag()))
+                            .await;
+                    }
+                }
+                node.set_node_status(NodeStatus::Offline);
+                continue;
+            }
+
             let (node_reachable, proxy_reachable) = node.is_reachable().await;
 
             let node_resource_measurement = if node_reachable {
+                if node.node_status() == &NodeStatus::Offline {
+                    node.set_node_status(NodeStatus::Online);
+                    info!(log, "[{}] Node is up", node.tag());
+                    if let Some(slack) = slack {
+                        slack
+                            .send_message(&format!("[{}] Node is up", node.tag()))
+                            .await;
+                    }
+                }
+
                 // gets the total space on the filesystem of the specified path
                 let free_disk_space = match fs2::free_space(node.volume_path()) {
                     Ok(free_space) => free_space,
@@ -511,7 +546,7 @@ impl ResourceMonitor {
                 }
             } else {
                 if !node_reachable && node.node_status() == &NodeStatus::Online {
-                    println!("[{}] Node is down", node.tag());
+                    warn!(log, "[{}] Node is down", node.tag());
                     if let Some(slack) = slack {
                         slack
                             .send_message(&format!("[{}] Node is down", node.tag()))
@@ -527,7 +562,7 @@ impl ResourceMonitor {
                     // if the proxy is not reachable and the last status was Online report trough slack and change the
                     // status to offline
                     if proxy_status == &NodeStatus::Online {
-                        println!("[{}] Proxy is down", node.tag());
+                        warn!(log, "[{}] Proxy is down", node.tag());
                         if let Some(slack) = slack {
                             slack
                                 .send_message(&format!("[{}] Proxy is down", node.tag()))
@@ -855,7 +890,6 @@ fn merge_validator_io_stats(first: ValidatorIOStats, second: ValidatorIOStats) -
 mod tests {
     use super::*;
     use crate::display_info::TezedgeDiskData;
-    use itertools::Itertools;
 
     macro_rules! map(
         { $($key:expr => $value:expr),+ } => {
@@ -1100,7 +1134,7 @@ mod tests {
         };
 
         let resources = vec![resources1, resources2, resources3];
-        let merged_final = resources.into_iter().fold1(|m1, m2| m1.merge(m2)).unwrap();
+        let merged_final = resources.into_iter().reduce(|m1, m2| m1.merge(m2)).unwrap();
 
         assert_eq!(merged_final.cpu.node, expected.cpu.node);
         assert_eq!(merged_final.cpu.validators, expected.cpu.validators);

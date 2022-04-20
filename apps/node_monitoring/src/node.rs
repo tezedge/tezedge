@@ -9,11 +9,17 @@ use std::path::PathBuf;
 
 use fs_extra::dir;
 use getset::{CopyGetters, Getters, Setters};
-use itertools::Itertools;
 use merge::Merge;
 
 use netinfo::{InoutType, NetStatistics};
+use procfs::ProcError;
 use sysinfo::{ProcessExt, System, SystemExt};
+
+use procfs::{
+    net::{tcp, tcp6, TcpState},
+    process::{self, Process},
+    ProcResult,
+};
 
 use crate::display_info::NodeInfo;
 use crate::display_info::{DiskData, OCamlDiskData, TezedgeDiskData};
@@ -95,11 +101,8 @@ impl Node {
         let volume_path = self.volume_path.as_path().display();
         if self.node_type == NodeType::Tezedge {
             // context stats DB is optional
-            let context_stats = dir::get_size(&format!(
-                "{}/{}",
-                volume_path, "context-stats-db"
-            ))
-            .unwrap_or(0);
+            let context_stats =
+                dir::get_size(&format!("{}/{}", volume_path, "context-stats-db")).unwrap_or(0);
 
             let debugger = if let Some(debugger_path) = &self.debugger_path {
                 dir::get_size(&format!(
@@ -364,7 +367,7 @@ impl Node {
             let total = children
                 .iter()
                 .map(|(_, v)| v.clone())
-                .fold1(|mut m1, m2| {
+                .reduce(|mut m1, m2| {
                     m1.merge(m2);
                     m1
                 })
@@ -434,7 +437,7 @@ impl Node {
                         ),
                     )
                 })
-                .fold1(|acc, x| (acc.0 + x.0, acc.1 + x.1))
+                .reduce(|acc, x| (acc.0 + x.0, acc.1 + x.1))
                 .unwrap_or_default();
             Ok(NetworkStats::new(sent, received))
         } else {
@@ -464,6 +467,16 @@ impl Node {
             (is_node_alive, false)
         }
     }
+
+    pub fn check_process(&mut self, system: &System) -> Result<Option<i32>, ProcError> {
+        if let Some(pid) = self.pid {
+            if system.process(pid).is_some() {
+                return Ok(Some(pid));
+            }
+        }
+        self.pid = find_node_process_id(self.port)?;
+        Ok(self.pid)
+    }
 }
 
 fn read_task_name_file(pid: i32, task_pid: i32) -> String {
@@ -484,4 +497,35 @@ fn read_task_name_file(pid: i32, task_pid: i32) -> String {
 
 fn to_bytes_per_sec(bytes_per_millis: u64) -> u64 {
     bytes_per_millis * MILLIS_TO_SECONDS_CONVERSION_CONSTANT
+}
+
+/// Find the node to monitor
+pub fn find_node_process_id(port: u16) -> Result<Option<i32>, ProcError> {
+    let all_procs = process::all_processes().expect("No processes found on system");
+
+    let mut process_map: HashMap<u32, &Process> = HashMap::new();
+
+    // create mapping between processes and inodes
+    for process in &all_procs {
+        if let ProcResult::Ok(fds) = process.fd() {
+            for fd in fds {
+                if let process::FDTarget::Socket(inode) = fd.target {
+                    process_map.insert(inode, process);
+                }
+            }
+        }
+    }
+
+    // get the tcp table
+    let tcp = tcp()?;
+    let tcp6 = tcp6()?;
+
+    for entry in tcp.into_iter().chain(tcp6) {
+        if port == entry.local_address.port() && entry.state == TcpState::Listen {
+            if let Some(process) = process_map.get(&entry.inode) {
+                return Ok(Some(process.pid()));
+            }
+        }
+    }
+    Ok(None)
 }
