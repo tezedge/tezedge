@@ -5836,7 +5836,7 @@ steps:
       - name: snapshots
         path: /snapshots
     commands:
-      - tezos-node config init --network ithacanet
+      - tezos-node config init --network florencenet
       - cp light_node/etc/drone/identities/identity_1.json $${TEZOS_NODE_DIR}/identity.json
       - tezos-node snapshot import /snapshots/octez-009-florence-$${BLOCK_LEVEL}.snapshot
       - tezos-node run --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
