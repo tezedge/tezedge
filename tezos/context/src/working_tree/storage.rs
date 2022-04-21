@@ -735,26 +735,63 @@ enum ThinPointerValue {
 /// }
 /// ```
 #[bitfield]
-#[derive(Debug, Clone)]
-pub struct ThinPointer {
+#[derive(Debug, Clone, Copy)]
+pub struct ThinPointerInner {
     is_commited: bool,
     ref_kind: ThinPointerKind,
     /// Depending on `ref_kind`, this is either a `InodeId` or a `FatPointerId`
     value: B30,
 }
 
+#[derive(Clone, Debug)]
+pub struct ThinPointer {
+    inner: Cell<ThinPointerInner>,
+}
+
 assert_eq_size!([u8; 4], ThinPointer);
 
 impl ThinPointer {
-    fn get_value(&self) -> ThinPointerValue {
-        match self.ref_kind() {
-            ThinPointerKind::InodeId => ThinPointerValue::Inode(self.value().into()),
-            ThinPointerKind::FatPointer => ThinPointerValue::FatPointer(self.value().into()),
+    fn value(&self) -> u32 {
+        let inner = self.inner.get();
+        inner.value()
+    }
+
+    fn ref_kind(&self) -> ThinPointerKind {
+        let inner = self.inner.get();
+        inner.ref_kind()
+    }
+
+    fn is_commited(&self) -> bool {
+        let inner = self.inner.get();
+        inner.is_commited()
+    }
+
+    fn new(ref_kind: ThinPointerKind, value: u32, is_commited: bool) -> Self {
+        let inner = ThinPointerInner::new()
+            .with_ref_kind(ref_kind)
+            .with_is_commited(is_commited)
+            .with_value(value);
+
+        Self {
+            inner: Cell::new(inner),
         }
     }
 
-    pub fn set_commited(&mut self, commited: bool) {
-        self.set_is_commited(commited);
+    fn get_value(&self) -> ThinPointerValue {
+        let inner = self.inner.get();
+
+        match inner.ref_kind() {
+            ThinPointerKind::InodeId => ThinPointerValue::Inode(inner.value().into()),
+            ThinPointerKind::FatPointer => ThinPointerValue::FatPointer(inner.value().into()),
+        }
+    }
+
+    pub fn set_is_commited(&self, commited: bool) {
+        let mut inner = self.inner.get();
+
+        inner.set_is_commited(commited);
+
+        self.inner.set(inner);
     }
 }
 
@@ -1599,10 +1636,7 @@ impl Storage {
                 if let Some(DirectoryOrInodeId::Inode(inode_id)) = pointer.ptr_id() {
                     // The pointer points to an `InodeId`, create a `ThinPointer`.
                     let inode_id: u32 = inode_id.into();
-                    ThinPointer::new()
-                        .with_ref_kind(ThinPointerKind::InodeId)
-                        .with_is_commited(pointer.is_commited())
-                        .with_value(inode_id)
+                    ThinPointer::new(ThinPointerKind::InodeId, inode_id, pointer.is_commited())
                 } else if let Some(thin_pointer) = &pointer.thin_pointer {
                     // `ThinPointer` already exist, use it.
                     // This avoid growing `Self::fat_pointers`, and it does't make duplicate `FatPointer`
@@ -1613,10 +1647,11 @@ impl Storage {
                     let fat_pointer: FatPointerId =
                         self.fat_pointers.push(pointer.fat_pointer.clone())?;
                     let fat_pointer: u32 = fat_pointer.into();
-                    ThinPointer::new()
-                        .with_ref_kind(ThinPointerKind::FatPointer)
-                        .with_is_commited(pointer.is_commited())
-                        .with_value(fat_pointer)
+                    ThinPointer::new(
+                        ThinPointerKind::FatPointer,
+                        fat_pointer,
+                        pointer.is_commited(),
+                    )
                 };
 
             self.thin_pointers.push(thin_pointer)?;

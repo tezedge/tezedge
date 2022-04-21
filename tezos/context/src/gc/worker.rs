@@ -833,7 +833,7 @@ impl GCThread {
         storage
             .thin_pointers
             .for_each_mut::<_, GCError>(|thin_pointer| {
-                thin_pointer.set_commited(false);
+                thin_pointer.set_is_commited(false);
                 Ok(())
             })?;
         storage

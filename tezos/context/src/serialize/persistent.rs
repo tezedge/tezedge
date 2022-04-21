@@ -684,12 +684,12 @@ fn serialize_inode(
 
                 let ptr_id = pointer.ptr_id().ok_or(MissingInodeId)?;
 
-                if storage.pointer_retrieve_offset(&pointer)?.is_some() {
-                    // The child has already been serialized, skipt it.
-                    // This is a different case than `pointer.is_commited()` above, here
-                    // the child is a duplicate.
-                    continue;
-                }
+                // if storage.pointer_retrieve_offset(&pointer)?.is_some() {
+                //     // The child has already been serialized, skipt it.
+                //     // This is a different case than `pointer.is_commited()` above, here
+                //     // the child is a duplicate.
+                //     continue;
+                // }
 
                 let offset =
                     serialize_inode(ptr_id, output, hash_id, storage, stats, repository, strings)?;
