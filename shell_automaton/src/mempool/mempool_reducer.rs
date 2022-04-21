@@ -288,6 +288,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::PeerCurrentHeadUpdate(_) => {
             if state.is_bootstrapped() {
+                println!("@@@@@@@@@@@ Starting mempool");
                 state.mempool.running_since = Some(());
             }
         }
@@ -310,6 +311,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             });
 
             if state.is_bootstrapped() {
+                println!("@@@@@@@@@@@ Starting mempool");
                 state.mempool.running_since = Some(());
             }
             let mempool_state = &mut state.mempool;

@@ -5850,7 +5850,7 @@ steps:
       - refs/pull/*/head
 
   - name: octez-node
-    image: tezos/tezos:v12-release
+    image: tezos/tezos:v9-release
     user: root
     environment:
       TEZOS_NODE_DIR: /tmp/tezos/data

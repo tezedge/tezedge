@@ -212,7 +212,7 @@ where
             }
         }
         Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
-            if store.state().mempool.running_since.is_some() {
+            if store.state().mempool.running_since.is_some() && store.state().is_bootstrapped() {
                 store.dispatch(MempoolBroadcastAction {
                     send_operations: false,
                     prechecked_head: None,
