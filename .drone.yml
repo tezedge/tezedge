@@ -5633,7 +5633,7 @@ steps:
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --tezos-context-storage tezedge
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=1
         --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
         --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params &
       # this command waits the node to be on level higher than 0
@@ -5677,7 +5677,7 @@ steps:
         --config-file ./drone-cache-old/tezedge_drone.config
         --tezos-context-storage irmin
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=1
         --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
         --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params &
       # this command waits the node to be on level higher than 0
@@ -5899,7 +5899,7 @@ steps:
         --network florencenet --peers $${OCTEZ_IP}:9732
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=1
         --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
         --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params &
       # this command waits the node to be on level higher than 0
@@ -5942,7 +5942,7 @@ steps:
         --network florencenet --peers $${OCTEZ_IP}:9732
         --config-file ./drone-cache-old/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=1
         --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
         --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params &
       # this command waits the node to be on level higher than 0
@@ -6614,7 +6614,7 @@ steps:
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 18732
         --websocket-address 0.0.0.0:4927
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=1
         --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params
         --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params &
         echo $! > /var/run/tezedge.pid
@@ -6663,7 +6663,7 @@ steps:
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 18732
         --websocket-address 0.0.0.0:4927
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=1
         --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params
         --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params &
         echo $! > /var/run/tezedge.pid
