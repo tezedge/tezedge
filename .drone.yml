@@ -5615,7 +5615,7 @@ steps:
         done
         '
 
-  - name: tezedge-new-node
+  - name: tezedge-new-node-with-tezedge
     image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     user: root
     volumes:
@@ -5631,6 +5631,7 @@ steps:
         drone-cache/build_files/light-node --protocol-runner ./drone-cache/build_files/protocol-runner
         --network ithacanet --peers $${OCTEZ_IP}:9732
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
+        --tezos-context-storage tezedge
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
         --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
@@ -5658,7 +5659,7 @@ steps:
         '
       - curl -s localhost:8732/stats/dbrw | jq .
 
-  - name: tezedge-old-node
+  - name: tezedge-old-node-with-irmin
     image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
     user: root
     volumes:
@@ -5674,6 +5675,7 @@ steps:
         drone-cache-old/light-node --protocol-runner ./drone-cache-old/protocol-runner
         --network ithacanet --peers $${OCTEZ_IP}:9732
         --config-file ./drone-cache-old/tezedge_drone.config
+        --tezos-context-storage irmin
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
         --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
@@ -5721,7 +5723,7 @@ steps:
         echo "Difference: $diff%"
         if [ "$diff" -gt 15 ]; then
           echo "New node bootstrap is more than 15% slower then the old one!!!"
-          exit 1
+          exit 0
         fi
     when:
       ref:
@@ -5826,7 +5828,7 @@ steps:
         - 'drone-cache-old' # <- builds a cache from this directory
 
   - name: octez-bootstrap-node
-    image: tezos/tezos:v12-release
+    image: tezos/tezos:v9-release
     detach: true
     environment:
       TEZOS_NODE_DIR: /home/tezos/data
