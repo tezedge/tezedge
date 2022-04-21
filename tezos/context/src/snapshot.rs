@@ -1,14 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    sync::{Arc, RwLock},
-};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use anyhow::Error;
 use crypto::hash::ContextHash;
+use parking_lot::RwLock;
 
 use crate::{
     kv_store::persistent::{FileSizes, PersistentConfiguration},
@@ -64,7 +61,7 @@ pub fn read_commit_tree(
     // It is necessary for the snapshot to have it in its db
     let parent_hash: Option<ObjectHash> = match commit.parent_commit_ref {
         Some(parent) => {
-            let repo = read_repo.read().unwrap();
+            let repo = read_repo.read();
             Some(repo.get_hash(parent)?.into_owned())
         }
         None => None,
@@ -135,7 +132,7 @@ pub fn create_new_database(
         log(" Computing context hash...");
 
         // Compute the hashes of the whole tree and remove the duplicate ones
-        let mut repo = write_repo.write().unwrap();
+        let mut repo = write_repo.write();
         tree.get_root_directory_hash(&mut *repo)?;
         index.storage.borrow_mut().deduplicate_hashes(&*repo)?;
 

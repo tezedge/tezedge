@@ -9,6 +9,7 @@ rust-version = "1.58"
 [dependencies]
 byte-unit = { version = "4.0", default-features = false }
 clap = { version = "3.0", features = ["derive"] }
+parking_lot = "0.12.0"
 termcolor = "1.1.2"
 
 # local dependencies

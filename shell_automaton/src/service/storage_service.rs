@@ -1,13 +1,14 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::{fmt, thread};
 
 use enum_kinds::EnumKind;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ChainId, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, ContextHash, ProtocolHash};
 use storage::block_meta_storage::Meta;
 use storage::cycle_eras_storage::CycleErasData;
 use storage::cycle_storage::CycleData;
@@ -87,7 +88,7 @@ pub enum StorageRequestPayload {
     CycleErasGet(ProtocolHash),
     CycleMetaGet(CycleKey),
 
-    CurrentHeadGet(ChainId, Option<Level>),
+    CurrentHeadGet(ChainId, Option<Level>, Vec<ContextHash>),
 
     BlockHeaderPut(ChainId, BlockHeaderWithHash),
     BlockOperationsPut(OperationsForBlocksMessage),
@@ -227,6 +228,60 @@ impl fmt::Debug for StorageServiceDefault {
     }
 }
 
+fn find_block_with_context_hash_impl(
+    head_block_storage: BlockHeaderWithHash,
+    latest_context_hashes: &[ContextHash],
+    block_storage: &BlockStorage,
+) -> Result<Option<BlockHeaderWithHash>, StorageError> {
+    let mut head = head_block_storage;
+    let latest_context_hashes = HashSet::<&ContextHash>::from_iter(latest_context_hashes.iter());
+
+    while !latest_context_hashes.contains(head.header.context()) {
+        if head.header.level() == 0 {
+            return Ok(None);
+        }
+
+        head = match block_storage.get(head.header.predecessor())? {
+            Some(head) => head,
+            _ => return Ok(None),
+        };
+    }
+
+    Ok(Some(head))
+}
+
+/// Find a block with one of the `ContextHash` in `latest_context_hashes`
+///
+/// `head_block_storage` is the current head in the block storage.
+/// This iterates on each predecessor of `head_block_storage` until
+/// it founds a block with a matching `ContextHash`.
+fn find_block_with_context_hash(
+    log: &slog::Logger,
+    head_block_storage: BlockHeaderWithHash,
+    latest_context_hashes: Vec<ContextHash>,
+    block_storage: &BlockStorage,
+) -> Result<BlockHeaderWithHash, StorageError> {
+    if latest_context_hashes.is_empty() {
+        return Ok(head_block_storage);
+    }
+
+    match find_block_with_context_hash_impl(
+        head_block_storage.clone(),
+        &latest_context_hashes,
+        block_storage,
+    )? {
+        Some(head) => Ok(head),
+        None => {
+            slog::warn!(
+                &log,
+                "Unable to find a block matching the context storage";
+                "latest_context_hashes" => format!("{:?}", latest_context_hashes)
+            );
+            Ok(head_block_storage)
+        }
+    }
+}
+
 impl StorageServiceDefault {
     fn run_worker(
         log: slog::Logger,
@@ -308,7 +363,7 @@ impl StorageServiceDefault {
                     .map(|cycle_eras| CycleErasGetSuccess(proto_hash.clone(), cycle_eras))
                     .map_err(|err| CycleErasGetError(proto_hash, err.into())),
 
-                CurrentHeadGet(chain_id, level_override) => {
+                CurrentHeadGet(chain_id, level_override, latest_context_hashes) => {
                     let result = level_override
                         .and_then(|level| {
                             Some(match block_storage.get_block_by_level(level) {
@@ -318,6 +373,15 @@ impl StorageServiceDefault {
                         })
                         .unwrap_or_else(|| storage::hydrate_current_head(&chain_id, &storage))
                         .map_err(StorageError::from)
+                        .and_then(|head| match level_override {
+                            Some(_) => Ok(head),
+                            None => find_block_with_context_hash(
+                                &log,
+                                head,
+                                latest_context_hashes,
+                                &block_storage,
+                            ),
+                        })
                         .and_then(|head| {
                             let pred = if head.header.level() > 0 {
                                 block_storage.get(head.header.predecessor())?

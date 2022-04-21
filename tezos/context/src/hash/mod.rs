@@ -397,8 +397,10 @@ mod tests {
 
     use crate::chunks::ChunkedVec;
     use crate::kv_store::in_memory::{InMemory, InMemoryConfiguration, BATCH_CHUNK_CAPACITY};
+    use crate::kv_store::inline_boxed_slice::InlinedBoxedSlice;
     use crate::kv_store::persistent::{Persistent, PersistentConfiguration};
     use crate::serialize::{in_memory, persistent, SerializeObjectSignature};
+    use crate::working_tree::working_tree::SerializeOutput;
     use crate::working_tree::ObjectReference;
     use crate::working_tree::{DirEntry, DirEntryKind};
 
@@ -688,15 +690,13 @@ mod tests {
         repo: &mut ContextKeyValueStore,
         serialize_fun: SerializeObjectSignature,
     ) {
+        let offset = repo.synchronize_data(&[], &[]).unwrap();
+
         let mut json_file = open_hashes_json_gz(json_gz_file_name);
         let mut bytes = Vec::new();
-
+        let mut output = SerializeOutput::new(offset);
         let mut strings = StringInterner::default();
-        let mut output = Vec::new();
         let mut stats = SerializeStats::default();
-
-        // Create HashId ready to be commited
-        repo.synchronize_data(&[], &[]);
 
         // NOTE: reading from a stream is very slow with serde, thats why
         // the whole file is being read here before parsing.
@@ -710,7 +710,8 @@ mod tests {
 
             let bindings_count = test_case.bindings.len();
             let mut dir_id = DirectoryId::empty();
-            let mut batch = ChunkedVec::<_, BATCH_CHUNK_CAPACITY>::default();
+            let mut batch =
+                ChunkedVec::<(HashId, InlinedBoxedSlice), BATCH_CHUNK_CAPACITY>::default();
 
             let mut names = HashSet::new();
 
@@ -825,7 +826,7 @@ mod tests {
                         let object = dir_entry.get_object().unwrap();
                         let object_hash_id = dir_entry.hash_id().unwrap();
 
-                        let offset = repo.synchronize_data(&[], &[]).unwrap();
+                        repo.synchronize_data(&[], &[]).unwrap();
 
                         let offset = serialize_fun(
                             &object,
@@ -836,7 +837,6 @@ mod tests {
                             &mut stats,
                             &mut batch,
                             repo,
-                            offset,
                         )
                         .unwrap();
 
@@ -848,9 +848,10 @@ mod tests {
                     })
                     .unwrap();
 
-                let offset = repo.synchronize_data(&batch.to_vec(), &output).unwrap();
+                repo.synchronize_data(&batch.to_vec(), &output).unwrap();
 
-                let mut batch = ChunkedVec::<_, BATCH_CHUNK_CAPACITY>::default();
+                let mut batch =
+                    ChunkedVec::<(HashId, InlinedBoxedSlice), BATCH_CHUNK_CAPACITY>::default();
                 output.clear();
 
                 let offset = serialize_fun(
@@ -862,10 +863,10 @@ mod tests {
                     &mut stats,
                     &mut batch,
                     repo,
-                    offset,
                 )
                 .unwrap();
                 repo.synchronize_data(&batch.to_vec(), &output).unwrap();
+                output.clear();
 
                 let object_ref = ObjectReference::new(Some(computed_hash_id), offset);
                 let object = repo

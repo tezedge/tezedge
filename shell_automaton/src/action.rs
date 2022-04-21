@@ -95,6 +95,10 @@ use crate::protocol_runner::init::{
     ProtocolRunnerInitAction, ProtocolRunnerInitCheckGenesisAppliedAction,
     ProtocolRunnerInitCheckGenesisAppliedSuccessAction, ProtocolRunnerInitSuccessAction,
 };
+use crate::protocol_runner::latest_context_hashes::{
+    ProtocolRunnerLatestContextHashesErrorAction, ProtocolRunnerLatestContextHashesInitAction,
+    ProtocolRunnerLatestContextHashesPendingAction, ProtocolRunnerLatestContextHashesSuccessAction,
+};
 use crate::protocol_runner::spawn_server::{
     ProtocolRunnerSpawnServerErrorAction, ProtocolRunnerSpawnServerInitAction,
     ProtocolRunnerSpawnServerPendingAction, ProtocolRunnerSpawnServerSuccessAction,
@@ -231,6 +235,11 @@ pub enum Action {
     ProtocolRunnerSpawnServerPending(ProtocolRunnerSpawnServerPendingAction),
     ProtocolRunnerSpawnServerError(ProtocolRunnerSpawnServerErrorAction),
     ProtocolRunnerSpawnServerSuccess(ProtocolRunnerSpawnServerSuccessAction),
+
+    ProtocolRunnerLatestContextHashesInit(ProtocolRunnerLatestContextHashesInitAction),
+    ProtocolRunnerLatestContextHashesPending(ProtocolRunnerLatestContextHashesPendingAction),
+    ProtocolRunnerLatestContextHashesError(ProtocolRunnerLatestContextHashesErrorAction),
+    ProtocolRunnerLatestContextHashesSuccess(ProtocolRunnerLatestContextHashesSuccessAction),
 
     ProtocolRunnerInit(ProtocolRunnerInitAction),
 

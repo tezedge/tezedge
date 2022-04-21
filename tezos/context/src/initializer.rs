@@ -1,12 +1,13 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use ipc::IpcError;
 use ocaml_interop::BoxRoot;
+use parking_lot::RwLock;
 pub use tezos_context_api::ContextKvStoreConfiguration;
 use tezos_context_api::TezosContextTezEdgeStorageConfiguration;
 use thiserror::Error;
@@ -91,18 +92,15 @@ fn spawn_reload_database(
         let start_time = std::time::Instant::now();
         log!("Reloading context");
 
-        let mut repository = match repository.write() {
-            Ok(repository) => repository,
-            Err(e) => {
-                elog!("Failed to lock repository for reloading: {:?}", e);
-                return;
-            }
-        };
+        let clone_repo = repository.clone();
+        let mut repository = repository.write();
 
         // Notify the main thread that the repository is locked
         if let Err(e) = sender.send(()) {
             elog!("Failed to notify main thread that repo is locked: {:?}", e);
         }
+
+        repository.store_own_repository(clone_repo);
 
         if let Err(e) = repository.reload_database() {
             elog!("Failed to reload repository: {:?}", e);

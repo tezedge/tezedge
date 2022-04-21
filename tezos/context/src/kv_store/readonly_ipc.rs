@@ -5,14 +5,18 @@
 //! It is used by read-only protocol runners to be able to access the in-memory context
 //! owned by the writable protocol runner.
 
+use std::sync::Arc;
 use std::{borrow::Cow, path::Path};
 
-#[cfg(test)]
+use super::in_memory::BATCH_CHUNK_CAPACITY;
 use super::inline_boxed_slice::InlinedBoxedSlice;
+use crate::chunks::ChunkedVec;
 #[cfg(test)]
 use crate::serialize::persistent::AbsoluteOffset;
+use crate::ContextKeyValueStore;
 
 use crypto::hash::ContextHash;
+use parking_lot::RwLock;
 use slog::{error, info};
 use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 use thiserror::Error;
@@ -25,7 +29,7 @@ use crate::serialize::{in_memory, persistent, ObjectHeader};
 use crate::working_tree::shape::{DirectoryShapeId, ShapeStrings};
 use crate::working_tree::storage::{DirEntryId, DirectoryOrInodeId, Storage};
 use crate::working_tree::string_interner::{StringId, StringInterner};
-use crate::working_tree::working_tree::{PostCommitData, WorkingTree};
+use crate::working_tree::working_tree::{PostCommitData, SerializeOutput, WorkingTree};
 use crate::working_tree::{Object, ObjectReference};
 use crate::{
     ffi::TezedgeIndexError, gc::NotGarbageCollected, persistent::KeyValueStoreBackend, ObjectHash,
@@ -64,6 +68,14 @@ impl NotGarbageCollected for ReadonlyIpcBackend {}
 impl KeyValueStoreBackend for ReadonlyIpcBackend {
     fn reload_database(&mut self) -> Result<(), ReloadError> {
         Ok(())
+    }
+
+    fn store_own_repository(&mut self, _repository: Arc<RwLock<ContextKeyValueStore>>) {
+        // no-op
+    }
+
+    fn latest_context_hashes(&self, _count: i64) -> Result<Vec<ContextHash>, DBError> {
+        Ok(vec![])
     }
 
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
@@ -244,6 +256,14 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
         self.clear_objects()?;
 
         Ok((commit_hash, serialize_stats))
+    }
+
+    fn add_serialized_objects(
+        &mut self,
+        _batch: ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>,
+        _output: &mut SerializeOutput,
+    ) -> Result<(), DBError> {
+        Ok(())
     }
 
     fn get_hash_id(&self, object_ref: ObjectReference) -> Result<HashId, DBError> {
@@ -666,6 +686,60 @@ impl IpcContextListener {
 }
 
 impl IpcContextServer {
+    fn get_shape(
+        shape_id: DirectoryShapeId,
+        repo: &ContextKeyValueStore,
+    ) -> Result<Vec<String>, ContextError> {
+        let shape = repo
+            .get_shape(shape_id)
+            .map_err(|_| ContextError::GetShapeError {
+                reason: "Fail to get shape".to_string(),
+            })?;
+
+        // We send the owned `String` to the read only protocol runner.
+        // We do not send the `StringId`s because the read only protocol
+        // runner doesn't have access to the same `StringInterner`.
+        match shape {
+            ShapeStrings::SliceIds(slice_ids) => slice_ids
+                .iter()
+                .map(|s| {
+                    repo.get_str(*s)
+                        .ok_or_else(|| ContextError::GetShapeError {
+                            reason: "String not found".to_string(),
+                        })
+                        .map(|s| s.to_string())
+                })
+                .collect(),
+            ShapeStrings::Owned(_) => Err(ContextError::GetShapeError {
+                reason: "Should receive a slice of StringId".to_string(),
+            }),
+        }
+    }
+
+    fn get_object_bytes(
+        object_ref: ObjectReference,
+        repository: &ContextKeyValueStore,
+    ) -> Result<Vec<u8>, ContextError> {
+        let mut buffer = Vec::with_capacity(1000);
+        repository
+            .get_object_bytes(object_ref, &mut buffer)
+            .map(Into::into)
+            .map_err(|e| ContextError::GetObjectBytesError {
+                reason: format!("{:?}", e),
+            })
+    }
+
+    fn get_hash_id(
+        object_ref: ObjectReference,
+        repository: &ContextKeyValueStore,
+    ) -> Result<HashId, ContextError> {
+        repository
+            .get_hash_id(object_ref)
+            .map_err(|e| ContextError::GetHashIdError {
+                reason: format!("{:?}", e),
+            })
+    }
+
     /// Listen to new connections from context readers.
     /// Begin receiving commands from context readers until `ShutdownCall` command is received.
     pub fn process_context_requests(&self, log: &Logger) -> Result<(), IpcContextError> {
@@ -679,38 +753,9 @@ impl IpcContextServer {
                         "Context index unavailable".to_owned(),
                     )))?,
                     Some(index) => {
-                        let res = index
-                            .repository
-                            .read()
-                            .map_err(|_| ContextError::GetShapeError {
-                                reason: "Fail to get repo".to_string(),
-                            })
-                            .and_then(|repo| {
-                                let shape = repo.get_shape(shape_id).map_err(|_| {
-                                    ContextError::GetShapeError {
-                                        reason: "Fail to get shape".to_string(),
-                                    }
-                                })?;
+                        let repository = index.repository.read();
 
-                                // We send the owned `String` to the read only protocol runner.
-                                // We do not send the `StringId`s because the read only protocol
-                                // runner doesn't have access to the same `StringInterner`.
-                                match shape {
-                                    ShapeStrings::SliceIds(slice_ids) => slice_ids
-                                        .iter()
-                                        .map(|s| {
-                                            repo.get_str(*s)
-                                                .ok_or_else(|| ContextError::GetShapeError {
-                                                    reason: "String not found".to_string(),
-                                                })
-                                                .map(|s| s.to_string())
-                                        })
-                                        .collect(),
-                                    ShapeStrings::Owned(_) => Err(ContextError::GetShapeError {
-                                        reason: "Should receive a slice of StringId".to_string(),
-                                    }),
-                                }
-                            })
+                        let res = Self::get_shape(shape_id, &*repository)
                             .map_err(|err| format!("Context error: {:?}", err));
 
                         io.tx.send(&ContextResponse::GetShapeResponse(res))?;
@@ -768,20 +813,9 @@ impl IpcContextServer {
                             "Context index unavailable".to_owned(),
                         )))?,
                         Some(index) => {
-                            let res = index
-                                .repository
-                                .read()
-                                .map_err(|_| ContextError::GetObjectBytesError {
-                                    reason: "Fail to get repo".to_string(),
-                                })
-                                .and_then(|repo| {
-                                    let mut buffer = Vec::with_capacity(1000);
-                                    repo.get_object_bytes(object_ref, &mut buffer)
-                                        .map(Into::into)
-                                        .map_err(|e| ContextError::GetObjectBytesError {
-                                            reason: format!("{:?}", e),
-                                        })
-                                })
+                            let repository = index.repository.read();
+
+                            let res = Self::get_object_bytes(object_ref, &*repository)
                                 .map_err(|err| format!("Context error: {:?}", err));
 
                             io.tx.send(&ContextResponse::GetObjectBytesResponse(res))?;
@@ -793,19 +827,9 @@ impl IpcContextServer {
                         "Context index unavailable".to_owned(),
                     )))?,
                     Some(index) => {
-                        let res = index
-                            .repository
-                            .read()
-                            .map_err(|_| ContextError::GetHashIdError {
-                                reason: "Fail to get repo".to_string(),
-                            })
-                            .and_then(|repo| {
-                                repo.get_hash_id(object_ref).map_err(|e| {
-                                    ContextError::GetHashIdError {
-                                        reason: format!("{:?}", e),
-                                    }
-                                })
-                            })
+                        let repository = index.repository.read();
+
+                        let res = Self::get_hash_id(object_ref, &*repository)
                             .map_err(|err| format!("Context error: {:?}", err));
 
                         io.tx.send(&ContextResponse::GetHashIdResponse(res))?;

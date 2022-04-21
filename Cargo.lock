@@ -696,6 +696,7 @@ dependencies = [
  "byte-unit",
  "clap 3.1.8",
  "crypto",
+ "parking_lot 0.12.0",
  "termcolor",
  "tezos_context",
 ]
@@ -4499,6 +4500,7 @@ dependencies = [
  "crossbeam-channel",
  "crypto",
  "flate2",
+ "fs_extra",
  "hex",
  "ipc",
  "lazy_static",

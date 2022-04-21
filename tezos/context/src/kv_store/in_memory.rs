@@ -8,7 +8,7 @@ use std::{
     collections::VecDeque,
     mem::size_of,
     rc::Rc,
-    sync::{atomic::Ordering, Arc, RwLock},
+    sync::{atomic::Ordering, Arc},
     thread::JoinHandle,
 };
 
@@ -18,6 +18,7 @@ use crate::serialize::persistent::AbsoluteOffset;
 use crossbeam_channel::Sender;
 use crypto::hash::ContextHash;
 
+use parking_lot::RwLock;
 use tezos_timing::{RepositoryMemoryUsage, SerializeStats};
 
 use crate::{
@@ -37,7 +38,7 @@ use crate::{
         shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
         storage::{DirEntryId, DirectoryOrInodeId, Storage},
         string_interner::{StringId, StringInterner},
-        working_tree::{PostCommitData, WorkingTree},
+        working_tree::{PostCommitData, SerializeOutput, WorkingTree},
         Commit, Object, ObjectReference,
     },
     ContextKeyValueStore, IndexApi, Map, Persistent, TezedgeIndex,
@@ -53,7 +54,7 @@ use super::{HashId, VacantObjectHash};
 
 pub const BATCH_CHUNK_CAPACITY: usize = 8 * 1024;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct InMemoryConfiguration {
     pub db_path: Option<String>,
     pub startup_check: bool,
@@ -255,6 +256,8 @@ pub struct InMemory {
     shapes: DirectoryShapes,
     string_interner: StringInterner,
     configuration: InMemoryConfiguration,
+    self_ptr: Option<Arc<RwLock<ContextKeyValueStore>>>,
+    latest_context_hash: Option<ContextHash>,
 }
 
 impl GarbageCollector for InMemory {
@@ -300,6 +303,15 @@ impl Persistable for InMemory {
 impl KeyValueStoreBackend for InMemory {
     fn reload_database(&mut self) -> Result<(), ReloadError> {
         self.reload_database()
+    }
+
+    fn store_own_repository(&mut self, repository: Arc<RwLock<ContextKeyValueStore>>) {
+        self.self_ptr.replace(repository.clone());
+        if let Some(sender) = self.sender.as_ref() {
+            sender
+                .send(Command::StoreRepository { repository })
+                .unwrap();
+        };
     }
 
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
@@ -415,6 +427,14 @@ impl KeyValueStoreBackend for InMemory {
         self.commit_impl(working_tree, parent_commit_ref, author, message, date)
     }
 
+    fn add_serialized_objects(
+        &mut self,
+        batch: ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>,
+        _output: &mut SerializeOutput,
+    ) -> Result<(), DBError> {
+        self.write_batch(batch)
+    }
+
     fn get_hash_id(&self, object_ref: ObjectReference) -> Result<HashId, DBError> {
         object_ref.hash_id_opt().ok_or(DBError::HashIdFailed)
     }
@@ -439,6 +459,15 @@ impl KeyValueStoreBackend for InMemory {
 
     fn get_read_statistics(&self) -> Result<Option<ReadStatistics>, DBError> {
         Ok(None)
+    }
+
+    fn latest_context_hashes(&self, _count: i64) -> Result<Vec<ContextHash>, DBError> {
+        // Ignore `count`, the in-memory context only has at most 1 context hash on {re}start
+        if let Some(latest) = self.latest_context_hash.clone() {
+            Ok(vec![latest])
+        } else {
+            Ok(vec![])
+        }
     }
 
     #[cfg(test)]
@@ -474,10 +503,13 @@ impl InMemory {
             let hashes = HashObjectStore::new(consumer);
             let objects_view = hashes.objects.get_view();
             let hashes_view = hashes.hashes.get_view();
+            let conf = configuration.clone();
 
             let thread_handle = std::thread::Builder::new()
                 .name("ctx-inmem-gc-thread".to_string())
-                .spawn(move || GCThread::new(recv, producer, objects_view, hashes_view).run())?;
+                .spawn(move || {
+                    GCThread::new(recv, producer, objects_view, hashes_view, conf).run()
+                })?;
 
             (Some(sender), Some(thread_handle), hashes)
         };
@@ -490,6 +522,8 @@ impl InMemory {
             shapes: DirectoryShapes::default(),
             string_interner: StringInterner::default(),
             configuration,
+            self_ptr: None,
+            latest_context_hash: None,
         })
     }
 
@@ -531,7 +565,7 @@ impl InMemory {
             // It is necessary for our new repository to have it.
             let parent_hash: Option<ObjectHash> = match commit.parent_commit_ref {
                 Some(parent) => {
-                    let repo = read_repo.read()?;
+                    let repo = read_repo.read();
                     Some(repo.get_hash(parent)?.into_owned())
                 }
                 None => None,
@@ -559,14 +593,15 @@ impl InMemory {
         };
 
         // Commit the tree in the in-memory repository
-        self.commit_impl(
-            &tree,
-            parent_ref,
-            commit.author,
-            commit.message,
-            commit.time,
-        )
-        .map_err(|error| ReloadError::CommitFailed { error })?;
+        let (commit_hash, _) = self
+            .commit_impl(
+                &tree,
+                parent_ref,
+                commit.author,
+                commit.message,
+                commit.time,
+            )
+            .map_err(|error| ReloadError::CommitFailed { error })?;
 
         self.string_interner = tree
             .index
@@ -579,6 +614,8 @@ impl InMemory {
 
         log!("[after reload] memory_usage={:#?}", self.memory_usage());
         debug_jemalloc();
+
+        self.latest_context_hash = Some(commit_hash);
 
         Ok(())
     }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 pub mod init;
+pub mod latest_context_hashes;
 pub mod spawn_server;
 
 mod protocol_runner_token;

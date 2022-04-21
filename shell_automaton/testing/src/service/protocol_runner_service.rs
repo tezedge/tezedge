@@ -113,4 +113,8 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDummy {
     fn notify_status(&mut self, _: bool) {}
 
     fn shutdown(&mut self) {}
+
+    fn get_latest_context_hashes(&mut self, _: i64) -> ProtocolRunnerToken {
+        self.new_token()
+    }
 }
