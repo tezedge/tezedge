@@ -293,6 +293,15 @@ where
         };
 
         let current_round = pred_time_header.round_local_coord(&config.timing, now);
+
+        // block from future is ok if the lag is smaller then duration of round 0 divided by 5
+        let tolerance = config.timing.round_duration(0) / 5;
+        let current_round = if current_round < block.time_header.round {
+            pred_time_header.round_local_coord(&config.timing, now + tolerance)
+        } else {
+            current_round
+        };
+
         if current_round < block.time_header.round {
             // proposal from future, ignore
             log.push(LogRecord::UnexpectedRound {
@@ -920,7 +929,7 @@ mod tests {
         block.level = 7;
         block.time_header.round = 1;
         block.time_header.timestamp = Timestamp::new(1, 20);
-        let now = Timestamp::new(1, 20);
+        let now = Timestamp::new(1, 19);
         let (actions, _) = machine.handle(&config, Event::Proposal(Box::new(block.clone()), now));
         assert!(actions.iter().find(|a| matches!(a, Action::PreVote { .. })).is_some());
     }
