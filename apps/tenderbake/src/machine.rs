@@ -832,3 +832,96 @@ where
         actions
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use core::time::Duration;
+
+    use alloc::boxed::Box;
+
+    use crate::{
+        Machine, Config, TimingLinearGrow, ProposerMap, Event, Block, BlockHash, TimeHeader,
+        Timestamp, Payload, PayloadHash, BlockId, Validator, Action,
+    };
+
+    #[test]
+    fn determine_round() {
+        let mut machine = Machine::<u8, u8, 200>::default();
+
+        struct Map;
+
+        impl ProposerMap for Map {
+            type Id = u8;
+
+            fn proposer(&self, level: i32, round: i32) -> Option<(i32, Self::Id)> {
+                let _ = (level, round);
+                None
+            }
+        }
+
+        let config = Config {
+            timing: TimingLinearGrow {
+                minimal_block_delay: Duration::from_secs(15),
+                delay_increment_per_round: Duration::from_secs(5),
+            },
+            map: Map,
+            quorum: 256,
+        };
+
+        let mut block = Block {
+            pred_hash: BlockHash([0; 32]),
+            hash: BlockHash([1; 32]),
+            level: 5,
+            time_header: TimeHeader {
+                round: 0,
+                timestamp: Timestamp::new(0, 35),
+            },
+            payload: Some(Payload {
+                hash: PayloadHash([0; 32]),
+                payload_round: 0,
+                pre_cer: None,
+                cer: None,
+                operations: vec![],
+            }),
+        };
+        let now = Timestamp::new(0, 35);
+        machine.handle(&config, Event::Proposal(Box::new(block.clone()), now));
+
+        let mut block_id = BlockId { level: 5, round: 0, payload_hash: PayloadHash([0; 32]) };
+        let validator = Validator { id: 0, power: 256, operation: 0 };
+        let now = Timestamp::new(0, 36);
+        machine.handle(&config, Event::PreVoted(block_id.clone(), validator.clone(), now));
+        machine.handle(&config, Event::Voted(block_id.clone(), validator.clone(), now));
+
+        block.pred_hash = block.hash;
+        block.hash = BlockHash([2; 32]);
+        block.level = 6;
+        block.time_header.timestamp = Timestamp::new(0, 50);
+        let now = Timestamp::new(0, 50);
+        machine.handle(&config, Event::Proposal(Box::new(block.clone()), now));
+        let now = Timestamp::new(0, 51);
+        block_id.level += 1;
+        machine.handle(&config, Event::PreVoted(block_id.clone(), validator.clone(), now));
+        machine.handle(&config, Event::Voted(block_id.clone(), validator.clone(), now));
+
+        block.hash = BlockHash([3; 32]);
+        block.level = 6;
+        block.time_header.round = 1;
+        block.time_header.timestamp = Timestamp::new(1, 5);
+        let now = Timestamp::new(1, 5);
+        machine.handle(&config, Event::Proposal(Box::new(block.clone()), now));
+        let now = Timestamp::new(1, 6);
+        block_id.round += 2;
+        machine.handle(&config, Event::PreVoted(block_id.clone(), validator.clone(), now));
+        machine.handle(&config, Event::Voted(block_id.clone(), validator.clone(), now));
+
+        block.pred_hash = BlockHash([2; 32]);
+        block.hash = BlockHash([4; 32]);
+        block.level = 7;
+        block.time_header.round = 1;
+        block.time_header.timestamp = Timestamp::new(1, 20);
+        let now = Timestamp::new(1, 20);
+        let (actions, _) = machine.handle(&config, Event::Proposal(Box::new(block.clone()), now));
+        assert!(actions.iter().find(|a| matches!(a, Action::PreVote { .. })).is_some());
+    }
+}

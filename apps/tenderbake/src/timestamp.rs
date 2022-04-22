@@ -4,13 +4,20 @@
 use core::{
     fmt,
     time::Duration,
-    ops::{Add, Sub},
+    ops::{Add, Sub, AddAssign},
 };
 
 /// Timestamp as a unix time
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp {
     pub unix_epoch: Duration,
+}
+
+impl Timestamp {
+    #[cfg(test)]
+    pub fn new(minute: u64, second: u64) -> Self {
+        Timestamp { unix_epoch: Duration::from_secs(minute * 60 + second) }
+    }
 }
 
 impl fmt::Display for Timestamp {
@@ -30,6 +37,12 @@ impl Add<Duration> for Timestamp {
         Timestamp {
             unix_epoch: self.unix_epoch + rhs,
         }
+    }
+}
+
+impl AddAssign<Duration> for Timestamp {
+    fn add_assign(&mut self, rhs: Duration) {
+        *self = *self + rhs;
     }
 }
 

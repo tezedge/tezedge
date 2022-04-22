@@ -10,7 +10,7 @@ use super::{
     block::{PayloadHash, BlockHash, Block},
 };
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct BlockId {
     pub level: i32,
     pub round: i32,

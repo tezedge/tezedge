@@ -23,6 +23,7 @@ pub struct Certificate<Id, Op> {
     pub votes: Votes<Id, Op>,
 }
 
+#[derive(Clone)]
 pub struct Block<Id, Op> {
     pub pred_hash: BlockHash,
     pub hash: BlockHash,
@@ -31,6 +32,7 @@ pub struct Block<Id, Op> {
     pub payload: Option<Payload<Id, Op>>,
 }
 
+#[derive(Clone)]
 pub struct Payload<Id, Op> {
     pub hash: PayloadHash,
     pub payload_round: i32,

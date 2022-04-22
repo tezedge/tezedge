@@ -7,6 +7,9 @@
 #[macro_use]
 extern crate alloc;
 
+#[cfg(test)]
+extern crate std;
+
 mod timestamp;
 pub use self::timestamp::{Timestamp, Timing, TimingLinearGrow};
 

@@ -450,6 +450,17 @@ fn perform(
                         Some(OperationKind::Managers) => operations[3].push(op),
                     }
                 }
+                // if let Some(first) = operations[1].first().cloned() {
+                //     operations[1].push(first);
+                // } else {
+                //     if let Some(first) = operations[2].first().cloned() {
+                //         operations[2].push(first);
+                //     } else {
+                //         if let Some(first) = operations[3].first().cloned() {
+                //             operations[3].push(first);
+                //         }
+                //     }
+                // }
 
                 let payload_round = payload.payload_round;
                 let payload_hash = if payload.hash.0 == [0; 32] {
