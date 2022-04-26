@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use tezos_context_api::TezosContextStorageConfiguration;
+
 use crate::current_head::CurrentHeadRehydrateInitAction;
 use crate::protocol_runner::init::context::{
     ProtocolRunnerInitContextErrorAction, ProtocolRunnerInitContextState,
@@ -32,8 +34,9 @@ use super::init::context_ipc_server::{
 use super::init::ProtocolRunnerInitAction;
 use super::spawn_server::ProtocolRunnerSpawnServerInitAction;
 use super::{
-    ProtocolRunnerNotifyStatusAction, ProtocolRunnerResponseUnexpectedAction,
-    ProtocolRunnerShutdownPendingAction, ProtocolRunnerShutdownSuccessAction, ProtocolRunnerState,
+    ProtocolRunnerNotifyStatusAction, ProtocolRunnerReadyAction,
+    ProtocolRunnerResponseUnexpectedAction, ProtocolRunnerShutdownPendingAction,
+    ProtocolRunnerShutdownSuccessAction, ProtocolRunnerState,
 };
 
 pub fn protocol_runner_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -48,7 +51,17 @@ where
             store.dispatch(ProtocolRunnerInitAction {});
         }
         Action::ProtocolRunnerInitSuccess(_) => {
-            store.dispatch(ProtocolRunnerLatestContextHashesInitAction {});
+            let is_irmin_only = matches!(
+                &store.state.get().config.protocol_runner.storage,
+                TezosContextStorageConfiguration::IrminOnly(_)
+            );
+
+            if is_irmin_only {
+                // irmin doesn't support getting its latest context hashes
+                store.dispatch(ProtocolRunnerReadyAction {});
+            } else {
+                store.dispatch(ProtocolRunnerLatestContextHashesInitAction {});
+            }
         }
         Action::ProtocolRunnerReady(_) => {
             if let ProtocolRunnerState::Ready(state) = &store.state.get().protocol_runner {

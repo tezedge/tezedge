@@ -4,6 +4,7 @@
 use crate::protocol_runner::latest_context_hashes::ProtocolRunnerLatestContextHashesState;
 use crate::{Action, ActionWithMeta, State};
 
+use super::init::ProtocolRunnerInitState;
 use super::{ProtocolRunnerReadyState, ProtocolRunnerState};
 
 pub fn protocol_runner_reducer(state: &mut State, action: &ActionWithMeta) {
@@ -22,6 +23,9 @@ pub fn protocol_runner_reducer(state: &mut State, action: &ActionWithMeta) {
                         ..
                     },
                 ) => (genesis_commit_hash.clone(), latest_context_hashes.clone()),
+                ProtocolRunnerState::Init(ProtocolRunnerInitState::Success {
+                    genesis_commit_hash,
+                }) => (genesis_commit_hash.clone(), Vec::new()),
                 _ => return,
             };
 
