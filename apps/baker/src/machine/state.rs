@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -79,6 +79,11 @@ pub struct OperationSimple {
 pub struct State {
     pub nonces: CycleNonces,
     pub retry_monitor_operations: usize,
+    // operations which came ahead of the block stored heres
+    pub ahead_ops: BTreeMap<BlockHash, Vec<OperationSimple>>,
+    // live blocks
+    pub live_blocks: Vec<BlockHash>,
+    pub this_level: BTreeSet<BlockHash>,
     pub tb_delegate: tb::Config<tb::TimingLinearGrow, SlotsInfo>,
     pub tb_state: tb::Machine<ContractTz1Hash, OperationSimple, 200>,
 }
