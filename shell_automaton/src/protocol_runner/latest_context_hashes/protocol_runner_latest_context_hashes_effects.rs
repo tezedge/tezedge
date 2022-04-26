@@ -22,11 +22,13 @@ pub fn protocol_runner_latest_context_hashes_effects<S>(
                 .get_latest_context_hashes(count);
             store.dispatch(ProtocolRunnerLatestContextHashesPendingAction { token });
         }
-        Action::ProtocolRunnerLatestContextHashesSuccess(_) => {
+        Action::ProtocolRunnerLatestContextHashesSuccess(content) => {
+            slog::info!(&store.state().log, "Found context's latest commits";
+                         "context_hashes" => format!("{:?}", content.latest_context_hashes));
             store.dispatch(ProtocolRunnerReadyAction {});
         }
         Action::ProtocolRunnerLatestContextHashesError(content) => {
-            slog::error!(&store.state().log, "failed to get context's latest commits";
+            slog::error!(&store.state().log, "Failed to get context's latest commits";
                          "error" => format!("{:?}", content.error));
             store.dispatch(ProtocolRunnerReadyAction {});
         }

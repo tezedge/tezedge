@@ -333,7 +333,8 @@ fn replace_context_with_snapshot(path_context: &str, path_snapshot: &str) -> Res
 
     // Exchange `path_context` with `path_snapshot` atomically
     let result = unsafe {
-        libc::renameat2(
+        libc::syscall(
+            libc::SYS_renameat2,
             libc::AT_FDCWD,
             cstr_snapshot,
             libc::AT_FDCWD,
