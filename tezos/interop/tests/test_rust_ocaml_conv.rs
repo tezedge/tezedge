@@ -15,8 +15,10 @@ use tezos_api::ffi::{
 use tezos_conv::*;
 use tezos_interop::runtime;
 use tezos_messages::p2p::{
-    binary_message::BinaryRead, encoding::block_header::BlockHeader,
-    encoding::operation::Operation, encoding::operations_for_blocks::OperationsForBlock,
+    binary_message::{BinaryRead, MessageHash},
+    encoding::block_header::BlockHeader,
+    encoding::operation::Operation,
+    encoding::operations_for_blocks::OperationsForBlock,
     encoding::operations_for_blocks::OperationsForBlocksMessage,
     encoding::operations_for_blocks::Path,
 };
@@ -123,7 +125,6 @@ mod tezos_ffi {
             prevalidator_wrapper: OCamlPrevalidatorWrapper,
             chain_id: OCamlChainId,
             protocol: OCamlProtocolHash,
-            context_fitness: Option<OCamlList<OCamlBytes>>,
             predecessor: OCamlBlockHash,
         ) -> bool;
     }
@@ -408,8 +409,6 @@ fn test_begin_construction_request_conv() {
         predecessor,
         predecessor_hash,
         protocol_data: Some(vec![1, 2, 3, 4, 5, 6, 7, 8]),
-        predecessor_block_metadata_hash: None,
-        predecessor_ops_metadata_hash: None,
     };
 
     let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
@@ -447,7 +446,6 @@ fn test_validate_operation_request_conv() {
     let prevalidator = PrevalidatorWrapper {
         chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
         protocol: get_protocol_hash(&[1, 2, 3, 4, 5, 6, 7, 8, 9]),
-        context_fitness: Some(vec![vec![0, 1], vec![0, 0, 1, 2, 3, 4, 5]]),
         predecessor: BlockHash::try_from("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")
             .unwrap(),
     };
@@ -456,8 +454,10 @@ fn test_validate_operation_request_conv() {
         sample_operations_for_request_decoded(),
     ));
     let operation = operations[0][0].clone();
+    let operation_hash = operation.message_typed_hash::<OperationHash>().unwrap();
     let validate_operation_request = ValidateOperationRequest {
         prevalidator,
+        operation_hash,
         operation,
     };
 
@@ -576,7 +576,6 @@ fn test_validate_prevalidator_wrapper_conv() {
     let prevalidator_wrapper = PrevalidatorWrapper {
         chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
         protocol: get_protocol_hash(&[1, 2, 3, 4, 5, 6, 7, 8, 9]),
-        context_fitness: Some(vec![vec![0, 0], vec![0, 0, 1, 2, 3, 4, 5]]),
         predecessor: BlockHash::try_from("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")
             .unwrap(),
     };
@@ -584,7 +583,6 @@ fn test_validate_prevalidator_wrapper_conv() {
     let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
         let chain_id = prevalidator_wrapper.chain_id.to_boxroot(rt);
         let protocol = prevalidator_wrapper.protocol.to_boxroot(rt);
-        let context_fitness = prevalidator_wrapper.context_fitness.to_boxroot(rt);
         let predecessor = prevalidator_wrapper.predecessor.to_boxroot(rt);
         let prevalidator_wrapper = prevalidator_wrapper.to_boxroot(rt);
         tezos_ffi::construct_and_compare_prevalidator_wrapper(
@@ -592,7 +590,6 @@ fn test_validate_prevalidator_wrapper_conv() {
             &prevalidator_wrapper,
             &chain_id,
             &protocol,
-            &context_fitness,
             &predecessor,
         )
         .to_rust(rt)

@@ -310,8 +310,6 @@ impl_to_ocaml_record! {
         predecessor: OCamlBlockHeader => FfiBlockHeader::from(predecessor),
         predecessor_hash: OCamlBlockHash,
         protocol_data: Option<OCamlBytes>,
-        predecessor_block_metadata_hash: Option<OCamlBlockMetadataHash>,
-        predecessor_ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
     }
 }
 
@@ -319,7 +317,6 @@ impl_to_ocaml_record! {
     PrevalidatorWrapper => OCamlPrevalidatorWrapper {
         chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
-        context_fitness: Option<OCamlList<OCamlBytes>>,
         predecessor: OCamlBlockHash,
     }
 }
@@ -327,6 +324,7 @@ impl_to_ocaml_record! {
 impl_to_ocaml_record! {
     ValidateOperationRequest => OCamlValidateOperationRequest {
         prevalidator: OCamlPrevalidatorWrapper,
+        operation_hash: OCamlOperationHash,
         operation: OCamlOperation => FfiOperation::from(operation),
     }
 }
@@ -557,10 +555,8 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::ApplyBlockCall(req: OCamlApplyBlockRequest),
         ProtocolMessage::AssertEncodingForProtocolDataCall(hash: OCamlProtocolHash, data: OCamlBytes),
         ProtocolMessage::BeginApplicationCall(req: OCamlBeginApplicationRequest),
-        ProtocolMessage::BeginConstructionForPrevalidationCall(req: OCamlBeginConstructionRequest),
-        ProtocolMessage::ValidateOperationForPrevalidationCall(req: OCamlValidateOperationRequest),
-        ProtocolMessage::BeginConstructionForMempoolCall(req: OCamlBeginConstructionRequest),
-        ProtocolMessage::ValidateOperationForMempoolCall(req: OCamlValidateOperationRequest),
+        ProtocolMessage::BeginConstruction(req: OCamlBeginConstructionRequest),
+        ProtocolMessage::ValidateOperation(req: OCamlValidateOperationRequest),
         ProtocolMessage::ProtocolRpcCall(req: OCamlProtocolRpcRequest),
         ProtocolMessage::HelpersPreapplyOperationsCall(req: OCamlProtocolRpcRequest),
         ProtocolMessage::HelpersPreapplyBlockCall(req: OCamlHelpersPreapplyBlockRequest),

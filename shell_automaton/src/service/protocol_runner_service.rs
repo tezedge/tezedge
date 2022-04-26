@@ -143,25 +143,11 @@ pub trait ProtocolRunnerService {
     fn apply_block(&mut self, req: ApplyBlockRequest);
 
     // Prevalidator
-    fn begin_construction_for_prevalidation(
-        &mut self,
-        req: BeginConstructionRequest,
-    ) -> ProtocolRunnerToken;
+    fn begin_construction(&mut self, req: BeginConstructionRequest) -> ProtocolRunnerToken;
 
-    fn validate_operation_for_prevalidation(
-        &mut self,
-        req: ValidateOperationRequest,
-    ) -> ProtocolRunnerToken;
+    // TODO: pre_filter_operation
 
-    fn begin_construction_for_mempool(
-        &mut self,
-        req: BeginConstructionRequest,
-    ) -> ProtocolRunnerToken;
-
-    fn validate_operation_for_mempool(
-        &mut self,
-        req: ValidateOperationRequest,
-    ) -> ProtocolRunnerToken;
+    fn validate_operation(&mut self, req: ValidateOperationRequest) -> ProtocolRunnerToken;
 
     /// Notify status of protocol runner's and it's context initialization.
     fn notify_status(&mut self, initialized: bool);
@@ -303,48 +289,18 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
             .unwrap();
     }
 
-    fn begin_construction_for_prevalidation(
-        &mut self,
-        req: BeginConstructionRequest,
-    ) -> ProtocolRunnerToken {
+    fn begin_construction(&mut self, req: BeginConstructionRequest) -> ProtocolRunnerToken {
         let token = self.new_token();
-        let message = ProtocolMessage::BeginConstructionForPrevalidationCall(req);
+        let message = ProtocolMessage::BeginConstruction(req);
         self.channel
             .blocking_send(ProtocolRunnerRequest::Message((token, message)))
             .unwrap();
         token
     }
 
-    fn validate_operation_for_prevalidation(
-        &mut self,
-        req: ValidateOperationRequest,
-    ) -> ProtocolRunnerToken {
+    fn validate_operation(&mut self, req: ValidateOperationRequest) -> ProtocolRunnerToken {
         let token = self.new_token();
-        let message = ProtocolMessage::ValidateOperationForPrevalidationCall(req);
-        self.channel
-            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
-            .unwrap();
-        token
-    }
-
-    fn begin_construction_for_mempool(
-        &mut self,
-        req: BeginConstructionRequest,
-    ) -> ProtocolRunnerToken {
-        let token = self.new_token();
-        let message = ProtocolMessage::BeginConstructionForMempoolCall(req);
-        self.channel
-            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
-            .unwrap();
-        token
-    }
-
-    fn validate_operation_for_mempool(
-        &mut self,
-        req: ValidateOperationRequest,
-    ) -> ProtocolRunnerToken {
-        let token = self.new_token();
-        let message = ProtocolMessage::ValidateOperationForMempoolCall(req);
+        let message = ProtocolMessage::ValidateOperation(req);
         self.channel
             .blocking_send(ProtocolRunnerRequest::Message((token, message)))
             .unwrap();

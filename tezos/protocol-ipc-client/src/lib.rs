@@ -414,56 +414,28 @@ impl ProtocolRunnerConnection {
         )
     }
 
-    /// Begin construction (for prevalidation, doesn't accumulate)
-    pub async fn begin_construction_for_prevalidation(
+    /// Begin construction
+    pub async fn begin_construction(
         &mut self,
         request: BeginConstructionRequest,
     ) -> Result<PrevalidatorWrapper, ProtocolServiceError> {
         handle_request!(
             self.io,
-            BeginConstructionForPrevalidationCall(request),
+            BeginConstruction(request),
             BeginConstructionResult(result),
             BeginConstructionError,
             Some(Self::BEGIN_CONSTRUCTION_TIMEOUT),
         )
     }
 
-    /// Validate operation (for prevalidation, doesn't accumulate)
-    pub async fn validate_operation_for_prevalidation(
+    /// Validate operation
+    pub async fn validate_operation(
         &mut self,
         request: ValidateOperationRequest,
     ) -> Result<ValidateOperationResponse, ProtocolServiceError> {
         handle_request!(
             self.io,
-            ValidateOperationForPrevalidationCall(request),
-            ValidateOperationResponse(result),
-            ValidateOperationError,
-            Some(Self::VALIDATE_OPERATION_TIMEOUT),
-        )
-    }
-
-    /// Begin construction (for mempool, accumulates)
-    pub async fn begin_construction_for_mempool(
-        &mut self,
-        request: BeginConstructionRequest,
-    ) -> Result<PrevalidatorWrapper, ProtocolServiceError> {
-        handle_request!(
-            self.io,
-            BeginConstructionForMempoolCall(request),
-            BeginConstructionResult(result),
-            BeginConstructionError,
-            Some(Self::BEGIN_CONSTRUCTION_TIMEOUT),
-        )
-    }
-
-    /// Validate operation (for mempool, accumulates)
-    pub async fn validate_operation_for_mempool(
-        &mut self,
-        request: ValidateOperationRequest,
-    ) -> Result<ValidateOperationResponse, ProtocolServiceError> {
-        handle_request!(
-            self.io,
-            ValidateOperationForMempoolCall(request),
+            ValidateOperation(request),
             ValidateOperationResponse(result),
             ValidateOperationError,
             Some(Self::VALIDATE_OPERATION_TIMEOUT),

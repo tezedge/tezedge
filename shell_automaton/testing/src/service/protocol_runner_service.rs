@@ -81,31 +81,11 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDummy {
 
     fn apply_block(&mut self, _: ApplyBlockRequest) {}
 
-    fn begin_construction_for_prevalidation(
-        &mut self,
-        _: BeginConstructionRequest,
-    ) -> ProtocolRunnerToken {
+    fn begin_construction(&mut self, _: BeginConstructionRequest) -> ProtocolRunnerToken {
         self.new_token()
     }
 
-    fn validate_operation_for_prevalidation(
-        &mut self,
-        _: ValidateOperationRequest,
-    ) -> ProtocolRunnerToken {
-        self.new_token()
-    }
-
-    fn begin_construction_for_mempool(
-        &mut self,
-        _: BeginConstructionRequest,
-    ) -> ProtocolRunnerToken {
-        self.new_token()
-    }
-
-    fn validate_operation_for_mempool(
-        &mut self,
-        _: ValidateOperationRequest,
-    ) -> ProtocolRunnerToken {
+    fn validate_operation(&mut self, _: ValidateOperationRequest) -> ProtocolRunnerToken {
         self.new_token()
     }
 

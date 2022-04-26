@@ -4,20 +4,20 @@
 use std::convert::TryFrom;
 
 use crate::{
-    OCamlApplyBlockExecutionTimestamps, OCamlBlockPayloadHash, OCamlCommitGenesisResult,
-    OCamlComputePathResponse, OCamlCycleRollsOwnerSnapshot, OCamlInitProtocolContextResult,
-    OCamlNodeMessage, OCamlTezosContextTezedgeOnDiskBackendOptions,
+    OCamlApplyBlockExecutionTimestamps, OCamlBlockPayloadHash, OCamlClassifiedOperation,
+    OCamlCommitGenesisResult, OCamlComputePathResponse, OCamlCycleRollsOwnerSnapshot,
+    OCamlInitProtocolContextResult, OCamlNodeMessage, OCamlTezosContextTezedgeOnDiskBackendOptions,
 };
 
 use super::{
     FfiPath, FfiPathLeft, FfiPathRight, OCamlApplied, OCamlApplyBlockResponse,
     OCamlBeginApplicationResponse, OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId,
     OCamlContextHash, OCamlContextKvStoreConfiguration, OCamlErrored, OCamlForkingTestchainData,
-    OCamlHash, OCamlHelpersPreapplyResponse, OCamlOperationHash, OCamlOperationMetadataHash,
-    OCamlOperationMetadataListListHash, OCamlOperationProtocolDataJsonWithErrorListJson,
-    OCamlPrevalidatorWrapper, OCamlProtocolHash, OCamlProtocolRpcError, OCamlProtocolRpcResponse,
-    OCamlRpcArgDesc, OCamlRpcMethod, OCamlTezosContextTezEdgeStorageConfiguration,
-    OCamlTezosErrorTrace, OCamlValidateOperationResponse, OCamlValidateOperationResult,
+    OCamlHash, OCamlHelpersPreapplyResponse, OCamlOperationClassification, OCamlOperationHash,
+    OCamlOperationMetadataHash, OCamlOperationMetadataListListHash, OCamlPrevalidatorWrapper,
+    OCamlProtocolHash, OCamlProtocolRpcError, OCamlProtocolRpcResponse, OCamlRpcArgDesc,
+    OCamlRpcMethod, OCamlTezosContextTezEdgeStorageConfiguration, OCamlTezosErrorTrace,
+    OCamlValidateOperationResponse, OCamlValidateOperationResult,
 };
 use crypto::hash::{
     BlockHash, BlockMetadataHash, BlockPayloadHash, ChainId, ContextHash, Hash, OperationHash,
@@ -29,11 +29,11 @@ use ocaml_interop::{
 };
 use tezos_api::ffi::{
     Applied, ApplyBlockError, ApplyBlockExecutionTimestamps, ApplyBlockResponse,
-    BeginApplicationError, BeginApplicationResponse, BeginConstructionError, CommitGenesisResult,
-    ComputePathError, ComputePathResponse, CycleRollsOwnerSnapshot, DumpContextError, Errored,
-    FfiJsonEncoderError, ForkingTestchainData, GetDataError, GetLastContextHashesError,
-    HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult,
-    OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper, ProtocolDataError,
+    BeginApplicationError, BeginApplicationResponse, BeginConstructionError, ClassifiedOperation,
+    CommitGenesisResult, ComputePathError, ComputePathResponse, CycleRollsOwnerSnapshot,
+    DumpContextError, Errored, FfiJsonEncoderError, ForkingTestchainData, GetDataError,
+    GetLastContextHashesError, HelpersPreapplyError, HelpersPreapplyResponse,
+    InitProtocolContextResult, OperationClassification, PrevalidatorWrapper, ProtocolDataError,
     ProtocolRpcError, ProtocolRpcResponse, RestoreContextError, RpcArgDesc, RpcMethod,
     TezosErrorTrace, TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
     ValidateOperationResult,
@@ -190,7 +190,6 @@ impl_from_ocaml_record! {
     OCamlPrevalidatorWrapper => PrevalidatorWrapper {
         chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
-        context_fitness: Option<OCamlList<OCamlBytes>>,
         predecessor: OCamlBlockHash,
     }
 }
@@ -203,35 +202,48 @@ impl_from_ocaml_record! {
 }
 
 impl_from_ocaml_record! {
-    OCamlOperationProtocolDataJsonWithErrorListJson => OperationProtocolDataJsonWithErrorListJson {
-        protocol_data_json: OCamlBytes,
-        error_json: OCamlBytes,
-    }
-}
-
-impl_from_ocaml_record! {
     OCamlErrored => Errored {
         hash: OCamlOperationHash,
-        is_endorsement: Option<bool>,
-        protocol_data_json_with_error_json: OCamlOperationProtocolDataJsonWithErrorListJson,
+        is_endorsement: bool,
+        protocol_data_json: String,
+        error_json: String,
+    }
+}
+
+impl_from_ocaml_polymorphic_variant! {
+    OCamlOperationClassification => OperationClassification {
+        Applied => OperationClassification::Applied,
+        Prechecked => OperationClassification::Prechecked,
+        Branch_delayed(error: String) => OperationClassification::BranchDelayed(error),
+        Branch_refused(error: String) => OperationClassification::BranchRefused(error),
+        Refused(error: String) => OperationClassification::Refused(error),
+        Outdated(error: String) => OperationClassification::Outdated(error),
     }
 }
 
 impl_from_ocaml_record! {
+    OCamlClassifiedOperation => ClassifiedOperation {
+        classification: OCamlOperationClassification,
+        operation_data_json: String,
+        is_endorsement: bool,
+    }
+}
+
+impl_from_ocaml_variant! {
     OCamlValidateOperationResult => ValidateOperationResult {
-        applied: OCamlList<OCamlApplied>,
-        refused: OCamlList<OCamlErrored>,
-        branch_refused: OCamlList<OCamlErrored>,
-        branch_delayed: OCamlList<OCamlErrored>,
-        outdated: OCamlList<OCamlErrored>,
+        ValidateOperationResult::Unparseable,
+        ValidateOperationResult::Classified(classified_operation: OCamlClassifiedOperation),
     }
 }
 
 impl_from_ocaml_record! {
     OCamlValidateOperationResponse => ValidateOperationResponse {
         prevalidator: OCamlPrevalidatorWrapper,
+        operation_hash: OCamlOperationHash,
         result: OCamlValidateOperationResult,
         validate_operation_started_at: OCamlFloat,
+        parse_operation_started_at: OCamlFloat,
+        parse_operation_ended_at: OCamlFloat,
         validate_operation_ended_at: OCamlFloat,
     }
 }

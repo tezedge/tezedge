@@ -99,10 +99,7 @@ pub enum MempoolValidatorState {
 
 impl MempoolValidatorState {
     pub fn is_ready(&self) -> bool {
-        match self {
-            Self::Ready { .. } => true,
-            _ => false,
-        }
+        matches!(self, Self::Ready { .. })
     }
 
     pub fn prevalidator(&self) -> Option<&PrevalidatorWrapper> {
