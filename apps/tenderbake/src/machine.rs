@@ -294,10 +294,13 @@ where
 
         let current_round = pred_time_header.round_local_coord(&config.timing, now);
 
-        // block from future is ok if the lag is smaller then duration of round 0 divided by 5
-        let tolerance = config.timing.round_duration(0) / 5;
+        // block from future, let's accept it and write a warning
         let current_round = if current_round < block.time_header.round {
-            pred_time_header.round_local_coord(&config.timing, now + tolerance)
+            log.push(LogRecord::UnexpectedRoundFromFuture {
+                current: current_round,
+                block_round: block.time_header.round,
+            });
+            block.time_header.round
         } else {
             current_round
         };
@@ -446,6 +449,17 @@ where
 
         let current_round = pred_time_header.round_local_coord(&config.timing, now);
 
+        // block from future, let's accept it and write a warning
+        let current_round = if current_round < block.time_header.round {
+            log.push(LogRecord::UnexpectedRoundFromFuture {
+                current: current_round,
+                block_round: block.time_header.round,
+            });
+            block.time_header.round
+        } else {
+            current_round
+        };
+
         let new_round = block.time_header.round;
         let accept_not_pre_vote =
             self_.this_time_header.round < new_round && new_round < current_round;
@@ -461,7 +475,7 @@ where
             self_.payload_round = payload.payload_round;
             self_.operations = payload.operations;
             self_.cer = payload.cer;
-            self_.new_operations.clear();
+            // self_.new_operations.clear();
 
             let mut actions = ArrayVec::default();
 
@@ -583,7 +597,7 @@ where
         if block_id.level != self.level
             || block_id.payload_hash != self.payload_hash.clone()
             || block_id.round != self.this_time_header.round
-            || block_id.round != current_round
+            || block_id.round < current_round
         {
             return Pair(self, ArrayVec::default());
         }
@@ -665,7 +679,7 @@ where
         if block_id.level != self.level
             || block_id.payload_hash != self.payload_hash.clone()
             || block_id.round != self.this_time_header.round
-            || block_id.round != current_round
+            || block_id.round < current_round
         {
             return Pair(self, ArrayVec::default());
         }

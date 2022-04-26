@@ -63,6 +63,10 @@ pub enum LogRecord {
         last: i32,
         current: i32,
     },
+    UnexpectedRoundFromFuture {
+        current: i32,
+        block_round: i32,
+    },
 
     AcceptAtEmptyState,
     AcceptAtTransitionState {
@@ -109,7 +113,8 @@ impl LogRecord {
             | UnexpectedLevel { .. }
             | UnexpectedRound { .. }
             | NoSwitchBranch
-            | UnexpectedRoundBounded { .. } => LogLevel::Warn,
+            | UnexpectedRoundBounded { .. }
+            | UnexpectedRoundFromFuture { .. } => LogLevel::Warn,
             _ => LogLevel::Info,
         }
     }
@@ -144,6 +149,9 @@ impl fmt::Display for LogRecord {
             LogRecord::NoSwitchBranch => write!(f, " .  no switch branch"),
             LogRecord::UnexpectedRoundBounded { last, current } => {
                 write!(f, " .  unexpected round, last: {last}, current: {current}")
+            }
+            LogRecord::UnexpectedRoundFromFuture { current, block_round } => {
+                write!(f, " .  unexpected round, block round: {block_round}, current: {current}")
             }
             LogRecord::AcceptAtEmptyState => {
                 write!(f, " .  accept at empty state")
