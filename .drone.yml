@@ -1128,6 +1128,103 @@ steps:
     # terminate the node gracefully and wait to allow `valgrind` dump data
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
+- name: make-in-mem-snapshot-and-resume
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  user: root
+  pull: if-not-exists
+  volumes:
+    - name: cache
+      path: /cache
+  commands:
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - export OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+    - export TEZEDGE_GC_DELAY_SNAPSHOT_SEC="0"
+    - mkdir -p ./target/release && cp drone-cache/build_files/protocol-runner ./target/release
+    - cp -R /cache/tezedge-data ./snapshot-database
+    - rm -r ./snapshot-database/context
+    - >
+      ./drone-cache/build_files/light-node replay --target-path=./replay-snapshot
+      --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config"
+      --identity-file "./drone-cache/build_files/identities/identity_6.json"
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
+      --to-block BLR5WXgdQ4vLXxj3rcSG66afrcVQUvwPGxWz2CDu5HAZ7Jo9rNp
+      --tezos-data-dir=./snapshot-database --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=tezedge --context-kv-store=inmem
+      --network=$${NETWORK} &
+      echo $! > /var/run/tezedge.pid
+    # this command waits that a snapshot is created
+    - |
+      sh -c '
+      block=0
+      attempts=0
+      while [ $attempts -lt 20 ]; do
+        echo "attempts = $attempts"
+        sleep 30
+        if [ -d "./replay-snapshot/context" ]; then
+          echo "found snapshot"
+          break
+        fi
+        attempts=$(($attempts + 1))
+      done
+      '
+    - echo "Snapshot created. Killing the replayer and waiting for 10 seconds."
+    # terminate the node gracefully and wait to allow `valgrind` dump data
+    - kill -KILL $(cat /var/run/tezedge.pid) && sleep 10
+    - |
+      sh -c '
+      if [ ! -d "./replay-snapshot/context" ]; then
+        echo "Failed to create snapshot"
+        exit 1
+      fi
+      '
+    - export TEZEDGE_GC_DELAY_SNAPSHOT_SEC="1200"
+    - >
+      ./drone-cache/build_files/light-node
+      --config-file=./drone-cache/build_files/tezedge/tezedge_drone.config
+      --identity-file=./drone-cache/build_files/identities/identity_2.json
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
+      --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
+      --tezos-data-dir=./replay-snapshot --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=tezedge --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732"
+      --context-kv-store=inmem 2>&1 | tee output.log &
+    # this command waits the node to process at least 1 block
+    - |
+      sh -c '
+      block=0
+      previous_block=100000
+      attempts=0
+      while [ $attempts -lt 20 ]; do
+        sleep 5
+        b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
+        block=$${b:-$block}
+        echo "===> Block level $block"
+        if [ $block -gt $previous_block ]; then
+          exit 0
+        fi
+        previous_block=$block
+        attempts=$(($attempts + 1))
+      done
+      '
+    # This command checks that the node didn't start applying block from level 1
+    - |
+      sh -c '
+      levels_applied=$(cat output.log | grep -e "INFO CurrentHead Updated, .* level: [0-9]*$")
+      if [ ! "$levels_applied" ]; then
+          echo "Did not find any block applied"
+          exit 1
+      fi
+      level_1=$(cat output.log | grep -e "INFO CurrentHead Updated, .* level: 1$")
+      if [ "$level_1" ]; then
+          echo "Level 1 applied: \"$level_1\""
+          exit 1
+      fi
+      '
+
 # TODO - TE-261: we don't have an equivalent of this right now
 # - name: record/replay-context-action-file-test
 #   image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
