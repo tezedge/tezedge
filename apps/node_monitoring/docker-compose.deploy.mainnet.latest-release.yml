@@ -51,7 +51,7 @@ services:
       - "tezedge-memprof"
 
   ocaml-node:
-    image: tezos/tezos:v9-release
+    image: tezos/tezos:v12-release
     pid: host
     network_mode: host
     entrypoint: sh -c "sleep 5 && /usr/local/bin/entrypoint.sh tezos-node --cors-header='content-type' --cors-origin='*' --rpc-addr=[::]:18733 --net-addr=[::]:9733 --history-mode archive --network ${TEZOS_NETWORK-mainnet}"
