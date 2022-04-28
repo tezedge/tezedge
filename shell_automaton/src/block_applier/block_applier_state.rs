@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::BlockHash;
+use crypto::hash::{BlockHash, BlockPayloadHash};
 use storage::block_meta_storage::Meta;
 use storage::{BlockAdditionalData, BlockHeaderWithHash};
 use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
@@ -123,6 +123,7 @@ pub enum BlockApplierApplyState {
         /// Is retry or not and if yes, what is the reason.
         retry: Option<ProtocolServiceError>,
         injector_rpc_id: Option<RpcId>,
+        payload_hash: Option<BlockPayloadHash>,
     },
 }
 

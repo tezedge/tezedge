@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::current_head::CurrentHeadUpdateAction;
@@ -223,7 +222,7 @@ where
                     block,
                     injector_rpc_id,
                     block_additional_data,
-                    apply_result,
+                    payload_hash,
                     ..
                 } => {
                     let chain_id = store.state().config.chain_id.clone();
@@ -235,11 +234,7 @@ where
                         store.service.rpc().respond(rpc_id, serde_json::Value::Null);
                     }
                     let new_head = (**block).clone();
-                    let payload_hash =
-                        serde_json::Value::from_str(&apply_result.block_header_proto_json)
-                            .ok()
-                            .and_then(|mut v| v.get_mut("payload_hash").map(|v| v.take()))
-                            .and_then(|v| serde_json::from_value(v).ok());
+                    let payload_hash = payload_hash.clone();
                     let protocol = block_additional_data.protocol_hash.clone();
                     let next_protocol = block_additional_data.next_protocol_hash.clone();
                     let block_metadata_hash = block_additional_data.block_metadata_hash().clone();
