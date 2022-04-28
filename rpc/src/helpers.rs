@@ -131,7 +131,7 @@ pub type BlockHeaderJson = HashMap<String, Value>;
 pub type BlockMetadata = HashMap<String, Value>;
 pub type BlockOperations = Vec<BlockValidationPass>;
 pub type BlockValidationPass = Vec<BlockOperation>;
-pub type BlockOperation = HashMap<String, Value>;
+pub type BlockOperation = Box<serde_json::value::RawValue>;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct BlockInfo {
