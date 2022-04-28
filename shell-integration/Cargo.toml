@@ -1,6 +1,6 @@
 [package]
 name = "shell_integration"
-version = "2.2.0"
+version = "2.3.0"
 authors = ["Branislav Kontur <branislav.kontur@viablesystems.io>"]
 edition = "2021"
 rust-version = "1.58"

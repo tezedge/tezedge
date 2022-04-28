@@ -300,7 +300,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
 name = "crypto"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "anyhow",
  "base58",
@@ -1236,7 +1236,7 @@ dependencies = [
 
 [[package]]
 name = "node-monitoring"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2316,7 +2316,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "bit-vec",
  "crypto",
@@ -2332,7 +2332,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding_derive"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "lazy_static",
  "once_cell",
@@ -2344,7 +2344,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_identity"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "anyhow",
  "crypto",
@@ -2356,7 +2356,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_messages"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "anyhow",
  "bytes",
