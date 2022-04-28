@@ -37,6 +37,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- In-memory context backend now regularly takes a snapshot of the most recent commits,
+  and is able to restore its state when the node is restarted.
 - Prevalidation priority logic, so that injected and consensus operations
   get validated first to increase the chance of them being included
   in the next block.
@@ -48,8 +50,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - Issues with mempool and prevalidator.
-- Crash for tezedge native context storage when running ithaca.
-- Rendering of operations metadata when there is too much data.
+- Assertion failure in tezedge native context storage when running ithacanet.
+- Rendering of operations metadata JSON in RPCs when there is too much data
 
 ### Performance
 
