@@ -9,6 +9,7 @@ use std::sync::Once;
 
 use crypto::hash::ProtocolHash;
 use ocaml_interop::{OCamlRuntime, ToOCaml};
+
 use runtime::OCamlBlockPanic;
 use tezos_api::ffi::{ContextDataError, RustBytes, TezosErrorTrace};
 use tezos_conv::OCamlTezosErrorTrace;
@@ -18,9 +19,8 @@ pub mod ipc_message_encoding;
 type TzResult<T> = Result<T, OCamlTezosErrorTrace>;
 
 mod tezos_ffi {
-    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlList};
-
     use crate::TzResult;
+    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlList};
 
     ocaml! {
         pub fn ffi_server_loop(sock_cmd_path: String) -> TzResult<OCamlInt>;
@@ -30,6 +30,27 @@ mod tezos_ffi {
             key: OCamlList<OCamlBytes>,
             data: OCamlBytes
         ) -> TzResult<Option<OCamlBytes>>;
+    }
+}
+
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing_coverage {
+    use ocaml_interop::{OCaml, OCamlRuntime};
+
+    mod bisect_ffi {
+        use ocaml_interop::ocaml;
+        ocaml! {
+            pub fn dump(a: ());
+            pub fn reset_counters(a: ());
+        }
+    }
+
+    pub fn dump(rt: &mut OCamlRuntime) {
+        bisect_ffi::dump(rt, &OCaml::unit());
+    }
+
+    pub fn reset_counters(rt: &mut OCamlRuntime) {
+        bisect_ffi::reset_counters(rt, &OCaml::unit());
     }
 }
 
