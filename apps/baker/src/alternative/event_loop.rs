@@ -81,7 +81,6 @@ pub fn run(
     let mut ahead_ops = BTreeMap::<BlockHash, Vec<OperationSimple>>::new();
     let mut live_blocks = vec![];
     let mut this_level = BTreeSet::new();
-    let mut elected = false;
 
     for event in events {
         let unix_epoch = SystemTime::now()
@@ -95,12 +94,11 @@ pub fn run(
             }
             Ok(Event::Block(block)) => {
                 if block.level > dy.map.level() {
-                    elected = false;
                     this_level.clear();
                     let delegates = srv.client.validators(block.level + 1)?;
                     dy.map.insert(block.level + 1, delegates);
                 }
-                if !elected {
+                if state.elected_block().is_none() {
                     live_blocks = block.live_blocks.clone();
                 }
                 this_level.insert(block.predecessor.clone());
@@ -225,7 +223,6 @@ pub fn run(
                     process_ops(
                         ops,
                         &live_blocks,
-                        &mut elected,
                         &this_level,
                         &mut ahead_ops,
                         &dy,
@@ -243,7 +240,6 @@ pub fn run(
                 process_ops(
                     ops,
                     &live_blocks,
-                    &mut elected,
                     &this_level,
                     &mut ahead_ops,
                     &dy,
@@ -289,7 +285,6 @@ fn write_log(log: &Logger, records: impl IntoIterator<Item = tb::LogRecord>) {
 fn process_ops(
     ops: Vec<OperationSimple>,
     live_blocks: &Vec<BlockHash>,
-    elected: &mut bool,
     this_level: &BTreeSet<BlockHash>,
     ahead_ops: &mut BTreeMap<BlockHash, Vec<OperationSimple>>,
     dy: &tb::Config<tb::TimingLinearGrow, SlotsInfo>,
@@ -319,13 +314,6 @@ fn process_ops(
                 if let Some(validator) = dy.map.validator(content.level, content.slot, op) {
                     let event = tb::Event::Voted(SlotsInfo::block_id(&content), validator, now);
                     let (new_actions, records) = state.handle(&dy, event);
-                    if records
-                        .iter()
-                        .find(|&r| matches!(r, tb::LogRecord::HaveCertificate))
-                        .is_some()
-                    {
-                        *elected = true;
-                    }
                     write_log(&srv.log, records);
                     actions.extend(new_actions.into_iter());
                 }

@@ -207,6 +207,14 @@ where
         self.inner = new_state;
         (actions, log)
     }
+
+    pub fn elected_block(&self) -> Option<BlockHash> {
+        let initialized = self.inner.as_ref()?.as_ref().ok()?;
+        match &initialized.inner_ {
+            VotesState::Done { hash, .. } => Some(hash.clone()),
+            VotesState::Collecting { .. } => None,
+        }
+    }
 }
 
 impl<Id> Transition<Id>
