@@ -3,7 +3,7 @@ version: "3"
 services:
 
   node:
-    image: tezedge/tezedge:v2.1.0
+    image: tezedge/tezedge:v2.2.0
     command: ["--network=mainnet", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=${TEZOS_CONTEXT_STORAGE:-irmin}"]
     hostname: node
     ports:
@@ -17,7 +17,7 @@ services:
       - TEZOS_CONTEXT=index-log-size=2_500_000
 
   explorer:
-    image: tezedge/tezedge-explorer:v2.1.0
+    image: tezedge/tezedge-explorer:v2.1.2
     hostname: explorer
     environment:
       - API=[{"id":"${NODE_HOSTNAME_OR_IP:-localhost}","name":"rust.dev.mainnet.localhost","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4927"},{"name":"monitoring"},{"name":"mempool"},{"name":"storage"}]}]
