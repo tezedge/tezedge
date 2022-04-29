@@ -33,6 +33,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Nothing.
 
+## [2.2.0] - 2022-04-29
+
+### Added
+
+- In-memory context backend now regularly takes a snapshot of the most recent commits,
+  and is able to restore its state when the node is restarted.
+- Prevalidation priority logic, so that injected and consensus operations
+  get validated first to increase the chance of them being included
+  in the next block.
+- Better and more detailed action statistics: https://tezedge.com/#/resources/state
+- Slack alerts for missed block/endorsement for a specific baker.
+- Report generation in case of missed block/endorsement, which includes
+  debug information.
+
+### Fixed
+
+- Issues with mempool and prevalidator.
+- Assertion failure in tezedge native context storage when running ithacanet.
+- Rendering of operations metadata JSON in RPCs when there is too much data
+
+### Performance
+
+- Optimized block application to avoid reapplying block in case of branch change.
+
 ## [2.1.0] - 2022-04-06
 
 ### Added
@@ -786,7 +810,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.1.0...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.2.0...develop
+[2.2.0]: https://github.com/tezedge/tezedge/releases/v2.2.0
 [2.1.0]: https://github.com/tezedge/tezedge/releases/v2.1.0
 [2.0.0]: https://github.com/tezedge/tezedge/releases/v2.0.0
 [1.19.0]: https://github.com/tezedge/tezedge/releases/v1.19.0
