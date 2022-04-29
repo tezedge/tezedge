@@ -4,13 +4,14 @@
 //! Monitors delegate related activities (baking/endorsing) on a particular node
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap},
     net::SocketAddr,
     time::Duration,
 };
 
 use anyhow::Result;
 use crypto::hash::BlockHash;
+use itertools::Itertools;
 use reqwest::Response;
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::{json, Value};
@@ -23,7 +24,7 @@ use tokio::{
 
 use crate::slack::SlackServer;
 
-use super::statistics::{EndorsementOperationSummary, FinalEndorsementSummary, LockedBTreeMap};
+use super::statistics::{FinalEndorsementSummary, LockedBTreeMap};
 
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
@@ -76,6 +77,7 @@ pub struct Head {
 
 pub struct DelegatesMonitor {
     node_addr: SocketAddr,
+    explorer_url: Option<String>,
     delegates: Vec<String>,
     endorsmenet_summary_storage: LockedBTreeMap<i32, FinalEndorsementSummary>,
     slack: Option<SlackServer>,
@@ -87,6 +89,7 @@ pub struct DelegatesMonitor {
 impl DelegatesMonitor {
     pub fn new(
         node_addr: SocketAddr,
+        explorer_url: Option<String>,
         delegates: Vec<String>,
         endorsmenet_summary_storage: LockedBTreeMap<i32, FinalEndorsementSummary>,
         slack: Option<SlackServer>,
@@ -96,8 +99,9 @@ impl DelegatesMonitor {
     ) -> Self {
         Self {
             node_addr,
-            endorsmenet_summary_storage,
+            explorer_url,
             delegates,
+            endorsmenet_summary_storage,
             slack,
             each_failure,
             stats_dir,
@@ -367,16 +371,46 @@ impl DelegatesMonitor {
             }
         }
         if each_failure || prev_failures.is_none() {
-            if let Some(summary) = self.endorsmenet_summary_storage.get(level)? {
-                self.report_error(format!(
-                    "Missed `{delegate}`'s endorsement for level `{level}`\nSummary:\n {}",
-                    summary
-                ));
-            } else {
-                self.report_error(format!(
-                    "Missed `{delegate}`'s endorsement for level `{level}`\nSummary: Not found"
-                ));
-            }
+            let levels = ((level - 2)..(level + 2)).join(",");
+            let path = format!("/dev/shell/automaton/action_stats_for_blocks?level={}", levels);
+            let summary = self.endorsmenet_summary_storage.get(level)?;
+            let mut action_stats = node_get::<Value, _>(self.node_addr, path).await?;
+
+            let summary = format!("*Summary*:\n{}", summary.map_or("`Error(Not Found)`".to_owned(), |s| s.to_string()));
+            let action_stats_body = action_stats
+                .as_array_mut()
+                .map(|v| std::mem::take(v))
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|b| {
+                    let missed_endorsement_level = level;
+                    let level = b.get("block_level")?.as_i64()?;
+                    let round = b.get("block_round")?.as_i64()?;
+                    let cpu_idle = b.get("cpu_idle")?.as_u64()?;
+                    let cpu_busy = b.get("cpu_busy")?.as_u64()?;
+                    let bold = match level == missed_endorsement_level as i64 {
+                        true => "*",
+                        false => "",
+                    };
+                    Some(format!("{}level: {} round: {} - cpu_idle: {:.3}s, cpu_busy: {:.3}s{}",
+                        bold,
+                        level,
+                        round,
+                        (cpu_idle as f64) / 1_000_000_000.0,
+                        (cpu_busy as f64) / 1_000_000_000.0,
+                        bold,
+                    ))
+                })
+                .join("\n");
+            let action_stats_explorer_link = self.explorer_url.as_ref().map_or("`Error(Missing Explorer Url)`".to_owned(), |explorer_url| {
+                format!("{}/#/resources/state/{}", explorer_url, level)
+            });
+            let action_stats_header = format!("*Action Stats:* {action_stats_explorer_link}");
+            let action_stats = format!("{action_stats_header}\n{action_stats_body}");
+
+            self.report_error(format!(
+                "Missed `{delegate}`'s endorsement for level `{level}`\n\n{summary}\n\n{action_stats}{}",
+            ));
         }
 
         Ok(false)
@@ -481,6 +515,13 @@ impl DelegatesMonitor {
                 file.write_all(json.to_string().as_bytes()).await?;
             }
         }
+
+        let path = format!("/dev/shell/automaton/action_stats_for_blocks");
+        let action_stats = node_get::<Value, _>(self.node_addr, path).await?;
+
+        let mut file =
+            tokio::fs::File::create(&format!("{level}-action_stats.json")).await?;
+        file.write_all(action_stats.to_string().as_bytes()).await?;
 
         Ok(())
     }
