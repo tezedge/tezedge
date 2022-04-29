@@ -164,7 +164,7 @@ impl ProtocolRunnerServiceWorker {
 
         // Set this hash so that pending validation requests for the old predecessor
         // get dropped now that we changed the validator predecessor.
-        if let ProtocolMessage::BeginConstructionForPrevalidationCall(req) = &req {
+        if let ProtocolMessage::BeginConstruction(req) = &req {
             let mut hash = self.prevalidator_predecessor_hash.lock().await;
             *hash = Some(req.predecessor_hash.clone());
         }
@@ -242,9 +242,8 @@ impl ProtocolRunnerServiceWorker {
                     .send(ProtocolRunnerResult::ApplyBlock((token, res)))
                     .await;
             }
-            ProtocolMessage::BeginConstructionForPrevalidationCall(req)
-            | ProtocolMessage::BeginConstructionForMempoolCall(req) => {
-                let res = conn.begin_construction_for_prevalidation(req).await;
+            ProtocolMessage::BeginConstruction(req) => {
+                let res = conn.begin_construction(req).await;
                 let _ = channel
                     .send(ProtocolRunnerResult::BeginConstruction((token, res)))
                     .await;
@@ -276,7 +275,7 @@ impl ProtocolRunnerServiceWorker {
         let conn = conn_lock.as_mut().unwrap();
 
         match req {
-            ProtocolMessage::ValidateOperationForPrevalidationCall(req) => {
+            ProtocolMessage::ValidateOperation(req) => {
                 {
                     let hash = prevalidator_predecessor_hash.lock().await;
                     if Some(&req.prevalidator.predecessor) != hash.as_ref() {
@@ -284,13 +283,7 @@ impl ProtocolRunnerServiceWorker {
                         return;
                     }
                 }
-                let res = conn.validate_operation_for_prevalidation(req).await;
-                let _ = channel
-                    .send(ProtocolRunnerResult::ValidateOperation((token, res)))
-                    .await;
-            }
-            ProtocolMessage::ValidateOperationForMempoolCall(req) => {
-                let res = conn.validate_operation_for_mempool(req).await;
+                let res = conn.validate_operation(req).await;
                 let _ = channel
                     .send(ProtocolRunnerResult::ValidateOperation((token, res)))
                     .await;
@@ -334,11 +327,7 @@ impl ProtocolRunnerServiceWorker {
     }
 
     fn is_validate_operation_message(req: &ProtocolMessage) -> bool {
-        matches!(
-            req,
-            ProtocolMessage::ValidateOperationForPrevalidationCall(_)
-                | ProtocolMessage::ValidateOperationForMempoolCall(_)
-        )
+        matches!(req, ProtocolMessage::ValidateOperation(_))
     }
 
     /// Attempt to restart the protocol runner
@@ -433,8 +422,7 @@ impl ProtocolRunnerServiceWorker {
                         ProtocolMessage::ApplyBlockCall(_) => {
                             ProtocolRunnerResult::ApplyBlock((token, Err(err.into())))
                         }
-                        ProtocolMessage::BeginConstructionForPrevalidationCall(_)
-                        | ProtocolMessage::BeginConstructionForMempoolCall(_) => {
+                        ProtocolMessage::BeginConstruction(_) => {
                             ProtocolRunnerResult::BeginConstruction((token, Err(err.into())))
                         }
                         _ => panic!("Unexpected protocol runner message"),
@@ -463,8 +451,7 @@ impl ProtocolRunnerServiceWorker {
                     let _ = self
                         .channel
                         .send(match *req {
-                            ProtocolMessage::ValidateOperationForPrevalidationCall(_)
-                            | ProtocolMessage::ValidateOperationForMempoolCall(_) => {
+                            ProtocolMessage::ValidateOperation(_) => {
                                 ProtocolRunnerResult::ValidateOperation((token, Err(err.into())))
                             }
                             _ => panic!("Unexpected prevalidator request"),

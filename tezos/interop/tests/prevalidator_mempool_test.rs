@@ -3,11 +3,14 @@
 
 use serial_test::serial;
 
-use crypto::hash::ChainId;
-use tezos_api::ffi::{ApplyBlockRequest, BeginConstructionRequest, ValidateOperationRequest};
+use crypto::hash::{ChainId, OperationHash};
+use tezos_api::ffi::{
+    ApplyBlockRequest, BeginConstructionRequest, ClassifiedOperation, OperationClassification,
+    ValidateOperationRequest, ValidateOperationResult,
+};
 
 use tezos_interop::apply_encoded_message;
-use tezos_messages::p2p::binary_message::BinaryRead;
+use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_protocol_ipc_messages::{NodeMessage, ProtocolMessage};
 
@@ -33,40 +36,38 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
         .unwrap();
 
     // let's initialize prevalidator for current head
-    let prevalidator = apply_encoded_message(
-        ProtocolMessage::BeginConstructionForPrevalidationCall(BeginConstructionRequest {
+    let prevalidator = apply_encoded_message(ProtocolMessage::BeginConstruction(
+        BeginConstructionRequest {
             chain_id: chain_id.clone(),
             predecessor: last_block,
             predecessor_hash,
             protocol_data: None,
-            predecessor_block_metadata_hash: None,
-            predecessor_ops_metadata_hash: None,
-        }),
-    )
+        },
+    ))
     .unwrap();
     let prevalidator = expect_response!(BeginConstructionResult, prevalidator)?;
     assert_eq!(prevalidator.chain_id, chain_id);
-    assert_eq!(
-        prevalidator.context_fitness,
-        Some(vec![vec![0], vec![0, 0, 0, 0, 0, 0, 0, 3]])
-    );
 
     let operation = test_data::operation_from_hex(test_data::OPERATION_LEVEL_3);
+    let operation_hash = operation.message_typed_hash::<OperationHash>().unwrap();
 
-    let result = apply_encoded_message(ProtocolMessage::ValidateOperationForPrevalidationCall(
+    let result = apply_encoded_message(ProtocolMessage::ValidateOperation(
         ValidateOperationRequest {
             prevalidator,
+            operation_hash,
             operation,
         },
     ))
     .unwrap();
     let result = expect_response!(ValidateOperationResponse, result)?;
     assert_eq!(result.prevalidator.chain_id, chain_id);
-    assert_eq!(result.result.applied.len(), 1);
-    assert_eq!(
-        result.prevalidator.context_fitness,
-        Some(vec![vec![0], vec![0, 0, 0, 0, 0, 0, 0, 5]])
-    );
+    assert!(matches!(
+        result.result,
+        ValidateOperationResult::Classified(ClassifiedOperation {
+            classification: OperationClassification::Applied,
+            ..
+        })
+    ));
 
     Ok(())
 }

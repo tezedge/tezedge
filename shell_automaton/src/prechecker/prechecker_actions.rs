@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
-use tezos_api::ffi::{Applied, Errored, OperationProtocolDataJsonWithErrorListJson};
+use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::{
     p2p::encoding::{
         block_header::{BlockHeader, Level},
@@ -102,11 +102,9 @@ impl PrecheckerErrored {
     pub fn as_errored(&self) -> Errored {
         Errored {
             hash: self.hash.clone(),
-            is_endorsement: Some(self.is_endorsement()),
-            protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                protocol_data_json: self.operation_decoded_contents.as_json().to_string(),
-                error_json: self.error.clone(),
-            },
+            is_endorsement: self.is_endorsement(),
+            protocol_data_json: self.operation_decoded_contents.as_json().to_string(),
+            error_json: self.error.clone(),
         }
     }
 }

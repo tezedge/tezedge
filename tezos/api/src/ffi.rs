@@ -14,7 +14,6 @@ use crypto::hash::{
     OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use tezos_messages::p2p::binary_message::{MessageHash, MessageHashError};
-use tezos_messages::p2p::encoding::fitness::{FitnessInner, FitnessRef};
 use tezos_messages::p2p::encoding::prelude::{
     BlockHeader, Operation, OperationsForBlocksMessage, Path,
 };
@@ -147,7 +146,6 @@ pub struct ApplyBlockExecutionTimestamps {
 pub struct PrevalidatorWrapper {
     pub chain_id: ChainId,
     pub protocol: ProtocolHash,
-    pub context_fitness: Option<FitnessInner>,
     pub predecessor: BlockHash,
 }
 
@@ -155,13 +153,10 @@ impl fmt::Debug for PrevalidatorWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "PrevalidatorWrapper[chain_id: {}, protocol: {}, context_fitness: {}]",
+            "PrevalidatorWrapper[chain_id: {}, protocol: {}, predecessor: {}]",
             self.chain_id.to_base58_check(),
             self.protocol.to_base58_check(),
-            match &self.context_fitness {
-                Some(fitness) => FitnessRef(fitness).to_string(),
-                None => "-none-".to_string(),
-            },
+            self.predecessor.to_base58_check(),
         )
     }
 }
@@ -201,13 +196,12 @@ pub struct BeginConstructionRequest {
     pub predecessor: BlockHeader,
     pub predecessor_hash: BlockHash,
     pub protocol_data: Option<Vec<u8>>,
-    pub predecessor_block_metadata_hash: Option<BlockMetadataHash>,
-    pub predecessor_ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ValidateOperationRequest {
     pub prevalidator: PrevalidatorWrapper,
+    pub operation_hash: OperationHash,
     pub operation: Operation,
 }
 
@@ -215,30 +209,16 @@ pub struct ValidateOperationRequest {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ValidateOperationResponse {
     pub prevalidator: PrevalidatorWrapper,
+    pub operation_hash: OperationHash,
     pub result: ValidateOperationResult,
     pub validate_operation_started_at: f64,
+    pub parse_operation_started_at: f64,
+    pub parse_operation_ended_at: f64,
     pub validate_operation_ended_at: f64,
 }
 
 pub type OperationProtocolDataJson = String;
 pub type ErrorListJson = String;
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Clone)]
-pub struct OperationProtocolDataJsonWithErrorListJson {
-    pub protocol_data_json: OperationProtocolDataJson,
-    pub error_json: ErrorListJson,
-}
-
-impl fmt::Debug for OperationProtocolDataJsonWithErrorListJson {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "[error_json: {}, protocol_data_json: (-stripped-)]",
-            &self.error_json,
-        )
-    }
-}
 
 trait HasOperationHash {
     fn operation_hash(&self) -> &OperationHash;
@@ -272,8 +252,9 @@ impl fmt::Debug for Applied {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Errored {
     pub hash: OperationHash,
-    pub is_endorsement: Option<bool>,
-    pub protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson,
+    pub is_endorsement: bool,
+    pub protocol_data_json: OperationProtocolDataJson,
+    pub error_json: ErrorListJson,
 }
 
 impl HasOperationHash for Errored {
@@ -286,69 +267,39 @@ impl fmt::Debug for Errored {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "[hash: {}, protocol_data_json_with_error_json: {:?}]",
+            "[hash: {}, error_json: {:?}]",
             self.hash.to_base58_check(),
-            &self.protocol_data_json_with_error_json
+            &self.error_json
         )
     }
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
-pub struct ValidateOperationResult {
-    pub applied: Vec<Applied>,
-    pub refused: Vec<Errored>,
-    pub branch_refused: Vec<Errored>,
-    pub branch_delayed: Vec<Errored>,
-    pub outdated: Vec<Errored>,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum OperationClassification {
+    Applied,
+    Prechecked,
+    BranchDelayed(ErrorListJson), // TODO: proper trace type
+    BranchRefused(ErrorListJson),
+    Refused(ErrorListJson),
+    Outdated(ErrorListJson),
 }
 
-impl ValidateOperationResult {
-    /// Merges result with new one, and returns `true/false` if something was changed
-    pub fn merge(&mut self, new_result: ValidateOperationResult) -> bool {
-        let mut changed = Self::merge_items(&mut self.applied, new_result.applied);
-        changed |= Self::merge_items(&mut self.refused, new_result.refused);
-        changed |= Self::merge_items(&mut self.branch_refused, new_result.branch_refused);
-        changed |= Self::merge_items(&mut self.branch_delayed, new_result.branch_delayed);
-        changed |= Self::merge_items(&mut self.outdated, new_result.outdated);
-        changed
-    }
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ClassifiedOperation {
+    pub classification: OperationClassification,
+    pub operation_data_json: String,
+    pub is_endorsement: bool,
+}
 
-    fn merge_items<ITEM: HasOperationHash>(
-        result_items: &mut Vec<ITEM>,
-        new_items: Vec<ITEM>,
-    ) -> bool {
-        let mut changed = false;
-        let mut added = false;
-
-        for new_item in new_items {
-            // check if present
-            let old_value = result_items
-                .iter()
-                .position(|old_item| old_item.operation_hash().eq(new_item.operation_hash()));
-
-            // replace or add
-            if let Some(idx) = old_value {
-                // replace
-                result_items[idx] = new_item;
-                changed |= true;
-            } else {
-                // add
-                result_items.push(new_item);
-                added |= true;
-            }
-        }
-
-        added || changed
-    }
-
-    pub fn operations_count(&self) -> usize {
-        self.applied.len()
-            + self.branch_delayed.len()
-            + self.branch_refused.len()
-            + self.refused.len()
-            + self.outdated.len()
-    }
+/// Validation operation result. It is either an unparseable operation,
+/// or a classified operation.
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ValidateOperationResult {
+    Unparseable,
+    Classified(ClassifiedOperation),
 }
 
 /// Init protocol context result
@@ -1078,200 +1029,10 @@ impl ProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryInto;
-
     use assert_json_diff::assert_json_eq;
     use tezos_context_api::ProtocolOverrides;
 
     use super::*;
-
-    #[test]
-    fn test_validate_operation_result_merge() {
-        let mut validate_result1 = validate_operation_result(
-            "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ",
-            "opVUxMhZttd858HXEHCgchknnnZFmUExtHrbmVSh1G9Pg24X1Pj",
-        );
-        assert_eq!(2, validate_result1.applied.len());
-        assert_eq!(2, validate_result1.refused.len());
-        assert_eq!(2, validate_result1.branch_delayed.len());
-        assert_eq!(2, validate_result1.branch_refused.len());
-
-        // merge empty -> no change
-        assert!(!validate_result1.merge(ValidateOperationResult {
-            applied: vec![],
-            refused: vec![],
-            branch_refused: vec![],
-            branch_delayed: vec![],
-            outdated: vec![],
-        }));
-        assert_eq!(2, validate_result1.applied.len());
-        assert_eq!(2, validate_result1.refused.len());
-        assert_eq!(2, validate_result1.branch_delayed.len());
-        assert_eq!(2, validate_result1.branch_refused.len());
-
-        // merge
-        let validate_result2 = validate_operation_result(
-            "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ",
-            "opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr",
-        );
-        assert!(validate_result1.merge(validate_result2));
-        assert_eq!(3, validate_result1.applied.len());
-        assert_eq!(3, validate_result1.refused.len());
-        assert_eq!(3, validate_result1.branch_delayed.len());
-        assert_eq!(3, validate_result1.branch_refused.len());
-    }
-
-    #[test]
-    fn test_validate_operation_result_merge_items() -> Result<(), anyhow::Error> {
-        let mut validate_result = ValidateOperationResult {
-            applied: vec![],
-            refused: vec![],
-            branch_refused: vec![],
-            branch_delayed: vec![],
-            outdated: vec![],
-        };
-        assert_eq!(0, validate_result.applied.len());
-        assert!(!ValidateOperationResult::merge_items(
-            &mut validate_result.applied,
-            vec![],
-        ));
-
-        assert!(ValidateOperationResult::merge_items(
-            &mut validate_result.applied,
-            vec![Applied {
-                hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
-                protocol_data_json: "protocol_data_json1".to_string(),
-            },],
-        ));
-        assert_eq!(1, validate_result.applied.len());
-        assert_eq!(
-            "protocol_data_json1",
-            validate_result.applied[0].protocol_data_json
-        );
-
-        // merge the same -> test change
-        assert!(ValidateOperationResult::merge_items(
-            &mut validate_result.applied,
-            vec![Applied {
-                hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
-                protocol_data_json: "protocol_data_json2".to_string(),
-            },],
-        ));
-        assert_eq!(1, validate_result.applied.len());
-        assert_eq!(
-            "protocol_data_json2",
-            validate_result.applied[0].protocol_data_json
-        );
-
-        // merge another new one
-        assert!(ValidateOperationResult::merge_items(
-            &mut validate_result.applied,
-            vec![Applied {
-                hash: "opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr".try_into()?,
-                protocol_data_json: "protocol_data_json2".to_string(),
-            },],
-        ));
-        assert_eq!(2, validate_result.applied.len());
-
-        Ok(())
-    }
-
-    fn validate_operation_result(op1: &str, op2: &str) -> ValidateOperationResult {
-        let applied = vec![
-            Applied {
-                hash: op1.try_into().expect("Error"),
-                protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-            },
-            Applied {
-                hash: op2.try_into().expect("Error"),
-                protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-            }
-        ];
-
-        let branch_delayed = vec![
-            Errored {
-                hash: op1.try_into().expect("Error"),
-                is_endorsement: None,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
-            },
-            Errored {
-                hash: op2.try_into().expect("Error"),
-                is_endorsement: None,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
-            }
-        ];
-
-        let branch_refused = vec![
-            Errored {
-                hash: op1.try_into().expect("Error"),
-                is_endorsement: None,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
-            },
-            Errored {
-                hash: op2.try_into().expect("Error"),
-                is_endorsement: None,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
-            }
-        ];
-
-        let refused = vec![
-            Errored {
-                hash: op1.try_into().expect("Error"),
-                is_endorsement: None,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
-            },
-            Errored {
-                hash: op2.try_into().expect("Error"),
-                is_endorsement: None,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
-            }
-        ];
-
-        let outdated = vec![
-            Errored {
-                hash: op1.try_into().expect("Error"),
-                is_endorsement: None,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
-            },
-            Errored {
-                hash: op2.try_into().expect("Error"),
-                is_endorsement: None,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
-            }
-        ];
-
-        ValidateOperationResult {
-            applied,
-            branch_delayed,
-            branch_refused,
-            refused,
-            outdated,
-        }
-    }
 
     #[test]
     fn test_rpc_format_user_activated_upgrades() -> Result<(), anyhow::Error> {

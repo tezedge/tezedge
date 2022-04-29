@@ -540,7 +540,7 @@ where
                         .branch_delayed
                         .iter()
                         .filter_map(|v| {
-                            if v.is_endorsement? {
+                            if v.is_endorsement {
                                 Some(v.hash.clone())
                             } else {
                                 None
