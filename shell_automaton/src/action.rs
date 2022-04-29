@@ -55,7 +55,7 @@ use crate::peer::disconnection::{PeerDisconnectAction, PeerDisconnectedAction};
 
 use crate::peer::handshaking::*;
 
-use crate::mempool::PrevalidatorAction;
+use crate::mempool::validator::*;
 use crate::peers::add::multi::PeersAddMultiAction;
 use crate::peers::add::PeersAddIncomingPeerAction;
 use crate::peers::check::timeouts::{
@@ -94,6 +94,10 @@ use crate::protocol_runner::init::runtime::{
 use crate::protocol_runner::init::{
     ProtocolRunnerInitAction, ProtocolRunnerInitCheckGenesisAppliedAction,
     ProtocolRunnerInitCheckGenesisAppliedSuccessAction, ProtocolRunnerInitSuccessAction,
+};
+use crate::protocol_runner::latest_context_hashes::{
+    ProtocolRunnerLatestContextHashesErrorAction, ProtocolRunnerLatestContextHashesInitAction,
+    ProtocolRunnerLatestContextHashesPendingAction, ProtocolRunnerLatestContextHashesSuccessAction,
 };
 use crate::protocol_runner::spawn_server::{
     ProtocolRunnerSpawnServerErrorAction, ProtocolRunnerSpawnServerInitAction,
@@ -231,6 +235,11 @@ pub enum Action {
     ProtocolRunnerSpawnServerPending(ProtocolRunnerSpawnServerPendingAction),
     ProtocolRunnerSpawnServerError(ProtocolRunnerSpawnServerErrorAction),
     ProtocolRunnerSpawnServerSuccess(ProtocolRunnerSpawnServerSuccessAction),
+
+    ProtocolRunnerLatestContextHashesInit(ProtocolRunnerLatestContextHashesInitAction),
+    ProtocolRunnerLatestContextHashesPending(ProtocolRunnerLatestContextHashesPendingAction),
+    ProtocolRunnerLatestContextHashesError(ProtocolRunnerLatestContextHashesErrorAction),
+    ProtocolRunnerLatestContextHashesSuccess(ProtocolRunnerLatestContextHashesSuccessAction),
 
     ProtocolRunnerInit(ProtocolRunnerInitAction),
 
@@ -482,14 +491,11 @@ pub enum Action {
     BootstrapFinished(BootstrapFinishedAction),
     BootstrapFromPeerCurrentHead(BootstrapFromPeerCurrentHeadAction),
 
-    Prevalidator(PrevalidatorAction),
-
     MempoolRecvDone(MempoolRecvDoneAction),
     MempoolGetOperations(MempoolGetOperationsAction),
     MempoolMarkOperationsAsPending(MempoolMarkOperationsAsPendingAction),
     MempoolOperationRecvDone(MempoolOperationRecvDoneAction),
     MempoolOperationInject(MempoolOperationInjectAction),
-    MempoolValidateStart(MempoolValidateStartAction),
     MempoolRpcRespond(MempoolRpcRespondAction),
     MempoolRegisterOperationsStream(MempoolRegisterOperationsStreamAction),
     MempoolUnregisterOperationsStreams(MempoolUnregisterOperationsStreamsAction),
@@ -499,9 +505,18 @@ pub enum Action {
     MempoolBroadcast(MempoolBroadcastAction),
     MempoolBroadcastDone(MempoolBroadcastDoneAction),
     MempoolGetPendingOperations(MempoolGetPendingOperationsAction),
-    MempoolFlush(MempoolFlushAction),
     MempoolOperationDecoded(MempoolOperationDecodedAction),
     MempoolRpcEndorsementsStatusGet(MempoolRpcEndorsementsStatusGetAction),
+    MempoolOperationValidateNext(MempoolOperationValidateNextAction),
+
+    MempoolValidatorInit(MempoolValidatorInitAction),
+    MempoolValidatorPending(MempoolValidatorPendingAction),
+    MempoolValidatorSuccess(MempoolValidatorSuccessAction),
+    MempoolValidatorReady(MempoolValidatorReadyAction),
+
+    MempoolValidatorValidateInit(MempoolValidatorValidateInitAction),
+    MempoolValidatorValidatePending(MempoolValidatorValidatePendingAction),
+    MempoolValidatorValidateSuccess(MempoolValidatorValidateSuccessAction),
 
     BlockInject(BlockInjectAction),
 

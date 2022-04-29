@@ -381,6 +381,24 @@ pub async fn dev_shell_automaton_actions_stats_get(
     make_json_response(&dev_services::get_shell_automaton_actions_stats(&env).await?)
 }
 
+pub async fn dev_shell_automaton_actions_stats_for_blocks_get(
+    _: Request<Body>,
+    _: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let level_filter = query.get("level").map(|v| {
+        v.iter()
+            .flat_map(|s| s.split(","))
+            .filter_map(|s| s.parse().ok())
+            .take(64)
+            .collect::<BTreeSet<_>>()
+    });
+    make_json_response(
+        &dev_services::get_shell_automaton_actions_stats_for_blocks(&env, level_filter).await?,
+    )
+}
+
 pub async fn dev_shell_automaton_actions_graph_get(
     _: Request<Body>,
     _: Params,

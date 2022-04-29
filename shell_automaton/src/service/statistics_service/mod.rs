@@ -9,10 +9,12 @@ use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crypto::hash::{BlockHash, BlockPayloadHash, CryptoboxPublicKeyHash};
-use storage::shell_automaton_action_meta_storage::ShellAutomatonActionStats;
+use storage::shell_automaton_action_meta_storage::ShellAutomatonActionStatsForRanges;
+use storage::BlockHeaderWithHash;
 use tezos_api::ffi::{ApplyBlockExecutionTimestamps, ApplyBlockResponse};
 use tezos_messages::base::signature_public_key::SignaturePublicKey;
 use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::encoding::fitness::Fitness;
 
 use crate::{ActionId, ActionKind, ActionWithMeta};
 
@@ -194,11 +196,60 @@ pub enum StorageRequestFinishedStatus {
     Success,
 }
 
+pub type ActionKindStats = BTreeMap<ActionKind, ShellAutomatonActionStatsForRanges>;
+pub type ActionKindStatsForBlocks = VecDeque<ActionKindStatsForBlock>;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ActionKindStatsForBlock {
+    pub time: u64,
+    pub block_level: Level,
+    pub block_hash: BlockHash,
+    pub block_fitness: Fitness,
+    pub block_round: Option<i32>,
+    pub cpu_idle: u64,
+    pub cpu_busy: u64,
+    pub stats: ActionKindStats,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct ActionStatsForBlocks {
+    kind_stats: ActionKindStatsForBlocks,
+}
+
+impl ActionStatsForBlocks {
+    fn current_head_update(&mut self, time: u64, block: &BlockHeaderWithHash) {
+        while self.kind_stats.len() >= 20000 {
+            self.kind_stats.pop_back();
+        }
+        self.kind_stats.push_front(ActionKindStatsForBlock {
+            time,
+            block_level: block.header.level(),
+            block_hash: block.hash.clone(),
+            block_fitness: block.header.fitness().clone(),
+            block_round: block.header.fitness().round(),
+            cpu_idle: 0,
+            cpu_busy: 0,
+            stats: Default::default(),
+        });
+    }
+
+    fn kind_stats_new(&mut self, kind: ActionKind, duration: u64) {
+        if let Some(s) = self.kind_stats.get_mut(0) {
+            match kind {
+                ActionKind::MioWaitForEvents => s.cpu_idle += duration,
+                _ => s.cpu_busy += duration,
+            }
+            s.stats.entry(kind).or_default().add(duration);
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct StatisticsService {
     last_action_id: Option<ActionId>,
     last_action_kind: Option<ActionKind>,
-    action_kind_stats: BTreeMap<ActionKind, ShellAutomatonActionStats>,
+    action_kind_stats: BTreeMap<ActionKind, ShellAutomatonActionStatsForRanges>,
+    action_stats_for_blocks: ActionStatsForBlocks,
     action_graph: ActionGraph,
 
     blocks_apply: BlocksApplyStats,
@@ -213,6 +264,7 @@ impl Default for StatisticsService {
             last_action_id: Default::default(),
             last_action_kind: Default::default(),
             action_kind_stats: Default::default(),
+            action_stats_for_blocks: Default::default(),
             action_graph: Default::default(),
             blocks_apply: Default::default(),
             levels: Default::default(),
@@ -237,23 +289,24 @@ impl StatisticsService {
             None => return,
         };
 
-        let stats = self
-            .action_kind_stats
+        self.action_kind_stats
             .entry(pred_action_kind)
-            .or_insert_with(|| ShellAutomatonActionStats {
-                total_calls: 0,
-                total_duration: 0,
-            });
-        stats.total_calls += 1;
-        stats.total_duration += duration;
+            .or_default()
+            .add(duration);
+        self.action_stats_for_blocks
+            .kind_stats_new(pred_action_kind, duration);
 
         self.action_graph[pred_action_kind as usize]
             .next_actions
             .insert(action_kind as usize);
     }
 
-    pub fn action_kind_stats(&self) -> &BTreeMap<ActionKind, ShellAutomatonActionStats> {
+    pub fn action_kind_stats(&self) -> &BTreeMap<ActionKind, ShellAutomatonActionStatsForRanges> {
         &self.action_kind_stats
+    }
+
+    pub fn action_kind_stats_for_blocks(&self) -> &ActionKindStatsForBlocks {
+        &self.action_stats_for_blocks.kind_stats
     }
 
     pub fn action_graph(&self) -> &ActionGraph {
@@ -301,6 +354,11 @@ impl StatisticsService {
             .for_each(|hash| {
                 blocks_apply.remove(&hash);
             });
+    }
+
+    pub fn current_head_update(&mut self, time: u64, block: &BlockHeaderWithHash) {
+        self.action_stats_for_blocks
+            .current_head_update(time, block);
     }
 
     #[allow(clippy::too_many_arguments)]

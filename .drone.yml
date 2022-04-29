@@ -890,7 +890,7 @@ steps:
 # It also tests the snapshot functionality
 ##############################################################################################################
 kind: pipeline
-name: corr/replay-and-snapshot-009-florence
+name: corr/replay-and-snapshot-012-ithacanet
 
 trigger:
   branch:
@@ -898,7 +898,8 @@ trigger:
     - develop
 
 environment:
-  NETWORK: florencenet
+  NETWORK: ithacanet
+  BLOCK_LEVEL: 20000
 
 steps:
 
@@ -930,13 +931,22 @@ steps:
 
 - name: octez-node
   user: root
-  image: tezos/tezos:v9-release
+  image: tezos/tezos:v12-release
   detach: true
   volumes:
-    - name: octez-data
+    - name: data
       path: /data
   commands:
-    - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
+    - tezos-node config init --network $${NETWORK}
+    # TODO: use already generated identity instead of regenerating here.
+    - tezos-node snapshot import /data/octez-012-ithacanet-$${BLOCK_LEVEL}.snapshot --block BLR5WXgdQ4vLXxj3rcSG66afrcVQUvwPGxWz2CDu5HAZ7Jo9rNp
+    - tezos-node run --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
+
+- name: wait-for-octez-to-start
+  image: tezedge/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=0 --nodes http://octez-node:8732
 
 - name: tezedge-node-bootstrap
   image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
@@ -997,7 +1007,7 @@ steps:
       --protocol-runner=./drone-cache/build_files/protocol-runner
       --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
       --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
-      --to-block BLJQc17Wxnhw7Mdd5VzFzmiqYfwYpvYUVnMesFKgGWSartAoQAC
+      --to-block BLR5WXgdQ4vLXxj3rcSG66afrcVQUvwPGxWz2CDu5HAZ7Jo9rNp
       --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
       --tezos-context-storage=tezedge
       --network=$${NETWORK}
@@ -1118,6 +1128,103 @@ steps:
     # terminate the node gracefully and wait to allow `valgrind` dump data
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
+- name: make-in-mem-snapshot-and-resume
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  user: root
+  pull: if-not-exists
+  volumes:
+    - name: cache
+      path: /cache
+  commands:
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+    - export OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+    - export TEZEDGE_GC_DELAY_SNAPSHOT_SEC="0"
+    - mkdir -p ./target/release && cp drone-cache/build_files/protocol-runner ./target/release
+    - cp -R /cache/tezedge-data ./snapshot-database
+    - rm -r ./snapshot-database/context
+    - >
+      ./drone-cache/build_files/light-node replay --target-path=./replay-snapshot
+      --config-file "./drone-cache/build_files/tezedge/tezedge_drone.config"
+      --identity-file "./drone-cache/build_files/identities/identity_6.json"
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
+      --to-block BLR5WXgdQ4vLXxj3rcSG66afrcVQUvwPGxWz2CDu5HAZ7Jo9rNp
+      --tezos-data-dir=./snapshot-database --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=tezedge --context-kv-store=inmem
+      --network=$${NETWORK} &
+      echo $! > /var/run/tezedge.pid
+    # this command waits that a snapshot is created
+    - |
+      sh -c '
+      block=0
+      attempts=0
+      while [ $attempts -lt 20 ]; do
+        echo "attempts = $attempts"
+        sleep 30
+        if [ -d "./replay-snapshot/context" ]; then
+          echo "found snapshot"
+          break
+        fi
+        attempts=$(($attempts + 1))
+      done
+      '
+    - echo "Snapshot created. Killing the replayer and waiting for 10 seconds."
+    # terminate the node gracefully and wait to allow `valgrind` dump data
+    - kill -KILL $(cat /var/run/tezedge.pid) && sleep 10
+    - |
+      sh -c '
+      if [ ! -d "./replay-snapshot/context" ]; then
+        echo "Failed to create snapshot"
+        exit 1
+      fi
+      '
+    - export TEZEDGE_GC_DELAY_SNAPSHOT_SEC="1200"
+    - >
+      ./drone-cache/build_files/light-node
+      --config-file=./drone-cache/build_files/tezedge/tezedge_drone.config
+      --identity-file=./drone-cache/build_files/identities/identity_2.json
+      --protocol-runner=./drone-cache/build_files/protocol-runner
+      --init-sapling-spend-params-file=./drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=./drone-cache/build_files/ffi/sapling-output.params
+      --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
+      --tezos-data-dir=./replay-snapshot --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=tezedge --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732"
+      --context-kv-store=inmem 2>&1 | tee output.log &
+    # this command waits the node to process at least 1 block
+    - |
+      sh -c '
+      block=0
+      previous_block=100000
+      attempts=0
+      while [ $attempts -lt 20 ]; do
+        sleep 5
+        b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
+        block=$${b:-$block}
+        echo "===> Block level $block"
+        if [ $block -gt $previous_block ]; then
+          exit 0
+        fi
+        previous_block=$block
+        attempts=$(($attempts + 1))
+      done
+      '
+    # This command checks that the node didn't start applying block from level 1
+    - |
+      sh -c '
+      levels_applied=$(cat output.log | grep -e "INFO CurrentHead Updated, .* level: [0-9]*$")
+      if [ ! "$levels_applied" ]; then
+          echo "Did not find any block applied"
+          exit 1
+      fi
+      level_1=$(cat output.log | grep -e "INFO CurrentHead Updated, .* level: 1$")
+      if [ "$level_1" ]; then
+          echo "Level 1 applied: \"$level_1\""
+          exit 1
+      fi
+      '
+
 # TODO - TE-261: we don't have an equivalent of this right now
 # - name: record/replay-context-action-file-test
 #   image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
@@ -1168,264 +1275,28 @@ image_pull_secrets:
 volumes:
   - name: cache
     temp: {}
-  - name: octez-data
+  - name: data
     host:
-      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
+      path: /usr/local/etc/tezedge-ci/data
 
+---
 ##############################################################################################################
 # This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
-# version from protocol 011-hangzhou
+# version from protocol 012-ithaca
 #
-# GIVEN tezedge is compatible with the octez node and protocol 011-hangzhou WHEN we run the octez python tests with tezedge THEN all the
+# GIVEN tezedge is compatible with the octez node and protocol 012-ithaca WHEN we run the octez python tests with tezedge THEN all the
 # octez python tests should pass
 ##############################################################################################################
----
 kind: pipeline
-name: corr/octez-python-tests-applied-to-tezedge-011-hangzhou
-
-environment:
-  TEST_PROTO_DIR_SUFFIX: _011
-  PYTHON_LOGS_SERVER_ADDRESS: 65.21.119.66
-  PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
-
-defs:
-  - &python-test
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
-    pull: if-not-exists
-    user: root
-    environment:
-      SODIUM_USE_PKG_CONFIG: 1
-      RUST_BACKTRACE: 1
-    commands:
-      - cd tezos-src/tezos/tests_python
-      - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/$${PYTHON_TEST}
-
-steps:
-
-- name: prepare-data
-  image: alpine/git
-  user: root
-  commands:
-    - mkdir -p drone-cache
-
-- name: restore-cache
-  image: meltwater/drone-cache
-  pull: true
-  environment:
-    SFTP_USERNAME:
-      from_secret: sftp_username
-    SFTP_PASSWORD:
-      from_secret: sftp_password
-    SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 65.21.119.66
-    SFTP_PORT: 22
-    SFTP_CACHE_ROOT: "/upload"
-  settings:
-    restore: true
-    debug: true
-    backend: "sftp"
-    cache_key: 'build-{{ .Build.Number }}'
-    mount:
-      - 'drone-cache' # <- builds a cache from this directory
-
-- name: prepare-python-tests
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    RUST_BACKTRACE: 1
-    SODIUM_USE_PKG_CONFIG: 1
-  commands:
-    # copy the tezos src file from the image to a shared volume
-    - mkdir -p python-test-logs
-    - mkdir -p tezos-src
-    - cp -R /home/appuser/tezos-src/tezos tezos-src/tezos
-    # prepare modified python files for tests (compatibility with tezedge node)
-    - cp drone-cache/python-tests/daemons/*.py tezos-src/tezos/tests_python/daemons/
-    - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/
-    - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/
-    - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/
-    # copy binaries to the test
-    - cp drone-cache/build_files/light-node tezos-src/tezos/
-    - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
-    - cp drone-cache/build_files/ffi/libtezos.so tezos-src/tezos/
-    # copy zcash-params init files - see constants.py light-node params
-    - cp drone-cache/build_files/ffi/sapling-spend.params tezos-src/tezos/
-    - cp drone-cache/build_files/ffi/sapling-output.params tezos-src/tezos/
-
-- name: baker-endorser-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_baker_endorser.py
-
-- name: client-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_client.py
-
-- name: nonce-seed-revelation-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_nonce_seed_revelation.py
-
-- name: accuser-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_accuser.py
-
-- name: block-times-ideal-scenario-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_block_times_ideal_scenario.py
-
-- name: many-nodes-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_many_nodes.py
-
-- name: mempool-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_mempool.py
-
-- name: fork-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_fork.py
-
-- name: double-endorsement-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_double_endorsement.py
-
-- name: programs-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_programs.py
-
-- name: many-bakers-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_many_bakers.py
-
-- name: contract-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_contract.py
-
-- name: contract-baker-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_contract_baker.py
-
-- name: contract-annotations-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_contract_annotations.py
-
-- name: contract-bls12-381-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_contract_bls12_381.py
-
-- name: contract-macros-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_contract_macros.py
-
-- name: contract-opcodes-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_contract_opcodes.py
-
-- name: crypto-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_crypto.py
-
-- name: fa12-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_fa12.py
-
-- name: mockup-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_mockup.py
-
-- name: multiple-transfers-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_multiple_transfers.py
-
-- name: multisig-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_multisig.py
-
-- name: per-block-votes-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_per_block_votes.py
-  failure: ignore
-
-- name: sapling-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_sapling.py
-
-- name: basic-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_basic.py
-  failure: ignore
-
-- name: save-python-test-logs
-  image: meltwater/drone-cache
-  pull: true
-  environment:
-    SFTP_USERNAME:
-      from_secret: sftp_username
-    SFTP_PASSWORD:
-      from_secret: sftp_password
-    SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 65.21.119.66
-    SFTP_PORT: 22
-    SFTP_CACHE_ROOT: "/upload"
-  settings:
-    rebuild: true
-    backend: "sftp"
-    cache_key: 'python-test-011-logs-{{ .Build.Number }}'
-    mount:
-      - 'python-test-logs' # <- builds a cache from this directory
-  when:
-    status:
-      - success
-      - failure
+name: corr/octez-python-tests-applied-to-tezedge-012-ithaca-no-endorsement-prechecking
 
 trigger:
   branch:
     - master
     - develop
 
-depends_on:
-  - build-tezedge-binaries
-
----
-##############################################################################################################
-# This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
-# version from protocol 011-hangzhou
-#
-# GIVEN tezedge is compatible with the octez node and protocol 011-hangzhou WHEN we run the octez python tests with tezedge THEN all the
-# octez python tests should pass
-##############################################################################################################
-kind: pipeline
-name: corr/octez-python-tests-applied-to-tezedge-011-hangzhou-no-endorsement-prechecking
-
 environment:
-  TEST_PROTO_DIR_SUFFIX: _011
+  TEST_PROTO_DIR_SUFFIX: _012
   PYTHON_LOGS_SERVER_ADDRESS: 65.21.119.66
   PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
   TEZEDGE_NODE_PARAMS: "--disable-endorsements-precheck=true"
@@ -1517,11 +1388,6 @@ steps:
   environment:
     PYTHON_TEST: test_accuser.py
 
-- name: block-times-ideal-scenario-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_block_times_ideal_scenario.py
-
 - name: many-nodes-test
   <<: *python-test
   environment:
@@ -1532,15 +1398,16 @@ steps:
   environment:
     PYTHON_TEST: test_mempool.py
 
+# TODO
+# - name: migration-test
+#   <<: *python-test
+#   environment:
+#     PYTHON_TEST: test_migration.py
+
 - name: fork-test
   <<: *python-test
   environment:
     PYTHON_TEST: test_fork.py
-
-- name: double-endorsement-test
-  <<: *python-test
-  environment:
-    PYTHON_TEST: test_double_endorsement.py
 
 - name: programs-test
   <<: *python-test
@@ -1611,12 +1478,37 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_per_block_votes.py
-  failure: ignore
 
 - name: sapling-test
   <<: *python-test
   environment:
     PYTHON_TEST: test_sapling.py
+
+- name: tenderbake-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake.py
+
+- name: tenderbake-manual-bake-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_manual_bake.py
+
+- name: tenderbake-long-dynamic-bake-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_long_dynamic_bake.py
+  failure: ignore # TODO: remove once everything has been fixed
+
+- name: tenderbake-long-bakers-restart-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_bakers_restart.py
+
+- name: tenderbake-incremental-start-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_incremental_start.py
 
 - name: basic-test
   <<: *python-test
@@ -1639,7 +1531,7 @@ steps:
   settings:
     rebuild: true
     backend: "sftp"
-    cache_key: 'python-test-011-no-endorsement-prechecking-logs-{{ .Build.Number }}'
+    cache_key: 'python-test-012-no-endorsement-prechecking-logs-{{ .Build.Number }}'
     mount:
       - 'python-test-logs' # <- builds a cache from this directory
   when:
@@ -1647,13 +1539,9 @@ steps:
       - success
       - failure
 
-trigger:
-  branch:
-    - master
-    - develop
-
 depends_on:
   - build-tezedge-binaries
+
 
 ---
 ##############################################################################################################
@@ -5692,7 +5580,7 @@ steps:
 # This pipeline bootstraps a tezedge node to 1000 and measures time this takes
 ##############################################################################################################
 kind: pipeline
-name: perf/bootstrap-time-009-florence
+name: perf/bootstrap-time-012-ithaca
 
 trigger:
   branch:
@@ -5770,7 +5658,7 @@ steps:
         - 'drone-cache-old' # <- builds a cache from this directory
 
   - name: octez-bootstrap-node
-    image: tezos/tezos:v9-release
+    image: tezos/tezos:v12-release
     detach: true
     environment:
       TEZOS_NODE_DIR: /home/tezos/data
@@ -5778,9 +5666,9 @@ steps:
       - name: snapshots
         path: /snapshots
     commands:
-      - tezos-node config init --network florencenet
+      - tezos-node config init --network ithacanet
       - cp light_node/etc/drone/identities/identity_1.json $${TEZOS_NODE_DIR}/identity.json
-      - tezos-node snapshot import /snapshots/octez-009-florence-$${BLOCK_LEVEL}.snapshot
+      - tezos-node snapshot import /snapshots/octez-012-ithacanet-$${BLOCK_LEVEL}.snapshot
       - tezos-node run --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
 
   - name: bootstrapping-octez-bootstrap-node
@@ -5792,14 +5680,14 @@ steps:
       - refs/pull/*/head
 
   - name: octez-node
-    image: tezos/tezos:v9-release
+    image: tezos/tezos:v12-release
     user: root
     environment:
       TEZOS_NODE_DIR: /tmp/tezos/data
     commands:
       - apk add curl jq perl
       - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
-      - tezos-node config init --network florencenet
+      - tezos-node config init --network ithacanet
       - cp light_node/etc/drone/identities/identity_2.json $${TEZOS_NODE_DIR}/identity.json
       - tezos-node run --no-bootstrap-peers --peer $${OCTEZ_IP}:9732 --rpc-addr 0.0.0.0:8732 &
       # this command waits the node to be on level higher than 0
@@ -5838,10 +5726,10 @@ steps:
       - export LD_LIBRARY_PATH=drone-cache/build_files/ffi
       - >
         drone-cache/build_files/light-node --protocol-runner ./drone-cache/build_files/protocol-runner
-        --network florencenet --peers $${OCTEZ_IP}:9732
+        --network ithacanet --peers $${OCTEZ_IP}:9732
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=1
         --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
         --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params &
       # this command waits the node to be on level higher than 0
@@ -5881,10 +5769,10 @@ steps:
       - export LD_LIBRARY_PATH=drone-cache-old
       - >
         drone-cache-old/light-node --protocol-runner ./drone-cache-old/protocol-runner
-        --network florencenet --peers $${OCTEZ_IP}:9732
+        --network ithacanet --peers $${OCTEZ_IP}:9732
         --config-file ./drone-cache-old/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 8732
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=1
         --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params
         --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params &
       # this command waits the node to be on level higher than 0
@@ -6467,7 +6355,7 @@ depends_on:
 # This pipeline bootstraps a tezedge node to 1000 and measures memory allocation peaks during that
 ##############################################################################################################
 kind: pipeline
-name: perf/memory-allocation-bootstrap-009-florence
+name: perf/memory-allocation-bootstrap-012-ithaca
 
 depends_on:
   - build-tezedge-binaries
@@ -6516,7 +6404,7 @@ steps:
         - 'drone-cache' # <- builds a cache from this directory
 
   - name: octez-node
-    image: tezos/tezos:v9-release
+    image: tezos/tezos:v12-release
     detach: true
     environment:
       TEZOS_NODE_DIR: /home/tezos/data
@@ -6524,9 +6412,9 @@ steps:
       - name: snapshots
         path: /snapshots
     commands:
-      - tezos-node config init --network florencenet
+      - tezos-node config init --network ithacanet
       - cp light_node/etc/drone/identities/identity_1.json $${TEZOS_NODE_DIR}/identity.json
-      - tezos-node snapshot import /snapshots/octez-009-florence-1000.snapshot --block BKqNZHy5CFYLD6v6BjDLrEavrkK4qH39hhrsD7QtbWcdnnwoYub
+      - tezos-node snapshot import /snapshots/octez-012-ithacanet-1000.snapshot --block BLHj43AWbZTVddpXX2bPpNenYckP1DZr3uRexQoNQAARLXXduS2
       - tezos-node run --no-bootstrap-peers
 
   - name: tezedge-new-node
@@ -6552,11 +6440,11 @@ steps:
       - >
         valgrind --tool=massif --massif-out-file=new-node.massif.out
         target/debug/light-node --protocol-runner target/debug/protocol-runner
-        --network florencenet --peers $${OCTEZ_IP}:9732
+        --network ithacanet --peers $${OCTEZ_IP}:9732
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 18732
         --websocket-address 0.0.0.0:4927
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=1
         --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params
         --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params &
         echo $! > /var/run/tezedge.pid
@@ -6601,11 +6489,11 @@ steps:
       - >
         valgrind --tool=massif --massif-out-file=old-node.massif.out
         target/debug/light-node --protocol-runner target/debug/protocol-runner
-        --network florencenet --peers $${OCTEZ_IP}:9732
+        --network ithacanet --peers $${OCTEZ_IP}:9732
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 18732
         --websocket-address 0.0.0.0:4927
-        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
+        --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=1
         --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params
         --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params &
         echo $! > /var/run/tezedge.pid
@@ -6743,8 +6631,8 @@ depends_on:
   # - corr/sandbox-launcher-rpc-server-012-ithaca
   - corr/tezedge-with-octez-baker-endorser-011-hangzhou
   # - corr/tezedge-with-octez-baker-endorser-012-ithaca
-  - corr/octez-python-tests-applied-to-tezedge-011-hangzhou
   - corr/octez-python-tests-applied-to-tezedge-012-ithaca
+  - corr/octez-python-tests-applied-to-tezedge-012-ithaca-no-endorsement-prechecking
   - corr/octez-tezedge-connection-with-different-networks-each
   - corr/tezedge-octez-rpcs-and-indexers-compatibility-007-delphinet
   - corr/tezedge-octez-rpcs-and-indexers-compatibility-008-edo2net
@@ -6755,5 +6643,5 @@ depends_on:
   - corr/indexer-conseil-tezedge-009-florence
   - corr/indexer-tzkt-octez-009-florence
   - corr/indexer-tzkt-tezedge-009-florence
-  - perf/memory-allocation-bootstrap-009-florence
-  - perf/bootstrap-time-009-florence
+  - perf/memory-allocation-bootstrap-012-ithaca
+  - perf/bootstrap-time-012-ithaca

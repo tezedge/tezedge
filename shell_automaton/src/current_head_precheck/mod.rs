@@ -33,3 +33,7 @@ fn block_prechecking_possible(state: &State, prev_block: &BlockHash) -> bool {
             )
         })
 }
+
+fn block_prechecking_enabled(state: &State) -> bool {
+    !state.config.disable_block_precheck
+}

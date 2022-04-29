@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash};
@@ -317,16 +318,46 @@ pub(crate) async fn get_block_operation_hashes(
     env: &RpcServiceEnvironment,
 ) -> Result<Vec<BlockOperationsHashes>, RpcServiceError> {
     let block_operations = get_block_operations_metadata(chain_id, block_hash, env).await?;
+    let mut last_error = None;
     let operations = block_operations
         .iter()
         .map(|op_group| {
             op_group
                 .iter()
-                .map(|op| op["hash"].to_string().replace("\"", ""))
+                .filter_map(|op| {
+                    // This parsing should not fail because the string is valid JSON.
+                    // But as a safeguard, if such failure happens we will record the last error
+                    // and will use as the result for an RPC failure response.
+                    let result = serde_json::from_str::<
+                        HashMap<String, Box<serde_json::value::RawValue>>,
+                    >(op.get())
+                    .map(|parsed_op| serde_json::from_str::<String>(parsed_op["hash"].get()));
+
+                    match result {
+                        // First level parsing failed
+                        Err(error) => {
+                            last_error = Some(error);
+                            None
+                        }
+                        // First level parsing succeeded but hash parsing failed
+                        Ok(Err(error)) => {
+                            last_error = Some(error);
+                            None
+                        }
+                        Ok(Ok(hash)) => Some(hash),
+                    }
+                })
                 .collect()
         })
         .collect();
-    Ok(operations)
+
+    // In the case something goes wrong, we don't want to return
+    // incomplete data with a silent failure, but instead respond with an error.
+    if let Some(error) = last_error {
+        Err(error.into())
+    } else {
+        Ok(operations)
+    }
 }
 
 /// Extract all the operations included in the block.

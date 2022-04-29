@@ -8,12 +8,8 @@
 
 use core::borrow::Borrow;
 use lazy_static::lazy_static;
-use std::{
-    cell::RefCell,
-    convert::TryFrom,
-    rc::Rc,
-    sync::{Arc, RwLock},
-};
+use parking_lot::RwLock;
+use std::{cell::RefCell, convert::TryFrom, rc::Rc, sync::Arc};
 
 use ocaml_interop::*;
 
@@ -181,7 +177,6 @@ pub enum TezedgeIndexError {
 fn set_context_index(index: &TezedgeIndex) -> Result<(), TezedgeIndexError> {
     TEZEDGE_CONTEXT_REPOSITORY
         .write()
-        .map_err(|_| TezedgeIndexError::LockPoisonError)?
         .replace(Arc::clone(&index.repository));
     Ok(())
 }
@@ -190,7 +185,6 @@ fn set_context_index(index: &TezedgeIndex) -> Result<(), TezedgeIndexError> {
 pub fn get_context_index() -> Result<Option<TezedgeIndex>, TezedgeIndexError> {
     Ok(TEZEDGE_CONTEXT_REPOSITORY
         .read()
-        .map_err(|_| TezedgeIndexError::LockPoisonError)?
         .as_ref()
         .map(|repository| TezedgeIndex::new(Arc::clone(repository), None)))
 }
@@ -217,6 +211,22 @@ ocaml_export! {
         } else {
             result.map(|index| OCaml::box_value(rt, index.into()).root()).to_ocaml(rt)
         }
+    }
+
+    fn tezedge_index_latest_context_hashes(
+        rt,
+        index: OCamlRef<DynBox<TezedgeIndexFFI>>,
+        count: OCamlRef<OCamlInt>,
+    ) -> OCaml<Result<OCamlList<OCamlContextHash>, String>> {
+        let ocaml_index = rt.get(index);
+        let count: i64 = count.to_rust(rt);
+        let index: &TezedgeIndexFFI = ocaml_index.borrow();
+        let index = index.0.borrow().clone();
+
+        let result = index.latest_context_hashes(count)
+            .map_err(|err| format!("{:?}", err));
+
+        result.to_ocaml(rt)
     }
 
     fn tezedge_index_close(
@@ -1029,6 +1039,7 @@ pub fn initialize_callbacks() {
             tezedge_index_close,
             tezedge_index_block_applied,
             tezedge_index_init,
+            tezedge_index_latest_context_hashes,
         );
         initialize_tezedge_timing_callbacks(
             tezedge_timing_set_block,

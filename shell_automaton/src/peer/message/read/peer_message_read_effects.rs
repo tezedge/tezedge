@@ -14,6 +14,7 @@ use crate::bootstrap::{
     BootstrapPeerBlockHeaderGetSuccessAction, BootstrapPeerBlockOperationsReceivedAction,
     BootstrapPeerCurrentBranchReceivedAction,
 };
+use crate::mempool::MempoolRecvDoneAction;
 use crate::peer::binary_message::read::PeerBinaryMessageReadInitAction;
 use crate::peer::message::read::PeerMessageReadErrorAction;
 use crate::peer::message::write::PeerMessageWriteInitAction;
@@ -218,9 +219,18 @@ where
                             Ok(v) => v,
                             Err(_) => return,
                         };
+                    let block_hash = current_head.hash.clone();
                     store.dispatch(PeerCurrentHeadUpdateAction {
                         address: content.address,
                         current_head,
+                    });
+
+                    let message = msg.current_mempool().clone();
+                    store.dispatch(MempoolRecvDoneAction {
+                        address: content.address,
+                        block_hash,
+                        block_header: msg.current_block_header().clone(),
+                        message,
                     });
                 }
                 PeerMessage::CurrentBranch(msg) => {
@@ -291,7 +301,7 @@ where
                                 "peer" => format!("{}", content.address),
                                 "key" => format!("{:?}", key));
                         } else {
-                            slog::warn!(&state.log, "Peer - Too many block header requests!";
+                            slog::warn!(&state.log, "Peer - Too many block operations requests!";
                                 "peer" => format!("{}", content.address),
                                 "key" => format!("{:?}", key),
                                 "current_requested_block_headers_len" => msg.get_operations_for_blocks().len(),

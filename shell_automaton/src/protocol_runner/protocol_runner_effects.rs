@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use tezos_context_api::TezosContextStorageConfiguration;
+
 use crate::current_head::CurrentHeadRehydrateInitAction;
 use crate::protocol_runner::init::context::{
     ProtocolRunnerInitContextErrorAction, ProtocolRunnerInitContextState,
@@ -11,6 +13,10 @@ use crate::protocol_runner::init::runtime::{
     ProtocolRunnerInitRuntimeSuccessAction,
 };
 use crate::protocol_runner::init::ProtocolRunnerInitState;
+use crate::protocol_runner::latest_context_hashes::{
+    ProtocolRunnerLatestContextHashesErrorAction, ProtocolRunnerLatestContextHashesInitAction,
+    ProtocolRunnerLatestContextHashesState, ProtocolRunnerLatestContextHashesSuccessAction,
+};
 use crate::protocol_runner::spawn_server::{
     ProtocolRunnerSpawnServerErrorAction, ProtocolRunnerSpawnServerState,
     ProtocolRunnerSpawnServerSuccessAction,
@@ -45,7 +51,17 @@ where
             store.dispatch(ProtocolRunnerInitAction {});
         }
         Action::ProtocolRunnerInitSuccess(_) => {
-            store.dispatch(ProtocolRunnerReadyAction {});
+            let is_irmin_only = matches!(
+                &store.state.get().config.protocol_runner.storage,
+                TezosContextStorageConfiguration::IrminOnly(_)
+            );
+
+            if is_irmin_only {
+                // irmin doesn't support getting its latest context hashes
+                store.dispatch(ProtocolRunnerReadyAction {});
+            } else {
+                store.dispatch(ProtocolRunnerLatestContextHashesInitAction {});
+            }
         }
         Action::ProtocolRunnerReady(_) => {
             if let ProtocolRunnerState::Ready(state) = &store.state.get().protocol_runner {
@@ -57,6 +73,7 @@ where
                         genesis_commit_hash,
                     });
                 }
+
                 store.dispatch(CurrentHeadRehydrateInitAction {});
                 store.dispatch(ProtocolRunnerNotifyStatusAction {});
             }
@@ -103,6 +120,35 @@ where
                             continue;
                         }
                     },
+                    ProtocolRunnerState::LatestContextHashesGet(state) => match state {
+                        ProtocolRunnerLatestContextHashesState::Pending { .. } => match result {
+                            ProtocolRunnerResult::LatestContextHashesGet((
+                                token,
+                                Ok(latest_context_hashes),
+                            )) => {
+                                store.dispatch(ProtocolRunnerLatestContextHashesSuccessAction {
+                                    token,
+                                    latest_context_hashes,
+                                });
+                                continue;
+                            }
+                            ProtocolRunnerResult::LatestContextHashesGet((token, Err(error))) => {
+                                store.dispatch(ProtocolRunnerLatestContextHashesErrorAction {
+                                    token,
+                                    error,
+                                });
+                                continue;
+                            }
+                            result => {
+                                store.dispatch(ProtocolRunnerResponseUnexpectedAction { result });
+                                continue;
+                            }
+                        },
+                        _ => {
+                            store.dispatch(ProtocolRunnerResponseUnexpectedAction { result });
+                            continue;
+                        }
+                    },
                     ProtocolRunnerState::Init(v) => v,
                     ProtocolRunnerState::Idle => {
                         store.dispatch(ProtocolRunnerResponseUnexpectedAction { result });
@@ -130,6 +176,7 @@ where
                         continue;
                     }
                 };
+
                 match init_state {
                     ProtocolRunnerInitState::Runtime(ProtocolRunnerInitRuntimeState::Pending {
                         ..

@@ -17,23 +17,19 @@ mod prechecker_validator;
 pub use prechecker_validator::*;
 use tezos_messages::{p2p::encoding::block_header::BlockHeader, protocol::SupportedProtocol};
 
-use crate::State;
-
 /// Checks if prechecking is enabled for the block that is a successor of the block with `prev_block` hash.
-pub(crate) fn prechecking_enabled(state: &State, prev_block: &BlockHash) -> bool {
-    !state.config.disable_endorsements_precheck
-        && state
-            .prechecker
-            .protocol_cache
-            .get(prev_block)
-            .map_or(false, |(_, _, next_protocol)| {
-                matches!(
-                    SupportedProtocol::try_from(next_protocol),
-                    Ok(SupportedProtocol::Proto010)
-                        | Ok(SupportedProtocol::Proto011)
-                        | Ok(SupportedProtocol::Proto012)
-                )
-            })
+pub(crate) fn prechecking_enabled(state: &PrecheckerState, prev_block: &BlockHash) -> bool {
+    state
+        .protocol_cache
+        .get(prev_block)
+        .map_or(false, |(_, _, next_protocol)| {
+            matches!(
+                SupportedProtocol::try_from(next_protocol),
+                Ok(SupportedProtocol::Proto010)
+                    | Ok(SupportedProtocol::Proto011)
+                    | Ok(SupportedProtocol::Proto012)
+            )
+        })
 }
 
 pub(super) fn protocol_for_block(

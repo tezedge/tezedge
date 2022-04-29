@@ -7,7 +7,6 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, OperationHash};
-use tezos_api::ffi::{PrevalidatorWrapper, ValidateOperationResponse};
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::{mempool::Mempool, operation::Operation};
 
@@ -34,8 +33,7 @@ pub struct MempoolRecvDoneAction {
 
 impl EnablingCondition<State> for MempoolRecvDoneAction {
     fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
+        state.mempool.running_since.is_some()
     }
 }
 
@@ -71,6 +69,7 @@ impl EnablingCondition<State> for MempoolMarkOperationsAsPendingAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperationRecvDoneAction {
+    pub hash: OperationHash,
     pub operation: Operation,
 }
 
@@ -85,7 +84,7 @@ impl EnablingCondition<State> for MempoolOperationRecvDoneAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolOperationInjectAction {
     pub operation: Operation,
-    pub operation_hash: OperationHash,
+    pub hash: OperationHash,
     pub rpc_id: RpcId,
     pub injected_timestamp: u64,
 }
@@ -109,20 +108,6 @@ pub struct BlockInjectAction {
 
 impl EnablingCondition<State> for BlockInjectAction {
     fn is_enabled(&self, _state: &State) -> bool {
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MempoolValidateStartAction {
-    pub operation: Operation,
-}
-
-impl EnablingCondition<State> for MempoolValidateStartAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        // TODO(vlad):
-        let _ = state;
         true
     }
 }
@@ -275,20 +260,6 @@ impl EnablingCondition<State> for MempoolOperationDecodedAction {
     }
 }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MempoolFlushAction {}
-
-impl EnablingCondition<State> for MempoolFlushAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        if let Some(state) = &state.mempool.local_head_state {
-            state.prevalidator_ready
-        } else {
-            false
-        }
-    }
-}
-
 // RPC
 
 pub(super) trait MempoolOperationMatcher {
@@ -386,19 +357,12 @@ impl EnablingCondition<State> for MempoolRpcEndorsementsStatusGetAction {
     }
 }
 
-// Prevalidator
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum PrevalidatorAction {
-    Error(String),
-    PrevalidatorReady(PrevalidatorWrapper),
-    PrevalidatorForMempoolReady(PrevalidatorWrapper),
-    OperationValidated(ValidateOperationResponse),
-}
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MempoolOperationValidateNextAction {}
 
-impl EnablingCondition<State> for PrevalidatorAction {
+impl EnablingCondition<State> for MempoolOperationValidateNextAction {
     fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
+        !state.mempool.pending_operations.is_empty() && state.mempool.validator.is_ready()
     }
 }

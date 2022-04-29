@@ -179,6 +179,22 @@ pub struct BeginApplicationResponse {
     pub result: String,
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
+pub enum GetLastContextHashesError {
+    #[error("Failed to get the latest context hashes: {message}!")]
+    FailedToGetLatestContextHashes { message: String },
+}
+
+impl From<TezosErrorTrace> for GetLastContextHashesError {
+    fn from(error: TezosErrorTrace) -> Self {
+        GetLastContextHashesError::FailedToGetLatestContextHashes {
+            message: error.trace_json,
+        }
+    }
+}
+
+// TODO: check if all the field are needed.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BeginConstructionRequest {
     pub chain_id: ChainId,
@@ -1044,6 +1060,8 @@ pub enum ProtocolError {
     DumpContextError { reason: DumpContextError },
     #[error("Failed when restoring the context from a dump: {reason}")]
     RestoreContextError { reason: RestoreContextError },
+    #[error("Failed to get context's latest hashes: {reason}")]
+    GetLastContextHashesError { reason: GetLastContextHashesError },
 }
 
 impl ProtocolError {

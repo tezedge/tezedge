@@ -92,6 +92,30 @@ pub struct DirectoryShapes {
     temp: Vec<StringId>,
 }
 
+impl std::fmt::Debug for DirectoryShapes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DirectoryShapes")
+            .field("hash_to_strings_bytes", &self.hash_to_strings.total_bytes())
+            .field("shapes_cap", &self.shapes.capacity())
+            .field(
+                "shapes_bytes",
+                &(self.shapes.capacity() * std::mem::size_of::<StringId>()),
+            )
+            .field("to_serialize_cap", &self.to_serialize.capacity())
+            .field(
+                "to_serialize_bytes",
+                &(self.to_serialize.capacity() * std::mem::size_of::<ShapeSliceId>()),
+            )
+            .field("id_to_hash_cap", &self.id_to_hash.capacity())
+            .field(
+                "id_to_hash_bytes",
+                &(self.id_to_hash.capacity() * std::mem::size_of::<DirectoryShapeHash>()),
+            )
+            .field("temp_cap", &self.temp.capacity())
+            .finish()
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct SerializeShape {
     pub shapes: Vec<u8>,
@@ -216,6 +240,15 @@ impl DirectoryShapes {
         self.to_serialize.clear();
 
         output
+    }
+
+    pub fn deallocate_serialized(&mut self) {
+        let first: usize = match self.to_serialize.get(0) {
+            Some(first) => first.start() as usize,
+            None => return,
+        };
+
+        self.shapes.deallocate_before(first);
     }
 
     pub fn deserialize(

@@ -14,9 +14,9 @@ use tezos_api::ffi::{
     BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
     BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
     ComputePathResponse, DumpContextError, FfiJsonEncoderError, GetDataError,
-    HelpersPreapplyBlockRequest, HelpersPreapplyError, HelpersPreapplyResponse,
-    InitProtocolContextResult, PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError,
-    ProtocolRpcRequest, ProtocolRpcResponse, RestoreContextError, RustBytes,
+    GetLastContextHashesError, HelpersPreapplyBlockRequest, HelpersPreapplyError,
+    HelpersPreapplyResponse, InitProtocolContextResult, PrevalidatorWrapper, ProtocolDataError,
+    ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse, RestoreContextError, RustBytes,
     TezosRuntimeConfiguration, TezosStorageInitError, ValidateOperationError,
     ValidateOperationRequest, ValidateOperationResponse,
 };
@@ -51,6 +51,7 @@ pub enum ProtocolMessage {
     ContextGetTreeByPrefix(ContextGetTreeByPrefixRequest),
     DumpContext(DumpContextRequest),
     RestoreContext(RestoreContextRequest),
+    ContextGetLatestContextHashes(i64),
     Ping,
     ShutdownCall,
 }
@@ -154,6 +155,7 @@ pub enum NodeMessage {
     ContextGetTreeByPrefixResult(Result<StringTreeObject, String>),
     DumpContextResponse(Result<i64, DumpContextError>),
     RestoreContextResponse(Result<(), RestoreContextError>),
+    ContextGetLatestContextHashesResult(Result<Vec<ContextHash>, GetLastContextHashesError>),
 
     // TODO: generic error response instead with error types?
     IpcResponseEncodingFailure(String),

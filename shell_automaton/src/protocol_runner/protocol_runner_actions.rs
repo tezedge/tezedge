@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use serde::{Deserialize, Serialize};
+use tezos_context_api::TezosContextStorageConfiguration;
 
+use crate::protocol_runner::latest_context_hashes::ProtocolRunnerLatestContextHashesState;
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::storage::blocks::genesis::init::StorageBlocksGenesisInitState;
@@ -28,8 +30,17 @@ impl EnablingCondition<State> for ProtocolRunnerReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         matches!(
             &state.protocol_runner,
+            ProtocolRunnerState::LatestContextHashesGet(
+                ProtocolRunnerLatestContextHashesState::Success { .. }
+                    | ProtocolRunnerLatestContextHashesState::Error { .. }
+            )
+        ) || (matches!(
+            state.config.protocol_runner.storage,
+            TezosContextStorageConfiguration::IrminOnly(..)
+        ) && matches!(
+            &state.protocol_runner,
             ProtocolRunnerState::Init(ProtocolRunnerInitState::Success { .. })
-        )
+        ))
     }
 }
 

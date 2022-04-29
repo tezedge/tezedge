@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    array::TryFromSliceError, convert::TryInto, io::Write, num::TryFromIntError, str::Utf8Error,
+    array::TryFromSliceError, convert::TryInto, num::TryFromIntError, str::Utf8Error,
     string::FromUtf8Error,
 };
 
@@ -19,6 +19,7 @@ use crate::{
         shape::DirectoryShapeError,
         storage::{DirEntryIdError, Storage, StorageError},
         string_interner::StringInterner,
+        working_tree::SerializeOutput,
         Object,
     },
     ContextKeyValueStore,
@@ -37,13 +38,12 @@ const FULL_31_BITS: u64 = 0x7FFFFFFF;
 pub type SerializeObjectSignature = fn(
     &Object,                                                                // object
     HashId,                                                                 // object_hash_id
-    &mut Vec<u8>,                                                           // output
+    &mut SerializeOutput,                                                   // output
     &Storage,                                                               // storage
     &StringInterner,                                                        // strings
     &mut SerializeStats,                                                    // statistics
     &mut ChunkedVec<(HashId, InlinedBoxedSlice), { BATCH_CHUNK_CAPACITY }>, // batch
     &mut ContextKeyValueStore,                                              // repository
-    Option<AbsoluteOffset>,                                                 // offset
 ) -> Result<Option<AbsoluteOffset>, SerializationError>;
 
 #[derive(BitfieldSpecifier)]
@@ -85,6 +85,13 @@ impl ObjectHeader {
     pub fn get_is_persistent(&self) -> bool {
         self.is_persistent()
     }
+}
+
+pub fn get_object_tag(bytes: &[u8]) -> ObjectTag {
+    let header = bytes.get(0).copied().unwrap();
+    let header: ObjectHeader = ObjectHeader::from_bytes([header]);
+
+    header.tag_or_err().unwrap()
 }
 
 #[derive(Debug, Error)]
@@ -226,7 +233,7 @@ pub fn deserialize_hash_id(data: &[u8]) -> Result<(Option<HashId>, usize), Deser
 
 pub fn serialize_hash_id_impl(
     hash_id: Option<HashId>,
-    output: &mut Vec<u8>,
+    output: &mut SerializeOutput,
     repository: &mut ContextKeyValueStore,
     stats: &mut SerializeStats,
 ) -> Result<(), SerializationError> {
@@ -264,7 +271,7 @@ pub fn serialize_hash_id_impl(
 
 pub fn serialize_hash_id<T>(
     hash_id: T,
-    output: &mut Vec<u8>,
+    output: &mut SerializeOutput,
     repository: &mut ContextKeyValueStore,
     stats: &mut SerializeStats,
 ) -> Result<(), SerializationError>

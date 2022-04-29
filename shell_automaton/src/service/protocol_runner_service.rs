@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 
+use crypto::hash::ContextHash;
 use serde::{Deserialize, Serialize};
 
 use slog::Logger;
@@ -56,6 +57,13 @@ pub enum ProtocolRunnerResult {
         ),
     ),
 
+    LatestContextHashesGet(
+        (
+            ProtocolRunnerToken,
+            Result<Vec<ContextHash>, ProtocolServiceError>,
+        ),
+    ),
+
     ApplyBlock(
         (
             ProtocolRunnerToken,
@@ -88,6 +96,7 @@ impl ProtocolRunnerResult {
             Self::InitContext((token, _)) => Some(*token),
             Self::InitContextIpcServer((token, _)) => Some(*token),
             Self::GenesisCommitResultGet((token, _)) => Some(*token),
+            Self::LatestContextHashesGet((token, _)) => Some(*token),
             Self::ApplyBlock((token, _)) => Some(*token),
             Self::BeginConstruction((token, _)) => Some(*token),
             Self::ValidateOperation((token, _)) => Some(*token),
@@ -128,6 +137,8 @@ pub trait ProtocolRunnerService {
         &mut self,
         params: GenesisResultDataParams,
     ) -> ProtocolRunnerToken;
+
+    fn get_latest_context_hashes(&mut self, count: i64) -> ProtocolRunnerToken;
 
     fn apply_block(&mut self, req: ApplyBlockRequest);
 
@@ -269,6 +280,15 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
     ) -> ProtocolRunnerToken {
         let token = self.new_token();
         let message = ProtocolMessage::GenesisResultDataCall(params);
+        self.channel
+            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
+            .unwrap();
+        token
+    }
+
+    fn get_latest_context_hashes(&mut self, count: i64) -> ProtocolRunnerToken {
+        let token = self.new_token();
+        let message = ProtocolMessage::ContextGetLatestContextHashes(count);
         self.channel
             .blocking_send(ProtocolRunnerRequest::Message((token, message)))
             .unwrap();

@@ -4,14 +4,11 @@
 //! This module implements the Tezos context API.
 
 use std::rc::Rc;
-use std::{
-    cell::RefCell,
-    convert::TryInto,
-    sync::{Arc, RwLock},
-};
+use std::{cell::RefCell, convert::TryInto, sync::Arc};
 
 use crypto::hash::ContextHash;
 use ocaml_interop::BoxRoot;
+use parking_lot::RwLock;
 use tezos_context_api::StringDirectoryMap;
 use tezos_timing::{BlockMemoryUsage, ContextMemoryUsage};
 
@@ -150,7 +147,7 @@ impl TezedgeIndex {
         }
         // Strings are not in `TezedgeIndex`, we need to request them to
         // the repository
-        let mut repo = self.repository.write()?;
+        let mut repo = self.repository.write();
         let string_interner = repo.take_strings_on_reload();
 
         // `unwrap_or_default` because only the persistent backend returns
@@ -167,7 +164,7 @@ impl TezedgeIndex {
         context_hash: &ContextHash,
     ) -> Result<Option<Commit>, ContextError> {
         let object_ref = {
-            let repository = self.repository.read()?;
+            let repository = self.repository.read();
 
             match repository.get_context_hash(context_hash)? {
                 Some(hash_id) => hash_id,
@@ -198,7 +195,7 @@ impl TezedgeIndex {
         storage: &mut Storage,
         strings: &mut StringInterner,
     ) -> Result<Option<Object>, DBError> {
-        let repository = self.repository.read()?;
+        let repository = self.repository.read();
 
         repository
             .get_object(object_ref, storage, strings)
@@ -209,7 +206,7 @@ impl TezedgeIndex {
     ///
     /// It reads it from the repository.
     pub fn fetch_hash(&self, object_ref: ObjectReference) -> Result<ObjectHash, DBError> {
-        Ok(self.repository.read()?.get_hash(object_ref)?.into_owned())
+        Ok(self.repository.read().get_hash(object_ref)?.into_owned())
     }
 
     /// Fetches object from the repository and deserialize it into `storage`.
@@ -305,7 +302,7 @@ impl TezedgeIndex {
 
     /// Checks if the repository contains this `hash_id`.
     pub fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
-        let repository = self.repository.read()?;
+        let repository = self.repository.read();
         repository.contains(hash_id)
     }
 
@@ -316,7 +313,7 @@ impl TezedgeIndex {
         &self,
         context_hash: &ContextHash,
     ) -> Result<Option<ObjectReference>, MerkleError> {
-        let repository = self.repository.read()?;
+        let repository = self.repository.read();
         Ok(repository.get_context_hash(context_hash)?)
     }
 
@@ -503,7 +500,7 @@ impl TezedgeIndex {
         }
 
         let last_key_index = path.len() - 1;
-        let repository = self.repository.read()?;
+        let repository = self.repository.read();
 
         for (index, key) in path.iter().enumerate() {
             let child_dir_entry_id =
@@ -595,7 +592,7 @@ impl TezedgeIndex {
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
         let mut storage = self.storage.borrow_mut();
-        let repository = self.repository.read()?;
+        let repository = self.repository.read();
         let mut strings = self.get_string_interner()?;
 
         let commit = self.get_commit(object_ref, &mut storage, &mut strings)?;
@@ -707,7 +704,7 @@ impl TezedgeIndex {
     ///   read only protocol runner.
     fn synchronize_interned_strings_to_repository(&self) -> Result<(), MerkleError> {
         let mut strings = self.get_string_interner()?;
-        let mut repository = self.repository.write()?;
+        let mut repository = self.repository.write();
         repository.synchronize_strings_from(&strings);
 
         strings.all_strings_to_serialize.clear();
@@ -731,7 +728,7 @@ impl TezedgeIndex {
         key: &ContextKey,
     ) -> Result<Option<ContextValue>, ContextError> {
         let object_ref = {
-            let repository = self.repository.write()?;
+            let repository = self.repository.write();
 
             match repository.get_context_hash(context_hash)? {
                 Some(hash_id) => hash_id,
@@ -757,7 +754,7 @@ impl TezedgeIndex {
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, ContextError> {
         let object_ref = {
-            let repository = self.repository.read()?;
+            let repository = self.repository.read();
             match repository.get_context_hash(context_hash)? {
                 Some(hash_id) => hash_id,
                 None => {
@@ -779,7 +776,7 @@ impl TezedgeIndex {
         depth: Option<usize>,
     ) -> Result<StringTreeObject, ContextError> {
         let object_ref = {
-            let repository = self.repository.read()?;
+            let repository = self.repository.read();
             match repository.get_context_hash(context_hash)? {
                 Some(hash_id) => hash_id,
                 None => {
@@ -791,7 +788,7 @@ impl TezedgeIndex {
         };
 
         let mut storage = self.storage.borrow_mut();
-        let repository = self.repository.read()?;
+        let repository = self.repository.read();
         let mut strings = self.get_string_interner()?;
 
         self._get_context_tree_by_prefix(
@@ -810,7 +807,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
     /// Checks if `context_hash` exists in the repository.
     fn exists(&self, context_hash: &ContextHash) -> Result<bool, ContextError> {
         let object_ref = {
-            let repository = self.repository.read()?;
+            let repository = self.repository.read();
 
             match repository.get_context_hash(context_hash)? {
                 Some(hash_id) => hash_id,
@@ -828,7 +825,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
 
     fn checkout(&self, context_hash: &ContextHash) -> Result<Option<TezedgeContext>, ContextError> {
         let object_ref = {
-            let repository = self.repository.read()?;
+            let repository = self.repository.read();
 
             match repository.get_context_hash(context_hash)? {
                 Some(hash_id) => hash_id,
@@ -866,6 +863,13 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         )))
     }
 
+    fn latest_context_hashes(&self, count: i64) -> Result<Vec<ContextHash>, ContextError> {
+        self.repository
+            .read()
+            .latest_context_hashes(count)
+            .map_err(Into::into)
+    }
+
     fn block_applied(
         &self,
         block_level: u32,
@@ -873,12 +877,12 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
     ) -> Result<(), ContextError> {
         Ok(self
             .repository
-            .write()?
+            .write()
             .block_applied(block_level, context_hash)?)
     }
 
     fn cycle_started(&mut self) -> Result<(), ContextError> {
-        Ok(self.repository.write()?.new_cycle_started()?)
+        Ok(self.repository.write().new_cycle_started()?)
     }
 
     fn get_key_from_history(
@@ -1003,7 +1007,7 @@ impl ShellContextApi for TezedgeContext {
         date: i64,
     ) -> Result<ContextHash, ContextError> {
         let date: u64 = date.try_into()?;
-        let mut repository = self.index.repository.write()?;
+        let mut repository = self.index.repository.write();
 
         let PostCommitData { commit_ref, .. } = self.tree.prepare_commit(
             date,
@@ -1020,7 +1024,7 @@ impl ShellContextApi for TezedgeContext {
     }
 
     fn get_last_commit_hash(&self) -> Result<Option<Vec<u8>>, ContextError> {
-        let repository = self.index.repository.read()?;
+        let repository = self.index.repository.read();
         let mut buffer = Vec::with_capacity(1000);
 
         let object_ref = match self.parent_commit_ref {
@@ -1035,7 +1039,7 @@ impl ShellContextApi for TezedgeContext {
     }
 
     fn get_memory_usage(&self) -> Result<ContextMemoryUsage, ContextError> {
-        let repository = self.index.repository.read()?;
+        let repository = self.index.repository.read();
         let storage = self.index.storage.borrow();
         let strings = self.index.get_string_interner()?;
 
@@ -1121,7 +1125,7 @@ impl TezedgeContext {
         self.index.synchronize_interned_strings_to_repository()?;
 
         let (commit_hash, serialize_stats) = {
-            let mut repository = self.index.repository.write()?;
+            let mut repository = self.index.repository.write();
             let date: u64 = date.try_into()?;
 
             repository.commit(&self.tree, self.parent_commit_ref, author, message, date)?

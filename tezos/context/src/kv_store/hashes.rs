@@ -82,6 +82,10 @@ impl HashesContainer {
         }
     }
 
+    pub fn in_memory_len(&self) -> usize {
+        self.commiting.len() + self.working_tree.len()
+    }
+
     pub fn make_hash_id_ready_for_commit(&mut self, hash_id: HashId) -> Result<HashId, DBError> {
         if !self.is_commiting {
             // We are not commiting, keep the same HashId

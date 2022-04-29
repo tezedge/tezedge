@@ -5,6 +5,7 @@ use clap::{App, Arg};
 use std::env;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 
 use crate::node::{Node, NodeStatus, NodeType};
 
@@ -36,6 +37,10 @@ pub struct DeployMonitoringEnvironment {
     pub nodes: Vec<Node>,
 
     pub wait_for_nodes: bool,
+
+    pub delegates: Option<Vec<String>>,
+    pub report_each_error: bool,
+    pub stats_dir: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -61,14 +66,8 @@ impl fmt::Display for AlertThresholds {
 
 #[derive(Clone, Debug)]
 pub struct SlackConfiguration {
-    // slack bot token
-    pub slack_token: String,
-
     // slack channel url
     pub slack_url: String,
-
-    // slack channel name
-    pub slack_channel_name: String,
 }
 
 fn deploy_monitoring_app() -> App<'static, 'static> {
@@ -131,7 +130,7 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .long("slack-channel-name")
                 .takes_value(true)
                 .value_name("SLACK-CHANNEL-NAME")
-                .help("The slack url of the channel to send the messages to"),
+                .help("[DEPRECATED] The slack url of the channel to send the messages to"),
         )
         .arg(
             Arg::with_name("resource-monitor-interval")
@@ -228,6 +227,39 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                         Err(format!("Debugger data dir not found at '{}'", v))
                     }
                 }),
+        )
+        .arg(
+            Arg::with_name("delegate")
+                .long("delegate")
+                .takes_value(true)
+                .value_name("PUBLIC-KEY")
+                .help("Delegate to monitor")
+                .validator(|v| {
+                    match SignaturePublicKeyHash::from_b58_hash(&v) {
+                        Ok(_) => Ok(()),
+                        Err(err) => Err(format!("invalid public key: `{err}`")),
+                    }
+                }),
+        )
+        .arg(
+            Arg::with_name("report-each-delegate-error")
+                .long("report-each-delegate-error")
+                .takes_value(false)
+                .help("Report each lost block/missed endorsement")
+        )
+        .arg(
+            Arg::with_name("delegate-errors-stats-dir")
+                .long("delegate-errors-stats-dir")
+                .takes_value(true)
+                .value_name("DIR")
+                .help("Save block and operations statistics on each missed endorsement")
+                .validator(|v| {
+                    if Path::new(&v).exists() {
+                        Ok(())
+                    } else {
+                        Err(format!("Statistics data dir not found at '{}'", v))
+                    }
+                }),
         );
     app
 }
@@ -250,22 +282,19 @@ fn validate_required_args(args: &clap::ArgMatches) {
 }
 
 fn check_slack_args(args: &clap::ArgMatches) -> Option<SlackConfiguration> {
-    // if any of the slack args are present, all 3 of them must be present
-    if args.is_present("slack-token")
-        || args.is_present("slack-channel-name")
-        || args.is_present("slack-url")
-    {
-        validate_required_arg(args, "slack-token");
-        validate_required_arg(args, "slack-channel-name");
+    if args.is_present("slack-channel-name") {
+        eprintln!("`slack-channel-name` option is deprecated");
+    }
+    if args.is_present("slack-token") {
+        eprintln!("`slack-channel-name` option is deprecated");
+    }
+
+    // if any of the slack args are present, all 2 of them must be present
+    if args.is_present("slack-url") {
         validate_required_arg(args, "slack-url");
 
         Some(SlackConfiguration {
-            slack_token: args.value_of("slack-token").unwrap_or("").to_string(),
             slack_url: args.value_of("slack-url").unwrap_or("").to_string(),
-            slack_channel_name: args
-                .value_of("slack-channel-name")
-                .unwrap_or("")
-                .to_string(),
         })
     } else {
         None
@@ -419,6 +448,11 @@ impl DeployMonitoringEnvironment {
             nodes: tezedge_nodes,
             wait_for_nodes: args.is_present("wait-for-nodes"),
             proxy_port,
+            delegates: args.values_of_lossy("delegate"),
+            report_each_error: args.is_present("report-each-delegate-error"),
+            stats_dir: args
+                .value_of_lossy("delegate-errors-stats-dir")
+                .map(|v| v.into_owned()),
         }
     }
 }

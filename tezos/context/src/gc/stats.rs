@@ -33,6 +33,7 @@ impl std::fmt::Debug for Command {
                     .field("hashes", &hashes_len)
                     .finish()
             }
+            Self::StoreRepository { .. } => f.debug_struct("StoreRepository").finish(),
             Self::Close => write!(f, "Close"),
         }
     }

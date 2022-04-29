@@ -122,6 +122,37 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .rpc()
                             .respond(rpc_id, serde_json::Value::Null);
                     }
+                    RpcRequest::GetActionKindStatsForBlocks {
+                        channel,
+                        level_filter,
+                    } => {
+                        let data = store
+                            .service()
+                            .statistics()
+                            .map(|s| {
+                                let smallest_level = level_filter
+                                    .as_ref()
+                                    .and_then(|levels| levels.iter().cloned().next())
+                                    .unwrap_or(0);
+                                s.action_kind_stats_for_blocks()
+                                    .iter()
+                                    .take_while(|s| s.block_level + 2 > smallest_level)
+                                    .filter(|s| {
+                                        level_filter
+                                            .as_ref()
+                                            .map_or(true, |levels| levels.contains(&s.block_level))
+                                    })
+                                    .take(64)
+                                    .cloned()
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let _ = channel.send(data);
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
+                    }
                     RpcRequest::GetActionGraph { channel } => {
                         let data = store
                             .service
@@ -191,7 +222,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         let injected_timestamp = store.monotonic_to_time(injected);
                         store.dispatch(MempoolOperationInjectAction {
                             operation,
-                            operation_hash,
+                            hash: operation_hash,
                             rpc_id,
                             injected_timestamp,
                         });
@@ -378,7 +409,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
             } = &store.state.get().block_applier.current
             {
                 (
-                    block.clone(),
+                    (**block).clone(),
                     block_additional_data.protocol_hash.clone(),
                     block_additional_data.next_protocol_hash.clone(),
                 )
