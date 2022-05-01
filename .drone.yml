@@ -4708,7 +4708,7 @@ steps:
 # This pipeline runs tzkt indexer against Octez node
 #########################################################
 kind: pipeline
-name: corr/indexer-tzkt-octez-009-florence
+name: corr/indexer-tzkt-octez-012-ithaca
 
 trigger:
   branch:
@@ -4719,7 +4719,7 @@ clone:
   disable: true
 
 environment:
-  NETWORK: florencenet
+  NETWORK: ithacanet
 
 volumes:
   - name: tools
@@ -4729,7 +4729,7 @@ volumes:
     temp: {}
   - name: tezos-data
     host:
-      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-ithacanet-snapshot-data-20000-1
   - name: conseil-sql
     temp: {}
 
@@ -4740,7 +4740,7 @@ steps:
 
   - name: tezos-node
     user: root
-    image: tezos/tezos:v9-release
+    image: tezos/tezos:v12-release
     detach: true
     volumes:
       - name: tezos-data
@@ -4748,7 +4748,7 @@ steps:
       - name: cache
         path: /cache
     commands:
-      - tezos-node run --data-dir /home/tezos/data --history-mode archive --network $${NETWORK} --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
   - name: tzkt-postgres
     image: postgres:13
@@ -4769,14 +4769,20 @@ steps:
       - name: cache
         path: /cache
     environment:
-      TZKT_ConnectionStrings__DefaultConnection: "server=tzkt-postgres;port=5432;database=tzkt_db;username=tzkt;password=qwerty;"
       TZKT_TezosNode__ChainId: NetXxkAx4woPLyu
       TZKT_TezosNode__Endpoint: http://tezos-node:8732/
       TZKT_TezosNode_Timeout: 60
     commands:
-      - apt-get update && apt-get install time
+      - apt-get update && apt-get install -y time jq
       - sleep 5
       - cd /app
+      - jq '.' appsettings.json
+        | jq -r '.ConnectionStrings.DefaultConnection |= "server=tzkt-postgres;port=5432;database=tzkt_db;username=tzkt;password=qwerty;"'
+        | jq -r '.TezosNode.Endpoint |= "http://tezos-node:8732/"'
+        | jq -r '.Logging.LogLevel.Default |= "Debug"'
+        > new_settings
+        && mv new_settings appsettings.json
+      - cat appsettings.json
       - mkfifo /tmp/tzkt
       - time -f "%e" -o /cache/time /tools/output-filter --kill="Applied 20000 of" -- dotnet Tzkt.Sync.dll
       - echo "Done in $(cat /cache/time) seconds"
@@ -6641,7 +6647,7 @@ depends_on:
   - corr/tezedge-octez-rpcs-and-indexers-compatibility-mainnet
   - corr/indexer-conseil-octez-009-florence
   - corr/indexer-conseil-tezedge-009-florence
-  - corr/indexer-tzkt-octez-009-florence
+  - corr/indexer-tzkt-octez-012-ithaca
   - corr/indexer-tzkt-tezedge-009-florence
   - perf/memory-allocation-bootstrap-012-ithaca
   - perf/bootstrap-time-012-ithaca
