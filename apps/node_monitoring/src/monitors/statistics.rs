@@ -625,11 +625,6 @@ impl PreendorsementQuorumSummary {
                 (None, None)
             };
 
-        println!(
-            "Endorsing power at the end of quorum calculation: {:#?}",
-            endorsing_power
-        );
-
         let preendorsement_quorum_reached =
             preendorsement_quorum_timestamp.and_then(|quorum_time| {
                 block_application_stats
