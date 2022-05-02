@@ -9,6 +9,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 
 use monitors::delegate::DelegatesMonitor;
+use monitors::statistics::StatisticsMonitor;
 use slog::{error, info, Drain, Level, Logger};
 use tokio::signal;
 use tokio::time::{sleep, Duration};
@@ -25,6 +26,7 @@ mod slack;
 use crate::configuration::DeployMonitoringEnvironment;
 use crate::monitors::alerts::Alerts;
 use crate::monitors::resource::{ResourceMonitor, ResourceUtilization, ResourceUtilizationStorage};
+use crate::monitors::statistics::LockedBTreeMap;
 use crate::rpc::MEASUREMENTS_MAX_CAPACITY;
 
 const PROCESS_LOOKUP_INTERVAL: Duration = Duration::from_secs(10);
@@ -112,29 +114,49 @@ async fn main() {
 
     if let Some(delegates) = env.delegates {
         for node in env.nodes {
+            let endorsmenet_summary_storage = LockedBTreeMap::new();
+            let log = log.clone();
             let node_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), node.port());
             slog::info!(
                 log,
                 "Using node `{node}` to monitor performance for delegates",
                 node = node.tag()
             );
-            let delegates = delegates.clone();
-            let log = log.clone();
+            let t_delegates = delegates.clone();
+            let t_log = log.clone();
+            let t_endorsmenet_summary_storage = endorsmenet_summary_storage.clone();
             let slack = slack_server.clone();
             let stats_dir = env.stats_dir.clone();
             tokio::spawn(async move {
                 if let Err(err) = DelegatesMonitor::new(
                     node_addr,
-                    delegates,
+                    t_delegates,
+                    t_endorsmenet_summary_storage,
                     slack,
                     env.report_each_error,
                     stats_dir,
-                    log.clone(),
+                    t_log.clone(),
                 )
                 .run()
                 .await
                 {
-                    slog::error!(log, "Error in delegates monitor: `{err}`");
+                    slog::error!(t_log, "Error in delegates monitor: `{err}`");
+                }
+            });
+            let t_log = log.clone();
+            let t_delegates = delegates.clone();
+            tokio::spawn(async move {
+                let mut statistics_monitor = StatisticsMonitor::new(
+                    node,
+                    t_delegates,
+                    endorsmenet_summary_storage,
+                    t_log.clone(),
+                );
+                loop {
+                    if let Err(err) = statistics_monitor.parse_statistics().await {
+                        slog::error!(t_log, "Error in statistics monitor: `{err}`");
+                    }
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             });
         }

@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::str::FromStr;
+
 use crate::{Action, ActionWithMeta, State};
 
 use super::BlockApplierApplyState;
@@ -193,6 +195,11 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
             } = &mut state.block_applier.current
             {
                 state.block_applier.last_applied = block.hash.clone().into();
+                let payload_hash =
+                    serde_json::Value::from_str(&apply_result.block_header_proto_json)
+                        .ok()
+                        .and_then(|mut v| v.get_mut("payload_hash").map(|v| v.take()))
+                        .and_then(|v| serde_json::from_value(v).ok());
                 state.block_applier.current = BlockApplierApplyState::Success {
                     time: *time,
                     prepare_data_duration: *prepare_data_duration,
@@ -204,6 +211,7 @@ pub fn block_applier_reducer(state: &mut State, action: &ActionWithMeta) {
                     apply_result: apply_result.clone(),
                     retry: retry.clone(),
                     injector_rpc_id: *injector_rpc_id,
+                    payload_hash,
                 };
             };
         }

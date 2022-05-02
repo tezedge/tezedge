@@ -3,7 +3,11 @@
 
 //! Monitors delegate related activities (baking/endorsing) on a particular node
 
-use std::{collections::HashMap, net::SocketAddr, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    net::SocketAddr,
+    time::Duration,
+};
 
 use anyhow::Result;
 use crypto::hash::BlockHash;
@@ -19,6 +23,8 @@ use tokio::{
 
 use crate::slack::SlackServer;
 
+use super::statistics::{EndorsementOperationSummary, FinalEndorsementSummary, LockedBTreeMap};
+
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
 struct BakingRights {
@@ -27,19 +33,38 @@ struct BakingRights {
     round: u16,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
-struct DelegateEndorsingRights {
-    delegate: String,
-    first_slot: u16,
-    endorsing_power: u16,
+pub struct DelegateEndorsingRights {
+    pub delegate: String,
+    pub first_slot: u16,
+    pub endorsing_power: u16,
 }
 
-#[derive(Debug, Deserialize)]
+impl DelegateEndorsingRights {
+    pub fn get_first_slot(&self) -> u16 {
+        self.first_slot
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
-struct EndorsingRights {
-    level: i32,
-    delegates: Vec<DelegateEndorsingRights>,
+pub struct EndorsingRights {
+    pub level: i32,
+    pub delegates: Vec<DelegateEndorsingRights>,
+}
+
+impl EndorsingRights {
+    // pub fn get_delegate(&self, delegate: &str) -> Option<DelegateEndorsingRights> {
+    //     self.delegates.into_iter().filter(|delegate_rights| delegate_rights.delegate.eq(delegate)).collect::<Vec<DelegateEndorsingRights>>().last().cloned()
+    // }
+
+    pub fn endorsement_powers(&self) -> BTreeMap<u16, u16> {
+        self.delegates
+            .iter()
+            .map(|delegate| (delegate.first_slot, delegate.endorsing_power))
+            .collect()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,6 +77,7 @@ pub struct Head {
 pub struct DelegatesMonitor {
     node_addr: SocketAddr,
     delegates: Vec<String>,
+    endorsmenet_summary_storage: LockedBTreeMap<i32, FinalEndorsementSummary>,
     slack: Option<SlackServer>,
     each_failure: bool,
     stats_dir: Option<String>,
@@ -62,6 +88,7 @@ impl DelegatesMonitor {
     pub fn new(
         node_addr: SocketAddr,
         delegates: Vec<String>,
+        endorsmenet_summary_storage: LockedBTreeMap<i32, FinalEndorsementSummary>,
         slack: Option<SlackServer>,
         each_failure: bool,
         stats_dir: Option<String>,
@@ -69,6 +96,7 @@ impl DelegatesMonitor {
     ) -> Self {
         Self {
             node_addr,
+            endorsmenet_summary_storage,
             delegates,
             slack,
             each_failure,
@@ -324,15 +352,31 @@ impl DelegatesMonitor {
                         self.report_recover(format!(
                             "`{delegate}` endorsed block on level `{level}` after `{prev_failures}` failure(s)"
                         ));
+                        if let Some(summary) = self.endorsmenet_summary_storage.get(level)? {
+                            self.report_recover(format!(
+                                "`{delegate}` endorsed block on level `{level}` after `{prev_failures}` failure(s)\nSummary:\n {summary}"
+                            ));
+                        } else {
+                            self.report_recover(format!(
+                                "`{delegate}` endorsed block on level `{level}` after `{prev_failures}` failure(s)\nSummary: Not found"
+                            ));
+                        }
                     }
                     return Ok(true);
                 }
             }
         }
         if each_failure || prev_failures.is_none() {
-            self.report_error(format!(
-                "Missed `{delegate}`'s endorsement for level `{level}`",
-            ));
+            if let Some(summary) = self.endorsmenet_summary_storage.get(level)? {
+                self.report_error(format!(
+                    "Missed `{delegate}`'s endorsement for level `{level}`\nSummary:\n {}",
+                    summary
+                ));
+            } else {
+                self.report_error(format!(
+                    "Missed `{delegate}`'s endorsement for level `{level}`\nSummary: Not found"
+                ));
+            }
         }
 
         Ok(false)
