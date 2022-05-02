@@ -1,12 +1,20 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{fmt, str};
+use std::{collections::BTreeMap, fmt, str};
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, BlockPayloadHash, OperationHash, ProtocolHash, Signature};
-use tezos_messages::protocol::proto_012::operation::EndorsementOperation;
+use crypto::hash::{
+    BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, OperationHash, ProtocolHash, Signature,
+};
+use tezos_messages::protocol::proto_012::operation::{
+    EndorsementOperation, InlinedEndorsement, InlinedPreendorsement,
+};
+
+use tenderbake as tb;
+
+use super::client::ProtocolBlockHeader;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OperationSimple {
@@ -89,14 +97,59 @@ pub struct Block {
     pub payload_hash: BlockPayloadHash,
     pub payload_round: i32,
     pub round: i32,
-
     pub transition: bool,
-    pub operations: Vec<Vec<OperationSimple>>,
-    pub live_blocks: Vec<BlockHash>,
 }
 
 pub enum Event {
+    Idle,
     Block(Block),
+    Slots {
+        level: i32,
+        delegates: BTreeMap<ContractTz1Hash, Vec<u16>>,
+    },
+    OperationsForBlock {
+        block_hash: BlockHash,
+        operations: Vec<Vec<OperationSimple>>,
+    },
+    LiveBlocks {
+        block_hash: BlockHash,
+        live_blocks: Vec<BlockHash>,
+    },
     Operations(Vec<OperationSimple>),
     Tick,
+}
+
+pub enum Action {
+    Idle,
+    GetSlots {
+        level: i32,
+    },
+    GetOperationsForBlock {
+        block_hash: BlockHash,
+    },
+    GetLiveBlocks {
+        block_hash: BlockHash,
+    },
+    LogError(String),
+    LogWarning(String),
+    LogTb(tb::LogRecord),
+    MonitorOperations,
+    ScheduleTimeout(tb::Timestamp),
+    PreVote(ChainId, InlinedPreendorsement),
+    Vote(ChainId, InlinedEndorsement),
+    Propose {
+        chain_id: ChainId,
+        proof_of_work_threshold: u64,
+        protocol_header: ProtocolBlockHeader,
+        predecessor_hash: BlockHash,
+        operations: [Vec<OperationSimple>; 4],
+        timestamp: i64,
+        round: i32,
+    },
+    RevealNonce {
+        chain_id: ChainId,
+        branch: BlockHash,
+        level: i32,
+        nonce: Vec<u8>,
+    },
 }

@@ -16,7 +16,9 @@ pub struct Timestamp {
 impl Timestamp {
     #[cfg(test)]
     pub fn new(minute: u64, second: u64) -> Self {
-        Timestamp { unix_epoch: Duration::from_secs(minute * 60 + second) }
+        Timestamp {
+            unix_epoch: Duration::from_secs(minute * 60 + second),
+        }
     }
 }
 

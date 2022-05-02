@@ -918,11 +918,25 @@ mod tests {
         let now = Timestamp::new(0, 35);
         machine.handle(&config, Event::Proposal(Box::new(block.clone()), now));
 
-        let mut block_id = BlockId { level: 5, round: 0, payload_hash: PayloadHash([0; 32]) };
-        let validator = Validator { id: 0, power: 256, operation: 0 };
+        let mut block_id = BlockId {
+            level: 5,
+            round: 0,
+            payload_hash: PayloadHash([0; 32]),
+        };
+        let validator = Validator {
+            id: 0,
+            power: 256,
+            operation: 0,
+        };
         let now = Timestamp::new(0, 36);
-        machine.handle(&config, Event::PreVoted(block_id.clone(), validator.clone(), now));
-        machine.handle(&config, Event::Voted(block_id.clone(), validator.clone(), now));
+        machine.handle(
+            &config,
+            Event::PreVoted(block_id.clone(), validator.clone(), now),
+        );
+        machine.handle(
+            &config,
+            Event::Voted(block_id.clone(), validator.clone(), now),
+        );
 
         block.pred_hash = block.hash;
         block.hash = BlockHash([2; 32]);
@@ -932,8 +946,14 @@ mod tests {
         machine.handle(&config, Event::Proposal(Box::new(block.clone()), now));
         let now = Timestamp::new(0, 51);
         block_id.level += 1;
-        machine.handle(&config, Event::PreVoted(block_id.clone(), validator.clone(), now));
-        machine.handle(&config, Event::Voted(block_id.clone(), validator.clone(), now));
+        machine.handle(
+            &config,
+            Event::PreVoted(block_id.clone(), validator.clone(), now),
+        );
+        machine.handle(
+            &config,
+            Event::Voted(block_id.clone(), validator.clone(), now),
+        );
 
         block.hash = BlockHash([3; 32]);
         block.level = 6;
@@ -943,8 +963,14 @@ mod tests {
         machine.handle(&config, Event::Proposal(Box::new(block.clone()), now));
         let now = Timestamp::new(1, 6);
         block_id.round += 2;
-        machine.handle(&config, Event::PreVoted(block_id.clone(), validator.clone(), now));
-        machine.handle(&config, Event::Voted(block_id.clone(), validator.clone(), now));
+        machine.handle(
+            &config,
+            Event::PreVoted(block_id.clone(), validator.clone(), now),
+        );
+        machine.handle(
+            &config,
+            Event::Voted(block_id.clone(), validator.clone(), now),
+        );
 
         block.pred_hash = BlockHash([2; 32]);
         block.hash = BlockHash([4; 32]);
@@ -953,6 +979,9 @@ mod tests {
         block.time_header.timestamp = Timestamp::new(1, 20);
         let now = Timestamp::new(1, 19);
         let (actions, _) = machine.handle(&config, Event::Proposal(Box::new(block.clone()), now));
-        assert!(actions.iter().find(|a| matches!(a, Action::PreVote { .. })).is_some());
+        assert!(actions
+            .iter()
+            .find(|a| matches!(a, Action::PreVote { .. }))
+            .is_some());
     }
 }

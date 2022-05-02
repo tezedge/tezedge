@@ -4,7 +4,7 @@
 mod command_line;
 mod proof_of_work;
 
-mod alternative;
+// mod alternative;
 mod machine;
 mod services;
 
@@ -30,14 +30,19 @@ fn main() {
             // We don't use context storage and protocol_runner
             let _ = node_dir;
 
-            let (srv, events) = Services::new(endpoint, &base_dir, &baker);
-            slog::info!(
-                srv.log,
-                "crypto service ready: {}",
-                srv.crypto.public_key_hash()
-            );
+            let (mut srv, events) = Services::new(endpoint, &base_dir, &baker);
+            let chain_id = srv.client.get_chain_id().unwrap();
+            let _ = srv.client.wait_bootstrapped().unwrap();
+            let constants = srv.client.get_constants().unwrap();
+            srv.client.monitor_heads(&chain_id).unwrap();
 
-            alternative::run(srv, &base_dir, &baker, events).unwrap();
+            let mut state =
+                machine::BakerState::new(chain_id, constants, srv.crypto.public_key_hash().clone());
+            let mut actions = vec![];
+            for event in events {
+                state = state.handle_event(event, &mut actions);
+                actions.drain(..).for_each(|action| srv.execute(action));
+            }
         }
     }
 }

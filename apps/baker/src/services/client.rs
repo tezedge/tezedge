@@ -278,19 +278,6 @@ impl RpcClient {
                 (BlockPayloadHash(vec![0; 32]), 0, 0)
             };
 
-            let operations = if transition {
-                vec![]
-            } else {
-                let s = format!("chains/main/blocks/{}/operations", header.hash);
-                let url = this.endpoint.join(&s).expect("valid url");
-                this.single_response_blocking(&url, None, Some(Duration::from_secs(30)))?
-            };
-
-            let s = format!("chains/main/blocks/{}/live_blocks", header.hash);
-            let url = this.endpoint.join(&s).expect("valid url");
-            let live_blocks =
-                this.single_response_blocking(&url, None, Some(Duration::from_secs(30)))?;
-
             Ok(Event::Block(Block {
                 hash: header.hash,
                 level: header.level,
@@ -300,13 +287,27 @@ impl RpcClient {
                 payload_hash,
                 payload_round,
                 round,
-
                 transition,
-                operations,
-                live_blocks,
             }))
         })
         .map_err(|inner| RpcError::WithContext { url, inner })
+    }
+
+    pub fn get_operations_for_block(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Vec<Vec<OperationSimple>>, RpcError> {
+        let s = format!("chains/main/blocks/{block_hash}/operations");
+        let url = self.endpoint.join(&s).expect("valid url");
+        self.single_response_blocking(&url, None, Some(Duration::from_secs(30)))
+            .map_err(|inner| RpcError::WithContext { url, inner })
+    }
+
+    pub fn get_live_blocks(&self, block_hash: &BlockHash) -> Result<Vec<BlockHash>, RpcError> {
+        let s = format!("chains/main/blocks/{block_hash}/live_blocks");
+        let url = self.endpoint.join(&s).expect("valid url");
+        self.single_response_blocking(&url, None, Some(Duration::from_secs(30)))
+            .map_err(|inner| RpcError::WithContext { url, inner })
     }
 
     pub fn monitor_operations(&self, timeout: Duration) -> Result<(), RpcError> {

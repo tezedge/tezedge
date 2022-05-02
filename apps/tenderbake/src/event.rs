@@ -150,8 +150,14 @@ impl fmt::Display for LogRecord {
             LogRecord::UnexpectedRoundBounded { last, current } => {
                 write!(f, " .  unexpected round, last: {last}, current: {current}")
             }
-            LogRecord::UnexpectedRoundFromFuture { current, block_round } => {
-                write!(f, " .  unexpected round, block round: {block_round}, current: {current}")
+            LogRecord::UnexpectedRoundFromFuture {
+                current,
+                block_round,
+            } => {
+                write!(
+                    f,
+                    " .  unexpected round, block round: {block_round}, current: {current}"
+                )
             }
             LogRecord::AcceptAtEmptyState => {
                 write!(f, " .  accept at empty state")
