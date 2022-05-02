@@ -226,15 +226,19 @@ where
                     ..
                 } => {
                     let chain_id = store.state().config.chain_id.clone();
+                    let block_hash = block.hash.clone();
                     store.service.actors().call_apply_block_callback(
-                        &block.hash,
+                        &block_hash,
                         Ok((chain_id.into(), block.clone())),
                     );
                     if let Some(rpc_id) = *injector_rpc_id {
                         store.service.rpc().respond(rpc_id, serde_json::Value::Null);
                     }
-                    let new_head = (**block).clone();
                     let payload_hash = payload_hash.clone();
+                    if let Some(stats) = store.service.statistics() {
+                        stats.block_payload_hash(&block_hash, payload_hash.as_ref());
+                    }
+                    let new_head = (**block).clone();
                     let protocol = block_additional_data.protocol_hash.clone();
                     let next_protocol = block_additional_data.next_protocol_hash.clone();
                     let block_metadata_hash = block_additional_data.block_metadata_hash().clone();
