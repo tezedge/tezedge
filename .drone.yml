@@ -6129,8 +6129,8 @@ depends_on:
 # and performs `wrk` and `wrk2` tests over them to compute throughput and latency
 ##############################################################################################################
 kind: pipeline
-name: perf/wrk-tests-009-florence
-# default build goes with: --network "florencenet"
+name: perf/wrk-tests-012-ithaca
+# default build goes with: --network "ithacanet"
 # integration test is using env variables:
 # - BLOCK_HEAD - top block level used by bootstrap
 # - OCTEZ_NODE_RPC_CONTEXT_ROOT_1: running octez node, e.g.: http://octez-node:8732
@@ -6145,7 +6145,7 @@ clone:
   disable: true
 
 environment:
-  NETWORK: florencenet
+  NETWORK: ithacanet
   BLOCK_HEAD: 20000 # top block to bootstrap to
   WRK_TEST_DURATION: 10  # in seconds
   WRK2_TEST_DURATION: 20  # in seconds
@@ -6157,6 +6157,16 @@ environment:
   OCTEZ_NODE_P2P_PEERS: octez-node:9734
   TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-run:18732
   TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT: http://tezedge-old-run:18732
+
+volumes:
+  - name: data
+    host:
+      path: /usr/local/etc/tezedge-ci/data
+  - name: cache
+    temp: {}
+  - name: perf
+    host:
+      path: /usr/local/etc/tezedge-ci/perf
 
 steps:
 - name: prepare-data
@@ -6210,22 +6220,20 @@ steps:
     mount:
       - 'drone-cache-old' # <- builds a cache from this directory
 
-# just run octez 3 snapshoted nodes
 - name: octez-node
   user: root
-  image: tezos/tezos:v9-release
+  image: tezos/tezos:v12-release
   detach: true
   volumes:
     - name: data
-      path: /home/tezos/data
+      path: /data
     - name: cache
-      path: /data/cache
+      path: /drone_cache
+  environment:
+    TEZOS_NODE_DIR: /data/ocaml-node-ithacanet-snapshot-data-20000-1
   commands:
-    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /data/cache/octez_ip.txt
-    - rm -f /home/tezos/data/lock
-    - cp drone-cache/build_files/identities/identity_1.json /home/tezos/data/ocaml-node-$${NETWORK}-snapshot-data-1/identity.json
-    - tezos-node config reset --data-dir /home/tezos/data/ocaml-node-$${NETWORK}-snapshot-data-1 --network $${NETWORK} --no-bootstrap-peers
-    - tezos-node run --data-dir /home/tezos/data/ocaml-node-$${NETWORK}-snapshot-data-1 --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /drone_cache/octez_ip.txt
+    - tezos-node run --data-dir $${TEZOS_NODE_DIR} --history-mode archive --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
 - name: wait-for-octez-snapshoted-nodes
   image: tezedge/tezos-node-bootstrap:latest
@@ -6354,16 +6362,6 @@ steps:
 
 node:
   tag: real-time-linux-runner
-
-volumes:
-  - name: data
-    host:
-      path: /usr/local/etc/tezedge-ci/data
-  - name: cache
-    temp: {}
-  - name: perf
-    host:
-      path: /usr/local/etc/tezedge-ci/perf
 
 depends_on:
   - build-tezedge-binaries
