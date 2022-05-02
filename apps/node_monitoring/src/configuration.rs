@@ -20,6 +20,8 @@ pub struct DeployMonitoringEnvironment {
     // interval in seconds to check for new remote image
     pub resource_monitor_interval: u64,
 
+    pub explorer_url: Option<String>,
+
     // rpc server port
     pub rpc_port: u16,
 
@@ -89,6 +91,14 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                     }
                 }),
         )
+        .arg(Arg::with_name("explorer-url")
+            .long("explorer-url")
+            .takes_value(true)
+            .multiple(false)
+            .value_name("LINK")
+            .help("Link to the explorer")
+        )
+
         .arg(Arg::with_name("tezedge-nodes")
             .long("tezedge-nodes")
             .takes_value(true)
@@ -437,6 +447,9 @@ impl DeployMonitoringEnvironment {
                 .unwrap_or("5")
                 .parse::<u64>()
                 .expect("Expected u64 value of seconds"),
+            explorer_url: args
+                .value_of("explorer-url")
+                .map(|s| s.to_owned()),
             rpc_port: args
                 .value_of("rpc-port")
                 .unwrap_or("38732")

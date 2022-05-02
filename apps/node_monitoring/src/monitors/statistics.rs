@@ -614,7 +614,7 @@ impl PreendorsementQuorumSummary {
                 .into_inner()
         });
 
-        let (endorsing_power, preendorsement_quorum_timestamp) =
+        let (_, preendorsement_quorum_timestamp) =
             if let Some((endorsing_power, quorum_timestamp)) = preendorsement_quorum {
                 if endorsing_power > threshold {
                     (Some(endorsing_power), Some(quorum_timestamp as i64))
@@ -791,7 +791,7 @@ impl Display for EndorsementOperationSummary {
             Operation hash: {}
             Block hash: {}
             Level: {}
-            Round: {} 
+            Round: {}
             Payload hash: {}"#,
             self.operation_hash,
             self.round_summary.block_hash,

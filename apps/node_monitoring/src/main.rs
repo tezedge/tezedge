@@ -39,6 +39,7 @@ async fn main() {
     let log = create_logger(env.log_level);
 
     let DeployMonitoringEnvironment {
+        explorer_url,
         slack_configuration,
         tezedge_alert_thresholds,
         ocaml_alert_thresholds,
@@ -114,9 +115,10 @@ async fn main() {
 
     if let Some(delegates) = env.delegates {
         for node in env.nodes {
-            let endorsmenet_summary_storage = LockedBTreeMap::new();
             let log = log.clone();
+            let endorsmenet_summary_storage = LockedBTreeMap::new();
             let node_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), node.port());
+            let explorer_url = explorer_url.clone();
             slog::info!(
                 log,
                 "Using node `{node}` to monitor performance for delegates",
@@ -130,6 +132,7 @@ async fn main() {
             tokio::spawn(async move {
                 if let Err(err) = DelegatesMonitor::new(
                     node_addr,
+                    explorer_url,
                     t_delegates,
                     t_endorsmenet_summary_storage,
                     slack,
