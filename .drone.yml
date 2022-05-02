@@ -4802,7 +4802,7 @@ steps:
 # This pipeline runs tzkt indexer against Tezedge node
 #########################################################
 kind: pipeline
-name: corr/indexer-tzkt-tezedge-009-florence
+name: corr/indexer-tzkt-tezedge-012-ithaca
 
 trigger:
   branch:
@@ -4810,7 +4810,7 @@ trigger:
     - develop
 
 environment:
-  NETWORK: florencenet
+  NETWORK: ithacanet
   BLOCK_HEAD: 20000
 
 volumes:
@@ -4819,9 +4819,9 @@ volumes:
       path: /usr/local/etc/tezedge-ci/tools
   - name: cache
     temp: {}
-  - name: octez-data
+  - name: tezos-data
     host:
-      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-ithacanet-snapshot-data-20000-1
   - name: conseil-sql
     temp: {}
 
@@ -4858,13 +4858,21 @@ steps:
 
   - name: octez-node
     user: root
-    image: tezos/tezos:v9-release
+    image: tezos/tezos:v12-release
     detach: true
     volumes:
+      - name: tezos-data
+        path: /home/tezos/data
       - name: octez-data
         path: /data
     commands:
-      - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: wait-for-octez-snapshoted-nodes
+    image: tezedge/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=0 --nodes http://octez-node:8732
 
   - name: tezedge-node
     image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
@@ -4889,7 +4897,7 @@ steps:
         --init-sapling-spend-params-file=drone-cache/build_files/ffi/sapling-spend.params
         --init-sapling-output-params-file=drone-cache/build_files/ffi/sapling-output.params
         --rpc-port=18732 --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
-        --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732"
+        --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9734"
 
   # bootstrap tezedge node to the target level
   - name: bootstrapping-tezedge-target-branch
@@ -4917,14 +4925,20 @@ steps:
       - name: cache
         path: /cache
     environment:
-      TZKT_ConnectionStrings__DefaultConnection: "server=tzkt-postgres;port=5432;database=tzkt_db;username=tzkt;password=qwerty;"
       TZKT_TezosNode__ChainId: NetXxkAx4woPLyu
       TZKT_TezosNode__Endpoint: http://tezedge-node:18732/
       TZKT_TezosNode_Timeout: 60
     commands:
-      - apt-get update && apt-get install time
+      - apt-get update && apt-get install -y time jq
       - sleep 5
       - cd /app
+      - jq '.' appsettings.json
+        | jq -r '.ConnectionStrings.DefaultConnection |= "server=tzkt-postgres;port=5432;database=tzkt_db;username=tzkt;password=qwerty;"'
+        | jq -r '.TezosNode.Endpoint |= "http://tezedge-node:18732/"'
+        | jq -r '.Logging.LogLevel.Default |= "Debug"'
+        > new_settings
+        && mv new_settings appsettings.json
+      - cat appsettings.json
       - mkfifo /tmp/tzkt
       - time -f "%e" -o /cache/time /tools/output-filter --kill="Applied 20000 of" -- dotnet Tzkt.Sync.dll
       - echo "Done in $(cat /cache/time) seconds"
@@ -6648,6 +6662,6 @@ depends_on:
   - corr/indexer-conseil-octez-009-florence
   - corr/indexer-conseil-tezedge-009-florence
   - corr/indexer-tzkt-octez-012-ithaca
-  - corr/indexer-tzkt-tezedge-009-florence
+  - corr/indexer-tzkt-tezedge-012-ithaca
   - perf/memory-allocation-bootstrap-012-ithaca
   - perf/bootstrap-time-012-ithaca
