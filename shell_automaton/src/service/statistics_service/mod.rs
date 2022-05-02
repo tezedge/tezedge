@@ -530,7 +530,7 @@ impl StatisticsService {
     pub fn block_payload_hash(
         &mut self,
         block_hash: &BlockHash,
-        payload_hash: Option<&BlockPayloadHash>
+        payload_hash: Option<&BlockPayloadHash>,
     ) {
         if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.payload_hash = payload_hash.cloned();
