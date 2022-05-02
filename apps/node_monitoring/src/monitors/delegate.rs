@@ -605,6 +605,7 @@ mod tests {
                 .unwrap(),
             None,
             vec!["tz1Qm727PrLHPme6gcz2Gg8YAXqUrq8oDhio".to_string()],
+            LockedBTreeMap::new(),
             None,
             false,
             None,
