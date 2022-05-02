@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crypto::hash::BlockHash;
 use itertools::Itertools;
 use reqwest::Response;
@@ -372,11 +372,11 @@ impl DelegatesMonitor {
         }
         if each_failure || prev_failures.is_none() {
             let levels = ((level - 2)..(level + 2)).join(",");
-            let path = format!("/dev/shell/automaton/action_stats_for_blocks?level={}", levels);
+            let path = format!("/dev/shell/automaton/actions_stats_for_blocks?level={}", levels);
             let summary = self.endorsmenet_summary_storage.get(level)?;
             let mut action_stats = node_get::<Value, _>(self.node_addr, path).await?;
 
-            let summary = format!("*Summary*:\n{}", summary.map_or("`Error(Not Found)`".to_owned(), |s| s.to_string()));
+            let summary = format!("*Summary*: {}", summary.map_or("`Error(Not Found)`".to_owned(), |s| s.to_string()));
             let action_stats_body = action_stats
                 .as_array_mut()
                 .map(|v| std::mem::take(v))
@@ -516,11 +516,10 @@ impl DelegatesMonitor {
             }
         }
 
-        let path = format!("/dev/shell/automaton/action_stats_for_blocks");
+        let path = format!("/dev/shell/automaton/actions_stats_for_blocks");
         let action_stats = node_get::<Value, _>(self.node_addr, path).await?;
 
-        let mut file =
-            tokio::fs::File::create(&format!("{level}-action_stats.json")).await?;
+        let mut file = tokio::fs::File::create(&format!("{level}-action_stats.json")).await?;
         file.write_all(action_stats.to_string().as_bytes()).await?;
 
         Ok(())
@@ -530,24 +529,29 @@ impl DelegatesMonitor {
 pub async fn node_get<T, S>(address: SocketAddr, path: S) -> anyhow::Result<T>
 where
     T: DeserializeOwned,
-    S: AsRef<str>,
+    S: AsRef<str> + std::fmt::Display,
 {
-    let json = node_get_raw(address, path).await?.json().await?;
-    //eprintln!("<<< {json}");
-    let value = serde_json::from_value(json)?;
+    let json = node_get_raw(address, &path)
+        .await?
+        .json()
+        .await
+        .context(format!("JSONifying `{path}`"))?;
+    let value = serde_json::from_value(json)
+        .context(format!("deserializing `{path}` response from JSON"))?;
     Ok(value)
 }
 
 pub async fn node_get_raw<S>(address: SocketAddr, path: S) -> anyhow::Result<Response>
 where
-    S: AsRef<str>,
+    S: AsRef<str> + std::fmt::Display,
 {
     let response = reqwest::get(format!(
         "http://{address}{path}",
         address = address.to_string(),
         path = path.as_ref()
     ))
-    .await?;
+    .await
+    .context(format!("error while fetching `{path}`"))?;
     Ok(response)
 }
 
@@ -558,7 +562,7 @@ pub async fn node_monitor<T, S>(
 ) -> anyhow::Result<()>
 where
     T: 'static + DeserializeOwned + std::fmt::Debug + Send + Sync,
-    S: AsRef<str>,
+    S: AsRef<str> + std::fmt::Display,
 {
     let mut res = node_get_raw(address, path).await?;
     while let Some(chunk) = res.chunk().await? {
@@ -582,4 +586,45 @@ where
     .await?;
     while res.chunk().await?.is_some() {}
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::ToSocketAddrs;
+
+    use super::*;
+    #[tokio::test]
+    #[ignore = "Test for specific failure, might be used later with different parameters"]
+    async fn test() {
+        let log = crate::create_logger(slog::Level::Debug);
+        let monitor = DelegatesMonitor::new(
+            "mempool.tezedge.com:28732"
+                .to_socket_addrs()
+                .unwrap()
+                .next()
+                .unwrap(),
+            None,
+            vec!["tz1Qm727PrLHPme6gcz2Gg8YAXqUrq8oDhio".to_string()],
+            None,
+            false,
+            None,
+            log,
+        );
+
+        let block_hash =
+            BlockHash::from_base58_check("BMG2JyPzyHRj75Mn3p7tdZF8Myz2tURP32vvvDqB4gEFFHBjVGy")
+                .unwrap();
+        let level = 451_738;
+
+        monitor
+            .check_block(
+                &block_hash,
+                level,
+                false,
+                &mut HashMap::new(),
+                &mut HashMap::new(),
+            )
+            .await
+            .unwrap();
+    }
 }
