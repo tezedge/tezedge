@@ -342,20 +342,6 @@ impl BakerState {
             Ok(Event::Operations(new_operations)) => {
                 let state = self.as_mut();
                 for op in new_operations {
-                    // the operation does not belong to
-                    if !state.this_level.contains(&op.branch)
-                        && !state.live_blocks.contains(&op.branch)
-                    {
-                        actions.push(Action::LogWarning(format!(
-                            "the op is ahead, or very outdated {op:?}"
-                        )));
-                        state
-                            .ahead_ops
-                            .entry(op.branch.clone())
-                            .or_default()
-                            .push(op);
-                        continue;
-                    };
                     match op.kind() {
                         None => {
                             actions.push(Action::LogError(format!("unclassified operation {op:?}")))
@@ -389,6 +375,20 @@ impl BakerState {
                             }
                         }
                         Some(_) => {
+                            // the operation does not belong to
+                            if !state.this_level.contains(&op.branch)
+                                && !state.live_blocks.contains(&op.branch)
+                            {
+                                actions.push(Action::LogWarning(format!(
+                                    "the op is ahead, or very outdated {op:?}"
+                                )));
+                                state
+                                    .ahead_ops
+                                    .entry(op.branch.clone())
+                                    .or_default()
+                                    .push(op);
+                                continue;
+                            };
                             state
                                 .tb_state
                                 .handle(&state.tb_config, tb::Event::Operation(op));
@@ -558,23 +558,19 @@ impl Initialized {
             }
         }
         let payload_round = payload.payload_round;
-        let payload_hash = if payload.hash.0 == [0; 32] {
-            let hashes = operations[1..]
-                .as_ref()
-                .iter()
-                .flatten()
-                .filter_map(|op| op.hash.as_ref().cloned())
-                .collect::<Vec<_>>();
-            let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
-            BlockPayloadHash::calculate(
-                &predecessor_hash,
-                payload_round as u32,
-                &operation_list_hash,
-            )
-            .unwrap()
-        } else {
-            BlockPayloadHash(payload.hash.0.to_vec())
-        };
+        let hashes = operations[1..]
+            .as_ref()
+            .iter()
+            .flatten()
+            .filter_map(|op| op.hash.as_ref().cloned())
+            .collect::<Vec<_>>();
+        let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
+        let payload_hash = BlockPayloadHash::calculate(
+            &predecessor_hash,
+            block.time_header.round as u32,
+            &operation_list_hash,
+        )
+        .unwrap();
         let seed_nonce_hash = self.nonces.gen_nonce(block.level);
         let protocol_header = ProtocolBlockHeader {
             payload_hash,
