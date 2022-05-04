@@ -347,6 +347,11 @@ impl BakerState {
                             actions.push(Action::LogError(format!("unclassified operation {op:?}")))
                         }
                         Some(OperationKind::Preendorsement(content)) => {
+                            if !state.this_level.contains(&op.branch) {
+                                actions.push(Action::LogWarning(format!("the op is ahead, or very outdated {op:?}")));
+                                state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
+                                continue;
+                            };
                             if let Some(validator) =
                                 state
                                     .tb_config
@@ -375,18 +380,10 @@ impl BakerState {
                             }
                         }
                         Some(_) => {
-                            // the operation does not belong to
-                            if !state.this_level.contains(&op.branch)
-                                && !state.live_blocks.contains(&op.branch)
-                            {
-                                actions.push(Action::LogWarning(format!(
-                                    "the op is ahead, or very outdated {op:?}"
-                                )));
-                                state
-                                    .ahead_ops
-                                    .entry(op.branch.clone())
-                                    .or_default()
-                                    .push(op);
+                            // the operation does not belong to live_blocks
+                            if !state.live_blocks.contains(&op.branch) {
+                                actions.push(Action::LogWarning(format!("the op is outdated {op:?}")));
+                                state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
                                 continue;
                             };
                             state
