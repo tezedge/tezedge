@@ -1,6 +1,5 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![forbid(unsafe_code)]
 
 //! Separate Tezos protocol runner, as we used OCaml protocol more and more, we noticed increasing
 //! problems, from panics to high memory usage, for better stability, we separated protocol into
@@ -16,6 +15,9 @@ use tikv_jemallocator::Jemalloc;
 #[cfg(not(target_env = "msvc"))]
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
+
+#[cfg(dyncov)]
+mod dyncov;
 
 fn create_logger(log_level: Level, endpoint_name: String) -> Logger {
     let drain = slog_async::Async::new(
@@ -100,6 +102,9 @@ fn main() {
             warn!(log, "Protocol runner was terminated/killed/ctrl-c - please, check running sub-processes for `[protocol-runner] <defunct>`, and terminate/kill manually!");
         }).expect("Error setting Ctrl-C handler");
     }
+
+    #[cfg(dyncov)]
+    dyncov::initialize_callbacks();
 
     match tezos_interop::start_ipc_loop(cmd_socket_path.into()) {
         Err(OCamlBlockPanic) => warn!(log, "Protocol runner loop exited with a panic"),
