@@ -3293,6 +3293,7 @@ dependencies = [
  "clap 2.33.3",
  "crypto",
  "ctrlc",
+ "ocaml-interop",
  "slog",
  "slog-async",
  "slog-term",
