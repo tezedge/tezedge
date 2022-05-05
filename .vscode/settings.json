@@ -5,11 +5,12 @@
     "**/target/debug/incremental/**": true
   },
   "cSpell.words": [
+    "fuzzcheck",
     "merkle",
+    "preendorse",
     "preendorsement",
     "preendorsements",
     "prequorum",
-    "preendorse",
     "reqwest",
     "Seedable",
     "shiplift",

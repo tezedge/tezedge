@@ -38,6 +38,7 @@ pub enum Action<Id, Op> {
     Propose(Box<Block<Id, Op>>, Id, bool),
 }
 
+#[derive(Clone)]
 pub enum LogRecord {
     Proposal {
         level: i32,

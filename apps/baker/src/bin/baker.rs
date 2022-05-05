@@ -1,16 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-mod command_line;
-mod proof_of_work;
-
-// mod alternative;
-mod machine;
-mod services;
-
 fn main() {
-    use self::command_line::{Arguments, Command};
-    use self::services::Services;
+    use baker::{Arguments, Command, Services, machine};
 
     let Arguments {
         base_dir,
@@ -38,10 +30,9 @@ fn main() {
 
             let mut state =
                 machine::BakerState::new(chain_id, constants, srv.crypto.public_key_hash().clone());
-            let mut actions = vec![];
             for event in events {
-                state = state.handle_event(event, &mut actions);
-                actions.drain(..).for_each(|action| srv.execute(action));
+                state = state.handle_event(event);
+                state.as_mut().actions.iter().for_each(|action| srv.execute(action));
             }
         }
     }

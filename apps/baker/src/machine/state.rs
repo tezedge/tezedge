@@ -23,8 +23,8 @@ use tezos_messages::protocol::proto_012::operation::{
 
 use crate::services::{
     client::{Constants, ProtocolBlockHeader, RpcError},
-    event::{Action, Block, Event, OperationKind, OperationSimple},
-    EventWithTime,
+    event::{Block, Event, OperationKind, OperationSimple},
+    ActionInner, EventWithTime,
 };
 
 use super::{
@@ -84,6 +84,8 @@ pub struct Initialized {
     // tenderbake machine
     pub tb_config: tb::Config<tb::TimingLinearGrow, SlotsInfo>,
     pub tb_state: tb::Machine<ContractTz1Hash, OperationSimple, 200>,
+
+    pub actions: Vec<ActionInner>,
 }
 
 impl AsRef<Initialized> for BakerState {
@@ -145,15 +147,20 @@ impl BakerState {
             operations: Vec::new(),
             tb_config,
             tb_state: tb::Machine::<ContractTz1Hash, OperationSimple, 200>::default(),
+            actions: vec![],
         })
     }
 
     #[rustfmt::skip]
-    pub fn handle_event(mut self, event: EventWithTime, actions: &mut Vec<Action>) -> Self {
+    pub fn handle_event(mut self, event: EventWithTime) -> Self {
         let EventWithTime { event, now } = event;
+
+        // those are already executed
+        self.as_mut().actions.clear();
+
         match event {
             Err(error) => {
-                actions.push(Action::LogError(format!("{error}")));
+                self.as_mut().actions.push(ActionInner::LogError(format!("{error}")));
                 let state = self.into_inner();
                 BakerState::Invalid { state, error }
             }
@@ -193,7 +200,7 @@ impl BakerState {
                     } => {
                         state.tb_config.map.level = level - 1;
                         state.tb_config.map.delegates.insert(level, delegates);
-                        actions.push(Action::GetOperationsForBlock { block_hash: current_block.hash.clone() });
+                        state.actions.push(ActionInner::GetOperationsForBlock { block_hash: current_block.hash.clone() });
                         BakerState::Gathering {
                             state,
                             gathering: Gathering::GetOperations(Request::new(current_block.hash.clone())),
@@ -211,14 +218,14 @@ impl BakerState {
                         state.operations = operations;
                         if state.tb_state.elected_block().is_none() {
                             // if we have no elected block, ask a new live blocks list
-                            actions.push(Action::GetLiveBlocks { block_hash: current_block.hash.clone() });
+                            state.actions.push(ActionInner::GetLiveBlocks { block_hash: current_block.hash.clone() });
                             BakerState::Gathering {
                                 state,
                                 gathering: Gathering::GetLiveBlocks(Request::new(current_block.hash.clone())),
                                 current_block,
                             }
                         } else {
-                            actions.push(Action::Idle);
+                            state.actions.push(ActionInner::Idle);
                             BakerState::HaveBlock { state, current_block }
                         }
                     },
@@ -231,21 +238,21 @@ impl BakerState {
                         current_block,
                     } => {
                         state.live_blocks = live_blocks;
-                        actions.push(Action::Idle);
+                        state.actions.push(ActionInner::Idle);
                         BakerState::HaveBlock { state, current_block }
                     },
                     BakerState::HaveBlock { mut state, current_block } => {
-                        actions.push(Action::MonitorOperations);
+                        state.actions.push(ActionInner::MonitorOperations);
                         let operations = mem::take(&mut state.operations);
                         let proposal = Box::new(proposal(&current_block, operations, &state.tb_config));
                         let (tb_actions, records) = state.tb_state.handle(&state.tb_config, tb::Event::Proposal(proposal, now));
-                        actions.extend(records.into_iter().map(Action::LogTb));
-                        state.handle_tb_actions(tb_actions, actions);
+                        state.actions.extend(records.into_iter().map(ActionInner::LogTb));
+                        state.handle_tb_actions(tb_actions);
                         if let Some(ops) = state.ahead_ops.remove(&current_block.predecessor) {
                             BakerState::Idle(state).handle_event(EventWithTime {
                                 event: Ok(Event::Operations(ops)),
                                 now,
-                            }, actions)
+                            })
                         } else {
                             BakerState::Idle(state)
                         }
@@ -254,33 +261,34 @@ impl BakerState {
                 }
             }
             Ok(Event::Block(block)) => {
-                let gathering = if block.level > self.as_ref().tb_config.map.level {
+                let state = self.as_mut();
+                let gathering = if block.level > state.tb_config.map.level {
                     // a new level
-                    self.as_mut().this_level.clear();
-                    actions.push(Action::GetSlots {
+                    state.this_level.clear();
+                    state.actions.push(ActionInner::GetSlots {
                         level: block.level + 1,
                     });
                     Gathering::GetSlots(Request::new(block.level + 1))
                 } else {
                     // the same level
-                    actions.push(Action::GetOperationsForBlock {
+                    state.actions.push(ActionInner::GetOperationsForBlock {
                         block_hash: block.hash.clone(),
                     });
                     Gathering::GetOperations(Request::new(block.hash.clone()))
                 };
-                self.as_mut().this_level.insert(block.hash.clone());
-                self.as_mut().this_level.insert(block.predecessor.clone());
+                state.this_level.insert(block.hash.clone());
+                state.this_level.insert(block.predecessor.clone());
 
-                let chain_id = self.as_ref().chain_id.clone();
-                let nonces = self.as_mut().nonces.reveal_nonce(block.level);
+                let chain_id = state.chain_id.clone();
+                let nonces = state.nonces.reveal_nonce(block.level);
                 let branch = block.predecessor.clone();
-                let nonces = nonces.map(|(level, nonce)| Action::RevealNonce {
+                let nonces = nonces.map(|(level, nonce)| ActionInner::RevealNonce {
                     chain_id: chain_id.clone(),
                     branch: branch.clone(),
                     level,
                     nonce,
                 });
-                actions.extend(nonces);
+                state.actions.extend(nonces);
 
                 BakerState::Gathering {
                     state: self.into_inner(),
@@ -290,11 +298,11 @@ impl BakerState {
             }
             Ok(Event::Slots { level, delegates }) => match self {
                 BakerState::Gathering {
-                    state,
+                    mut state,
                     current_block,
                     gathering: Gathering::GetSlots(r),
                 } if r.is_pending() && level == r.id => {
-                    actions.push(Action::Idle);
+                    state.actions.push(ActionInner::Idle);
                     BakerState::Gathering {
                         state,
                         gathering: Gathering::GetSlots(r.done_ok(delegates)),
@@ -308,11 +316,11 @@ impl BakerState {
                 operations,
             }) => match self {
                 BakerState::Gathering {
-                    state,
+                    mut state,
                     gathering: Gathering::GetOperations(r),
                     current_block,
                 } if r.is_pending() && block_hash == r.id => {
-                    actions.push(Action::Idle);
+                    state.actions.push(ActionInner::Idle);
                     BakerState::Gathering {
                         state,
                         gathering: Gathering::GetOperations(r.done_ok(operations)),
@@ -326,11 +334,11 @@ impl BakerState {
                 live_blocks,
             }) => match self {
                 BakerState::Gathering {
-                    state,
+                    mut state,
                     current_block,
                     gathering: Gathering::GetLiveBlocks(r),
                 } if r.is_pending() && block_hash == r.id => {
-                    actions.push(Action::Idle);
+                    state.actions.push(ActionInner::Idle);
                     BakerState::Gathering {
                         state,
                         gathering: Gathering::GetLiveBlocks(r.done_ok(live_blocks)),
@@ -344,11 +352,11 @@ impl BakerState {
                 for op in new_operations {
                     match op.kind() {
                         None => {
-                            actions.push(Action::LogError(format!("unclassified operation {op:?}")))
+                            state.actions.push(ActionInner::LogError(format!("unclassified operation {op:?}")))
                         }
                         Some(OperationKind::Preendorsement(content)) => {
                             if !state.this_level.contains(&op.branch) {
-                                actions.push(Action::LogWarning(format!("the op is ahead, or very outdated {op:?}")));
+                                state.actions.push(ActionInner::LogWarning(format!("the op is ahead, or very outdated {op:?}")));
                                 state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
                                 continue;
                             };
@@ -361,8 +369,8 @@ impl BakerState {
                                 let event = tb::Event::PreVoted(block_id(&content), validator, now);
                                 let (tb_actions, records) =
                                     state.tb_state.handle(&state.tb_config, event);
-                                actions.extend(records.into_iter().map(Action::LogTb));
-                                state.handle_tb_actions(tb_actions, actions);
+                                state.actions.extend(records.into_iter().map(ActionInner::LogTb));
+                                state.handle_tb_actions(tb_actions);
                             }
                         }
                         Some(OperationKind::Endorsement(content)) => {
@@ -375,14 +383,14 @@ impl BakerState {
                                 let event = tb::Event::Voted(block_id(&content), validator, now);
                                 let (tb_actions, records) =
                                     state.tb_state.handle(&state.tb_config, event);
-                                actions.extend(records.into_iter().map(Action::LogTb));
-                                state.handle_tb_actions(tb_actions, actions);
+                                state.actions.extend(records.into_iter().map(ActionInner::LogTb));
+                                state.handle_tb_actions(tb_actions);
                             }
                         }
                         Some(_) => {
                             // the operation does not belong to live_blocks
                             if !state.live_blocks.contains(&op.branch) {
-                                actions.push(Action::LogWarning(format!("the op is outdated {op:?}")));
+                                state.actions.push(ActionInner::LogWarning(format!("the op is outdated {op:?}")));
                                 state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
                                 continue;
                             };
@@ -398,8 +406,8 @@ impl BakerState {
                 let state = self.as_mut();
                 let (tb_actions, records) =
                     state.tb_state.handle(&state.tb_config, tb::Event::Timeout);
-                actions.extend(records.into_iter().map(Action::LogTb));
-                state.handle_tb_actions(tb_actions, actions);
+                state.actions.extend(records.into_iter().map(ActionInner::LogTb));
+                state.handle_tb_actions(tb_actions);
                 self
             }
         }
@@ -419,33 +427,36 @@ impl Initialized {
     fn handle_tb_actions(
         &mut self,
         tb_actions: Vec<tb::Action<ContractTz1Hash, OperationSimple>>,
-        actions: &mut Vec<Action>,
     ) {
         for tb_action in tb_actions {
             match tb_action {
                 tb::Action::ScheduleTimeout(t) => {
-                    actions.push(Action::ScheduleTimeout(t));
+                    self.actions.push(ActionInner::ScheduleTimeout(t));
                 }
                 tb::Action::Propose(block, _, _) => {
-                    self.propose(*block, actions);
+                    self.propose(*block);
                 }
                 tb::Action::PreVote {
                     pred_hash,
                     block_id,
                 } => {
-                    self.pre_vote(pred_hash, block_id, actions);
+                    self.pre_vote(pred_hash, block_id);
                 }
                 tb::Action::Vote {
                     pred_hash,
                     block_id,
                 } => {
-                    self.vote(pred_hash, block_id, actions);
+                    self.vote(pred_hash, block_id);
                 }
             }
         }
     }
 
-    fn pre_vote(&self, pred_hash: tb::BlockHash, block_id: tb::BlockId, actions: &mut Vec<Action>) {
+    fn pre_vote(
+        &mut self,
+        pred_hash: tb::BlockHash,
+        block_id: tb::BlockId,
+    ) {
         let slot = self
             .tb_config
             .map
@@ -469,10 +480,14 @@ impl Initialized {
             ),
             signature: Signature(vec![]),
         };
-        actions.push(Action::PreVote(self.chain_id.clone(), preendorsement));
+        self.actions.push(ActionInner::PreVote(self.chain_id.clone(), preendorsement));
     }
 
-    fn vote(&self, pred_hash: tb::BlockHash, block_id: tb::BlockId, actions: &mut Vec<Action>) {
+    fn vote(
+        &mut self,
+        pred_hash: tb::BlockHash,
+        block_id: tb::BlockId,
+    ) {
         let slot = self
             .tb_config
             .map
@@ -496,13 +511,12 @@ impl Initialized {
             ),
             signature: Signature(vec![]),
         };
-        actions.push(Action::Vote(self.chain_id.clone(), endorsement));
+        self.actions.push(ActionInner::Vote(self.chain_id.clone(), endorsement));
     }
 
     fn propose(
         &mut self,
         block: tb::Block<ContractTz1Hash, OperationSimple>,
-        actions: &mut Vec<Action>,
     ) {
         let payload = match block.payload {
             Some(v) => v,
@@ -537,11 +551,11 @@ impl Initialized {
             match op.kind() {
                 None => {
                     let s = format!("unclassified operation {op:?}");
-                    actions.push(Action::LogWarning(s));
+                    self.actions.push(ActionInner::LogWarning(s));
                 }
                 Some(OperationKind::Endorsement(_) | OperationKind::Preendorsement(_)) => {
                     let s = format!("unexpected consensus operation {op:?}");
-                    actions.push(Action::LogWarning(s));
+                    self.actions.push(ActionInner::LogWarning(s));
                 }
                 Some(OperationKind::Votes) => operations[1].push(op),
                 Some(OperationKind::Anonymous) => {
@@ -579,7 +593,7 @@ impl Initialized {
         };
         let timestamp = block.time_header.timestamp.unix_epoch.as_secs() as i64;
 
-        actions.push(Action::Propose {
+        self.actions.push(ActionInner::Propose {
             chain_id: self.chain_id.clone(),
             proof_of_work_threshold: self.proof_of_work_threshold,
             protocol_header,

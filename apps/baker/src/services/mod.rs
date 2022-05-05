@@ -14,14 +14,18 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use crypto::hash::{BlockHash, ChainId};
 use reqwest::Url;
 use tenderbake as tb;
 use tezos_encoding::{enc::BinWriter, types::SizedBytes};
 use tezos_messages::protocol::{
-    proto_005_2::operation::SeedNonceRevelationOperation, proto_012::operation::Contents,
+    proto_005_2::operation::SeedNonceRevelationOperation,
+    proto_012::operation::{Contents, InlinedEndorsement, InlinedPreendorsement},
 };
 
 use crate::proof_of_work::guess_proof_of_work;
+
+use self::{client::ProtocolBlockHeader, event::OperationSimple};
 
 pub struct Services {
     pub client: client::RpcClient,
@@ -34,6 +38,42 @@ pub struct Services {
 pub struct EventWithTime {
     pub event: Result<event::Event, client::RpcError>,
     pub now: tenderbake::Timestamp,
+}
+
+#[derive(Clone)]
+pub enum ActionInner {
+    Idle,
+    GetSlots {
+        level: i32,
+    },
+    GetOperationsForBlock {
+        block_hash: BlockHash,
+    },
+    GetLiveBlocks {
+        block_hash: BlockHash,
+    },
+    LogError(String),
+    LogWarning(String),
+    LogTb(tb::LogRecord),
+    MonitorOperations,
+    ScheduleTimeout(tb::Timestamp),
+    PreVote(ChainId, InlinedPreendorsement),
+    Vote(ChainId, InlinedEndorsement),
+    Propose {
+        chain_id: ChainId,
+        proof_of_work_threshold: u64,
+        protocol_header: ProtocolBlockHeader,
+        predecessor_hash: BlockHash,
+        operations: [Vec<OperationSimple>; 4],
+        timestamp: i64,
+        round: i32,
+    },
+    RevealNonce {
+        chain_id: ChainId,
+        branch: BlockHash,
+        level: i32,
+        nonce: Vec<u8>,
+    },
 }
 
 impl Services {
@@ -70,11 +110,12 @@ impl Services {
         )
     }
 
-    pub fn execute(&mut self, action: event::Action) {
-        // TODO:
+    pub fn execute(&mut self, action: &ActionInner) {
+        let action = action.clone();
+
         match action {
-            event::Action::Idle => drop(self.sender.send(Ok(event::Event::Idle))),
-            event::Action::GetSlots { level } => match self.client.validators(level) {
+            ActionInner::Idle => drop(self.sender.send(Ok(event::Event::Idle))),
+            ActionInner::GetSlots { level } => match self.client.validators(level) {
                 Ok(delegates) => {
                     let _ = self
                         .sender
@@ -82,7 +123,7 @@ impl Services {
                 }
                 Err(err) => drop(self.sender.send(Err(err))),
             },
-            event::Action::GetOperationsForBlock { block_hash } => {
+            ActionInner::GetOperationsForBlock { block_hash } => {
                 match self.client.get_operations_for_block(&block_hash) {
                     Ok(operations) => {
                         let _ = self.sender.send(Ok(event::Event::OperationsForBlock {
@@ -93,7 +134,7 @@ impl Services {
                     Err(err) => drop(self.sender.send(Err(err))),
                 }
             }
-            event::Action::GetLiveBlocks { block_hash } => {
+            ActionInner::GetLiveBlocks { block_hash } => {
                 match self.client.get_live_blocks(&block_hash) {
                     Ok(live_blocks) => {
                         let _ = self.sender.send(Ok(event::Event::LiveBlocks {
@@ -104,13 +145,13 @@ impl Services {
                     Err(err) => drop(self.sender.send(Err(err))),
                 }
             }
-            event::Action::LogError(error) => slog::error!(self.log, " .  {error}"),
-            event::Action::LogWarning(warn) => slog::warn!(self.log, " .  {warn}"),
-            event::Action::LogTb(record) => match record.level() {
+            ActionInner::LogError(error) => slog::error!(self.log, " .  {error}"),
+            ActionInner::LogWarning(warn) => slog::warn!(self.log, " .  {warn}"),
+            ActionInner::LogTb(record) => match record.level() {
                 tb::LogLevel::Info => slog::info!(self.log, "{record}"),
                 tb::LogLevel::Warn => slog::warn!(self.log, "{record}"),
             },
-            event::Action::MonitorOperations => {
+            ActionInner::MonitorOperations => {
                 // TODO: investigate it
                 let mut tries = 3;
                 while tries > 0 {
@@ -122,8 +163,8 @@ impl Services {
                     }
                 }
             }
-            event::Action::ScheduleTimeout(t) => self.timer.schedule(t),
-            event::Action::PreVote(chain_id, op) => {
+            ActionInner::ScheduleTimeout(t) => self.timer.schedule(t),
+            ActionInner::PreVote(chain_id, op) => {
                 let (data, _) = self.crypto.sign(0x12, &chain_id, &op).unwrap();
                 match self
                     .client
@@ -133,7 +174,7 @@ impl Services {
                     Err(err) => slog::error!(self.log, " .  {err}"),
                 }
             }
-            event::Action::Vote(chain_id, op) => {
+            ActionInner::Vote(chain_id, op) => {
                 let (data, _) = self.crypto.sign(0x13, &chain_id, &op).unwrap();
                 match self
                     .client
@@ -143,7 +184,7 @@ impl Services {
                     Err(err) => slog::error!(self.log, " .  {err}"),
                 }
             }
-            event::Action::Propose {
+            ActionInner::Propose {
                 chain_id,
                 proof_of_work_threshold,
                 mut protocol_header,
@@ -199,7 +240,7 @@ impl Services {
                     }
                 }
             }
-            event::Action::RevealNonce {
+            ActionInner::RevealNonce {
                 chain_id,
                 branch,
                 level,

@@ -3,6 +3,10 @@ name = "baker"
 version = "0.1.0"
 edition = "2018"
 
+[[bin]]
+name = "baker"
+path = "src/bin/baker.rs"
+
 [dependencies]
 structopt = { version = "0.3.25" }
 reqwest = { version = "0.11.8", features = ["blocking", "stream"] }
@@ -20,9 +24,22 @@ lazy_static = "1.4"
 env_logger = { version = "0.9.0" }
 rand = { version = "0.8.5" }
 
-redux-rs = { git = "https://github.com/tezedge/redux-rs.git", tag = "tezedge-v1.11.0", features = ["serde"] }
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
+fuzzcheck_mutators_derive = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
+
+redux-rs = { git = "https://github.com/tezedge/redux-rs.git", rev = "56e116d", features = ["serde"] }
 crypto = { path = "../../crypto" }
 tezos_messages = { path = "../../tezos/messages" }
 tezos_encoding = { path = "../../tezos/encoding" }
 tezos_encoding_derive = { path = "../../tezos/encoding-derive" }
 tenderbake = { path = "../tenderbake" }
+
+[features]
+fuzzing = [
+    "fuzzcheck",
+    "fuzzcheck_mutators_derive",
+    "redux-rs/fuzzing",
+    "crypto/fuzzing",
+    "tezos_encoding/fuzzing",
+    "tezos_messages/fuzzing",
+    ]

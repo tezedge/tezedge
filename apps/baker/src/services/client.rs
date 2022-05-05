@@ -283,7 +283,6 @@ impl RpcClient {
                 level: header.level,
                 predecessor: header.predecessor,
                 timestamp,
-                fitness: header.fitness,
                 payload_hash,
                 payload_round,
                 round,

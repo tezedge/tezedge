@@ -6,15 +6,9 @@ use std::{collections::BTreeMap, fmt, str};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{
-    BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, OperationHash, ProtocolHash, Signature,
+    BlockHash, BlockPayloadHash, ContractTz1Hash, OperationHash, ProtocolHash, Signature,
 };
-use tezos_messages::protocol::proto_012::operation::{
-    EndorsementOperation, InlinedEndorsement, InlinedPreendorsement,
-};
-
-use tenderbake as tb;
-
-use super::client::ProtocolBlockHeader;
+use tezos_messages::protocol::proto_012::operation::EndorsementOperation;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OperationSimple {
@@ -88,12 +82,12 @@ impl OperationSimple {
     }
 }
 
+#[derive(Clone)]
 pub struct Block {
     pub hash: BlockHash,
     pub level: i32,
     pub predecessor: BlockHash,
     pub timestamp: u64,
-    pub fitness: Vec<String>,
     pub payload_hash: BlockPayloadHash,
     pub payload_round: i32,
     pub round: i32,
@@ -117,39 +111,4 @@ pub enum Event {
     },
     Operations(Vec<OperationSimple>),
     Tick,
-}
-
-pub enum Action {
-    Idle,
-    GetSlots {
-        level: i32,
-    },
-    GetOperationsForBlock {
-        block_hash: BlockHash,
-    },
-    GetLiveBlocks {
-        block_hash: BlockHash,
-    },
-    LogError(String),
-    LogWarning(String),
-    LogTb(tb::LogRecord),
-    MonitorOperations,
-    ScheduleTimeout(tb::Timestamp),
-    PreVote(ChainId, InlinedPreendorsement),
-    Vote(ChainId, InlinedEndorsement),
-    Propose {
-        chain_id: ChainId,
-        proof_of_work_threshold: u64,
-        protocol_header: ProtocolBlockHeader,
-        predecessor_hash: BlockHash,
-        operations: [Vec<OperationSimple>; 4],
-        timestamp: i64,
-        round: i32,
-    },
-    RevealNonce {
-        chain_id: ChainId,
-        branch: BlockHash,
-        level: i32,
-        nonce: Vec<u8>,
-    },
 }
