@@ -583,19 +583,23 @@ impl Initialized {
             }
         }
         let payload_round = payload.payload_round;
-        let hashes = operations[1..]
-            .as_ref()
-            .iter()
-            .flatten()
-            .filter_map(|op| op.hash.as_ref().cloned())
-            .collect::<Vec<_>>();
-        let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
-        let payload_hash = BlockPayloadHash::calculate(
-            &predecessor_hash,
-            block.time_header.round as u32,
-            &operation_list_hash,
-        )
-        .unwrap();
+        let payload_hash = if payload.hash != tb::PayloadHash([0; 32]) {
+            BlockPayloadHash(payload.hash.0.to_vec())
+        } else {
+            let hashes = operations[1..]
+                .as_ref()
+                .iter()
+                .flatten()
+                .filter_map(|op| op.hash.as_ref().cloned())
+                .collect::<Vec<_>>();
+            let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
+            BlockPayloadHash::calculate(
+                &predecessor_hash,
+                payload_round as u32,
+                &operation_list_hash,
+            )
+            .unwrap()
+        };
         let seed_nonce_hash = self.nonces.gen_nonce(block.level);
         let protocol_header = ProtocolBlockHeader {
             payload_hash,
