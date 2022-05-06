@@ -261,6 +261,8 @@ impl BakerState {
                         let proposal = Box::new(proposal(&current_block, operations, &state.tb_config));
                         let (tb_actions, records) = state.tb_state.handle(&state.tb_config, tb::Event::Proposal(proposal, now));
                         state.actions.extend(records.into_iter().map(ActionInner::LogTb));
+                        let block_info = format!("hash: {}, predecessor: {}", current_block.hash, current_block.predecessor);
+                        state.actions.push(ActionInner::LogInfo(block_info));
                         state.handle_tb_actions(tb_actions);
                         if let Some(ops) = state.ahead_ops.remove(&current_block.predecessor) {
                             BakerState::Idle(state).handle_event(EventWithTime {

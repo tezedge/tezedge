@@ -44,6 +44,11 @@ pub struct EventWithTime {
 #[derive(Clone)]
 pub enum ActionInner {
     Idle,
+    LogError(String),
+    LogWarning(String),
+    LogInfo(String),
+    LogTb(tb::LogRecord),
+
     GetSlots {
         level: i32,
     },
@@ -53,11 +58,14 @@ pub enum ActionInner {
     GetLiveBlocks {
         block_hash: BlockHash,
     },
-    LogError(String),
-    LogWarning(String),
-    LogTb(tb::LogRecord),
     MonitorOperations,
     ScheduleTimeout(tb::Timestamp),
+    RevealNonce {
+        chain_id: ChainId,
+        branch: BlockHash,
+        level: i32,
+        nonce: Vec<u8>,
+    },
     PreVote(ChainId, InlinedPreendorsement),
     Vote(ChainId, InlinedEndorsement),
     Propose {
@@ -68,12 +76,6 @@ pub enum ActionInner {
         operations: [Vec<OperationSimple>; 4],
         timestamp: i64,
         round: i32,
-    },
-    RevealNonce {
-        chain_id: ChainId,
-        branch: BlockHash,
-        level: i32,
-        nonce: Vec<u8>,
     },
 }
 
@@ -125,6 +127,13 @@ impl BakerService for Services {
 
         match action {
             ActionInner::Idle => drop(self.sender.send(Ok(event::Event::Idle))),
+            ActionInner::LogError(error) => slog::error!(self.log, " .  {error}"),
+            ActionInner::LogWarning(warn) => slog::warn!(self.log, " .  {warn}"),
+            ActionInner::LogInfo(info) => slog::info!(self.log, " .  {info}"),
+            ActionInner::LogTb(record) => match record.level() {
+                tb::LogLevel::Info => slog::info!(self.log, "{record}"),
+                tb::LogLevel::Warn => slog::warn!(self.log, "{record}"),
+            },
             ActionInner::GetSlots { level } => match self.client.validators(level) {
                 Ok(delegates) => {
                     let _ = self
@@ -155,12 +164,6 @@ impl BakerService for Services {
                     Err(err) => drop(self.sender.send(Err(err))),
                 }
             }
-            ActionInner::LogError(error) => slog::error!(self.log, " .  {error}"),
-            ActionInner::LogWarning(warn) => slog::warn!(self.log, " .  {warn}"),
-            ActionInner::LogTb(record) => match record.level() {
-                tb::LogLevel::Info => slog::info!(self.log, "{record}"),
-                tb::LogLevel::Warn => slog::warn!(self.log, "{record}"),
-            },
             ActionInner::MonitorOperations => {
                 // TODO: investigate it
                 let mut tries = 3;
@@ -174,6 +177,25 @@ impl BakerService for Services {
                 }
             }
             ActionInner::ScheduleTimeout(t) => self.timer.schedule(t),
+            ActionInner::RevealNonce {
+                chain_id,
+                branch,
+                level,
+                nonce,
+            } => {
+                let content = Contents::SeedNonceRevelation(SeedNonceRevelationOperation {
+                    level,
+                    nonce: SizedBytes(nonce.as_slice().try_into().unwrap()),
+                });
+                let mut bytes = branch.0.clone();
+                content.bin_write(&mut bytes).unwrap();
+                bytes.extend_from_slice(&[0; 64]);
+                let op_hex = hex::encode(bytes);
+                match self.client.inject_operation(&chain_id, op_hex, true) {
+                    Ok(hash) => slog::info!(self.log, " .  inject nonce_reveal: {hash}"),
+                    Err(err) => slog::error!(self.log, " .  {err}"),
+                }
+            }
             ActionInner::PreVote(chain_id, op) => {
                 let (data, _) = self.crypto.sign(0x12, &chain_id, &op).unwrap();
                 match self
@@ -248,25 +270,6 @@ impl BakerService for Services {
                         slog::error!(self.log, " .  {err}");
                         slog::error!(self.log, " .  {}", serde_json::to_string(&ops).unwrap());
                     }
-                }
-            }
-            ActionInner::RevealNonce {
-                chain_id,
-                branch,
-                level,
-                nonce,
-            } => {
-                let content = Contents::SeedNonceRevelation(SeedNonceRevelationOperation {
-                    level,
-                    nonce: SizedBytes(nonce.as_slice().try_into().unwrap()),
-                });
-                let mut bytes = branch.0.clone();
-                content.bin_write(&mut bytes).unwrap();
-                bytes.extend_from_slice(&[0; 64]);
-                let op_hex = hex::encode(bytes);
-                match self.client.inject_operation(&chain_id, op_hex, true) {
-                    Ok(hash) => slog::info!(self.log, " .  inject nonce_reveal: {hash}"),
-                    Err(err) => slog::error!(self.log, " .  {err}"),
                 }
             }
         }
