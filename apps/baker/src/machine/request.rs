@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fmt;
+
 pub struct Request<Id, Ok, Err> {
     pub id: Id,
     pub state: RequestState<Ok, Err>,
@@ -36,6 +38,19 @@ impl<Id, Ok, Err> Request<Id, Ok, Err> {
         Request {
             id: self.id,
             state: RequestState::Error(err),
+        }
+    }
+}
+
+impl<Id, Ok, Err> fmt::Display for Request<Id, Ok, Err>
+where
+    Id: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.state {
+            RequestState::Pending => write!(f, "pending {}", self.id),
+            RequestState::Success(_) => write!(f, "success {}", self.id),
+            RequestState::Error(_) => write!(f, "error {}", self.id),
         }
     }
 }

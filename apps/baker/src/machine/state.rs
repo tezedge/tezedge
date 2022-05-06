@@ -5,7 +5,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryInto,
     mem,
-    time::Duration, rc::Rc,
+    time::Duration, rc::Rc, fmt,
 };
 
 use serde::{Deserialize, Serialize};
@@ -50,6 +50,16 @@ pub enum Gathering {
     GetLiveBlocks(Request<BlockHash, Vec<BlockHash>, Rc<RpcError>>),
 }
 
+impl fmt::Display for Gathering {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Gathering::GetSlots(r) => write!(f, "slots {r}"),
+            Gathering::GetOperations(r) => write!(f, "operations {r}"),
+            Gathering::GetLiveBlocks(r) => write!(f, "live blocks {r}"),
+        }
+    }
+}
+
 pub enum BakerState {
     Idle(Initialized),
     Gathering {
@@ -65,6 +75,19 @@ pub enum BakerState {
         state: Initialized,
         error: Rc<RpcError>,
     },
+}
+
+impl fmt::Display for BakerState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BakerState::Idle(_) => write!(f, "idle"),
+            BakerState::Gathering { gathering, .. } => write!(f, "gathering {gathering}"),
+            BakerState::HaveBlock { current_block, .. } => {
+                write!(f, "have block {}:{}", current_block.level, current_block.round)
+            },
+            BakerState::Invalid { error, .. } => write!(f, "invalid {error}"),
+        }
+    }
 }
 
 pub struct Initialized {
@@ -165,12 +188,22 @@ impl BakerState {
         })
     }
 
-    #[rustfmt::skip]
     pub fn handle_event(mut self, event: EventWithTime) -> Self {
-        let EventWithTime { event, now } = event;
-
         // those are already executed
         self.as_mut().actions.clear();
+
+        self.handle_event_inner(event)
+    }
+
+    #[rustfmt::skip]
+    fn handle_event_inner(mut self, event: EventWithTime) -> Self {
+        let EventWithTime { event, now } = event;
+
+        let description = self.to_string();
+        self.as_mut().actions.push(ActionInner::LogInfo {
+            with_prefix: false,
+            description,
+        });
 
         match event {
             Err(error) => {
@@ -261,11 +294,14 @@ impl BakerState {
                         let proposal = Box::new(proposal(&current_block, operations, &state.tb_config));
                         let (tb_actions, records) = state.tb_state.handle(&state.tb_config, tb::Event::Proposal(proposal, now));
                         state.actions.extend(records.into_iter().map(ActionInner::LogTb));
-                        let block_info = format!("hash: {}, predecessor: {}", current_block.hash, current_block.predecessor);
-                        state.actions.push(ActionInner::LogInfo(block_info));
+                        let description = format!("hash: {}, predecessor: {}", current_block.hash, current_block.predecessor);
+                        state.actions.push(ActionInner::LogInfo {
+                            with_prefix: true,
+                            description,
+                        });
                         state.handle_tb_actions(tb_actions);
                         if let Some(ops) = state.ahead_ops.remove(&current_block.predecessor) {
-                            BakerState::Idle(state).handle_event(EventWithTime {
+                            BakerState::Idle(state).handle_event_inner(EventWithTime {
                                 event: Ok(Event::Operations(ops)),
                                 now,
                             })
@@ -277,6 +313,7 @@ impl BakerState {
                 }
             }
             Ok(Event::Block(block)) => {
+                // dbg!(format!("handle in state machine: {}:{}", block.level, block.round));
                 let state = self.as_mut();
                 let gathering = if block.level > state.tb_config.map.level {
                     // a new level

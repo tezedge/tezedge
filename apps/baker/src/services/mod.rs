@@ -46,7 +46,10 @@ pub enum ActionInner {
     Idle,
     LogError(String),
     LogWarning(String),
-    LogInfo(String),
+    LogInfo {
+        with_prefix: bool,
+        description: String,
+    },
     LogTb(tb::LogRecord),
 
     GetSlots {
@@ -129,7 +132,12 @@ impl BakerService for Services {
             ActionInner::Idle => drop(self.sender.send(Ok(event::Event::Idle))),
             ActionInner::LogError(error) => slog::error!(self.log, " .  {error}"),
             ActionInner::LogWarning(warn) => slog::warn!(self.log, " .  {warn}"),
-            ActionInner::LogInfo(info) => slog::info!(self.log, " .  {info}"),
+            ActionInner::LogInfo { with_prefix: true, description } => {
+                slog::info!(self.log, " .  {description}")
+            },
+            ActionInner::LogInfo { with_prefix: false, description } => {
+                slog::info!(self.log, "{description}")
+            },
             ActionInner::LogTb(record) => match record.level() {
                 tb::LogLevel::Info => slog::info!(self.log, "{record}"),
                 tb::LogLevel::Warn => slog::warn!(self.log, "{record}"),
