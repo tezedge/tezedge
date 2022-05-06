@@ -11,10 +11,11 @@ use std::{
     convert::TryInto,
     path::PathBuf,
     sync::mpsc,
-    time::{Duration, SystemTime},
+    time::{Duration, SystemTime}, rc::Rc,
 };
 
 use crypto::hash::{BlockHash, ChainId};
+use redux_rs::TimeService;
 use reqwest::Url;
 use tenderbake as tb;
 use tezos_encoding::{enc::BinWriter, types::SizedBytes};
@@ -36,7 +37,7 @@ pub struct Services {
 }
 
 pub struct EventWithTime {
-    pub event: Result<event::Event, client::RpcError>,
+    pub event: Result<event::Event, Rc<client::RpcError>>,
     pub now: tenderbake::Timestamp,
 }
 
@@ -105,12 +106,21 @@ impl Services {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap();
                 let now = tb::Timestamp { unix_epoch };
-                EventWithTime { now, event }
+                EventWithTime {
+                    now,
+                    event: event.map_err(Rc::new),
+                }
             }),
         )
     }
+}
 
-    pub fn execute(&mut self, action: &ActionInner) {
+pub trait BakerService {
+    fn execute(&mut self, action: &ActionInner);
+}
+
+impl BakerService for Services {
+    fn execute(&mut self, action: &ActionInner) {
         let action = action.clone();
 
         match action {
@@ -262,3 +272,5 @@ impl Services {
         }
     }
 }
+
+impl TimeService for Services {}

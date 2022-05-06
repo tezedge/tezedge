@@ -5,7 +5,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryInto,
     mem,
-    time::Duration,
+    time::Duration, rc::Rc,
 };
 
 use serde::{Deserialize, Serialize};
@@ -43,11 +43,11 @@ pub struct SlotsInfo {
 pub enum Gathering {
     // for some `level: i32` we request a collection of public key hash
     // and corresponding slots
-    GetSlots(Request<i32, BTreeMap<ContractTz1Hash, Vec<u16>>, RpcError>),
+    GetSlots(Request<i32, BTreeMap<ContractTz1Hash, Vec<u16>>, Rc<RpcError>>),
     // for some `BlockHash` we request its operations
-    GetOperations(Request<BlockHash, Vec<Vec<OperationSimple>>, RpcError>),
+    GetOperations(Request<BlockHash, Vec<Vec<OperationSimple>>, Rc<RpcError>>),
     // for some `BlockHash` we request a list of live blocks
-    GetLiveBlocks(Request<BlockHash, Vec<BlockHash>, RpcError>),
+    GetLiveBlocks(Request<BlockHash, Vec<BlockHash>, Rc<RpcError>>),
 }
 
 pub enum BakerState {
@@ -63,7 +63,7 @@ pub enum BakerState {
     },
     Invalid {
         state: Initialized,
-        error: RpcError,
+        error: Rc<RpcError>,
     },
 }
 
@@ -86,6 +86,20 @@ pub struct Initialized {
     pub tb_state: tb::Machine<ContractTz1Hash, OperationSimple, 200>,
 
     pub actions: Vec<ActionInner>,
+}
+
+pub struct BakerStateEjectable(pub Option<BakerState>);
+
+impl AsRef<Option<BakerState>> for BakerStateEjectable {
+    fn as_ref(&self) -> &Option<BakerState> {
+        &self.0
+    }
+}
+
+impl AsMut<Option<BakerState>> for BakerStateEjectable {
+    fn as_mut(&mut self) -> &mut Option<BakerState> {
+        &mut self.0
+    }
 }
 
 impl AsRef<Initialized> for BakerState {

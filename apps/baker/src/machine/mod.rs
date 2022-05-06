@@ -9,4 +9,9 @@ mod cycle_nonce;
 mod request;
 mod state;
 
-pub use self::{state::BakerState, actions::*, reducer::baker_reducer, effects::baker_effects};
+pub use self::{
+    state::{BakerState, BakerStateEjectable},
+    actions::*,
+    reducer::baker_reducer,
+    effects::baker_effects,
+};

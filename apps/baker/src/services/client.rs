@@ -140,7 +140,7 @@ impl RpcClient {
 
     pub fn get_constants(&self) -> Result<Constants, RpcError> {
         #[derive(Deserialize, Debug)]
-        pub struct ConstantsInner {
+        struct ConstantsInner {
             nonce_length: usize,
             blocks_per_cycle: u32,
             blocks_per_commitment: u32,
@@ -214,9 +214,9 @@ impl RpcClient {
             .append_pair("level", &level.to_string());
 
         #[derive(Deserialize)]
-        pub struct Validator {
-            pub delegate: ContractTz1Hash,
-            pub slots: Vec<u16>,
+        struct Validator {
+            delegate: ContractTz1Hash,
+            slots: Vec<u16>,
         }
 
         let validators = self
@@ -360,7 +360,7 @@ impl RpcClient {
         }
 
         #[derive(Deserialize)]
-        pub struct ShellBlockShortHeader {
+        struct ShellBlockShortHeader {
             level: i32,
             proto: u8,
             predecessor: BlockHash,
