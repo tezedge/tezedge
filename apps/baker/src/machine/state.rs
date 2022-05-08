@@ -200,10 +200,12 @@ impl BakerState {
         let EventWithTime { event, now } = event;
 
         let description = self.to_string();
-        self.as_mut().actions.push(ActionInner::LogInfo {
-            with_prefix: false,
-            description,
-        });
+        if !matches!(&event, Ok(Event::Idle)) {
+            self.as_mut().actions.push(ActionInner::LogInfo {
+                with_prefix: false,
+                description,
+            });
+        }
 
         match event {
             Err(error) => {
