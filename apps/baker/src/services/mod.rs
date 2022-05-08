@@ -10,13 +10,14 @@ pub mod timer;
 use std::{
     convert::TryInto,
     path::PathBuf,
-    sync::mpsc,
-    time::{Duration, SystemTime}, rc::Rc,
+    sync::{mpsc, Arc},
+    time::{Duration, SystemTime},
 };
+
+use reqwest::Url;
 
 use crypto::hash::{BlockHash, ChainId};
 use redux_rs::TimeService;
-use reqwest::Url;
 use tenderbake as tb;
 use tezos_encoding::{enc::BinWriter, types::SizedBytes};
 use tezos_messages::protocol::{
@@ -24,7 +25,13 @@ use tezos_messages::protocol::{
     proto_012::operation::{Contents, InlinedEndorsement, InlinedPreendorsement},
 };
 
-use crate::proof_of_work::guess_proof_of_work;
+use crate::{
+    machine::{
+        BakerAction, IdleEventAction, LiveBlocksEventAction, OperationsForBlockEventAction,
+        RpcErrorAction, SlotsEventAction,
+    },
+    proof_of_work::guess_proof_of_work,
+};
 
 use self::{client::ProtocolBlockHeader, event::OperationSimple};
 
@@ -33,11 +40,11 @@ pub struct Services {
     pub crypto: key::CryptoService,
     log: slog::Logger,
     timer: timer::Timer,
-    sender: mpsc::Sender<Result<event::Event, client::RpcError>>,
+    sender: mpsc::Sender<BakerAction>,
 }
 
 pub struct EventWithTime {
-    pub event: Result<event::Event, Rc<client::RpcError>>,
+    pub event: BakerAction,
     pub now: tenderbake::Timestamp,
 }
 
@@ -111,10 +118,7 @@ impl Services {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap();
                 let now = tb::Timestamp { unix_epoch };
-                EventWithTime {
-                    now,
-                    event: event.map_err(Rc::new),
-                }
+                EventWithTime { now, event }
             }),
         )
     }
@@ -129,47 +133,62 @@ impl BakerService for Services {
         let action = action.clone();
 
         match action {
-            ActionInner::Idle => drop(self.sender.send(Ok(event::Event::Idle))),
+            ActionInner::Idle => drop(self.sender.send(BakerAction::IdleEvent(IdleEventAction {}))),
             ActionInner::LogError(error) => slog::error!(self.log, " .  {error}"),
             ActionInner::LogWarning(warn) => slog::warn!(self.log, " .  {warn}"),
-            ActionInner::LogInfo { with_prefix: true, description } => {
+            ActionInner::LogInfo {
+                with_prefix: true,
+                description,
+            } => {
                 slog::info!(self.log, " .  {description}")
-            },
-            ActionInner::LogInfo { with_prefix: false, description } => {
+            }
+            ActionInner::LogInfo {
+                with_prefix: false,
+                description,
+            } => {
                 slog::info!(self.log, "{description}")
-            },
+            }
             ActionInner::LogTb(record) => match record.level() {
                 tb::LogLevel::Info => slog::info!(self.log, "{record}"),
                 tb::LogLevel::Warn => slog::warn!(self.log, "{record}"),
             },
             ActionInner::GetSlots { level } => match self.client.validators(level) {
                 Ok(delegates) => {
-                    let _ = self
-                        .sender
-                        .send(Ok(event::Event::Slots { level, delegates }));
+                    let _ = self.sender.send(BakerAction::SlotsEvent(SlotsEventAction {
+                        level,
+                        delegates,
+                    }));
                 }
-                Err(err) => drop(self.sender.send(Err(err))),
+                Err(err) => drop(self.sender.send(BakerAction::RpcError(RpcErrorAction {
+                    error: Arc::new(err),
+                }))),
             },
             ActionInner::GetOperationsForBlock { block_hash } => {
                 match self.client.get_operations_for_block(&block_hash) {
                     Ok(operations) => {
-                        let _ = self.sender.send(Ok(event::Event::OperationsForBlock {
+                        let act = OperationsForBlockEventAction {
                             block_hash,
                             operations,
-                        }));
+                        };
+                        let _ = self.sender.send(BakerAction::OperationsForBlockEvent(act));
                     }
-                    Err(err) => drop(self.sender.send(Err(err))),
+                    Err(err) => drop(self.sender.send(BakerAction::RpcError(RpcErrorAction {
+                        error: Arc::new(err),
+                    }))),
                 }
             }
             ActionInner::GetLiveBlocks { block_hash } => {
                 match self.client.get_live_blocks(&block_hash) {
                     Ok(live_blocks) => {
-                        let _ = self.sender.send(Ok(event::Event::LiveBlocks {
+                        let act = LiveBlocksEventAction {
                             block_hash,
                             live_blocks,
-                        }));
+                        };
+                        let _ = self.sender.send(BakerAction::LiveBlocksEvent(act));
                     }
-                    Err(err) => drop(self.sender.send(Err(err))),
+                    Err(err) => drop(self.sender.send(BakerAction::RpcError(RpcErrorAction {
+                        error: Arc::new(err),
+                    }))),
                 }
             }
             ActionInner::MonitorOperations => {

@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use redux_rs::{Store, ActionWithMeta, TimeService};
+use redux_rs::{ActionWithMeta, Store, TimeService};
 
 use crate::services::BakerService;
 
-use super::{BakerState, BakerAction};
+use super::{BakerAction, BakerState};
 
 pub fn baker_effects<S, Srv, A>(store: &mut Store<S, Srv, A>, action: &ActionWithMeta<A>)
 where
@@ -20,8 +20,18 @@ where
     }
 
     match action.action.as_ref() {
+        // not our action
         None => (),
         // don't handle events here
-        Some(BakerAction::RpcError(_) | BakerAction::IdleEvent(_) | BakerAction::ProposalEvent(_) | BakerAction::SlotsEvent(_) | BakerAction::OperationsForBlockEvent(_) | BakerAction::LiveBlocksEvent(_) | BakerAction::OperationsEvent(_) | BakerAction::TickEvent(_)) => (),
+        Some(
+            BakerAction::RpcError(_)
+            | BakerAction::IdleEvent(_)
+            | BakerAction::ProposalEvent(_)
+            | BakerAction::SlotsEvent(_)
+            | BakerAction::OperationsForBlockEvent(_)
+            | BakerAction::LiveBlocksEvent(_)
+            | BakerAction::OperationsEvent(_)
+            | BakerAction::TickEvent(_),
+        ) => (),
     }
 }

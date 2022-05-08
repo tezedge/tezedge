@@ -1,13 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, fmt, str};
+use std::{fmt, str};
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{
-    BlockHash, BlockPayloadHash, ContractTz1Hash, OperationHash, ProtocolHash, Signature,
-};
+use crypto::hash::{BlockHash, BlockPayloadHash, OperationHash, ProtocolHash, Signature};
 use tezos_messages::protocol::proto_012::operation::EndorsementOperation;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -92,23 +90,4 @@ pub struct Block {
     pub payload_round: i32,
     pub round: i32,
     pub transition: bool,
-}
-
-pub enum Event {
-    Idle,
-    Block(Block),
-    Slots {
-        level: i32,
-        delegates: BTreeMap<ContractTz1Hash, Vec<u16>>,
-    },
-    OperationsForBlock {
-        block_hash: BlockHash,
-        operations: Vec<Vec<OperationSimple>>,
-    },
-    LiveBlocks {
-        block_hash: BlockHash,
-        live_blocks: Vec<BlockHash>,
-    },
-    Operations(Vec<OperationSimple>),
-    Tick,
 }

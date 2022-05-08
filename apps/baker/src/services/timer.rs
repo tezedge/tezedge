@@ -5,7 +5,7 @@ use std::{sync::mpsc, thread, time::SystemTime};
 
 use tenderbake as tb;
 
-use super::event::Event;
+use crate::machine::{BakerAction, TickEventAction};
 
 pub struct Timer {
     handle: Option<thread::JoinHandle<()>>,
@@ -13,10 +13,7 @@ pub struct Timer {
 }
 
 impl Timer {
-    pub fn spawn<E>(event_sender: mpsc::Sender<Result<Event, E>>) -> Self
-    where
-        E: Send + 'static,
-    {
+    pub fn spawn(event_sender: mpsc::Sender<BakerAction>) -> Self {
         let (task_tx, task_rx) = mpsc::channel::<tb::Timestamp>();
         let handle = thread::spawn(move || {
             let mut timeout_duration = None;
@@ -25,7 +22,7 @@ impl Timer {
                     Some(duration) => match task_rx.recv_timeout(duration) {
                         Ok(next) => next,
                         Err(mpsc::RecvTimeoutError::Timeout) => {
-                            let _ = event_sender.send(Ok(Event::Tick));
+                            let _ = event_sender.send(BakerAction::TickEvent(TickEventAction {}));
                             continue;
                         }
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,

@@ -23,7 +23,6 @@ nom = "6.1"
 lazy_static = "1.4"
 env_logger = { version = "0.9.0" }
 rand = { version = "0.8.5" }
-either = { version = "1.5" }
 
 fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
 fuzzcheck_mutators_derive = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
@@ -43,4 +42,4 @@ fuzzing = [
     "crypto/fuzzing",
     "tezos_encoding/fuzzing",
     "tezos_messages/fuzzing",
-    ]
+]
