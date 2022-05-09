@@ -200,7 +200,7 @@ impl BakerState {
         let EventWithTime { event, now } = event;
 
         let description = self.to_string();
-        if !matches!(&event, BakerAction::IdleEvent(_)) {
+        if !matches!(&event, BakerAction::OperationsEvent(_)) {
             self.as_mut().actions.push(ActionInner::LogInfo {
                 with_prefix: false,
                 description,
