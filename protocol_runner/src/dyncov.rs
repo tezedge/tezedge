@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use ocaml_interop::{ocaml_export, OCaml, OCamlRuntime};
+use ocaml_interop::{ocaml_export, OCaml, OCamlRef, OCamlRuntime};
 
 #[link(name = "tezos")]
 extern "C" {
@@ -17,7 +17,7 @@ pub fn initialize_callbacks() {
 }
 
 ocaml_export! {
-    fn protocol_runner_dump_gcov(rt, _arg: ()) {
+    fn protocol_runner_dump_gcov(rt, _arg: OCamlRef<()>) {
         extern "C" {
             fn __gcov_dump();
             fn __gcov_reset();
