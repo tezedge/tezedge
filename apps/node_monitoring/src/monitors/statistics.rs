@@ -562,6 +562,7 @@ pub struct PreendorsementQuorumSummary {
     pub round_summary: RoundSummary,
     pub preendorsement_quorum_timestamp: Option<i64>,
     pub preendorsement_quorum_reached: Option<i64>,
+    pub preendorsing_power: Option<u64>,
 }
 
 impl Display for PreendorsementQuorumSummary {
@@ -573,7 +574,11 @@ impl Display for PreendorsementQuorumSummary {
                 convert_time_to_unit_string(self.preendorsement_quorum_reached),
             )
         } else {
-            writeln!(f, "Quorum NOT REACHED",)
+            writeln!(
+                f,
+                "Quorum NOT REACHED (received slots {})",
+                self.preendorsing_power.unwrap_or_default()
+            )
         }
     }
 }
@@ -601,6 +606,11 @@ impl PreendorsementQuorumSummary {
                                     .applied_time
                                     .map(|applied_time| (*power, applied_time))
                             })
+                            .or_else(|| {
+                                status
+                                    .prechecked_time
+                                    .map(|prechecked_time| (*power, prechecked_time))
+                            })
                     })
                 })
                 .sorted_by_key(|val| val.1)
@@ -614,7 +624,7 @@ impl PreendorsementQuorumSummary {
                 .into_inner()
         });
 
-        let (_, preendorsement_quorum_timestamp) =
+        let (preendorsing_power, preendorsement_quorum_timestamp) =
             if let Some((endorsing_power, quorum_timestamp)) = preendorsement_quorum {
                 if endorsing_power > threshold {
                     (Some(endorsing_power), Some(quorum_timestamp as i64))
@@ -636,6 +646,7 @@ impl PreendorsementQuorumSummary {
             round_summary,
             preendorsement_quorum_timestamp,
             preendorsement_quorum_reached,
+            preendorsing_power,
         }
     }
 
