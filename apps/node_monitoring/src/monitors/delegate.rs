@@ -372,11 +372,17 @@ impl DelegatesMonitor {
         }
         if each_failure || prev_failures.is_none() {
             let levels = ((level - 2)..(level + 2)).join(",");
-            let path = format!("/dev/shell/automaton/actions_stats_for_blocks?level={}", levels);
+            let path = format!(
+                "/dev/shell/automaton/actions_stats_for_blocks?level={}",
+                levels
+            );
             let summary = self.endorsmenet_summary_storage.get(level)?;
             let mut action_stats = node_get::<Value, _>(self.node_addr, path).await?;
 
-            let summary = format!("*Summary*: {}", summary.map_or("`Error(Not Found)`".to_owned(), |s| s.to_string()));
+            let summary = format!(
+                "*Summary*: {}",
+                summary.map_or("`Error(Not Found)`".to_owned(), |s| s.to_string())
+            );
             let action_stats_body = action_stats
                 .as_array_mut()
                 .map(|v| std::mem::take(v))
@@ -392,7 +398,8 @@ impl DelegatesMonitor {
                         true => "*",
                         false => "",
                     };
-                    Some(format!("{}level: {} round: {} - cpu_idle: {:.3}s, cpu_busy: {:.3}s{}",
+                    Some(format!(
+                        "{}level: {} round: {} - cpu_idle: {:.3}s, cpu_busy: {:.3}s{}",
                         bold,
                         level,
                         round,
@@ -402,9 +409,12 @@ impl DelegatesMonitor {
                     ))
                 })
                 .join("\n");
-            let action_stats_explorer_link = self.explorer_url.as_ref().map_or("`Error(Missing Explorer Url)`".to_owned(), |explorer_url| {
-                format!("{}/#/resources/state/{}", explorer_url, level)
-            });
+            let action_stats_explorer_link = self
+                .explorer_url
+                .as_ref()
+                .map_or("`Error(Missing Explorer Url)`".to_owned(), |explorer_url| {
+                    format!("{}/#/resources/state/{}", explorer_url, level)
+                });
             let action_stats_header = format!("*Action Stats:* {action_stats_explorer_link}");
             let action_stats = format!("{action_stats_header}\n{action_stats_body}");
 
