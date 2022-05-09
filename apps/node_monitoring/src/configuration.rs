@@ -447,9 +447,7 @@ impl DeployMonitoringEnvironment {
                 .unwrap_or("5")
                 .parse::<u64>()
                 .expect("Expected u64 value of seconds"),
-            explorer_url: args
-                .value_of("explorer-url")
-                .map(|s| s.to_owned()),
+            explorer_url: args.value_of("explorer-url").map(|s| s.to_owned()),
             rpc_port: args
                 .value_of("rpc-port")
                 .unwrap_or("38732")
