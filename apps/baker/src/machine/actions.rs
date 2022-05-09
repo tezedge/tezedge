@@ -1,21 +1,19 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, rc::Rc};
-
-use either::Either;
+use std::{collections::BTreeMap, sync::Arc};
 
 use crypto::hash::{ContractTz1Hash, BlockHash};
 use redux_rs::EnablingCondition;
 
-use crate::services::{event::{Event, Block, OperationSimple}, ActionInner, client::RpcError};
+use crate::services::{event::{Block, OperationSimple}, client::RpcError};
 
 use super::{BakerState, state::Gathering};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone)]
 pub struct RpcErrorAction {
-    error: Rc<RpcError>,
+    pub error: Arc<RpcError>,
 }
 
 impl<S> EnablingCondition<S> for RpcErrorAction
@@ -176,57 +174,5 @@ where
 impl AsRef<Option<BakerAction>> for Action {
     fn as_ref(&self) -> &Option<BakerAction> {
         &self.0
-    }
-}
-
-impl From<BakerAction> for Either<Result<Event, Rc<RpcError>>, ActionInner> {
-    fn from(v: BakerAction) -> Self {
-        match v {
-            BakerAction::RpcError(RpcErrorAction { error }) => Either::Left(Err(error)),
-            BakerAction::IdleEvent(IdleEventAction {}) => Either::Left(Ok(Event::Idle)),
-            BakerAction::ProposalEvent(ProposalEventAction { block }) => {
-                Either::Left(Ok(Event::Block(block)))
-            },
-            BakerAction::SlotsEvent(SlotsEventAction { level, delegates }) => {
-                Either::Left(Ok(Event::Slots { level, delegates }))
-            },
-            BakerAction::OperationsForBlockEvent(act) => {
-                let OperationsForBlockEventAction { block_hash, operations } = act;
-                Either::Left(Ok(Event::OperationsForBlock { block_hash, operations }))
-            },
-            BakerAction::LiveBlocksEvent(act) => {
-                let LiveBlocksEventAction { block_hash, live_blocks } = act;
-                Either::Left(Ok(Event::LiveBlocks { block_hash, live_blocks }))
-            },
-            BakerAction::OperationsEvent(OperationsEventAction { operations }) => {
-                Either::Left(Ok(Event::Operations(operations)))
-            },
-            BakerAction::TickEvent(TickEventAction {}) => Either::Left(Ok(Event::Tick)),
-        }
-    }
-}
-
-impl From<Result<Event, Rc<RpcError>>> for BakerAction {
-    fn from(v: Result<Event, Rc<RpcError>>) -> Self {
-        match v {
-            Err(error) => BakerAction::RpcError(RpcErrorAction { error }),
-            Ok(Event::Idle) => BakerAction::IdleEvent(IdleEventAction {}),
-            Ok(Event::Block(block)) => BakerAction::ProposalEvent(ProposalEventAction { block }),
-            Ok(Event::Slots { level, delegates }) => {
-                BakerAction::SlotsEvent(SlotsEventAction { level, delegates })
-            }
-            Ok(Event::OperationsForBlock { block_hash, operations }) => {
-                let act = OperationsForBlockEventAction { block_hash, operations };
-                BakerAction::OperationsForBlockEvent(act)
-            }
-            Ok(Event::LiveBlocks { block_hash, live_blocks }) => {
-                let act = LiveBlocksEventAction { block_hash, live_blocks };
-                BakerAction::LiveBlocksEvent(act)
-            }
-            Ok(Event::Operations(operations)) => {
-                BakerAction::OperationsEvent(OperationsEventAction { operations })
-            }
-            Ok(Event::Tick) => BakerAction::TickEvent(TickEventAction {}),
-        }
     }
 }

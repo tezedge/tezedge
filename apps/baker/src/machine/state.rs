@@ -5,7 +5,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryInto,
     mem,
-    time::Duration, rc::Rc, fmt,
+    time::Duration, fmt, sync::Arc,
 };
 
 use serde::{Deserialize, Serialize};
@@ -23,13 +23,13 @@ use tezos_messages::protocol::proto_012::operation::{
 
 use crate::services::{
     client::{Constants, ProtocolBlockHeader, RpcError},
-    event::{Block, Event, OperationKind, OperationSimple},
+    event::{Block, OperationKind, OperationSimple},
     ActionInner, EventWithTime,
 };
 
 use super::{
     cycle_nonce::CycleNonce,
-    request::{Request, RequestState},
+    request::{Request, RequestState}, actions::*,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -43,11 +43,11 @@ pub struct SlotsInfo {
 pub enum Gathering {
     // for some `level: i32` we request a collection of public key hash
     // and corresponding slots
-    GetSlots(Request<i32, BTreeMap<ContractTz1Hash, Vec<u16>>, Rc<RpcError>>),
+    GetSlots(Request<i32, BTreeMap<ContractTz1Hash, Vec<u16>>, Arc<RpcError>>),
     // for some `BlockHash` we request its operations
-    GetOperations(Request<BlockHash, Vec<Vec<OperationSimple>>, Rc<RpcError>>),
+    GetOperations(Request<BlockHash, Vec<Vec<OperationSimple>>, Arc<RpcError>>),
     // for some `BlockHash` we request a list of live blocks
-    GetLiveBlocks(Request<BlockHash, Vec<BlockHash>, Rc<RpcError>>),
+    GetLiveBlocks(Request<BlockHash, Vec<BlockHash>, Arc<RpcError>>),
 }
 
 impl fmt::Display for Gathering {
@@ -73,7 +73,7 @@ pub enum BakerState {
     },
     Invalid {
         state: Initialized,
-        error: Rc<RpcError>,
+        error: Arc<RpcError>,
     },
 }
 
@@ -200,7 +200,7 @@ impl BakerState {
         let EventWithTime { event, now } = event;
 
         let description = self.to_string();
-        if !matches!(&event, Ok(Event::Idle)) {
+        if !matches!(&event, BakerAction::IdleEvent(_)) {
             self.as_mut().actions.push(ActionInner::LogInfo {
                 with_prefix: false,
                 description,
@@ -208,12 +208,12 @@ impl BakerState {
         }
 
         match event {
-            Err(error) => {
+            BakerAction::RpcError(RpcErrorAction { error }) => {
                 self.as_mut().actions.push(ActionInner::LogError(format!("{error}")));
                 let state = self.into_inner();
                 BakerState::Invalid { state, error }
             }
-            Ok(Event::Idle) => {
+            BakerAction::IdleEvent(IdleEventAction {}) => {
                 match self {
                     BakerState::Gathering {
                         state,
@@ -302,9 +302,9 @@ impl BakerState {
                             description,
                         });
                         state.handle_tb_actions(tb_actions);
-                        if let Some(ops) = state.ahead_ops.remove(&current_block.predecessor) {
+                        if let Some(operations) = state.ahead_ops.remove(&current_block.predecessor) {
                             BakerState::Idle(state).handle_event_inner(EventWithTime {
-                                event: Ok(Event::Operations(ops)),
+                                event: BakerAction::OperationsEvent(OperationsEventAction { operations }),
                                 now,
                             })
                         } else {
@@ -314,7 +314,7 @@ impl BakerState {
                     s => s,
                 }
             }
-            Ok(Event::Block(block)) => {
+            BakerAction::ProposalEvent(ProposalEventAction { block }) => {
                 // dbg!(format!("handle in state machine: {}:{}", block.level, block.round));
                 let state = self.as_mut();
                 let gathering = if block.level > state.tb_config.map.level {
@@ -351,7 +351,7 @@ impl BakerState {
                     gathering,
                 }
             }
-            Ok(Event::Slots { level, delegates }) => match self {
+            BakerAction::SlotsEvent(SlotsEventAction { level, delegates }) => match self {
                 BakerState::Gathering {
                     mut state,
                     current_block,
@@ -366,10 +366,7 @@ impl BakerState {
                 }
                 s => s,
             },
-            Ok(Event::OperationsForBlock {
-                block_hash,
-                operations,
-            }) => match self {
+            BakerAction::OperationsForBlockEvent(OperationsForBlockEventAction { block_hash, operations }) => match self {
                 BakerState::Gathering {
                     mut state,
                     gathering: Gathering::GetOperations(r),
@@ -384,10 +381,7 @@ impl BakerState {
                 }
                 s => s,
             },
-            Ok(Event::LiveBlocks {
-                block_hash,
-                live_blocks,
-            }) => match self {
+            BakerAction::LiveBlocksEvent(LiveBlocksEventAction { block_hash, live_blocks }) => match self {
                 BakerState::Gathering {
                     mut state,
                     current_block,
@@ -402,9 +396,9 @@ impl BakerState {
                 }
                 s => s,
             },
-            Ok(Event::Operations(new_operations)) => {
+            BakerAction::OperationsEvent(OperationsEventAction { operations }) => {
                 let state = self.as_mut();
-                for op in new_operations {
+                for op in operations {
                     match op.kind() {
                         None => {
                             state.actions.push(ActionInner::LogError(format!("unclassified operation {op:?}")))
@@ -457,7 +451,7 @@ impl BakerState {
                 }
                 self
             }
-            Ok(Event::Tick) => {
+            BakerAction::TickEvent(TickEventAction {}) => {
                 let state = self.as_mut();
                 let (tb_actions, records) =
                     state.tb_state.handle(&state.tb_config, tb::Event::Timeout);
@@ -465,6 +459,7 @@ impl BakerState {
                 state.handle_tb_actions(tb_actions);
                 self
             }
+            _ => self,
         }
     }
 

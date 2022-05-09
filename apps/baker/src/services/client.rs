@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::BTreeMap, convert::TryInto, io, num::ParseIntError, str, sync::mpsc, thread,
+    collections::BTreeMap, convert::TryInto, io, num::ParseIntError, str, sync::{mpsc, Arc}, thread,
     time::Duration,
 };
 
@@ -26,13 +26,14 @@ use tezos_messages::{
     protocol::proto_012::operation::FullHeader,
 };
 
-use super::event::{Block, Event, OperationSimple};
+use super::event::{Block, OperationSimple};
+use crate::machine::{BakerAction, ProposalEventAction, RpcErrorAction, OperationsEventAction};
 
 pub const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
 #[derive(Clone)]
 pub struct RpcClient {
-    tx: mpsc::Sender<Result<Event, RpcError>>,
+    tx: mpsc::Sender<BakerAction>,
     endpoint: Url,
     inner: Client,
 }
@@ -98,7 +99,7 @@ pub struct Constants {
 }
 
 impl RpcClient {
-    pub fn new(endpoint: Url, tx: mpsc::Sender<Result<Event, RpcError>>) -> Self {
+    pub fn new(endpoint: Url, tx: mpsc::Sender<BakerAction>) -> Self {
         RpcClient {
             tx,
             endpoint,
@@ -115,7 +116,6 @@ impl RpcClient {
             .join("chains/main/chain_id")
             .expect("valid constant url");
         self.single_response_blocking(&url, None, None)
-            .map_err(|inner| RpcError::WithContext { url, inner })
     }
 
     /// nothing to do until bootstrapped, so let's wait synchronously
@@ -132,8 +132,7 @@ impl RpcClient {
             timestamp: String,
         }
         let Bootstrapped { block, .. } = self
-            .single_response_blocking(&url, None, None)
-            .map_err(|inner| RpcError::WithContext { url, inner })?;
+            .single_response_blocking(&url, None, None)?;
 
         Ok(block)
     }
@@ -162,12 +161,7 @@ impl RpcClient {
             minimal_block_delay,
             delay_increment_per_round,
             proof_of_work_threshold,
-        } = self
-            .single_response_blocking::<ConstantsInner>(&url, None, None)
-            .map_err(|inner| RpcError::WithContext {
-                url: url.clone(),
-                inner,
-            })?;
+        } = self.single_response_blocking::<ConstantsInner>(&url, None, None)?;
 
         Ok(Constants {
             nonce_length,
@@ -220,8 +214,7 @@ impl RpcClient {
         }
 
         let validators = self
-            .single_response_blocking::<Vec<_>>(&url, None, None)
-            .map_err(|inner| RpcError::WithContext { url, inner })?;
+            .single_response_blocking::<Vec<_>>(&url, None, None)?;
         let validators = validators
             .into_iter()
             .map(|Validator { delegate, slots }| (delegate, slots))
@@ -250,8 +243,11 @@ impl RpcClient {
         }
 
         let this = self.clone();
+        let moved_url = url.clone();
         self.multiple_responses::<BlockHeaderJsonGeneric, _>(&url, None, move |header| {
-            let timestamp = convert_timestamp(&header.timestamp)?;
+            let url = moved_url.clone();
+            let timestamp = convert_timestamp(&header.timestamp)
+                .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
 
             #[derive(Deserialize)]
             struct Protocols {
@@ -266,9 +262,15 @@ impl RpcClient {
             let transition = protocol.to_base58_check() != PROTOCOL;
 
             let (payload_hash, payload_round, round) = if !transition {
-                let protocol_data_bytes = hex::decode(header.protocol_data)?;
-                let protocol_header = ProtocolBlockHeader::from_bytes(&protocol_data_bytes)?;
-                let round = convert_fitness(&header.fitness)?;
+                let protocol_data_bytes = hex::decode(header.protocol_data)
+                    .map_err(RpcErrorInner::Hex)
+                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
+                let protocol_header = ProtocolBlockHeader::from_bytes(&protocol_data_bytes)
+                    .map_err(RpcErrorInner::Nom)
+                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
+                let round = convert_fitness(&header.fitness)
+                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
+
                 (
                     protocol_header.payload_hash,
                     protocol_header.payload_round,
@@ -278,15 +280,17 @@ impl RpcClient {
                 (BlockPayloadHash(vec![0; 32]), 0, 0)
             };
 
-            Ok(Event::Block(Block {
-                hash: header.hash,
-                level: header.level,
-                predecessor: header.predecessor,
-                timestamp,
-                payload_hash,
-                payload_round,
-                round,
-                transition,
+            Ok(BakerAction::ProposalEvent(ProposalEventAction {
+                block: Block {
+                    hash: header.hash,
+                    level: header.level,
+                    predecessor: header.predecessor,
+                    timestamp,
+                    payload_hash,
+                    payload_round,
+                    round,
+                    transition,
+                },
             }))
         })
         .map_err(|inner| RpcError::WithContext { url, inner })
@@ -299,14 +303,12 @@ impl RpcClient {
         let s = format!("chains/main/blocks/{block_hash}/operations");
         let url = self.endpoint.join(&s).expect("valid url");
         self.single_response_blocking(&url, None, Some(Duration::from_secs(30)))
-            .map_err(|inner| RpcError::WithContext { url, inner })
     }
 
     pub fn get_live_blocks(&self, block_hash: &BlockHash) -> Result<Vec<BlockHash>, RpcError> {
         let s = format!("chains/main/blocks/{block_hash}/live_blocks");
         let url = self.endpoint.join(&s).expect("valid url");
         self.single_response_blocking(&url, None, Some(Duration::from_secs(30)))
-            .map_err(|inner| RpcError::WithContext { url, inner })
     }
 
     pub fn monitor_operations(&self, timeout: Duration) -> Result<(), RpcError> {
@@ -321,7 +323,7 @@ impl RpcClient {
             .append_pair("branch_refused", "no")
             .append_pair("branch_delayed", "yes");
         self.multiple_responses(&url, Some(timeout), move |operations| {
-            Ok(Event::Operations(operations))
+            Ok(BakerAction::OperationsEvent(OperationsEventAction { operations }))
         })
         .map_err(|inner| RpcError::WithContext { url, inner })
     }
@@ -343,7 +345,14 @@ impl RpcClient {
         }
         let body = format!("{op_hex:?}");
         self.single_response_blocking::<OperationHash>(&url, Some(body.clone()), None)
-            .map_err(|inner| RpcError::WithBody { url, body, inner })
+            .map_err(|inner| match inner {
+                RpcError::WithContext { url, inner } => RpcError::WithBody {
+                    url,
+                    body,
+                    inner,
+                },
+                _ => unreachable!(),
+            })
     }
 
     pub fn preapply_block(
@@ -420,10 +429,13 @@ impl RpcClient {
             operations,
         } = self
             .single_response_blocking(&url, Some(body.clone()), None)
-            .map_err(|inner| RpcError::WithBody {
-                url: url.clone(),
-                body,
-                inner,
+            .map_err(|inner| match inner {
+                RpcError::WithContext { url, inner } => RpcError::WithBody {
+                    url,
+                    body,
+                    inner,
+                },
+                _ => unreachable!(),
             })?;
 
         let ShellBlockShortHeader {
@@ -502,7 +514,6 @@ impl RpcClient {
             .map_err(Into::into)
             .map_err(RpcError::Less)?;
         self.single_response_blocking(&url, Some(body), None)
-            .map_err(|inner| RpcError::WithContext { url, inner })
     }
 
     fn multiple_responses<T, F>(
@@ -513,7 +524,7 @@ impl RpcClient {
     ) -> Result<(), RpcErrorInner>
     where
         T: DeserializeOwned,
-        F: Fn(T) -> Result<Event, RpcErrorInner> + Send + 'static,
+        F: Fn(T) -> Result<BakerAction, RpcError> + Send + 'static,
     {
         let request = self.inner.get(url.clone());
         let request = if let Some(timeout) = timeout {
@@ -534,10 +545,15 @@ impl RpcClient {
                 while let Some(v) = deserializer.next() {
                     let url = url.clone();
                     let v = v
-                        .map_err(Into::into)
-                        .and_then(|v| wrapper(v))
-                        .map_err(|inner| RpcError::WithContext { url, inner });
-                    let _ = tx.send(v);
+                        .map_err(|err| RpcError::WithContext { url, inner: err.into() })
+                        .and_then(|v| wrapper(v));
+                    let action = match v {
+                        Ok(v) => v,
+                        Err(err) => {
+                            BakerAction::RpcError(RpcErrorAction { error: Arc::new(err) })
+                        },
+                    };
+                    let _ = tx.send(action);
                 }
             } else {
                 let status = response.status();
@@ -545,7 +561,7 @@ impl RpcClient {
                 match read_error(&mut response, status) {
                     Ok(()) => unreachable!(),
                     Err(inner) => {
-                        let _ = tx.send(Err(RpcError::WithContext { url, inner }));
+                        let _ = tx.send(BakerAction::RpcError(RpcErrorAction { error: Arc::new(RpcError::WithContext { url, inner }) }));
                     }
                 }
             }
@@ -562,7 +578,7 @@ impl RpcClient {
         url: &Url,
         body: Option<String>,
         timeout: Option<Duration>,
-    ) -> Result<T, RpcErrorInner>
+    ) -> Result<T, RpcError>
     where
         T: DeserializeOwned,
     {
@@ -581,7 +597,7 @@ impl RpcClient {
                 Ok(v) => break v,
                 Err(err) => {
                     if retry == 0 {
-                        return Err(err.into());
+                        return Err(RpcError::WithContext { url: url.clone(), inner: err.into() });
                     } else {
                         retry -= 1;
                     }
@@ -589,10 +605,12 @@ impl RpcClient {
             }
         };
         if response.status().is_success() {
-            serde_json::from_reader::<_, T>(response).map_err(Into::into)
+            serde_json::from_reader::<_, T>(response)
+                .map_err(|err| RpcError::WithContext { url: url.clone(), inner: err.into() })
         } else {
             let status = response.status();
-            read_error(&mut response, status)?;
+            read_error(&mut response, status)
+                .map_err(|err| RpcError::WithContext { url: url.clone(), inner: err.into() })?;
             unreachable!()
         }
     }

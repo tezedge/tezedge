@@ -312,7 +312,6 @@ dependencies = [
  "chrono",
  "crypto",
  "derive_more",
- "either",
  "env_logger 0.9.0",
  "fuzzcheck",
  "fuzzcheck_mutators_derive",

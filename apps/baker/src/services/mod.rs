@@ -10,8 +10,8 @@ pub mod timer;
 use std::{
     convert::TryInto,
     path::PathBuf,
-    sync::mpsc,
-    time::{Duration, SystemTime}, rc::Rc,
+    sync::{mpsc, Arc},
+    time::{Duration, SystemTime},
 };
 
 use crypto::hash::{BlockHash, ChainId};
@@ -24,7 +24,7 @@ use tezos_messages::protocol::{
     proto_012::operation::{Contents, InlinedEndorsement, InlinedPreendorsement},
 };
 
-use crate::proof_of_work::guess_proof_of_work;
+use crate::{proof_of_work::guess_proof_of_work, machine::{BakerAction, IdleEventAction, SlotsEventAction, RpcErrorAction, OperationsForBlockEventAction, LiveBlocksEventAction}};
 
 use self::{client::ProtocolBlockHeader, event::OperationSimple};
 
@@ -33,11 +33,11 @@ pub struct Services {
     pub crypto: key::CryptoService,
     log: slog::Logger,
     timer: timer::Timer,
-    sender: mpsc::Sender<Result<event::Event, client::RpcError>>,
+    sender: mpsc::Sender<BakerAction>,
 }
 
 pub struct EventWithTime {
-    pub event: Result<event::Event, Rc<client::RpcError>>,
+    pub event: BakerAction,
     pub now: tenderbake::Timestamp,
 }
 
@@ -111,10 +111,7 @@ impl Services {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap();
                 let now = tb::Timestamp { unix_epoch };
-                EventWithTime {
-                    now,
-                    event: event.map_err(Rc::new),
-                }
+                EventWithTime { now, event }
             }),
         )
     }
@@ -129,7 +126,7 @@ impl BakerService for Services {
         let action = action.clone();
 
         match action {
-            ActionInner::Idle => drop(self.sender.send(Ok(event::Event::Idle))),
+            ActionInner::Idle => drop(self.sender.send(BakerAction::IdleEvent(IdleEventAction {}))),
             ActionInner::LogError(error) => slog::error!(self.log, " .  {error}"),
             ActionInner::LogWarning(warn) => slog::warn!(self.log, " .  {warn}"),
             ActionInner::LogInfo { with_prefix: true, description } => {
@@ -146,30 +143,24 @@ impl BakerService for Services {
                 Ok(delegates) => {
                     let _ = self
                         .sender
-                        .send(Ok(event::Event::Slots { level, delegates }));
+                        .send(BakerAction::SlotsEvent(SlotsEventAction { level, delegates }));
                 }
-                Err(err) => drop(self.sender.send(Err(err))),
+                Err(err) => drop(self.sender.send(BakerAction::RpcError(RpcErrorAction { error: Arc::new(err) }))),
             },
             ActionInner::GetOperationsForBlock { block_hash } => {
                 match self.client.get_operations_for_block(&block_hash) {
                     Ok(operations) => {
-                        let _ = self.sender.send(Ok(event::Event::OperationsForBlock {
-                            block_hash,
-                            operations,
-                        }));
+                        let _ = self.sender.send(BakerAction::OperationsForBlockEvent(OperationsForBlockEventAction { block_hash, operations }));
                     }
-                    Err(err) => drop(self.sender.send(Err(err))),
+                    Err(err) => drop(self.sender.send(BakerAction::RpcError(RpcErrorAction { error: Arc::new(err) }))),
                 }
             }
             ActionInner::GetLiveBlocks { block_hash } => {
                 match self.client.get_live_blocks(&block_hash) {
                     Ok(live_blocks) => {
-                        let _ = self.sender.send(Ok(event::Event::LiveBlocks {
-                            block_hash,
-                            live_blocks,
-                        }));
+                        let _ = self.sender.send(BakerAction::LiveBlocksEvent(LiveBlocksEventAction { block_hash, live_blocks }));
                     }
-                    Err(err) => drop(self.sender.send(Err(err))),
+                    Err(err) => drop(self.sender.send(BakerAction::RpcError(RpcErrorAction { error: Arc::new(err) }))),
                 }
             }
             ActionInner::MonitorOperations => {
