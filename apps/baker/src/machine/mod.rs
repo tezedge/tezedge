@@ -10,8 +10,8 @@ mod request;
 mod state;
 
 pub use self::{
-    state::{BakerState, BakerStateEjectable},
     actions::*,
-    reducer::baker_reducer,
     effects::baker_effects,
+    reducer::baker_reducer,
+    state::{BakerState, BakerStateEjectable},
 };

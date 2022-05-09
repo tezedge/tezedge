@@ -4,7 +4,7 @@
 use std::time::SystemTime;
 
 fn main() {
-    use baker::{Arguments, Command, Services, machine::*};
+    use baker::{machine::*, Arguments, Command, Services};
     use redux_rs::Store;
 
     let Arguments {

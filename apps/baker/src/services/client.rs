@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::BTreeMap, convert::TryInto, io, num::ParseIntError, str, sync::{mpsc, Arc}, thread,
+    collections::BTreeMap,
+    convert::TryInto,
+    io,
+    num::ParseIntError,
+    str,
+    sync::{mpsc, Arc},
+    thread,
     time::Duration,
 };
 
@@ -27,7 +33,7 @@ use tezos_messages::{
 };
 
 use super::event::{Block, OperationSimple};
-use crate::machine::{BakerAction, ProposalEventAction, RpcErrorAction, OperationsEventAction};
+use crate::machine::{BakerAction, OperationsEventAction, ProposalEventAction, RpcErrorAction};
 
 pub const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
@@ -131,8 +137,7 @@ impl RpcClient {
             #[allow(dead_code)]
             timestamp: String,
         }
-        let Bootstrapped { block, .. } = self
-            .single_response_blocking(&url, None, None)?;
+        let Bootstrapped { block, .. } = self.single_response_blocking(&url, None, None)?;
 
         Ok(block)
     }
@@ -213,8 +218,7 @@ impl RpcClient {
             slots: Vec<u16>,
         }
 
-        let validators = self
-            .single_response_blocking::<Vec<_>>(&url, None, None)?;
+        let validators = self.single_response_blocking::<Vec<_>>(&url, None, None)?;
         let validators = validators
             .into_iter()
             .map(|Validator { delegate, slots }| (delegate, slots))
@@ -246,8 +250,11 @@ impl RpcClient {
         let moved_url = url.clone();
         self.multiple_responses::<BlockHeaderJsonGeneric, _>(&url, None, move |header| {
             let url = moved_url.clone();
-            let timestamp = convert_timestamp(&header.timestamp)
-                .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
+            let timestamp =
+                convert_timestamp(&header.timestamp).map_err(|inner| RpcError::WithContext {
+                    url: url.clone(),
+                    inner,
+                })?;
 
             #[derive(Deserialize)]
             struct Protocols {
@@ -264,12 +271,21 @@ impl RpcClient {
             let (payload_hash, payload_round, round) = if !transition {
                 let protocol_data_bytes = hex::decode(header.protocol_data)
                     .map_err(RpcErrorInner::Hex)
-                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
+                    .map_err(|inner| RpcError::WithContext {
+                        url: url.clone(),
+                        inner,
+                    })?;
                 let protocol_header = ProtocolBlockHeader::from_bytes(&protocol_data_bytes)
                     .map_err(RpcErrorInner::Nom)
-                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
-                let round = convert_fitness(&header.fitness)
-                    .map_err(|inner| RpcError::WithContext { url: url.clone(), inner })?;
+                    .map_err(|inner| RpcError::WithContext {
+                        url: url.clone(),
+                        inner,
+                    })?;
+                let round =
+                    convert_fitness(&header.fitness).map_err(|inner| RpcError::WithContext {
+                        url: url.clone(),
+                        inner,
+                    })?;
 
                 (
                     protocol_header.payload_hash,
@@ -323,7 +339,9 @@ impl RpcClient {
             .append_pair("branch_refused", "no")
             .append_pair("branch_delayed", "yes");
         self.multiple_responses(&url, Some(timeout), move |operations| {
-            Ok(BakerAction::OperationsEvent(OperationsEventAction { operations }))
+            Ok(BakerAction::OperationsEvent(OperationsEventAction {
+                operations,
+            }))
         })
         .map_err(|inner| RpcError::WithContext { url, inner })
     }
@@ -346,11 +364,7 @@ impl RpcClient {
         let body = format!("{op_hex:?}");
         self.single_response_blocking::<OperationHash>(&url, Some(body.clone()), None)
             .map_err(|inner| match inner {
-                RpcError::WithContext { url, inner } => RpcError::WithBody {
-                    url,
-                    body,
-                    inner,
-                },
+                RpcError::WithContext { url, inner } => RpcError::WithBody { url, body, inner },
                 _ => unreachable!(),
             })
     }
@@ -430,11 +444,7 @@ impl RpcClient {
         } = self
             .single_response_blocking(&url, Some(body.clone()), None)
             .map_err(|inner| match inner {
-                RpcError::WithContext { url, inner } => RpcError::WithBody {
-                    url,
-                    body,
-                    inner,
-                },
+                RpcError::WithContext { url, inner } => RpcError::WithBody { url, body, inner },
                 _ => unreachable!(),
             })?;
 
@@ -545,13 +555,16 @@ impl RpcClient {
                 while let Some(v) = deserializer.next() {
                     let url = url.clone();
                     let v = v
-                        .map_err(|err| RpcError::WithContext { url, inner: err.into() })
+                        .map_err(|err| RpcError::WithContext {
+                            url,
+                            inner: err.into(),
+                        })
                         .and_then(|v| wrapper(v));
                     let action = match v {
                         Ok(v) => v,
-                        Err(err) => {
-                            BakerAction::RpcError(RpcErrorAction { error: Arc::new(err) })
-                        },
+                        Err(err) => BakerAction::RpcError(RpcErrorAction {
+                            error: Arc::new(err),
+                        }),
                     };
                     let _ = tx.send(action);
                 }
@@ -561,7 +574,9 @@ impl RpcClient {
                 match read_error(&mut response, status) {
                     Ok(()) => unreachable!(),
                     Err(inner) => {
-                        let _ = tx.send(BakerAction::RpcError(RpcErrorAction { error: Arc::new(RpcError::WithContext { url, inner }) }));
+                        let _ = tx.send(BakerAction::RpcError(RpcErrorAction {
+                            error: Arc::new(RpcError::WithContext { url, inner }),
+                        }));
                     }
                 }
             }
@@ -597,7 +612,10 @@ impl RpcClient {
                 Ok(v) => break v,
                 Err(err) => {
                     if retry == 0 {
-                        return Err(RpcError::WithContext { url: url.clone(), inner: err.into() });
+                        return Err(RpcError::WithContext {
+                            url: url.clone(),
+                            inner: err.into(),
+                        });
                     } else {
                         retry -= 1;
                     }
@@ -605,12 +623,16 @@ impl RpcClient {
             }
         };
         if response.status().is_success() {
-            serde_json::from_reader::<_, T>(response)
-                .map_err(|err| RpcError::WithContext { url: url.clone(), inner: err.into() })
+            serde_json::from_reader::<_, T>(response).map_err(|err| RpcError::WithContext {
+                url: url.clone(),
+                inner: err.into(),
+            })
         } else {
             let status = response.status();
-            read_error(&mut response, status)
-                .map_err(|err| RpcError::WithContext { url: url.clone(), inner: err.into() })?;
+            read_error(&mut response, status).map_err(|err| RpcError::WithContext {
+                url: url.clone(),
+                inner: err.into(),
+            })?;
             unreachable!()
         }
     }

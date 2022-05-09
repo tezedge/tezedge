@@ -5,9 +5,7 @@ use std::{fmt, str};
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{
-    BlockHash, BlockPayloadHash, OperationHash, ProtocolHash, Signature,
-};
+use crypto::hash::{BlockHash, BlockPayloadHash, OperationHash, ProtocolHash, Signature};
 use tezos_messages::protocol::proto_012::operation::EndorsementOperation;
 
 #[derive(Clone, Serialize, Deserialize)]

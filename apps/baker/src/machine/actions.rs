@@ -3,12 +3,15 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use crypto::hash::{ContractTz1Hash, BlockHash};
+use crypto::hash::{BlockHash, ContractTz1Hash};
 use redux_rs::EnablingCondition;
 
-use crate::services::{event::{Block, OperationSimple}, client::RpcError};
+use crate::services::{
+    client::RpcError,
+    event::{Block, OperationSimple},
+};
 
-use super::{BakerState, state::Gathering};
+use super::{state::Gathering, BakerState};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone)]

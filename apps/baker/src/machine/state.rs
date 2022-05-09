@@ -4,8 +4,9 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryInto,
-    mem,
-    time::Duration, fmt, sync::Arc,
+    fmt, mem,
+    sync::Arc,
+    time::Duration,
 };
 
 use serde::{Deserialize, Serialize};
@@ -28,8 +29,9 @@ use crate::services::{
 };
 
 use super::{
+    actions::*,
     cycle_nonce::CycleNonce,
-    request::{Request, RequestState}, actions::*,
+    request::{Request, RequestState},
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -83,8 +85,12 @@ impl fmt::Display for BakerState {
             BakerState::Idle(_) => write!(f, "idle"),
             BakerState::Gathering { gathering, .. } => write!(f, "gathering {gathering}"),
             BakerState::HaveBlock { current_block, .. } => {
-                write!(f, "have block {}:{}", current_block.level, current_block.round)
-            },
+                write!(
+                    f,
+                    "have block {}:{}",
+                    current_block.level, current_block.round
+                )
+            }
             BakerState::Invalid { error, .. } => write!(f, "invalid {error}"),
         }
     }
@@ -474,10 +480,7 @@ impl BakerState {
 }
 
 impl Initialized {
-    fn handle_tb_actions(
-        &mut self,
-        tb_actions: Vec<tb::Action<ContractTz1Hash, OperationSimple>>,
-    ) {
+    fn handle_tb_actions(&mut self, tb_actions: Vec<tb::Action<ContractTz1Hash, OperationSimple>>) {
         for tb_action in tb_actions {
             match tb_action {
                 tb::Action::ScheduleTimeout(t) => {
@@ -502,11 +505,7 @@ impl Initialized {
         }
     }
 
-    fn pre_vote(
-        &mut self,
-        pred_hash: tb::BlockHash,
-        block_id: tb::BlockId,
-    ) {
+    fn pre_vote(&mut self, pred_hash: tb::BlockHash, block_id: tb::BlockId) {
         let slot = self
             .tb_config
             .map
@@ -530,14 +529,11 @@ impl Initialized {
             ),
             signature: Signature(vec![]),
         };
-        self.actions.push(ActionInner::PreVote(self.chain_id.clone(), preendorsement));
+        self.actions
+            .push(ActionInner::PreVote(self.chain_id.clone(), preendorsement));
     }
 
-    fn vote(
-        &mut self,
-        pred_hash: tb::BlockHash,
-        block_id: tb::BlockId,
-    ) {
+    fn vote(&mut self, pred_hash: tb::BlockHash, block_id: tb::BlockId) {
         let slot = self
             .tb_config
             .map
@@ -561,13 +557,11 @@ impl Initialized {
             ),
             signature: Signature(vec![]),
         };
-        self.actions.push(ActionInner::Vote(self.chain_id.clone(), endorsement));
+        self.actions
+            .push(ActionInner::Vote(self.chain_id.clone(), endorsement));
     }
 
-    fn propose(
-        &mut self,
-        block: tb::Block<ContractTz1Hash, OperationSimple>,
-    ) {
+    fn propose(&mut self, block: tb::Block<ContractTz1Hash, OperationSimple>) {
         let payload = match block.payload {
             Some(v) => v,
             None => return,
