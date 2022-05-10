@@ -207,9 +207,11 @@ steps:
     - mkdir -p drone-cache/python-tests/daemons
     - mkdir -p drone-cache/python-tests/launchers
     - mkdir -p drone-cache/python-tests/tools
+    - mkdir -p drone-cache/python-tests/tests_012
     - cp ./tezos/python-tests/daemons/*.py drone-cache/python-tests/daemons/
     - cp ./tezos/python-tests/launchers/sandbox.py drone-cache/python-tests/launchers/
     - cp ./tezos/python-tests/tools/constants.py drone-cache/python-tests/tools/
+    - cp ./tezos/python-tests/tests_012/*.py drone-cache/python-tests/tests_012/
 
 - name: rebuild-artifacts-cache
   image: meltwater/drone-cache
@@ -1359,6 +1361,7 @@ steps:
     - cp drone-cache/python-tests/daemons/*.py tezos-src/tezos/tests_python/daemons/
     - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/
     - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/
+    - cp drone-cache/python-tests/tests_012/*.py tezos-src/tezos/tests_python/tests_012/
     - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/
     # copy binaries to the test
     - cp drone-cache/build_files/light-node tezos-src/tezos/
@@ -1367,6 +1370,11 @@ steps:
     # copy zcash-params init files - see constants.py light-node params
     - cp drone-cache/build_files/ffi/sapling-spend.params tezos-src/tezos/
     - cp drone-cache/build_files/ffi/sapling-output.params tezos-src/tezos/
+
+- name: blocks-rpc-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_blocks_rpc_alt_heads.py
 
 - name: baker-endorser-test
   <<: *python-test
@@ -1624,6 +1632,7 @@ steps:
     - cp drone-cache/python-tests/launchers/sandbox.py tezos-src/tezos/tests_python/launchers/
     - cp drone-cache/python-tests/tools/constants.py tezos-src/tezos/tests_python/tools/
     - cp drone-cache/sandbox_files/sandbox-patch-context.json tezos-src/tezos/
+    - cp drone-cache/python-tests/tests_012/*.py tezos-src/tezos/tests_python/tests_012/
     # copy binaries to the test
     - cp drone-cache/build_files/light-node tezos-src/tezos/
     - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
@@ -1631,6 +1640,11 @@ steps:
     # copy zcash-params init files - see constants.py light-node params
     - cp drone-cache/build_files/ffi/sapling-spend.params tezos-src/tezos/
     - cp drone-cache/build_files/ffi/sapling-output.params tezos-src/tezos/
+
+- name: blocks-rpc-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_blocks_rpc_alt_heads.py
 
 - name: baker-endorser-test
   <<: *python-test
