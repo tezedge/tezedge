@@ -80,7 +80,7 @@ impl OperationSimple {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Block {
     pub hash: BlockHash,
     pub level: i32,

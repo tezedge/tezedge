@@ -8,7 +8,7 @@ use core::{
 };
 
 /// Timestamp as a unix time
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Timestamp {
     pub unix_epoch: Duration,
 }
