@@ -5,3 +5,10 @@ edition = "2021"
 
 [dependencies]
 libm = { version = "0.2.2" }
+serde = { version = "1.0", features = ["derive"] }
+crypto = { path = "../../crypto" }
+
+[features]
+fuzzing = [
+    "crypto/fuzzing",
+]

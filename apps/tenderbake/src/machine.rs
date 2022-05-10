@@ -4,27 +4,37 @@
 use core::{mem, cmp::Ordering, time::Duration};
 use alloc::{boxed::Box, vec::Vec, collections::BTreeMap};
 
-// arrayvec is unsafe inside
-// use arrayvec::ArrayVec;
-// bounded array
+use serde::{Serialize, Deserialize};
+
+use crypto::hash::{BlockHash, BlockPayloadHash as PayloadHash};
+
 type ArrayVec<T> = Vec<T>;
 
 use super::{
     timestamp::{Timestamp, Timing},
     validator::{Votes, ProposerMap, Validator},
-    block::{PayloadHash, BlockHash, PreCertificate, Certificate, Block, Payload},
+    block::{PreCertificate, Certificate, Block, Payload},
     timeout::{Config, Timeout, TimeHeader},
     event::{BlockId, Event, Action, LogRecord},
 };
 
 /// The state machine. Aims to contain only possible states.
-pub struct Machine<Id, Op, const DELAY_MS: u64> {
+#[derive(Serialize, Deserialize)]
+pub struct Machine<Id, Op, const DELAY_MS: u64>
+where
+    Id: Ord,
+{
     inner: Option<Result<Initialized<Id, Op, DELAY_MS>, Transition<Id>>>,
 }
 
-struct Pair<L, Id, Op>(L, ArrayVec<Action<Id, Op>>);
+struct Pair<L, Id, Op>(L, ArrayVec<Action<Id, Op>>)
+where
+    Id: Ord;
 
-impl<L, Id, Op> Pair<L, Id, Op> {
+impl<L, Id, Op> Pair<L, Id, Op>
+where
+    Id: Ord,
+{
     fn map_left<F, Lp>(self, f: F) -> Pair<Lp, Id, Op>
     where
         F: FnOnce(L) -> Lp,
@@ -36,6 +46,7 @@ impl<L, Id, Op> Pair<L, Id, Op> {
 // We are only interested in proposals in this state
 // if the proposal of the same level, add its time header to the collection
 // if the proposal of next level, go to next state
+#[derive(Serialize, Deserialize)]
 struct Transition<Id> {
     level: i32,
     hash: BlockHash,
@@ -43,7 +54,11 @@ struct Transition<Id> {
     timeout_next_level: Option<Timeout<Id>>,
 }
 
-struct Initialized<Id, Op, const DELAY_MS: u64> {
+#[derive(Serialize, Deserialize)]
+struct Initialized<Id, Op, const DELAY_MS: u64>
+where
+    Id: Ord,
+{
     level: i32,
     // time headers of all possible predecessors
     pred_time_headers: BTreeMap<BlockHash, TimeHeader<true>>,
@@ -66,7 +81,11 @@ struct Initialized<Id, Op, const DELAY_MS: u64> {
     timeout_next_level: Option<Timeout<Id>>,
 }
 
-enum PreVotesState<Id, Op> {
+#[derive(Serialize, Deserialize)]
+enum PreVotesState<Id, Op>
+where
+    Id: Ord,
+{
     Collecting {
         incomplete: Votes<Id, Op>,
     },
@@ -79,7 +98,11 @@ enum PreVotesState<Id, Op> {
     },
 }
 
-enum VotesState<Id, Op> {
+#[derive(Serialize, Deserialize)]
+enum VotesState<Id, Op>
+where
+    Id: Ord,
+{
     Collecting {
         incomplete: Votes<Id, Op>,
     },
@@ -90,7 +113,10 @@ enum VotesState<Id, Op> {
     },
 }
 
-impl<Id, Op, const DELAY_MS: u64> Default for Machine<Id, Op, DELAY_MS> {
+impl<Id, Op, const DELAY_MS: u64> Default for Machine<Id, Op, DELAY_MS>
+where
+    Id: Ord,
+{
     fn default() -> Self {
         Machine { inner: None }
     }
@@ -732,7 +758,10 @@ where
     }
 }
 
-impl<Id> Transition<Id> {
+impl<Id> Transition<Id>
+where
+    Id: Ord,
+{
     fn timeout<Op>(&mut self, log: &mut ArrayVec<LogRecord>) -> ArrayVec<Action<Id, Op>> {
         if let Some(Timeout {
             proposer,
@@ -743,11 +772,11 @@ impl<Id> Transition<Id> {
             let mut actions = ArrayVec::default();
             let new_block = Block {
                 pred_hash: self.hash.clone(),
-                hash: BlockHash([0; 32]),
+                hash: BlockHash(vec![0; 32]),
                 level: self.level + 1,
                 time_header: TimeHeader { round, timestamp },
                 payload: Some(Payload {
-                    hash: PayloadHash([0; 32]),
+                    hash: PayloadHash(vec![0; 32]),
                     payload_round: round,
                     pre_cer: None,
                     cer: None,
@@ -802,7 +831,7 @@ where
                     pre_cer,
                 } => Block {
                     pred_hash: pred_hash.clone(),
-                    hash: BlockHash([0; 32]),
+                    hash: BlockHash(vec![0; 32]),
                     level: self.level,
                     time_header,
                     payload: Some(Payload {
@@ -815,11 +844,11 @@ where
                 },
                 PreVotesState::Collecting { .. } => Block {
                     pred_hash: self.pred_hash.clone(),
-                    hash: BlockHash([0; 32]),
+                    hash: BlockHash(vec![0; 32]),
                     level: self.level,
                     time_header,
                     payload: Some(Payload {
-                        hash: PayloadHash([0; 32]),
+                        hash: PayloadHash(vec![0; 32]),
                         payload_round: 0,
                         pre_cer: None,
                         cer: self.cer.clone(),
@@ -832,11 +861,11 @@ where
             match &self.inner_ {
                 VotesState::Done { cer, hash, .. } => Block {
                     pred_hash: hash.clone(),
-                    hash: BlockHash([0; 32]),
+                    hash: BlockHash(vec![0; 32]),
                     level: self.level + 1,
                     time_header,
                     payload: Some(Payload {
-                        hash: PayloadHash([0; 32]),
+                        hash: PayloadHash(vec![0; 32]),
                         payload_round: round,
                         pre_cer: None,
                         cer: Some(cer.clone()),
@@ -870,9 +899,11 @@ mod tests {
 
     use alloc::boxed::Box;
 
+    use crypto::hash::{BlockHash, BlockPayloadHash as PayloadHash};
+
     use crate::{
-        Machine, Config, TimingLinearGrow, ProposerMap, Event, Block, BlockHash, TimeHeader,
-        Timestamp, Payload, PayloadHash, BlockId, Validator, Action,
+        Machine, Config, TimingLinearGrow, ProposerMap, Event, Block, TimeHeader,
+        Timestamp, Payload, BlockId, Validator, Action,
     };
 
     #[test]
@@ -900,15 +931,15 @@ mod tests {
         };
 
         let mut block = Block {
-            pred_hash: BlockHash([0; 32]),
-            hash: BlockHash([1; 32]),
+            pred_hash: BlockHash(vec![0; 32]),
+            hash: BlockHash(vec![1; 32]),
             level: 5,
             time_header: TimeHeader {
                 round: 0,
                 timestamp: Timestamp::new(0, 35),
             },
             payload: Some(Payload {
-                hash: PayloadHash([0; 32]),
+                hash: PayloadHash(vec![0; 32]),
                 payload_round: 0,
                 pre_cer: None,
                 cer: None,
@@ -921,7 +952,7 @@ mod tests {
         let mut block_id = BlockId {
             level: 5,
             round: 0,
-            payload_hash: PayloadHash([0; 32]),
+            payload_hash: PayloadHash(vec![0; 32]),
         };
         let validator = Validator {
             id: 0,
@@ -939,7 +970,7 @@ mod tests {
         );
 
         block.pred_hash = block.hash;
-        block.hash = BlockHash([2; 32]);
+        block.hash = BlockHash(vec![2; 32]);
         block.level = 6;
         block.time_header.timestamp = Timestamp::new(0, 50);
         let now = Timestamp::new(0, 50);
@@ -955,7 +986,7 @@ mod tests {
             Event::Voted(block_id.clone(), validator.clone(), now),
         );
 
-        block.hash = BlockHash([3; 32]);
+        block.hash = BlockHash(vec![3; 32]);
         block.level = 6;
         block.time_header.round = 1;
         block.time_header.timestamp = Timestamp::new(1, 5);
@@ -972,8 +1003,8 @@ mod tests {
             Event::Voted(block_id.clone(), validator.clone(), now),
         );
 
-        block.pred_hash = BlockHash([2; 32]);
-        block.hash = BlockHash([4; 32]);
+        block.pred_hash = BlockHash(vec![2; 32]);
+        block.hash = BlockHash(vec![4; 32]);
         block.level = 7;
         block.time_header.round = 1;
         block.time_header.timestamp = Timestamp::new(1, 20);

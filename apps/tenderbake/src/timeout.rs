@@ -3,12 +3,14 @@
 
 use core::fmt;
 
+use serde::{Serialize, Deserialize};
+
 use super::{
     timestamp::{Timestamp, Timing},
     validator::ProposerMap,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TimeHeader<const PREV: bool> {
     pub round: i32,
     pub timestamp: Timestamp,
@@ -80,13 +82,14 @@ impl TimeHeader<true> {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Config<T, P> {
     pub timing: T,
     pub map: P,
     pub quorum: u32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Timeout<Id> {
     pub proposer: Id,
     pub round: i32,

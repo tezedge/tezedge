@@ -4,10 +4,14 @@
 use core::fmt;
 use alloc::boxed::Box;
 
+use serde::{Serialize, Deserialize};
+
+use crypto::hash::{BlockHash, BlockPayloadHash as PayloadHash};
+
 use super::{
     timestamp::Timestamp,
     validator::Validator,
-    block::{PayloadHash, BlockHash, Block},
+    block::Block,
 };
 
 #[derive(PartialEq, Eq, Clone)]
@@ -17,7 +21,10 @@ pub struct BlockId {
     pub payload_hash: PayloadHash,
 }
 
-pub enum Event<Id, Op> {
+pub enum Event<Id, Op>
+where
+    Id: Ord,
+{
     Proposal(Box<Block<Id, Op>>, Timestamp),
     PreVoted(BlockId, Validator<Id, Op>, Timestamp),
     Voted(BlockId, Validator<Id, Op>, Timestamp),
@@ -25,7 +32,10 @@ pub enum Event<Id, Op> {
     Timeout,
 }
 
-pub enum Action<Id, Op> {
+pub enum Action<Id, Op>
+where
+    Id: Ord,
+{
     ScheduleTimeout(Timestamp),
     PreVote {
         pred_hash: BlockHash,
@@ -38,7 +48,7 @@ pub enum Action<Id, Op> {
     Propose(Box<Block<Id, Op>>, Id, bool),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum LogRecord {
     Proposal {
         level: i32,

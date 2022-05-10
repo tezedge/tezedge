@@ -4489,7 +4489,9 @@ dependencies = [
 name = "tenderbake"
 version = "0.1.0"
 dependencies = [
+ "crypto",
  "libm",
+ "serde 1.0.130",
 ]
 
 [[package]]

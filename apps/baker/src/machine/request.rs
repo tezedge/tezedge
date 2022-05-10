@@ -3,11 +3,15 @@
 
 use std::fmt;
 
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
 pub struct Request<Id, Ok, Err> {
     pub id: Id,
     pub state: RequestState<Ok, Err>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum RequestState<Ok, Err> {
     Pending,
     Success(Ok),
