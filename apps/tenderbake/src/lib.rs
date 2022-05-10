@@ -20,7 +20,7 @@ mod timeout;
 pub use self::timeout::{Config, TimeHeader};
 
 mod block;
-pub use self::block::{PayloadHash, BlockHash, PreCertificate, Certificate, Block, Payload};
+pub use self::block::{PreCertificate, Certificate, Block, Payload};
 
 mod event;
 pub use self::event::{BlockId, Event, Action, LogRecord, LogLevel};

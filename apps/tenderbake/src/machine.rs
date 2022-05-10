@@ -6,12 +6,14 @@ use alloc::{boxed::Box, vec::Vec, collections::BTreeMap};
 
 use serde::{Serialize, Deserialize};
 
+use crypto::hash::{BlockHash, BlockPayloadHash as PayloadHash};
+
 type ArrayVec<T> = Vec<T>;
 
 use super::{
     timestamp::{Timestamp, Timing},
     validator::{Votes, ProposerMap, Validator},
-    block::{PayloadHash, BlockHash, PreCertificate, Certificate, Block, Payload},
+    block::{PreCertificate, Certificate, Block, Payload},
     timeout::{Config, Timeout, TimeHeader},
     event::{BlockId, Event, Action, LogRecord},
 };
@@ -770,11 +772,11 @@ where
             let mut actions = ArrayVec::default();
             let new_block = Block {
                 pred_hash: self.hash.clone(),
-                hash: BlockHash([0; 32]),
+                hash: BlockHash(vec![0; 32]),
                 level: self.level + 1,
                 time_header: TimeHeader { round, timestamp },
                 payload: Some(Payload {
-                    hash: PayloadHash([0; 32]),
+                    hash: PayloadHash(vec![0; 32]),
                     payload_round: round,
                     pre_cer: None,
                     cer: None,
@@ -829,7 +831,7 @@ where
                     pre_cer,
                 } => Block {
                     pred_hash: pred_hash.clone(),
-                    hash: BlockHash([0; 32]),
+                    hash: BlockHash(vec![0; 32]),
                     level: self.level,
                     time_header,
                     payload: Some(Payload {
@@ -842,11 +844,11 @@ where
                 },
                 PreVotesState::Collecting { .. } => Block {
                     pred_hash: self.pred_hash.clone(),
-                    hash: BlockHash([0; 32]),
+                    hash: BlockHash(vec![0; 32]),
                     level: self.level,
                     time_header,
                     payload: Some(Payload {
-                        hash: PayloadHash([0; 32]),
+                        hash: PayloadHash(vec![0; 32]),
                         payload_round: 0,
                         pre_cer: None,
                         cer: self.cer.clone(),
@@ -859,11 +861,11 @@ where
             match &self.inner_ {
                 VotesState::Done { cer, hash, .. } => Block {
                     pred_hash: hash.clone(),
-                    hash: BlockHash([0; 32]),
+                    hash: BlockHash(vec![0; 32]),
                     level: self.level + 1,
                     time_header,
                     payload: Some(Payload {
-                        hash: PayloadHash([0; 32]),
+                        hash: PayloadHash(vec![0; 32]),
                         payload_round: round,
                         pre_cer: None,
                         cer: Some(cer.clone()),
@@ -897,9 +899,11 @@ mod tests {
 
     use alloc::boxed::Box;
 
+    use crypto::hash::{BlockHash, BlockPayloadHash as PayloadHash};
+
     use crate::{
-        Machine, Config, TimingLinearGrow, ProposerMap, Event, Block, BlockHash, TimeHeader,
-        Timestamp, Payload, PayloadHash, BlockId, Validator, Action,
+        Machine, Config, TimingLinearGrow, ProposerMap, Event, Block, TimeHeader,
+        Timestamp, Payload, BlockId, Validator, Action,
     };
 
     #[test]
@@ -927,15 +931,15 @@ mod tests {
         };
 
         let mut block = Block {
-            pred_hash: BlockHash([0; 32]),
-            hash: BlockHash([1; 32]),
+            pred_hash: BlockHash(vec![0; 32]),
+            hash: BlockHash(vec![1; 32]),
             level: 5,
             time_header: TimeHeader {
                 round: 0,
                 timestamp: Timestamp::new(0, 35),
             },
             payload: Some(Payload {
-                hash: PayloadHash([0; 32]),
+                hash: PayloadHash(vec![0; 32]),
                 payload_round: 0,
                 pre_cer: None,
                 cer: None,
@@ -948,7 +952,7 @@ mod tests {
         let mut block_id = BlockId {
             level: 5,
             round: 0,
-            payload_hash: PayloadHash([0; 32]),
+            payload_hash: PayloadHash(vec![0; 32]),
         };
         let validator = Validator {
             id: 0,
@@ -966,7 +970,7 @@ mod tests {
         );
 
         block.pred_hash = block.hash;
-        block.hash = BlockHash([2; 32]);
+        block.hash = BlockHash(vec![2; 32]);
         block.level = 6;
         block.time_header.timestamp = Timestamp::new(0, 50);
         let now = Timestamp::new(0, 50);
@@ -982,7 +986,7 @@ mod tests {
             Event::Voted(block_id.clone(), validator.clone(), now),
         );
 
-        block.hash = BlockHash([3; 32]);
+        block.hash = BlockHash(vec![3; 32]);
         block.level = 6;
         block.time_header.round = 1;
         block.time_header.timestamp = Timestamp::new(1, 5);
@@ -999,8 +1003,8 @@ mod tests {
             Event::Voted(block_id.clone(), validator.clone(), now),
         );
 
-        block.pred_hash = BlockHash([2; 32]);
-        block.hash = BlockHash([4; 32]);
+        block.pred_hash = BlockHash(vec![2; 32]);
+        block.hash = BlockHash(vec![4; 32]);
         block.level = 7;
         block.time_header.round = 1;
         block.time_header.timestamp = Timestamp::new(1, 20);

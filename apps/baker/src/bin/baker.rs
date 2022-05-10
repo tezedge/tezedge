@@ -39,7 +39,7 @@ fn main() {
             let initial_time = SystemTime::now();
             let mut store = Store::new(reducer, effects, srv, initial_time, initial_state);
             for event in events {
-                store.dispatch::<BakerAction>(event.event.into());
+                store.dispatch::<BakerAction>(event.action.into());
             }
         }
     }

@@ -5,13 +5,9 @@ use alloc::vec::Vec;
 
 use serde::{Serialize, Deserialize};
 
+use crypto::hash::{BlockHash, BlockPayloadHash as PayloadHash};
+
 use super::{timeout::TimeHeader, validator::Votes};
-
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PayloadHash(pub [u8; 32]);
-
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct BlockHash(pub [u8; 32]);
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PreCertificate<Id, Op>

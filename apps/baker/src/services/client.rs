@@ -32,7 +32,7 @@ use tezos_messages::{
     protocol::proto_012::operation::FullHeader,
 };
 
-use super::event::{Block, OperationSimple};
+use super::event::{Block, OperationSimple, Slots};
 use crate::machine::{BakerAction, OperationsEventAction, ProposalEventAction, RpcErrorAction};
 
 pub const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
@@ -207,7 +207,7 @@ impl RpcClient {
         })
     }
 
-    pub fn validators(&self, level: i32) -> Result<BTreeMap<ContractTz1Hash, Vec<u16>>, RpcError> {
+    pub fn validators(&self, level: i32) -> Result<BTreeMap<ContractTz1Hash, Slots>, RpcError> {
         let mut url = self
             .endpoint
             .join("chains/main/blocks/head/helpers/validators")
@@ -224,7 +224,7 @@ impl RpcClient {
         let validators = self.single_response_blocking::<Vec<_>>(&url, None, None)?;
         let validators = validators
             .into_iter()
-            .map(|Validator { delegate, slots }| (delegate, slots))
+            .map(|Validator { delegate, slots }| (delegate, Slots(slots)))
             .collect();
         Ok(validators)
     }

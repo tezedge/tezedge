@@ -11,7 +11,7 @@ use tezos_messages::protocol::proto_012::operation::{InlinedEndorsement, Inlined
 
 use crate::services::{
     client::ProtocolBlockHeader,
-    event::{Block, OperationSimple},
+    event::{Block, OperationSimple, Slots},
 };
 
 use super::{state::Gathering, BakerState};
@@ -63,7 +63,7 @@ where
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SlotsEventAction {
     pub level: i32,
-    pub delegates: BTreeMap<ContractTz1Hash, Vec<u16>>,
+    pub delegates: BTreeMap<ContractTz1Hash, Slots>,
 }
 
 impl<S> EnablingCondition<S> for SlotsEventAction

@@ -6,10 +6,12 @@ use alloc::boxed::Box;
 
 use serde::{Serialize, Deserialize};
 
+use crypto::hash::{BlockHash, BlockPayloadHash as PayloadHash};
+
 use super::{
     timestamp::Timestamp,
     validator::Validator,
-    block::{PayloadHash, BlockHash, Block},
+    block::Block,
 };
 
 #[derive(PartialEq, Eq, Clone)]

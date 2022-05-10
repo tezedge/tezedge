@@ -24,7 +24,7 @@ where
             };
 
             let event = EventWithTime {
-                event: baker_action.clone(),
+                action: baker_action.clone(),
                 now,
             };
             let baker_state = state

@@ -3,7 +3,6 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    convert::TryInto,
     fmt, mem,
     time::Duration,
 };
@@ -23,7 +22,7 @@ use tezos_messages::protocol::proto_012::operation::{
 
 use crate::services::{
     client::{Constants, ProtocolBlockHeader},
-    event::{Block, OperationKind, OperationSimple},
+    event::{Block, OperationKind, OperationSimple, Slots},
     EventWithTime,
 };
 
@@ -38,14 +37,14 @@ pub struct SlotsInfo {
     pub committee_size: u32,
     pub ours: Vec<ContractTz1Hash>,
     pub level: i32,
-    pub delegates: BTreeMap<i32, BTreeMap<ContractTz1Hash, Vec<u16>>>,
+    pub delegates: BTreeMap<i32, BTreeMap<ContractTz1Hash, Slots>>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub enum Gathering {
     // for some `level: i32` we request a collection of public key hash
     // and corresponding slots
-    GetSlots(Request<i32, BTreeMap<ContractTz1Hash, Vec<u16>>, String>),
+    GetSlots(Request<i32, BTreeMap<ContractTz1Hash, Slots>, String>),
     // for some `BlockHash` we request its operations
     GetOperations(Request<BlockHash, Vec<Vec<OperationSimple>>, String>),
     // for some `BlockHash` we request a list of live blocks
@@ -199,7 +198,7 @@ impl BakerState {
     pub fn handle_event(mut self, event: EventWithTime) -> Self {
         // those are already executed
         self.as_mut().actions.clear();
-        if event.event.is_event() {
+        if event.action.is_event() {
             self.handle_event_inner(event)
         } else {
             self
@@ -208,17 +207,17 @@ impl BakerState {
 
     #[rustfmt::skip]
     fn handle_event_inner(mut self, event: EventWithTime) -> Self {
-        let EventWithTime { event, now } = event;
+        let EventWithTime { action, now } = event;
 
         let description = self.to_string();
-        if !matches!(&event, BakerAction::OperationsEvent(_)) {
+        if !matches!(&action, BakerAction::OperationsEvent(_)) {
             self.as_mut().actions.push(BakerAction::LogInfo(LogInfoAction {
                 with_prefix: false,
                 description,
             }));
         }
 
-        match event {
+        match action {
             BakerAction::RpcError(RpcErrorAction { error }) => {
                 self.as_mut().actions.push(BakerAction::LogError(LogErrorAction { description: format!("{error}") }));
                 let state = self.into_inner();
@@ -317,7 +316,7 @@ impl BakerState {
                         state.handle_tb_actions(tb_actions);
                         if let Some(operations) = state.ahead_ops.remove(&current_block.predecessor) {
                             BakerState::Idle(state).handle_event_inner(EventWithTime {
-                                event: BakerAction::OperationsEvent(OperationsEventAction { operations }),
+                                action: BakerAction::OperationsEvent(OperationsEventAction { operations }),
                                 now,
                             })
                         } else {
@@ -522,14 +521,14 @@ impl Initialized {
         }
     }
 
-    fn pre_vote(&mut self, pred_hash: tb::BlockHash, block_id: tb::BlockId) {
+    fn pre_vote(&mut self, pred_hash: BlockHash, block_id: tb::BlockId) {
         let slot = self
             .tb_config
             .map
             .delegates
             .get(&block_id.level)
             .and_then(|v| v.get(&self.this))
-            .and_then(|v| v.first());
+            .and_then(|v| v.0.first());
         let slot = match slot {
             Some(s) => *s,
             None => return,
@@ -550,14 +549,14 @@ impl Initialized {
             .push(BakerAction::PreVote(PreVoteAction { op: preendorsement }));
     }
 
-    fn vote(&mut self, pred_hash: tb::BlockHash, block_id: tb::BlockId) {
+    fn vote(&mut self, pred_hash: BlockHash, block_id: tb::BlockId) {
         let slot = self
             .tb_config
             .map
             .delegates
             .get(&block_id.level)
             .and_then(|v| v.get(&self.this))
-            .and_then(|v| v.first());
+            .and_then(|v| v.0.first());
         let slot = match slot {
             Some(s) => *s,
             None => return,
@@ -632,7 +631,7 @@ impl Initialized {
             }
         }
         let payload_round = payload.payload_round;
-        let payload_hash = if payload.hash != tb::PayloadHash([0; 32]) {
+        let payload_hash = if payload.hash.0.as_slice() != [0; 32] {
             BlockPayloadHash(payload.hash.0.to_vec())
         } else {
             let hashes = operations[1..]
@@ -680,6 +679,7 @@ impl tb::ProposerMap for SlotsInfo {
                 self.delegates
                     .get(&level)?
                     .get(our)
+                    .map(|Slots(s)| s)
                     .into_iter()
                     .flatten()
                     .skip_while(|c| **c < (round as u32 % self.committee_size) as u16)
@@ -698,10 +698,10 @@ impl SlotsInfo {
         operation: OperationSimple,
     ) -> Option<tb::Validator<ContractTz1Hash, OperationSimple>> {
         let i = self.delegates.get(&level)?;
-        let (id, s) = i.iter().find(|&(_, v)| v.first() == Some(&slot))?;
+        let (id, s) = i.iter().find(|&(_, v)| v.0.first() == Some(&slot))?;
         Some(tb::Validator {
             id: id.clone(),
-            power: s.len() as u32,
+            power: s.0.len() as u32,
             operation,
         })
     }
@@ -711,15 +711,7 @@ fn block_id(content: &EndorsementOperation) -> tb::BlockId {
     tb::BlockId {
         level: content.level,
         round: content.round,
-        payload_hash: {
-            let c = content
-                .block_payload_hash
-                .0
-                .as_slice()
-                .try_into()
-                .expect("payload hash is 32 bytes");
-            tb::PayloadHash(c)
-        },
+        payload_hash: content.block_payload_hash.clone(),
     }
 }
 
@@ -729,9 +721,9 @@ fn proposal(
     tb_config: &tb::Config<tb::TimingLinearGrow, SlotsInfo>,
 ) -> tb::Block<ContractTz1Hash, OperationSimple> {
     tb::Block {
-        pred_hash: tb::BlockHash(block.predecessor.0.as_slice().try_into().unwrap()),
+        pred_hash: block.predecessor.clone(),
         level: block.level,
-        hash: tb::BlockHash(block.hash.0.as_slice().try_into().unwrap()),
+        hash: block.hash.clone(),
         time_header: tb::TimeHeader {
             round: block.round,
             timestamp: tb::Timestamp {
@@ -741,7 +733,7 @@ fn proposal(
         payload: {
             if !block.transition {
                 Some(tb::Payload {
-                    hash: tb::PayloadHash(block.payload_hash.0.as_slice().try_into().unwrap()),
+                    hash: block.payload_hash.clone(),
                     payload_round: block.payload_round,
                     pre_cer: operations.first().and_then(|ops| {
                         let v = ops
@@ -754,10 +746,7 @@ fn proposal(
                         let (first, _) = v.first()?;
                         let level = first.level;
                         Some(tb::PreCertificate {
-                            payload_hash: {
-                                let c = first.block_payload_hash.0.as_slice().try_into().unwrap();
-                                tb::PayloadHash(c)
-                            },
+                            payload_hash: first.block_payload_hash.clone(),
                             payload_round: first.round,
                             votes: {
                                 v.into_iter()

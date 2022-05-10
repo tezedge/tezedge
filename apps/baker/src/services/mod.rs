@@ -44,7 +44,7 @@ pub struct Services {
 }
 
 pub struct EventWithTime {
-    pub event: BakerAction,
+    pub action: BakerAction,
     pub now: tenderbake::Timestamp,
 }
 
@@ -119,7 +119,7 @@ impl Services {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap();
                 let now = tb::Timestamp { unix_epoch };
-                EventWithTime { now, event }
+                EventWithTime { now, action: event }
             }),
         )
     }
