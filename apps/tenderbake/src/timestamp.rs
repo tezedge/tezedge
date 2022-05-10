@@ -7,8 +7,10 @@ use core::{
     ops::{Add, Sub, AddAssign},
 };
 
+use serde::{Serialize, Deserialize};
+
 /// Timestamp as a unix time
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct Timestamp {
     pub unix_epoch: Duration,
 }
@@ -89,6 +91,7 @@ pub trait Timing {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct TimingLinearGrow {
     pub minimal_block_delay: Duration,
     pub delay_increment_per_round: Duration,
@@ -136,3 +139,24 @@ impl Timing for TimingLinearGrow {
             + self.delay_increment_per_round * (round * (round - 1) / 2) as u32
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use core::time::Duration;
+
+//     use super::{Timing, TimingLinearGrow};
+
+//     #[test]
+//     #[kani::proof]
+//     fn positive_discriminant() {
+//         let t = TimingLinearGrow {
+//             minimal_block_delay: Duration::from_secs(1),
+//             delay_increment_per_round: Duration::from_secs(1),
+//         };
+
+//         let now = Duration::from_secs(kani::any());
+//         let start_level = Duration::from_secs(0);
+
+//         t.round(now, start_level);
+//     }
+// }

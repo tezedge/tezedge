@@ -7,7 +7,7 @@ use std::{
     io,
     num::ParseIntError,
     str,
-    sync::{mpsc, Arc},
+    sync::mpsc,
     thread,
     time::Duration,
 };
@@ -53,7 +53,10 @@ pub enum RpcError {
         inner: RpcErrorInner,
     },
     #[error("{inner}, url: {url}")]
-    WithContext { url: Url, inner: RpcErrorInner },
+    WithContext {
+        url: Url,
+        inner: RpcErrorInner,
+    },
     #[error("{_0}")]
     Less(RpcErrorInner),
 }
@@ -83,7 +86,7 @@ pub enum RpcErrorInner {
 }
 
 // signature watermark: 0x11 | chain_id
-#[derive(BinWriter, HasEncoding, NomReader, Serialize, Clone, Debug)]
+#[derive(BinWriter, HasEncoding, NomReader, Clone, Debug, Serialize, Deserialize)]
 pub struct ProtocolBlockHeader {
     pub payload_hash: BlockPayloadHash,
     pub payload_round: i32,
@@ -563,7 +566,7 @@ impl RpcClient {
                     let action = match v {
                         Ok(v) => v,
                         Err(err) => BakerAction::RpcError(RpcErrorAction {
-                            error: Arc::new(err),
+                            error: err.to_string(),
                         }),
                     };
                     let _ = tx.send(action);
@@ -575,7 +578,7 @@ impl RpcClient {
                     Ok(()) => unreachable!(),
                     Err(inner) => {
                         let _ = tx.send(BakerAction::RpcError(RpcErrorAction {
-                            error: Arc::new(RpcError::WithContext { url, inner }),
+                            error: RpcError::WithContext { url, inner }.to_string(),
                         }));
                     }
                 }

@@ -10,7 +10,7 @@ pub mod timer;
 use std::{
     convert::TryInto,
     path::PathBuf,
-    sync::{mpsc, Arc},
+    sync::mpsc,
     time::{Duration, SystemTime},
 };
 
@@ -161,7 +161,7 @@ impl BakerService for Services {
                     }));
                 }
                 Err(err) => drop(self.sender.send(BakerAction::RpcError(RpcErrorAction {
-                    error: Arc::new(err),
+                    error: err.to_string(),
                 }))),
             },
             ActionInner::GetOperationsForBlock { block_hash } => {
@@ -174,7 +174,7 @@ impl BakerService for Services {
                         let _ = self.sender.send(BakerAction::OperationsForBlockEvent(act));
                     }
                     Err(err) => drop(self.sender.send(BakerAction::RpcError(RpcErrorAction {
-                        error: Arc::new(err),
+                        error: err.to_string(),
                     }))),
                 }
             }
@@ -188,7 +188,7 @@ impl BakerService for Services {
                         let _ = self.sender.send(BakerAction::LiveBlocksEvent(act));
                     }
                     Err(err) => drop(self.sender.send(BakerAction::RpcError(RpcErrorAction {
-                        error: Arc::new(err),
+                        error: err.to_string(),
                     }))),
                 }
             }

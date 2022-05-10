@@ -4,6 +4,8 @@
 use core::{fmt, ops::AddAssign};
 use alloc::collections::BTreeMap;
 
+use serde::{Serialize, Deserialize};
+
 /// Represents a pre-vote or vote
 #[derive(Clone)]
 pub struct Validator<Id, Op> {
@@ -23,13 +25,19 @@ where
     }
 }
 
-#[derive(Clone)]
-pub struct Votes<Id, Op> {
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Votes<Id, Op>
+where
+    Id: Ord,
+{
     pub ids: BTreeMap<Id, Op>,
     pub power: u32,
 }
 
-impl<Id, Op> Default for Votes<Id, Op> {
+impl<Id, Op> Default for Votes<Id, Op>
+where
+    Id: Ord,
+{
     fn default() -> Self {
         Votes {
             ids: BTreeMap::default(),

@@ -1,23 +1,25 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
+
+use serde::{Serialize, Deserialize};
 
 use crypto::hash::{BlockHash, ContractTz1Hash};
 use redux_rs::EnablingCondition;
 use tezos_messages::protocol::proto_012::operation::{InlinedEndorsement, InlinedPreendorsement};
 
 use crate::services::{
-    client::{ProtocolBlockHeader, RpcError},
+    client::ProtocolBlockHeader,
     event::{Block, OperationSimple},
 };
 
 use super::{state::Gathering, BakerState};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RpcErrorAction {
-    pub error: Arc<RpcError>,
+    pub error: String,
 }
 
 impl<S> EnablingCondition<S> for RpcErrorAction
@@ -30,7 +32,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IdleEventAction {}
 
 impl<S> EnablingCondition<S> for IdleEventAction
@@ -43,7 +45,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProposalEventAction {
     pub block: Block,
 }
@@ -58,7 +60,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SlotsEventAction {
     pub level: i32,
     pub delegates: BTreeMap<ContractTz1Hash, Vec<u16>>,
@@ -77,7 +79,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OperationsForBlockEventAction {
     pub block_hash: BlockHash,
     pub operations: Vec<Vec<OperationSimple>>,
@@ -96,7 +98,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LiveBlocksEventAction {
     pub block_hash: BlockHash,
     pub live_blocks: Vec<BlockHash>,
@@ -115,7 +117,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OperationsEventAction {
     pub operations: Vec<OperationSimple>,
 }
@@ -130,7 +132,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TickEventAction {}
 
 impl<S> EnablingCondition<S> for TickEventAction
@@ -145,7 +147,7 @@ where
 // Inner actions
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IdleAction {}
 
 impl<S> EnablingCondition<S> for IdleAction
@@ -158,7 +160,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LogErrorAction {
     pub description: String,
 }
@@ -173,7 +175,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LogWarningAction {
     pub description: String,
 }
@@ -188,7 +190,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LogInfoAction {
     pub with_prefix: bool,
     pub description: String,
@@ -205,7 +207,7 @@ where
 
 // TODO: split into many individual actions
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LogTenderbakeAction {
     pub record: tenderbake::LogRecord,
 }
@@ -220,7 +222,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GetSlotsAction {
     pub level: i32,
 }
@@ -235,7 +237,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GetOperationsForBlockAction {
     pub block_hash: BlockHash,
 }
@@ -250,7 +252,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GetLiveBlocksAction {
     pub block_hash: BlockHash,
 }
@@ -265,7 +267,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MonitorOperationsAction {}
 
 impl<S> EnablingCondition<S> for MonitorOperationsAction
@@ -278,7 +280,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ScheduleTimeoutAction {
     pub deadline: tenderbake::Timestamp,
 }
@@ -293,7 +295,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RevealNonceAction {
     pub branch: BlockHash,
     pub level: i32,
@@ -310,7 +312,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PreVoteAction {
     pub op: InlinedPreendorsement,
 }
@@ -325,7 +327,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VoteAction {
     pub op: InlinedEndorsement,
 }
@@ -340,7 +342,7 @@ where
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProposeAction {
     pub protocol_header: ProtocolBlockHeader,
     pub predecessor_hash: BlockHash,
@@ -358,7 +360,7 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BakerAction {
     // events
     RpcError(RpcErrorAction),

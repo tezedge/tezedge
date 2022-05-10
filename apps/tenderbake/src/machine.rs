@@ -4,9 +4,8 @@
 use core::{mem, cmp::Ordering, time::Duration};
 use alloc::{boxed::Box, vec::Vec, collections::BTreeMap};
 
-// arrayvec is unsafe inside
-// use arrayvec::ArrayVec;
-// bounded array
+use serde::{Serialize, Deserialize};
+
 type ArrayVec<T> = Vec<T>;
 
 use super::{
@@ -18,13 +17,22 @@ use super::{
 };
 
 /// The state machine. Aims to contain only possible states.
-pub struct Machine<Id, Op, const DELAY_MS: u64> {
+#[derive(Serialize, Deserialize)]
+pub struct Machine<Id, Op, const DELAY_MS: u64>
+where
+    Id: Ord,
+{
     inner: Option<Result<Initialized<Id, Op, DELAY_MS>, Transition<Id>>>,
 }
 
-struct Pair<L, Id, Op>(L, ArrayVec<Action<Id, Op>>);
+struct Pair<L, Id, Op>(L, ArrayVec<Action<Id, Op>>)
+where
+    Id: Ord;
 
-impl<L, Id, Op> Pair<L, Id, Op> {
+impl<L, Id, Op> Pair<L, Id, Op>
+where
+    Id: Ord,
+{
     fn map_left<F, Lp>(self, f: F) -> Pair<Lp, Id, Op>
     where
         F: FnOnce(L) -> Lp,
@@ -36,6 +44,7 @@ impl<L, Id, Op> Pair<L, Id, Op> {
 // We are only interested in proposals in this state
 // if the proposal of the same level, add its time header to the collection
 // if the proposal of next level, go to next state
+#[derive(Serialize, Deserialize)]
 struct Transition<Id> {
     level: i32,
     hash: BlockHash,
@@ -43,7 +52,11 @@ struct Transition<Id> {
     timeout_next_level: Option<Timeout<Id>>,
 }
 
-struct Initialized<Id, Op, const DELAY_MS: u64> {
+#[derive(Serialize, Deserialize)]
+struct Initialized<Id, Op, const DELAY_MS: u64>
+where
+    Id: Ord,
+{
     level: i32,
     // time headers of all possible predecessors
     pred_time_headers: BTreeMap<BlockHash, TimeHeader<true>>,
@@ -66,7 +79,11 @@ struct Initialized<Id, Op, const DELAY_MS: u64> {
     timeout_next_level: Option<Timeout<Id>>,
 }
 
-enum PreVotesState<Id, Op> {
+#[derive(Serialize, Deserialize)]
+enum PreVotesState<Id, Op>
+where
+    Id: Ord,
+{
     Collecting {
         incomplete: Votes<Id, Op>,
     },
@@ -79,7 +96,11 @@ enum PreVotesState<Id, Op> {
     },
 }
 
-enum VotesState<Id, Op> {
+#[derive(Serialize, Deserialize)]
+enum VotesState<Id, Op>
+where
+    Id: Ord,
+{
     Collecting {
         incomplete: Votes<Id, Op>,
     },
@@ -90,7 +111,10 @@ enum VotesState<Id, Op> {
     },
 }
 
-impl<Id, Op, const DELAY_MS: u64> Default for Machine<Id, Op, DELAY_MS> {
+impl<Id, Op, const DELAY_MS: u64> Default for Machine<Id, Op, DELAY_MS>
+where
+    Id: Ord,
+{
     fn default() -> Self {
         Machine { inner: None }
     }
@@ -732,7 +756,10 @@ where
     }
 }
 
-impl<Id> Transition<Id> {
+impl<Id> Transition<Id>
+where
+    Id: Ord,
+{
     fn timeout<Op>(&mut self, log: &mut ArrayVec<LogRecord>) -> ArrayVec<Action<Id, Op>> {
         if let Some(Timeout {
             proposer,

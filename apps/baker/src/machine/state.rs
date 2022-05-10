@@ -5,7 +5,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryInto,
     fmt, mem,
-    sync::Arc,
     time::Duration,
 };
 
@@ -23,7 +22,7 @@ use tezos_messages::protocol::proto_012::operation::{
 };
 
 use crate::services::{
-    client::{Constants, ProtocolBlockHeader, RpcError},
+    client::{Constants, ProtocolBlockHeader},
     event::{Block, OperationKind, OperationSimple},
     EventWithTime,
 };
@@ -42,14 +41,15 @@ pub struct SlotsInfo {
     pub delegates: BTreeMap<i32, BTreeMap<ContractTz1Hash, Vec<u16>>>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum Gathering {
     // for some `level: i32` we request a collection of public key hash
     // and corresponding slots
-    GetSlots(Request<i32, BTreeMap<ContractTz1Hash, Vec<u16>>, Arc<RpcError>>),
+    GetSlots(Request<i32, BTreeMap<ContractTz1Hash, Vec<u16>>, String>),
     // for some `BlockHash` we request its operations
-    GetOperations(Request<BlockHash, Vec<Vec<OperationSimple>>, Arc<RpcError>>),
+    GetOperations(Request<BlockHash, Vec<Vec<OperationSimple>>, String>),
     // for some `BlockHash` we request a list of live blocks
-    GetLiveBlocks(Request<BlockHash, Vec<BlockHash>, Arc<RpcError>>),
+    GetLiveBlocks(Request<BlockHash, Vec<BlockHash>, String>),
 }
 
 impl fmt::Display for Gathering {
@@ -62,6 +62,7 @@ impl fmt::Display for Gathering {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum BakerState {
     Idle(Initialized),
     Gathering {
@@ -75,7 +76,7 @@ pub enum BakerState {
     },
     Invalid {
         state: Initialized,
-        error: Arc<RpcError>,
+        error: String,
     },
 }
 
@@ -96,6 +97,7 @@ impl fmt::Display for BakerState {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Initialized {
     pub chain_id: ChainId,
     pub proof_of_work_threshold: u64,
@@ -220,7 +222,7 @@ impl BakerState {
             BakerAction::RpcError(RpcErrorAction { error }) => {
                 self.as_mut().actions.push(BakerAction::LogError(LogErrorAction { description: format!("{error}") }));
                 let state = self.into_inner();
-                BakerState::Invalid { state, error }
+                BakerState::Invalid { state, error: error.to_string() }
             }
             BakerAction::IdleEvent(IdleEventAction {}) => {
                 match self {
@@ -231,7 +233,7 @@ impl BakerState {
                             state: RequestState::Error(error),
                         }),
                         current_block: _,
-                    } => BakerState::Invalid { state, error },
+                    } => BakerState::Invalid { state, error: error.to_string() },
                     BakerState::Gathering {
                         state,
                         gathering: Gathering::GetOperations(Request {
@@ -239,7 +241,7 @@ impl BakerState {
                             state: RequestState::Error(error),
                         }),
                         current_block: _,
-                    } => BakerState::Invalid { state, error },
+                    } => BakerState::Invalid { state, error: error.to_string() },
                     BakerState::Gathering {
                         state,
                         gathering: Gathering::GetLiveBlocks(Request {
@@ -247,7 +249,7 @@ impl BakerState {
                             state: RequestState::Error(error),
                         }),
                         current_block: _,
-                    } => BakerState::Invalid { state, error },
+                    } => BakerState::Invalid { state, error: error.to_string() },
                     BakerState::Gathering {
                         mut state,
                         gathering: Gathering::GetSlots(Request {
