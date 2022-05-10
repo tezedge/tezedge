@@ -197,14 +197,14 @@ where
                 };
                 new.map_left(Some)
             }
-            Event::PreVoted(block_id, validator, now) => match inner {
+            Event::Preendorsed(block_id, validator, now) => match inner {
                 Some(Ok(m)) => m
                     .pre_voted(&mut log, config, block_id, validator, now)
                     .map_left(Ok)
                     .map_left(Some),
                 x => Pair(x, ArrayVec::default()),
             },
-            Event::Voted(block_id, validator, now) => match inner {
+            Event::Endorsed(block_id, validator, now) => match inner {
                 Some(Ok(m)) => m
                     .voted(&mut log, config, block_id, validator, now)
                     .map_left(Ok)
@@ -240,6 +240,39 @@ where
             VotesState::Done { hash, .. } => Some(hash.clone()),
             VotesState::Collecting { .. } => None,
         }
+    }
+
+    /// current level
+    pub fn level(&self) -> Option<i32> {
+        let inner = self.inner.as_ref()?;
+        match inner {
+            Ok(t) => Some(t.level),
+            Err(t) => Some(t.level),
+        }
+    }
+
+    /// current round
+    pub fn round(&self) -> Option<i32> {
+        let initialized = self.inner.as_ref()?.as_ref().ok()?;
+        Some(initialized.this_time_header.round)
+    }
+
+    /// timestamp of last proposal
+    pub fn timestamp(&self) -> Option<Timestamp> {
+        let initialized = self.inner.as_ref()?.as_ref().ok()?;
+        Some(initialized.this_time_header.timestamp)
+    }
+
+    /// predecessor hash of last proposal
+    pub fn predecessor_hash(&self) -> Option<BlockHash> {
+        let initialized = self.inner.as_ref()?.as_ref().ok()?;
+        Some(initialized.pred_hash.clone())
+    }
+
+    /// payload hash of last proposal
+    pub fn payload_hash(&self) -> Option<PayloadHash> {
+        let initialized = self.inner.as_ref()?.as_ref().ok()?;
+        Some(initialized.payload_hash.clone())
     }
 }
 
@@ -361,8 +394,8 @@ where
 
         let mut actions = ArrayVec::default();
         if current_round == block.time_header.round {
-            log.push(LogRecord::PreVote);
-            actions.push(Action::PreVote {
+            log.push(LogRecord::Preendorse);
+            actions.push(Action::Preendorse {
                 pred_hash: block.pred_hash.clone(),
                 block_id: BlockId {
                     level: block.level,
@@ -579,8 +612,8 @@ where
                     None => true,
                 };
             if will_pre_vote {
-                log.push(LogRecord::PreVote);
-                actions.push(Action::PreVote {
+                log.push(LogRecord::Preendorse);
+                actions.push(Action::Preendorse {
                     pred_hash: self_.pred_hash.clone(),
                     block_id: BlockId {
                         level: block.level,
@@ -590,8 +623,8 @@ where
                 })
             }
             if let PreVotesState::Done { .. } = &self_.inner {
-                log.push(LogRecord::Vote);
-                actions.push(Action::Vote {
+                log.push(LogRecord::Endorse);
+                actions.push(Action::Endorse {
                     pred_hash: self_.pred_hash.clone(),
                     block_id: BlockId {
                         level: block.level,
@@ -670,8 +703,8 @@ where
                     votes: mem::take(votes),
                 },
             };
-            log.push(LogRecord::Vote);
-            actions.push(Action::Vote {
+            log.push(LogRecord::Endorse);
+            actions.push(Action::Endorse {
                 pred_hash: self_.pred_hash.clone(),
                 block_id,
             });
@@ -962,11 +995,11 @@ mod tests {
         let now = Timestamp::new(0, 36);
         machine.handle(
             &config,
-            Event::PreVoted(block_id.clone(), validator.clone(), now),
+            Event::Preendorsed(block_id.clone(), validator.clone(), now),
         );
         machine.handle(
             &config,
-            Event::Voted(block_id.clone(), validator.clone(), now),
+            Event::Endorsed(block_id.clone(), validator.clone(), now),
         );
 
         block.pred_hash = block.hash;
@@ -979,11 +1012,11 @@ mod tests {
         block_id.level += 1;
         machine.handle(
             &config,
-            Event::PreVoted(block_id.clone(), validator.clone(), now),
+            Event::Preendorsed(block_id.clone(), validator.clone(), now),
         );
         machine.handle(
             &config,
-            Event::Voted(block_id.clone(), validator.clone(), now),
+            Event::Endorsed(block_id.clone(), validator.clone(), now),
         );
 
         block.hash = BlockHash(vec![3; 32]);
@@ -996,11 +1029,11 @@ mod tests {
         block_id.round += 2;
         machine.handle(
             &config,
-            Event::PreVoted(block_id.clone(), validator.clone(), now),
+            Event::Preendorsed(block_id.clone(), validator.clone(), now),
         );
         machine.handle(
             &config,
-            Event::Voted(block_id.clone(), validator.clone(), now),
+            Event::Endorsed(block_id.clone(), validator.clone(), now),
         );
 
         block.pred_hash = BlockHash(vec![2; 32]);
@@ -1012,7 +1045,7 @@ mod tests {
         let (actions, _) = machine.handle(&config, Event::Proposal(Box::new(block.clone()), now));
         assert!(actions
             .iter()
-            .find(|a| matches!(a, Action::PreVote { .. }))
+            .find(|a| matches!(a, Action::Preendorse { .. }))
             .is_some());
     }
 }

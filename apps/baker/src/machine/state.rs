@@ -427,7 +427,7 @@ impl BakerState {
                                     .map
                                     .validator(content.level, content.slot, op)
                             {
-                                let event = tb::Event::PreVoted(block_id(&content), validator, now);
+                                let event = tb::Event::Preendorsed(block_id(&content), validator, now);
                                 let (tb_actions, records) =
                                     state.tb_state.handle(&state.tb_config, event);
                                 state.actions.extend(records.into_iter().map(|record| {
@@ -443,7 +443,7 @@ impl BakerState {
                                     .map
                                     .validator(content.level, content.slot, op)
                             {
-                                let event = tb::Event::Voted(block_id(&content), validator, now);
+                                let event = tb::Event::Endorsed(block_id(&content), validator, now);
                                 let (tb_actions, records) =
                                     state.tb_state.handle(&state.tb_config, event);
                                 state.actions.extend(records.into_iter().map(|record| {
@@ -505,13 +505,13 @@ impl Initialized {
                 tb::Action::Propose(block, _, _) => {
                     self.propose(*block);
                 }
-                tb::Action::PreVote {
+                tb::Action::Preendorse {
                     pred_hash,
                     block_id,
                 } => {
                     self.pre_vote(pred_hash, block_id);
                 }
-                tb::Action::Vote {
+                tb::Action::Endorse {
                     pred_hash,
                     block_id,
                 } => {

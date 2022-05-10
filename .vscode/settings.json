@@ -8,6 +8,7 @@
     "fuzzcheck",
     "merkle",
     "preendorse",
+    "preendorsed",
     "preendorsement",
     "preendorsements",
     "prequorum",
@@ -16,6 +17,7 @@
     "shiplift",
     "simplestakingcom",
     "structopt",
+    "tenderbake",
     "Tezedge",
     "tezos",
     "thiserror"

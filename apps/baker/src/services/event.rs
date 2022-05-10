@@ -21,6 +21,24 @@ pub struct OperationSimple {
     pub protocol: Option<ProtocolHash>,
 }
 
+impl OperationSimple {
+    #[cfg(test)]
+    pub fn new(branch: &BlockHash, content: &str) -> Self {
+        OperationSimple {
+            branch: branch.clone(),
+            contents: vec![serde_json::from_str(content).unwrap()],
+            signature: None,
+            hash: None,
+            protocol: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn preendorsement(branch: &BlockHash, payload_hash: &BlockPayloadHash, level: i32, round: i32, slot: u16) -> Self {
+        Self::new(branch, &format!("{{\"block_payload_hash\":\"{payload_hash}\",\"kind\":\"preendorsement\",\"level\":{level},\"round\":{round},\"slot\":{slot}}}"))
+    }
+}
+
 pub enum OperationKind {
     Preendorsement(EndorsementOperation),
     Endorsement(EndorsementOperation),

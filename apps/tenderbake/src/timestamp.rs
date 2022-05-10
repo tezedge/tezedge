@@ -91,7 +91,7 @@ pub trait Timing {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct TimingLinearGrow {
     pub minimal_block_delay: Duration,
     pub delay_increment_per_round: Duration,
