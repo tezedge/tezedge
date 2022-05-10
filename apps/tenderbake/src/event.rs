@@ -26,8 +26,8 @@ where
     Id: Ord,
 {
     Proposal(Box<Block<Id, Op>>, Timestamp),
-    PreVoted(BlockId, Validator<Id, Op>, Timestamp),
-    Voted(BlockId, Validator<Id, Op>, Timestamp),
+    Preendorsed(BlockId, Validator<Id, Op>, Timestamp),
+    Endorsed(BlockId, Validator<Id, Op>, Timestamp),
     Operation(Op),
     Timeout,
 }
@@ -37,11 +37,11 @@ where
     Id: Ord,
 {
     ScheduleTimeout(Timestamp),
-    PreVote {
+    Preendorse {
         pred_hash: BlockHash,
         block_id: BlockId,
     },
-    Vote {
+    Endorse {
         pred_hash: BlockHash,
         block_id: BlockId,
     },
@@ -86,8 +86,8 @@ pub enum LogRecord {
     AcceptAtInitializedState {
         next_level: bool,
     },
-    PreVote,
-    Vote,
+    Preendorse,
+    Endorse,
     HavePreCertificate {
         payload_round: i32,
     },
@@ -187,8 +187,8 @@ impl fmt::Display for LogRecord {
                 }
                 Ok(())
             }
-            LogRecord::PreVote => write!(f, " .  cast preendorsement"),
-            LogRecord::Vote => write!(f, " .  cast endorsement"),
+            LogRecord::Preendorse => write!(f, " .  cast preendorsement"),
+            LogRecord::Endorse => write!(f, " .  cast endorsement"),
             LogRecord::HavePreCertificate { payload_round } => {
                 write!(f, " .  obtained pre certificate at {payload_round}")
             }

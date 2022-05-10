@@ -1,0 +1,131 @@
+{
+    "Idle": {
+        "chain_id": "NetXdQprcVkpaWU",
+        "proof_of_work_threshold": 18446744073709551615,
+        "this": "tz1faswCTDciRzE4oJ9jn2Vm2dvjeyA9fUzU",
+        "nonces": {
+            "blocks_per_commitment": 4,
+            "blocks_per_cycle": 8,
+            "nonce_length": 32,
+            "cycle": 0,
+            "previous": {},
+            "this": {}
+        },
+        "ahead_ops": {},
+        "live_blocks": [
+            "BLNkLfhd9vLNBHbe34bnvsgWDjoWK389wch8T6r9frqjzbcdZDV",
+            "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2",
+            "BMW4tKYqbFTKgpemZoXnt8yKJ2YpRkSg93fTa7StRopHdJsuUjr"
+        ],
+        "this_level": [
+            "BLNkLfhd9vLNBHbe34bnvsgWDjoWK389wch8T6r9frqjzbcdZDV",
+            "BMW4tKYqbFTKgpemZoXnt8yKJ2YpRkSg93fTa7StRopHdJsuUjr"
+        ],
+        "operations": [],
+        "tb_config": {
+            "timing": {
+                "minimal_block_delay": {
+                    "secs": 1,
+                    "nanos": 0
+                },
+                "delay_increment_per_round": {
+                    "secs": 1,
+                    "nanos": 0
+                }
+            },
+            "map": {
+                "committee_size": 256,
+                "ours": [
+                    "tz1faswCTDciRzE4oJ9jn2Vm2dvjeyA9fUzU"
+                ],
+                "level": 2,
+                "delegates": {
+                    "2": {
+                        "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx": "[10, 12, 17, 28, 31, 34, 38, 55, 67, 91, 103, 104, 109, 111, 118, 123, 124, 125, 128, 132, 134, 144, 145, 152, 154, 156, 166, 170, 171, 174, 180, 183, 186, 192, 193, 199, 209, 210, 216, 220, 222, 225, 226, 230, 231, 233, 242, 248, 250, 254]",
+                        "tz1b7tUupMgCNw2cCLpKTkSD1NZzB5TkP2sv": "[1, 13, 14, 18, 25, 36, 42, 46, 48, 56, 59, 69, 74, 87, 90, 96, 97, 98, 102, 112, 113, 117, 121, 122, 126, 129, 138, 141, 142, 148, 151, 153, 181, 191, 194, 196, 201, 213, 215, 218, 229, 235, 240, 243, 244, 245, 246, 247, 249, 255]",
+                        "tz1ddb9NMYHZi5UzPdzTZMYQQZoMub195zgv": "[2, 4, 6, 20, 22, 23, 29, 35, 37, 39, 43, 45, 47, 53, 57, 58, 60, 63, 65, 71, 73, 75, 77, 82, 83, 84, 85, 86, 88, 93, 101, 106, 110, 115, 116, 130, 133, 135, 140, 146, 155, 158, 161, 162, 163, 165, 168, 173, 178, 184, 185, 188, 189, 190, 197, 198, 200, 204, 206, 214, 223, 224, 232, 236, 239]",
+                        "tz1faswCTDciRzE4oJ9jn2Vm2dvjeyA9fUzU": "[0, 5, 8, 16, 19, 21, 26, 30, 32, 49, 51, 52, 54, 61, 68, 70, 78, 80, 95, 99, 100, 105, 107, 120, 127, 136, 147, 157, 164, 167, 175, 182, 203, 205, 208, 212, 217, 221, 234, 237, 252]",
+                        "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN": "[3, 7, 9, 11, 15, 24, 27, 33, 40, 41, 44, 50, 62, 64, 66, 72, 76, 79, 81, 89, 92, 94, 108, 114, 119, 131, 137, 139, 143, 149, 150, 159, 160, 169, 172, 176, 177, 179, 187, 195, 202, 207, 211, 219, 227, 228, 238, 241, 251, 253]"
+                    },
+                    "3": {
+                        "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx": "[4, 6, 8, 12, 13, 18, 19, 24, 27, 32, 35, 37, 40, 43, 45, 47, 55, 57, 67, 73, 79, 85, 87, 88, 99, 105, 108, 113, 118, 119, 121, 123, 124, 125, 134, 137, 148, 152, 156, 159, 162, 167, 168, 169, 171, 172, 180, 188, 190, 197, 200, 203, 204, 206, 209, 213, 215, 221, 226, 229, 236, 242, 245, 249]",
+                        "tz1b7tUupMgCNw2cCLpKTkSD1NZzB5TkP2sv": "[0, 11, 21, 26, 28, 31, 34, 38, 44, 48, 56, 58, 61, 66, 69, 74, 77, 83, 89, 91, 93, 101, 103, 115, 116, 122, 127, 132, 133, 135, 140, 149, 158, 165, 166, 173, 178, 181, 185, 186, 189, 193, 196, 202, 205, 212, 225, 227, 235]",
+                        "tz1ddb9NMYHZi5UzPdzTZMYQQZoMub195zgv": "[2, 5, 10, 16, 17, 22, 25, 30, 36, 39, 51, 52, 54, 65, 72, 80, 82, 90, 95, 97, 98, 104, 109, 111, 126, 130, 141, 142, 144, 145, 147, 151, 155, 161, 163, 175, 177, 182, 184, 191, 198, 199, 201, 207, 222, 223, 240, 247, 248, 250, 252]",
+                        "tz1faswCTDciRzE4oJ9jn2Vm2dvjeyA9fUzU": "[3, 7, 33, 41, 42, 59, 60, 64, 70, 75, 78, 81, 86, 92, 100, 114, 120, 128, 129, 131, 138, 143, 157, 160, 164, 174, 187, 195, 214, 216, 218, 232, 233, 237, 243, 244, 253]",
+                        "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN": "[1, 9, 14, 15, 20, 23, 29, 46, 49, 50, 53, 62, 63, 68, 71, 76, 84, 94, 96, 102, 106, 107, 110, 112, 117, 136, 139, 146, 150, 153, 154, 170, 176, 179, 183, 192, 194, 208, 210, 211, 217, 219, 220, 224, 228, 230, 231, 234, 238, 239, 241, 246, 251, 254, 255]"
+                    }
+                }
+            },
+            "quorum": 171
+        },
+        "tb_state": {
+            "inner": {
+                "Ok": {
+                    "level": 2,
+                    "pred_time_headers": {
+                        "BLNkLfhd9vLNBHbe34bnvsgWDjoWK389wch8T6r9frqjzbcdZDV": {
+                            "round": 0,
+                            "timestamp": {
+                                "unix_epoch": {
+                                    "secs": 1652201057,
+                                    "nanos": 0
+                                }
+                            }
+                        }
+                    },
+                    "this_time_headers": {},
+                    "hash": "BMW4tKYqbFTKgpemZoXnt8yKJ2YpRkSg93fTa7StRopHdJsuUjr",
+                    "this_time_header": {
+                        "round": 3,
+                        "timestamp": {
+                            "unix_epoch": {
+                                "secs": 1652201064,
+                                "nanos": 0
+                            }
+                        }
+                    },
+                    "pred_hash": "BLNkLfhd9vLNBHbe34bnvsgWDjoWK389wch8T6r9frqjzbcdZDV",
+                    "payload_hash": "vh3QpLJJdiJ2LFszroax4NP8LRjbwjMkTnK6YCvwTTp9yMSwEGfQ",
+                    "cer": {
+                        "votes": {
+                            "ids": {},
+                            "power": 0
+                        }
+                    },
+                    "payload_round": 3,
+                    "operations": [],
+                    "new_operations": [],
+                    "locked": null,
+                    "inner": {
+                        "Collecting": {
+                            "incomplete": {
+                                "ids": {},
+                                "power": 0
+                            }
+                        }
+                    },
+                    "timeout_this_level": {
+                        "proposer": "tz1faswCTDciRzE4oJ9jn2Vm2dvjeyA9fUzU",
+                        "round": 5,
+                        "timestamp": {
+                            "unix_epoch": {
+                                "secs": 1652201073,
+                                "nanos": 0
+                            }
+                        }
+                    },
+                    "inner_": {
+                        "Collecting": {
+                            "incomplete": {
+                                "ids": {},
+                                "power": 0
+                            }
+                        }
+                    },
+                    "timeout_next_level": null
+                }
+            }
+        },
+        "actions": []
+    }
+}
