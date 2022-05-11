@@ -825,6 +825,17 @@ impl WorkingTree {
         Ok(children)
     }
 
+    pub fn length(&self, key: &ContextKey) -> Result<usize, MerkleError> {
+        let root = self.get_root_directory();
+        let mut storage = self.index.storage.borrow_mut();
+        let mut strings = self.index.get_string_interner()?;
+
+        let dir_id = self.find_or_create_directory(root, key, &mut storage, &mut strings)?;
+        let dir_entry_length = storage.dir_len(dir_id)?;
+
+        Ok(dir_entry_length)
+    }
+
     /// Returns `dir_entry_id` as root of a new working tree.
     ///
     /// Fetches the dir_entry from repository if necessary.
