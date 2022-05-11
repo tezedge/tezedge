@@ -38,7 +38,7 @@ use self::{client::ProtocolBlockHeader, event::OperationSimple};
 pub struct Services {
     pub client: client::RpcClient,
     pub crypto: key::CryptoService,
-    log: slog::Logger,
+    pub log: slog::Logger,
     timer: timer::Timer,
     sender: mpsc::Sender<BakerAction>,
 }

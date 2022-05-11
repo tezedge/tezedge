@@ -40,13 +40,16 @@ mod tests {
             let payload_hash = tb_state.payload_hash().unwrap();
 
             // take delegates for the level
-            let delegates = tb_config.map.delegates.get(&level).unwrap().clone();
-            // endorsement power for slot
-            let power = |slot| delegates
-                .values()
-                .find(|s| s.0.first() == Some(&slot))
-                .map(|s| s.0.len())
-                .unwrap_or(0);
+            let validators = {
+                tb_config
+                    .map
+                    .delegates
+                    .get(&level)
+                    .unwrap()
+                    .clone()
+                    .into_values()
+                    .map(|s| (s.0[0], s.0.len()))
+            };
 
             let preendorsement = |slot| BakerAction::OperationsEvent(OperationsEventAction {
                 operations: vec![OperationSimple::preendorsement(
@@ -61,13 +64,13 @@ mod tests {
             let now = timestamp;
             let mut total_power = 0;
             let mut state = state;
-            for slot in 0..5 {
+            for (slot, power) in validators {
                 state = state
                     .handle_event(EventWithTime {
                         action: preendorsement(slot),
                         now,
                     });
-                total_power += power(slot);
+                total_power += power;
 
                 if total_power >= quorum {
                     let endorse = state
@@ -98,13 +101,16 @@ mod tests {
             let round_duration = tb_config.timing.round_duration(round);
 
             // take delegates for the level
-            let delegates = tb_config.map.delegates.get(&level).unwrap().clone();
-            // endorsement power for slot
-            let power = |slot| delegates
-                .values()
-                .find(|s| s.0.first() == Some(&slot))
-                .map(|s| s.0.len())
-                .unwrap_or(0);
+            let validators = {
+                tb_config
+                    .map
+                    .delegates
+                    .get(&level)
+                    .unwrap()
+                    .clone()
+                    .into_values()
+                    .map(|s| (s.0[0], s.0.len()))
+            };
 
             let preendorsement = |slot| BakerAction::OperationsEvent(OperationsEventAction {
                 operations: vec![OperationSimple::preendorsement(
@@ -119,8 +125,8 @@ mod tests {
             let mut now = timestamp;
             let mut total_power = 0;
             let mut state = state;
-            for slot in 0..5 {
-                if slot == 3 {
+            for (n, (slot, power)) in validators.enumerate() {
+                if n == 3 {
                     // go to next round, further preendorsements are outdated
                     // preendorsements 0, 1, 2 accounted, but 3 and 4 was not
                     now += round_duration;
@@ -130,7 +136,7 @@ mod tests {
                         action: preendorsement(slot),
                         now,
                     });
-                total_power += power(slot);
+                total_power += power;
 
                 if total_power >= quorum {
                     // still we have no quorum, because got outdated preendorsement
