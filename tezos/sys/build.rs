@@ -13,7 +13,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
-const LIBTEZOS_BUILD_NAME: &str = "libtezos-ffi.so";
+const LIBTEZOS_BUILD_NAME: &str = "libtezos.so";
 const ARTIFACTS_DIR: &str = "lib_tezos/artifacts";
 
 // zcash params files for sapling - these files are fixed and never ever changes
