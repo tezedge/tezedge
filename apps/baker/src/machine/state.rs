@@ -259,6 +259,7 @@ impl BakerState {
                     } => {
                         state.tb_config.map.level = level - 1;
                         state.tb_config.map.delegates.insert(level, delegates);
+                        state.tb_config.map.delegates.remove(&(level - 2));
                         state.actions.push(BakerAction::GetOperationsForBlock(GetOperationsForBlockAction { block_hash: current_block.hash.clone() }));
                         BakerState::Gathering {
                             state,
