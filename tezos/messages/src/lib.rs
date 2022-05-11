@@ -4,10 +4,10 @@
 #![cfg_attr(feature = "fuzzing", feature(no_coverage))]
 
 //! This crate provides definitions of tezos messages.
-
 use getset::Getters;
 use p2p::encoding::fitness::Fitness;
 use serde::{Deserialize, Serialize};
+use std::ops::Sub;
 use tezos_encoding::{
     enc::BinWriter,
     encoding::{Encoding, HasEncoding},
@@ -230,5 +230,13 @@ impl<'de> Deserialize<'de> for Timestamp {
         } else {
             Ok(Self(serde::Deserialize::deserialize(deserializer)?))
         }
+    }
+}
+
+impl Sub for Timestamp {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self::Output {
+        Self::from(self.0.saturating_sub(other.i64()))
     }
 }
