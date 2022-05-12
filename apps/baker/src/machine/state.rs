@@ -330,6 +330,10 @@ impl BakerState {
             BakerAction::ProposalEvent(ProposalEventAction { block }) => {
                 // dbg!(format!("handle in state machine: {}:{}", block.level, block.round));
                 let state = self.as_mut();
+                if block.level < state.tb_config.map.level {
+                    let description = "old_block".to_string();
+                    state.actions.push(BakerAction::LogWarning(LogWarningAction { description }));
+                }
                 let gathering = if block.level > state.tb_config.map.level {
                     // a new level
                     state.this_level.clear();
@@ -458,7 +462,7 @@ impl BakerState {
                             if !state.live_blocks.contains(&op.branch) {
                                 let description = format!("the op is outdated {op:?}");
                                 state.actions.push(BakerAction::LogWarning(LogWarningAction { description }));
-                                state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
+                                // state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
                                 continue;
                             };
                             state
