@@ -37,6 +37,7 @@ class Baker(subprocess.Popen):
         Returns:
             A Popen instance
         """
+        self.log_file = log_file
         assert os.path.isfile(baker), f'{baker} not a file'
         assert os.path.isdir(node_dir), f'{node_dir} not a dir'
         assert os.path.isdir(base_dir), f'{base_dir} not a dir'
@@ -47,7 +48,16 @@ class Baker(subprocess.Popen):
         endpoint = f'http://127.0.0.1:{rpc_port}'
         cmd = [baker, '-m', 'json', '-base-dir', base_dir, '-endpoint', endpoint]
         cmd.extend(params)
-        cmd.extend(['run', 'with', 'local', 'node', node_dir] + accounts)
+        cmd.extend(
+            [
+                'run',
+                'with',
+                'local',
+                'node',
+                node_dir
+            ]
+            + accounts
+        )
         cmd.extend(run_params)
         env = os.environ.copy()
         if log_levels is not None:
