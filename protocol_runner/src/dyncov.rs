@@ -20,12 +20,12 @@ ocaml_export! {
     fn protocol_runner_dump_gcov(rt, _arg: OCamlRef<()>) {
         extern "C" {
             fn __gcov_dump();
-            fn __gcov_reset();
+            //fn __gcov_reset();
         }
 
         unsafe {
             __gcov_dump();
-            __gcov_reset();
+            //__gcov_reset();
         }
 
         OCaml::unit()
