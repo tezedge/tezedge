@@ -536,12 +536,13 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         ))
         .await
         .expect("test failed");
-        test_rpc_compare_json(&format!(
-            "{}/{}/{}",
-            "chains/main/blocks", level, "minimal_valid_time"
-        ))
-        .await
-        .expect("test failed");
+        // Doesn't exist after protocol 011
+        //test_rpc_compare_json(&format!(
+        //    "{}/{}/{}",
+        //    "chains/main/blocks", level, "minimal_valid_time"
+        //))
+        //.await
+        //.expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "votes/listings"
@@ -571,21 +572,26 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         let blocks_per_cycle = constants_json["blocks_per_cycle"]
             .as_i64()
             .unwrap_or_else(|| panic!("No constant 'blocks_per_cycle' for block_id: {}", level));
-        let blocks_per_roll_snapshot = constants_json["blocks_per_roll_snapshot"]
+        let blocks_per_stake_snapshot = constants_json["blocks_per_stake_snapshot"]
             .as_i64()
             .unwrap_or_else(|| {
-                panic!(
-                    "No constant 'blocks_per_roll_snapshot' for block_id: {}",
-                    level
-                )
+                constants_json["blocks_per_roll_snapshot"]
+                    .as_i64()
+                    .unwrap_or_else(|| {
+                        println!("Constants JSON: {constants_json}");
+                        panic!(
+                            "No constant `blocks_per_stake_snapshot` or `blocks_per_roll_snapshot` for block_id: {}",
+                            level
+                        )
+                    })
             });
 
         // test last level of snapshot
-        if level >= blocks_per_roll_snapshot && level % blocks_per_roll_snapshot == 0 {
+        if level >= blocks_per_stake_snapshot && level % blocks_per_stake_snapshot == 0 {
             // --------------------- Tests for each snapshot of the cycle ---------------------
             println!(
-                "run snapshot tests: level: {:?}, blocks_per_roll_snapshot: {}",
-                level, blocks_per_roll_snapshot
+                "run snapshot tests: level: {:?}, blocks_per_stake_snapshot: {}",
+                level, blocks_per_stake_snapshot
             );
 
             test_rpc_compare_json(&format!(
