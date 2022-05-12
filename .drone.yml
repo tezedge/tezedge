@@ -140,7 +140,7 @@ workspace:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -255,7 +255,7 @@ workspace:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   environment:
     RUST_BACKTRACE: 1
@@ -314,7 +314,7 @@ workspace:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   commands:
     - cd apps/node_monitoring && cargo build --release
@@ -392,7 +392,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: generate-artificial-load
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   privileged: true
   detach: true
   user: root
@@ -413,7 +413,7 @@ steps:
     - sleep 65
 
 - name: run-cyclic-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   privileged: true
   user: root
   commands:
@@ -483,7 +483,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: tezedge-updated-node-run-mainnet
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -582,7 +582,7 @@ workspace:
 steps:
 
 - name: run-unit-tests
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -594,7 +594,7 @@ steps:
 # NOTE: right now rocksdb is the default, so the default unit tests run
 # above already includes these tests.
 # - name: run-unit-tests-multibackend-rockdb
-#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
 #   pull: if-not-exists
 #   user: root
 #   environment:
@@ -605,7 +605,7 @@ steps:
 #     - cargo test --release --features maindb-backend-rocksdb
 
 - name: run-unit-tests-multibackend-sled
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -617,7 +617,7 @@ steps:
 
 # NOTE: not used right now, and it is flakey, disabled for now
 # - name: run-unit-tests-multibackend-edgekv
-#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
 #   pull: if-not-exists
 #   user: root
 #   environment:
@@ -628,7 +628,7 @@ steps:
 #     - cargo test --release --features maindb-backend-edgekv
 
 - name: run-unit-tests-monitoring
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -759,7 +759,7 @@ steps:
     - sleep infinity
 
 - name: import-snapshot-with-irmin-context
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   pull: if-not-exists
   environment:
@@ -775,7 +775,7 @@ steps:
     - ./drone-cache/build_files/light-node import-snapshot --from http://nginx-file-server/tezedge_hangzhou_20220322-113544_BMCnDzyT2UASaz7BpM5JT5K7xwzHsv2q1A5LpZm6u4PNJuMmLpC_irmin.full --tezos-data-dir /cache
 
 - name: run-tezedge-from-imported-snapshot-with-irmin-context
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   pull: if-not-exists
   volumes:
@@ -818,7 +818,7 @@ steps:
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
 - name: cleanup-cached-tezedge-data
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   pull: if-not-exists
   volumes:
@@ -828,7 +828,7 @@ steps:
     - rm -rf /cache/*
 
 - name: import-snapshot-with-tezedge-context
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   pull: if-not-exists
   environment:
@@ -844,7 +844,7 @@ steps:
     - ./drone-cache/build_files/light-node import-snapshot --from http://nginx-file-server/tezedge_hangzhou_20220324-115238_BL93oyUZ2fvibSgp11kJbf1Vqz3UHQb9yyrRattSM8Tmh99X8os_tezedge.full --tezos-data-dir /cache
 
 - name: run-tezedge-from-imported-snapshot-with-tezedge-context
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   pull: if-not-exists
   volumes:
@@ -933,7 +933,7 @@ steps:
 
 - name: octez-node
   user: root
-  image: tezos/tezos:v12-release
+  image: tezos/tezos:v13-release
   detach: true
   volumes:
     - name: data
@@ -951,7 +951,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=0 --nodes http://octez-node:8732
 
 - name: tezedge-node-bootstrap
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   volumes:
@@ -992,7 +992,7 @@ steps:
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
 - name: replay-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   pull: if-not-exists
   volumes:
@@ -1015,7 +1015,7 @@ steps:
       --network=$${NETWORK}
 
 - name: take-irmin-context-snapshot-and-bootstrap-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   pull: if-not-exists
   volumes:
@@ -1071,7 +1071,7 @@ steps:
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
 - name: take-tezedge-context-snapshot-and-bootstrap-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   pull: if-not-exists
   environment:
@@ -1131,7 +1131,7 @@ steps:
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
 - name: make-in-mem-snapshot-and-resume
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   pull: if-not-exists
   volumes:
@@ -1229,7 +1229,7 @@ steps:
 
 # TODO - TE-261: we don't have an equivalent of this right now
 # - name: record/replay-context-action-file-test
-#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+#   image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
 #   pull: if-not-exists
 #   user: root
 #   volumes:
@@ -1305,7 +1305,7 @@ environment:
 
 defs:
   - &python-test
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     pull: if-not-exists
     user: root
     environment:
@@ -1346,7 +1346,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: prepare-python-tests
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1575,7 +1575,7 @@ environment:
 
 defs:
   - &python-test
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     pull: if-not-exists
     user: root
     environment:
@@ -1616,7 +1616,7 @@ steps:
       - 'drone-cache' # <- builds a cache from this directory
 
 - name: prepare-python-tests
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -1821,14 +1821,14 @@ depends_on:
   - build-tezedge-binaries
 
 #############################################################################################################
-# This pipeline test the sandbox launcher and its rpc server with activating the 011-hangzhou protocol
+# This pipeline test the sandbox launcher and its rpc server with activating the 012-ithaca protocol
 #
 # GIVEN that we run the the sandbox launcher binary WHEN we execute rpc calls to its rpc server THEN
 # all the actions are carried out correctly
 #############################################################################################################
 ---
 kind: pipeline
-name: corr/sandbox-launcher-rpc-server-011-hangzhou
+name: corr/sandbox-launcher-rpc-server-012-ithaca
 
 trigger:
   branch:
@@ -1843,649 +1843,162 @@ environment:
 
 steps:
 
-- name: prepare-data
-  image: alpine/git
-  user: root
-  commands:
-    - mkdir -p drone-cache
+  - name: prepare-data
+    image: alpine/git
+    user: root
+    commands:
+      - mkdir -p drone-cache
 
-- name: restore-cache
-  image: meltwater/drone-cache
-  pull: true
-  environment:
-    SFTP_USERNAME:
-      from_secret: sftp_username
-    SFTP_PASSWORD:
-      from_secret: sftp_password
-    SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 65.21.119.66
-    SFTP_PORT: 22
-    SFTP_CACHE_ROOT: "/upload"
-  settings:
-    restore: true
-    debug: true
-    backend: "sftp"
-    cache_key: 'build-{{ .Build.Number }}'
-    mount:
-      - 'drone-cache' # <- builds a cache from this directory
+  - name: restore-cache
+    image: meltwater/drone-cache
+    pull: true
+    environment:
+      SFTP_USERNAME:
+        from_secret: sftp_username
+      SFTP_PASSWORD:
+        from_secret: sftp_password
+      SFTP_AUTH_METHOD: PASSWORD
+      SFTP_HOST: 65.21.119.66
+      SFTP_PORT: 22
+      SFTP_CACHE_ROOT: "/upload"
+    settings:
+      restore: true
+      debug: true
+      backend: "sftp"
+      cache_key: 'build-{{ .Build.Number }}'
+      mount:
+        - 'drone-cache' # <- builds a cache from this directory
 
-- name: tezedge-sandbox-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
-  pull: if-not-exists
-  user: root
-  detach: true
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
-    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
-    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
-    - drone-cache/build_files/sandbox --sandbox-rpc-port 3030 --light-node-path drone-cache/build_files/light-node --protocol-runner-path drone-cache/build_files/protocol-runner --log-level info --tezos-client-path drone-cache/build_files/tezos-client --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
+  - name: tezedge-sandbox-run
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+    pull: if-not-exists
+    user: root
+    detach: true
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - rm -rf /tmp/sandbox
+      - mkdir -p /tmp/sandbox
+      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+      - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+      - export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
+      - drone-cache/build_files/sandbox --sandbox-rpc-port 3030 --light-node-path drone-cache/build_files/light-node --protocol-runner-path drone-cache/build_files/protocol-runner --log-level info --tezos-client-path drone-cache/build_files/tezos-client --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
 
-- name: start-tezedge-node-via-rpc
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - sleep 5
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_start_light_node_args.json
+  - name: start-tezedge-node-via-rpc
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    commands:
+      - sleep 5
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_start_light_node_args.json
 
-- name: check-running-nodes
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
-    - nodes_count=$(echo $resp | jq '. | length')
-    - drone-cache/build_files/assert_equals.sh 1 $nodes_count
-    - drone-cache/build_files/assert_contains.sh "$resp" "localhost"
-    - drone-cache/build_files/assert_contains.sh "$resp" "18732"
+  - name: check-running-nodes
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
+      - nodes_count=$(echo $resp | jq '. | length')
+      - drone-cache/build_files/assert_equals.sh 1 $nodes_count
+      - drone-cache/build_files/assert_contains.sh "$resp" "localhost"
+      - drone-cache/build_files/assert_contains.sh "$resp" "18732"
 
-- name: wait-sandbox-node-start
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: always
-  commands:
-    - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+  - name: wait-sandbox-node-start
+    image: tezedge/tezos-node-bootstrap:latest
+    pull: always
+    commands:
+      - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
-- name: init-client
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl --request POST "$LAUNCHER_URL/init_client" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_init_client_request.json)
-    - drone-cache/build_files/assert_contains.sh "$resp" "Tezos address added"
+  - name: init-client
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl --request POST "$LAUNCHER_URL/init_client" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_init_client_request.json)
+      - drone-cache/build_files/assert_contains.sh "$resp" "Tezos address added"
 
-- name: check-wallets
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    # call get wallets
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl "$LAUNCHER_URL/wallets" | jq -S .)
-    - echo "Wallets - $resp"
-    - wallets_count=$(echo $resp | jq '. | length')
-    - drone-cache/build_files/assert_equals.sh 2 $wallets_count
+  - name: check-wallets
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    commands:
+      # call get wallets
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl "$LAUNCHER_URL/wallets" | jq -S .)
+      - echo "Wallets - $resp"
+      - wallets_count=$(echo $resp | jq '. | length')
+      - drone-cache/build_files/assert_equals.sh 2 $wallets_count
 
-- name: activate_protocol
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_activate_protocol_011_request.json)
-    - drone-cache/build_files/assert_contains.sh "$resp" "Injected B"
+  - name: activate_protocol
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_activate_protocol_012_request.json)
+      - drone-cache/build_files/assert_contains.sh "$resp" "Injected B"
 
-- name: wait-sandbox-node-start-level-1
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=1 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+  - name: wait-sandbox-node-start-level-1
+    image: tezedge/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=1 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
-- name: check-context-constants
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    # call context/constants on sandbox node
-    - SANDBOX_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - resp=$(curl "$SANDBOX_URL/chains/main/blocks/head/context/constants" | jq -S .)
-    - echo "Sandbox node context constants - $resp"
-    - drone-cache/build_files/assert_contains.sh "$resp" "baking_reward_per_endorsement"
-    - drone-cache/build_files/assert_contains.sh "$resp" "time_between_blocks"
+  - name: check-context-constants
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    commands:
+      # call context/constants on sandbox node
+      - SANDBOX_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - resp=$(curl "$SANDBOX_URL/chains/main/blocks/head/context/constants" | jq -S .)
+      - echo "Sandbox node context constants - $resp"
+      - drone-cache/build_files/assert_contains.sh "$resp" "liquidity_baking_escape_ema_threshold"
+      - drone-cache/build_files/assert_contains.sh "$resp" "minimal_block_delay"
 
-- name: bake-empty-block
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_bake_empty_block.json)
-    - drone-cache/build_files/assert_contains.sh "$resp" "Injected block B"
+  - name: bake-empty-block
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_bake_empty_block.json)
+      - drone-cache/build_files/assert_contains.sh "$resp" "Injected block at minimal timestamp"
 
-- name: wait-sandbox-node-start-level-2
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+  - name: wait-sandbox-node-start-level-2
+    image: tezedge/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
-- name: stop-tezedge-node-via-rpc
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl -X GET -I "$LAUNCHER_URL/stop" |  head -n 1 | cut -d$' ' -f2)
-    # On a successfull stop, HTTP code 200 is returned
-    - drone-cache/build_files/assert_equals.sh 200 $resp
+  - name: stop-tezedge-node-via-rpc
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl -X GET -I "$LAUNCHER_URL/stop" |  head -n 1 | cut -d$' ' -f2)
+      # On a successfull stop, HTTP code 200 is returned
+      - drone-cache/build_files/assert_equals.sh 200 $resp
 
-- name: check-running-nodes-empty
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
-    - nodes_count=$(echo $resp | jq '. | length')
-    - drone-cache/build_files/assert_equals.sh 0 $nodes_count
-
-image_pull_secrets:
-  - docker_pull_secret
-
-depends_on:
-  - build-tezedge-binaries
-
-# TODO: enable once fixed, right now it gets stuck when applying an empty block
-#############################################################################################################
-# This pipeline test the sandbox launcher and its rpc server with activating the 012-ithaca protocol
-#
-# GIVEN that we run the the sandbox launcher binary WHEN we execute rpc calls to its rpc server THEN
-# all the actions are carried out correctly
-#############################################################################################################
-#---
-#kind: pipeline
-#name: corr/sandbox-launcher-rpc-server-012-ithaca
-#
-#trigger:
-#  branch:
-#    - master
-#    - develop
-#
-#environment:
-#  SODIUM_USE_PKG_CONFIG: 1
-#  NETWORK: sandbox
-#  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-sandbox-run:18732
-#  TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT: http://tezedge-sandbox-run:3030
-#
-#steps:
-#
-#  - name: prepare-data
-#    image: alpine/git
-#    user: root
-#    commands:
-#      - mkdir -p drone-cache
-#
-#  - name: restore-cache
-#    image: meltwater/drone-cache
-#    pull: true
-#    environment:
-#      SFTP_USERNAME:
-#        from_secret: sftp_username
-#      SFTP_PASSWORD:
-#        from_secret: sftp_password
-#      SFTP_AUTH_METHOD: PASSWORD
-#      SFTP_HOST: 65.21.119.66
-#      SFTP_PORT: 22
-#      SFTP_CACHE_ROOT: "/upload"
-#    settings:
-#      restore: true
-#      debug: true
-#      backend: "sftp"
-#      cache_key: 'build-{{ .Build.Number }}'
-#      mount:
-#        - 'drone-cache' # <- builds a cache from this directory
-#
-#  - name: tezedge-sandbox-run
-#    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
-#    pull: if-not-exists
-#    user: root
-#    detach: true
-#    environment:
-#      SODIUM_USE_PKG_CONFIG: 1
-#      RUST_BACKTRACE: 1
-#    commands:
-#      - rm -rf /tmp/sandbox
-#      - mkdir -p /tmp/sandbox
-#      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
-#      - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
-#      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-#      - export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
-#      - drone-cache/build_files/sandbox --sandbox-rpc-port 3030 --light-node-path drone-cache/build_files/light-node --protocol-runner-path drone-cache/build_files/protocol-runner --log-level info --tezos-client-path drone-cache/build_files/tezos-client --init-sapling-spend-params-file drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file drone-cache/build_files/ffi/sapling-output.params
-#
-#  - name: start-tezedge-node-via-rpc
-#    user: root
-#    image: cfmanteiga/alpine-bash-curl-jq
-#    commands:
-#      - sleep 5
-#      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-#      - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_start_light_node_args.json
-#
-#  - name: check-running-nodes
-#    user: root
-#    image: cfmanteiga/alpine-bash-curl-jq
-#    commands:
-#      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-#      - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
-#      - nodes_count=$(echo $resp | jq '. | length')
-#      - drone-cache/build_files/assert_equals.sh 1 $nodes_count
-#      - drone-cache/build_files/assert_contains.sh "$resp" "localhost"
-#      - drone-cache/build_files/assert_contains.sh "$resp" "18732"
-#
-#  - name: wait-sandbox-node-start
-#    image: tezedge/tezos-node-bootstrap:latest
-#    pull: always
-#    commands:
-#      - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-#
-#  - name: init-client
-#    user: root
-#    image: cfmanteiga/alpine-bash-curl-jq
-#    commands:
-#      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-#      - resp=$(curl --request POST "$LAUNCHER_URL/init_client" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_init_client_request.json)
-#      - drone-cache/build_files/assert_contains.sh "$resp" "Tezos address added"
-#
-#  - name: check-wallets
-#    user: root
-#    image: cfmanteiga/alpine-bash-curl-jq
-#    commands:
-#      # call get wallets
-#      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-#      - resp=$(curl "$LAUNCHER_URL/wallets" | jq -S .)
-#      - echo "Wallets - $resp"
-#      - wallets_count=$(echo $resp | jq '. | length')
-#      - drone-cache/build_files/assert_equals.sh 2 $wallets_count
-#
-#  - name: activate_protocol
-#    user: root
-#    image: cfmanteiga/alpine-bash-curl-jq
-#    commands:
-#      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-#      - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_activate_protocol_012_request.json)
-#      - drone-cache/build_files/assert_contains.sh "$resp" "Injected B"
-#
-#  - name: wait-sandbox-node-start-level-1
-#    image: tezedge/tezos-node-bootstrap:latest
-#    pull: if-not-exists
-#    commands:
-#      - tezos-node-bootstrap bootstrap --level=1 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-#
-#  - name: check-context-constants
-#    user: root
-#    image: cfmanteiga/alpine-bash-curl-jq
-#    commands:
-#      # call context/constants on sandbox node
-#      - SANDBOX_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-#      - resp=$(curl "$SANDBOX_URL/chains/main/blocks/head/context/constants" | jq -S .)
-#      - echo "Sandbox node context constants - $resp"
-#      - drone-cache/build_files/assert_contains.sh "$resp" "liquidity_baking_escape_ema_threshold"
-#      - drone-cache/build_files/assert_contains.sh "$resp" "minimal_block_delay"
-#
-#  - name: bake-empty-block
-#    user: root
-#    image: cfmanteiga/alpine-bash-curl-jq
-#    commands:
-#      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-#      - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @drone-cache/sandbox_files/sandbox_bake_empty_block.json)
-#      - drone-cache/build_files/assert_contains.sh "$resp" "Injected block B"
-#
-#  - name: wait-sandbox-node-start-level-2
-#    image: tezedge/tezos-node-bootstrap:latest
-#    pull: if-not-exists
-#    commands:
-#      - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-#
-#  - name: stop-tezedge-node-via-rpc
-#    user: root
-#    image: cfmanteiga/alpine-bash-curl-jq
-#    commands:
-#      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-#      - resp=$(curl -X GET -I "$LAUNCHER_URL/stop" |  head -n 1 | cut -d$' ' -f2)
-#      # On a successfull stop, HTTP code 200 is returned
-#      - drone-cache/build_files/assert_equals.sh 200 $resp
-#
-#  - name: check-running-nodes-empty
-#    user: root
-#    image: cfmanteiga/alpine-bash-curl-jq
-#    commands:
-#      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-#      - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
-#      - nodes_count=$(echo $resp | jq '. | length')
-#      - drone-cache/build_files/assert_equals.sh 0 $nodes_count
-#
-#depends_on:
-#  - build-tezedge-binaries
-
----
-##############################################################################################################
-# This pipeline runs tezedge node with sandbox configuration with 011 Hangzhou protocol and does transfer
-# and integrates with baker/endorser
-#
-# GIVEN that we run tezedge in sandbox mode with 011-hangzhou protocol WHEN we run the octez baker and endorser
-# binaries THEN the tezedge node handles all the request from the baker and endorser
-##############################################################################################################
-kind: pipeline
-name: corr/tezedge-with-octez-baker-endorser-011-hangzhou
-
-trigger:
-  branch:
-    - master
-    - develop
-
-environment:
-  SODIUM_USE_PKG_CONFIG: 1
-  NETWORK: sandbox
-  OCTEZ_NODE_RPC_CONTEXT_ROOT: http://octez-node-sandbox-hangzhou-run:8732
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-hangzhou-run:18732
-  ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
-  BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
-  BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
-  BOOTSTRAP1_SECRET: unencrypted:edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh
-  BOOTSTRAP2_IDENTITY: tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN
-  BOOTSTRAP2_PUBLIC: edpktzNbDAUjUk697W7gYg2CRuBQjyPxbEg8dLccYYwKSKvkPvjtV9
-  BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
-  TEZOS_LOG: debug
-  LWT_LOG: debug
-
-steps:
-
-- name: prepare-cache-dir
-  image: alpine/git
-  user: root
-  commands:
-    - mkdir -p drone-cache
-
-- name: restore-cache
-  image: meltwater/drone-cache
-  pull: true
-  environment:
-    SFTP_USERNAME:
-      from_secret: sftp_username
-    SFTP_PASSWORD:
-      from_secret: sftp_password
-    SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 65.21.119.66
-    SFTP_PORT: 22
-    SFTP_CACHE_ROOT: "/upload"
-  settings:
-    restore: true
-    debug: true
-    backend: "sftp"
-    cache_key: 'build-{{ .Build.Number }}'
-    mount:
-      - 'drone-cache' # <- builds a cache from this directory
-
-- name: prepare-data
-  image: alpine/git
-  user: root
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - mkdir -p /data/sandbox
-    - mkdir -p /data/sandbox/tezos-client
-    - echo /data/sandbox
-    - cp drone-cache/sandbox_files/tezedge_drone_sandbox.config /data/sandbox
-    - cp drone-cache/sandbox_files/sandbox-patch-context.json /data/sandbox
-    - cp drone-cache/sandbox_files/011-hangzhou-protocol-parameters.json /data/sandbox
-
-# run empty tezedge node and wait for it
-- name: tezedge-node-sandbox-hangzhou-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
-  pull: if-not-exists
-  user: root
-  detach: true
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/tezedge_ip.txt
-    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
-    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
-    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner ./drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params --disable-endorsements-precheck=true
-
-- name: wait-for-tezedge-to-start
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-
-# run empty octez sandbox and wait for it
-- name: octez-node-sandbox-hangzhou-run
-  user: root
-  image: tezos/tezos:v12-release
-  detach: true
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/octez_ip.txt
-    - mkdir -p /home/tezos/data/
-    - tezos-node config init --network sandbox --data-dir /home/tezos/data/ --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --expected-pow 0.0 --connections 1
-    - tezos-node identity generate 0.0 --data-dir /home/tezos/data/
-    - tezos-node run --network sandbox --data-dir /home/tezos/data/ --sandbox /data/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
-
-- name: wait-for-octez-to-start
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT}
-
-# connect both nodes with tezos-admin-client
-- name: connect-octez-and-tezedge
-  user: root
-  image: tezos/tezos:v12-release
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - tezos-admin-client -A `cat /data/sandbox/octez_ip.txt` -P 8732 connect address `cat /data/sandbox/tezedge_ip.txt`:9732
-    - sleep 3
-# TODO: instead of sleep 3, check status established
-# TODO: write rpc test for check network/peers
-
-# inject protocol to octez node, means it creates the first block with level 1
-- name: inject-first-block-with-tezos_client
-  user: root
-  image: tezos/tezos:v12-release
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - tezos-client --base-dir /data/sandbox/tezos-client -A `cat /data/sandbox/tezedge_ip.txt` -P 8732 import secret key activator $${ACTIVATOR_SECRET}
-    - tezos-client --base-dir /data/sandbox/tezos-client -A `cat /data/sandbox/tezedge_ip.txt` -P 8732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
-    - tezos-client --base-dir /data/sandbox/tezos-client -A `cat /data/sandbox/tezedge_ip.txt` -P 8732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
-    - tezos-client --base-dir /data/sandbox/tezos-client -A `cat /data/sandbox/tezedge_ip.txt` -P 18732 --block genesis activate protocol PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx with fitness 1 and key activator and parameters /data/sandbox/011-hangzhou-protocol-parameters.json
-
-# test checks if this block is synchronized to tezedge node through p2p
-- name: wait-for-sync-on-level-1
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-
-- name: check-mempool-before-transfer
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    # get mempools
-    - OCTEZ_URL=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
-    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - octez_mempool=$(curl "$OCTEZ_URL/chains/main/mempool/pending_operations" | jq -S .)
-    - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
-    - echo "Octez mempool - $octez_mempool"
-    - echo "Tezedge mempool - $tezedge_mempool"
-    # check if both are equals
-    - drone-cache/build_files/assert_equals.sh "$octez_mempool" "$tezedge_mempool"
-    # check if applied is 0
-    - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
-    - drone-cache/build_files/assert_equals.sh 0 $applied_count
-
-# transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
-- name: do-transfer-with-tezos_client
-  user: root
-  image: tezos/tezos:v12-release
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - tezos-admin-client -A `cat /data/sandbox/octez_ip.txt` -P 8732 connect address `cat /data/sandbox/tezedge_ip.txt`:9732
-    - sleep 1
-    - tezos-client -l --base-dir /data/sandbox/tezos-client -A `cat /data/sandbox/tezedge_ip.txt` -P 18732 transfer 1 from bootstrap1 to bootstrap2 --burn-cap 1 &
-    - sleep 2
-
-- name: check-mempool-after-transfer
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    # get mempools
-    - OCTEZ_URL=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
-    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - octez_mempool=$(curl "$OCTEZ_URL/chains/main/mempool/pending_operations" | jq -S .)
-    - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
-    - echo "Octez mempool - $octez_mempool"
-    - echo "Tezedge mempool - $tezedge_mempool"
-    # check if both are equals
-    - drone-cache/build_files/assert_equals.sh "$octez_mempool" "$tezedge_mempool"
-    # check if applied is 1
-    - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
-    - drone-cache/build_files/assert_equals.sh 1 $applied_count
-
-- name: run-tezos-endorser-011-PtHangz2
-  user: root
-  image: tezos/tezos:v12-release
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - client_data_dir="/data/sandbox/tezos-client"
-    - tezos-endorser-011-PtHangz2 -m json -A `cat /data/sandbox/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir -l run bootstrap1 --endorsement-delay 1 &
-    - sleep 3
-
-- name: check-endorsements-in-mempools
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  commands:
-    # get mempools
-    - OCTEZ_URL=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
-    - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - octez_mempool=$(curl "$OCTEZ_URL/chains/main/mempool/pending_operations" | jq -S .)
-    - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
-    - echo "Octez mempool - $octez_mempool"
-    - echo "Tezedge mempool - $tezedge_mempool"
-    # check if both are equals
-    - drone-cache/build_files/assert_equals.sh "$octez_mempool" "$tezedge_mempool"
-    # check if applied is 2 (transfer + endorsement)
-    - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
-    - drone-cache/build_files/assert_equals.sh 2 $applied_count
-    - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind | startswith("endorsement"))] | length')
-    - drone-cache/build_files/assert_equals.sh 1 $applied_endorsements_count
-
-- name: run-tezos-baker-011-PtHangz2
-  user: root
-  image: tezos/tezos:v12-release
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - tezos-admin-client -A `cat /data/sandbox/octez_ip.txt` -P 8732 connect address `cat /data/sandbox/tezedge_ip.txt`:9732
-    - context_path="/data/sandbox/tezedge/tezos-node"
-    - client_data_dir="/data/sandbox/tezos-client"
-    - tezos-baker-011-PtHangz2 -m json -A `cat /data/sandbox/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir run with local node $context_path bootstrap2 &
-    - tezos-admin-client -m json -A `cat /data/sandbox/octez_ip.txt` -P 8732 connect address `cat /data/sandbox/tezedge_ip.txt`:9732
-    - sleep 1
-
-# test checks if this block is synchronized to tezedge node through p2p
-- name: wait-for-sync-on-level-2
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=2 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-
-# compare all rpc's from blocks 0 to 2 between defined nodes
-- name: rpc-test-for-levels-0-2
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    RUST_BACKTRACE: 1
-    FROM_BLOCK_HEADER: 0
-    TO_BLOCK_HEADER: 2
-  commands:
-    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
-    - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
-    - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - export IGNORE_PATH_PATTERNS=/context/raw/bytes
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
-
-# compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
-- name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    RUST_BACKTRACE: 1
-    FROM_BLOCK_HEADER: 0
-  commands:
-    - sleep 5
-    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
-    - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
-    - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - export IGNORE_PATH_PATTERNS=/context/raw/bytes
-    - tezedge_current_head=$(curl "$NODE_RPC_CONTEXT_ROOT_2/chains/main/blocks/head/header" | jq -S .)
-    - echo "Tezedge current head - $tezedge_current_head"
-    - tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
-    - echo "Tezedge current head level - $tezedge_current_head_level"
-    - export TO_BLOCK_HEADER=$tezedge_current_head_level
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
-
-# compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
-- name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    RUST_BACKTRACE: 1
-    FROM_BLOCK_HEADER: 0
-  commands:
-    - sleep 2
-    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
-    - export NODE_RPC_CONTEXT_ROOT_1=$${OCTEZ_NODE_RPC_CONTEXT_ROOT}
-    - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - export IGNORE_PATH_PATTERNS=/context/raw/bytes
-    - tezedge_current_head=$(curl "$NODE_RPC_CONTEXT_ROOT_2/chains/main/blocks/head/header" | jq -S .)
-    - echo "Tezedge current head - $tezedge_current_head"
-    - tezedge_current_head_level=$(echo $tezedge_current_head | jq '.level')
-    - echo "Tezedge current head level - $tezedge_current_head_level"
-    - export TO_BLOCK_HEADER=$tezedge_current_head_level
-    - drone-cache/tests/rpc_integration_test --nocapture --ignored --exact test_rpc_compare
-
-volumes:
-  - name: sandbox-data
-    temp: {}
+  - name: check-running-nodes-empty
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
+      - nodes_count=$(echo $resp | jq '. | length')
+      - drone-cache/build_files/assert_equals.sh 0 $nodes_count
 
 depends_on:
   - build-tezedge-binaries
 
-# TODO: enable once fixed. 012 doesn't have an endorser daemon anymore
+# TODO: fix and re-enable, sometimes it fails for ithaca
 #---
-###############################################################################################################
-## This pipeline runs tezedge node with sandbox configuration with 012 Ithaca protocol and does transfer
-## and integrates with baker/endorser
-##
-## GIVEN that we run tezedge in sandbox mode with 012-ithaca protocol WHEN we run the octez baker and endorser
-## binaries THEN the tezedge node handles all the request from the baker and endorser
-###############################################################################################################
+################################################################################################################
+### This pipeline runs tezedge node with sandbox configuration with 012 Ithaca protocol and does transfer
+### and integrates with baker/endorser
+###
+### GIVEN that we run tezedge in sandbox mode with 012-ithaca protocol WHEN we run the octez baker and endorser
+### binaries THEN the tezedge node handles all the request from the baker and endorser
+################################################################################################################
 #kind: pipeline
 #name: corr/tezedge-with-octez-baker-endorser-012-ithaca
 #
@@ -2553,7 +2066,7 @@ depends_on:
 #
 ## run empty tezedge node and wait for it
 #- name: tezedge-node-sandbox-ithaca-run
-#  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+#  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
 #  pull: if-not-exists
 #  user: root
 #  detach: true
@@ -2579,7 +2092,7 @@ depends_on:
 ## run empty octez sandbox and wait for it
 #- name: octez-node-sandbox-ithaca-run
 #  user: root
-#  image: tezos/tezos:v12-release
+#  image: tezos/tezos:v13-release
 #  detach: true
 #  volumes:
 #    - name: sandbox-data
@@ -2600,7 +2113,7 @@ depends_on:
 ## connect both nodes with tezos-admin-client
 #- name: connect-octez-and-tezedge
 #  user: root
-#  image: tezos/tezos:v12-release
+#  image: tezos/tezos:v13-release
 #  volumes:
 #    - name: sandbox-data
 #      path: /data/sandbox
@@ -2613,7 +2126,7 @@ depends_on:
 ## inject protocol to octez node, means it creates the first block with level 1
 #- name: inject-first-block-with-tezos_client
 #  user: root
-#  image: tezos/tezos:v12-release
+#  image: tezos/tezos:v13-release
 #  volumes:
 #    - name: sandbox-data
 #      path: /data/sandbox
@@ -2650,7 +2163,7 @@ depends_on:
 ## transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
 #- name: do-transfer-with-tezos_client
 #  user: root
-#  image: tezos/tezos:v12-release
+#  image: tezos/tezos:v13-release
 #  volumes:
 #    - name: sandbox-data
 #      path: /data/sandbox
@@ -2679,7 +2192,7 @@ depends_on:
 #
 #- name: run-tezos-baker-012-Psithaca
 #  user: root
-#  image: tezos/tezos:v12-release
+#  image: tezos/tezos:v13-release
 #  volumes:
 #    - name: sandbox-data
 #      path: /data/sandbox
@@ -2687,8 +2200,8 @@ depends_on:
 #    - tezos-admin-client -A `cat /data/sandbox/octez_ip.txt` -P 8732 connect address `cat /data/sandbox/tezedge_ip.txt`:9732
 #    - context_path="/data/sandbox/tezedge/tezos-node"
 #    - client_data_dir="/data/sandbox/tezos-client"
-#    - tezos-baker-012-Psithaca -A `cat /data/sandbox/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir run with local node $context_path bootstrap2 &
-#    - tezos-admin-client -A `cat /data/sandbox/octez_ip.txt` -P 8732 connect address `cat /data/sandbox/tezedge_ip.txt`:9732
+#    - tezos-baker-012-Psithaca -m json -A `cat /data/sandbox/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir run with local node $context_path bootstrap2 &
+#    - tezos-admin-client -m json -A `cat /data/sandbox/octez_ip.txt` -P 8732 connect address `cat /data/sandbox/tezedge_ip.txt`:9732
 #    - sleep 1
 #
 #- name: check-endorsements-in-mempools
@@ -2719,7 +2232,7 @@ depends_on:
 #
 ## compare all rpc's from blocks 0 to 2 between defined nodes
 #- name: rpc-test-for-levels-0-2
-#  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+#  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
 #  pull: if-not-exists
 #  user: root
 #  environment:
@@ -2735,7 +2248,7 @@ depends_on:
 #
 ## compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 #- name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
-#  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+#  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
 #  pull: if-not-exists
 #  user: root
 #  environment:
@@ -2756,7 +2269,7 @@ depends_on:
 #
 ## compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
 #- name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
-#  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+#  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
 #  pull: if-not-exists
 #  user: root
 #  environment:
@@ -2802,271 +2315,272 @@ depends_on:
 #depends_on:
 #  - build-tezedge-binaries
 
----
-##############################################################################################################
-# This pipeline runs tezedge node with sandbox configuration with 011 Hangzhou protocol
-# and ensures that endorsing works properly when two blocks are baked for the same level
-# close to each other.
+# TODO: fix and enable again, not working properly for ithaca
+#---
+###############################################################################################################
+## This pipeline runs tezedge node with sandbox configuration with 012 Hangzhou protocol
+## and ensures that endorsing works properly when two blocks are baked for the same level
+## close to each other.
+##
+## GIVEN that we run tezedge in sandbox mode with 012-ithaca protocol WHEN it receives two different heads
+## THEN it successfully endorse the first one
+###############################################################################################################
+#kind: pipeline
+#name: corr/tezedge-alt-heads-012-ithaca
 #
-# GIVEN that we run tezedge in sandbox mode with 011-hangzhou protocol WHEN it receives two different heads
-# THEN it successfully endorse the first one
-##############################################################################################################
-kind: pipeline
-name: corr/tezedge-alt-heads-011-hangzhou
-
-trigger:
-  branch:
-    - master
-    - develop
-
-environment:
-  SODIUM_USE_PKG_CONFIG: 1
-  NETWORK: sandbox
-  OCTEZ_NODE_1_RPC_CONTEXT_ROOT: http://octez-node-1:8732
-  OCTEZ_NODE_2_RPC_CONTEXT_ROOT: http://octez-node-2:8732
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node:18732
-  ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
-  BOOTSTRAP1_SECRET: unencrypted:edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh
-  BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
-  BOOTSTRAP3_SECRET: unencrypted:edsk4ArLQgBTLWG5FJmnGnT689VKoqhXwmDPBuGx3z4cvwU9MmrPZZ
-  TEZOS_LOG: debug
-  LWT_LOG: debug
-
-steps:
-
-- name: prepare-cache-dir
-  image: alpine/git
-  user: root
-  commands:
-    - mkdir -p drone-cache
-
-- name: restore-cache
-  image: meltwater/drone-cache
-  pull: true
-  environment:
-    SFTP_USERNAME:
-      from_secret: sftp_username
-    SFTP_PASSWORD:
-      from_secret: sftp_password
-    SFTP_AUTH_METHOD: PASSWORD
-    SFTP_HOST: 65.21.119.66
-    SFTP_PORT: 22
-    SFTP_CACHE_ROOT: "/upload"
-  settings:
-    restore: true
-    debug: true
-    backend: "sftp"
-    cache_key: 'build-{{ .Build.Number }}'
-    mount:
-      - 'drone-cache' # <- builds a cache from this directory
-
-- name: prepare-data
-  image: alpine/git
-  user: root
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - mkdir -p /data/sandbox
-    - mkdir -p /data/sandbox/tezos-client
-    - echo /data/sandbox
-    - cp drone-cache/sandbox_files/tezedge_drone_sandbox.config /data/sandbox
-    - cp drone-cache/sandbox_files/sandbox-patch-context.json /data/sandbox
-    - cp drone-cache/sandbox_files/011-hangzhou-protocol-parameters.json /data/sandbox
-
-# run empty tezedge node and wait for it
-- name: tezedge-node
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
-  pull: if-not-exists
-  user: root
-  detach: true
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/tezedge_ip.txt
-    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
-    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
-    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner ./drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 2 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
-
-- name: wait-for-tezedge-to-start
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-
-# run empty octez sandbox and wait for it
-- name: octez-node-1
-  user: root
-  image: tezos/tezos:v12-release
-  detach: true
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/octez1_ip.txt
-    - export TEZOS_NODE_DIR=/data/sandbox/octez-1-data
-    - mkdir -p $$TEZOS_NODE_DIR
-    - tezos-node config init --network sandbox --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --expected-pow 0.0 --connections 1
-    - tezos-node identity generate
-    - tezos-node run --sandbox /data/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
-
-# run empty octez sandbox and wait for it
-- name: octez-node-2
-  user: root
-  image: tezos/tezos:v12-release
-  detach: true
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/octez2_ip.txt
-    - export TEZOS_NODE_DIR=/data/sandbox/octez-2-data
-    - mkdir -p $$TEZOS_NODE_DIR
-    - tezos-node config init --network sandbox --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --expected-pow 0.0 --connections 1
-    - tezos-node identity generate
-    - tezos-node run --sandbox /data/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
-
-
-- name: wait-for-octez-to-start
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_1_RPC_CONTEXT_ROOT}  $${OCTEZ_NODE_2_RPC_CONTEXT_ROOT}
-
-# inject protocol to octez node, means it creates the first block with level 1
-- name: inject-first-block-with-tezos_client
-  user: root
-  image: tezos/tezos:v12-release
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - tezos-client -E http://tezedge-node:18732 import secret key activator $${ACTIVATOR_SECRET}
-    - tezos-client -E http://tezedge-node:18732 --block genesis activate protocol PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx  with fitness 1 and key activator and parameters /data/sandbox/011-hangzhou-protocol-parameters.json
-
-# connect both nodes with tezos-admin-client
-- name: connect-octez-and-tezedge
-  user: root
-  image: tezos/tezos:v12-release
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - TEZEDGE_NODE_IP=$$(cat /data/sandbox/tezedge_ip.txt)
-    - tezos-admin-client -E http://octez-node-1:8732 connect address $$TEZEDGE_NODE_IP:9732
-    - tezos-admin-client -E http://octez-node-2:8732 connect address $$TEZEDGE_NODE_IP:9732
-    - sleep 3
-# TODO: instead of sleep 3, check status established
-# TODO: write rpc test for check network/peers
-
-# test checks if this block is synchronized to tezedge node through p2p
-- name: wait-for-sync-on-level-1
-  image: tezedge/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCTEZ_NODE_1_RPC_CONTEXT_ROOT} $${OCTEZ_NODE_2_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-
-- name: run-tezos-endorser-011-PtHANG
-  user: root
-  detach: true
-  image: tezos/tezos:v12-release
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - tezos-client -E http://tezedge-node:18732 import secret key bootstrap3 $${BOOTSTRAP3_SECRET}
-    - tezos-endorser-011-PtHangz2 -m json -E http://tezedge-node:18732 --log-requests run bootstrap3
-
-- name: check-endorsement-in-mempools
-  user: root
-  image: tezos/tezos:v12-release
-  volumes:
-    - name: sandbox-data
-      path: /data/sandbox
-  commands:
-    - |
-      set -xe
-      apk add jq curl
-      tezos-client -E http://tezedge-node:18732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
-      tezos-client -E http://tezedge-node:18732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
-      bake() {
-          node=$1
-          data_dir=$2
-          address=$3
-          tezos-client -E http://$node:8732 bake for $address --context $data_dir/context
-      }
-      bake_both() {
-          bake octez-node-1 /data/sandbox/octez-1-data bootstrap1 &
-          bake octez-node-2 /data/sandbox/octez-2-data bootstrap2 &
-      }
-      bake_one() {
-          bake octez-node-1 /data/sandbox/octez-1-data bootstrap1 &
-      }
-      check_heads() {
-          header1=$(curl -s http://octez-node-1:8732/chains/main/blocks/head/header)
-          header2=$(curl -s http://octez-node-2:8732/chains/main/blocks/head/header)
-          echo $header1 | jq
-          echo $header2 | jq
-          head1=$(echo $header1 | jq -r .hash)
-          head2=$(echo $header2 | jq -r .hash)
-          level1=$(echo $header1 | jq -r .level)
-          level2=$(echo $header1 | jq -r .level)
-          if [ "$level1" -ne "$level2" ]; then
-              echo "ERROR: Different levels"
-              exit 1
-          fi
-          test "$head1" = "$head2"
-      }
-      check_endorsement() {
-          operations=$(curl -s http://tezedge-node:18732/chains/main/mempool/pending_operations)
-          echo $operations | jq
-          applied=$(echo $operations | jq '.applied | length')
-          if [ "$applied" -ne 1 ]; then
-              echo "FAIL: endorsement not found"
-              exit 1
-          fi
-      }
-
-      attempts=0
-      tests=0
-      while true; do
-          bake_both
-          sleep 3
-          attempts=$((attempts+1))
-          if check_heads; then
-              echo "WARN: Same heads"
-              continue
-          fi
-          if [ "$attempts" -ge 15 ]; then
-              echo "ERROR: Cannot reproduce use case for $attempts attempts"
-              exit 1
-          fi
-          tests=$((tests+1))
-          check_endorsement
-          if [ "$tests" -ge 5 ]; then
-              exit
-          fi
-          bake_one
-          sleep 3
-          if check_heads; then
-              true
-          else
-              echo "ERROR: Different heads"
-              exit 1
-          fi
-      done
-
-volumes:
-  - name: sandbox-data
-    temp: {}
-
-depends_on:
-  - build-tezedge-binaries
+#trigger:
+#  branch:
+#    - master
+#    - develop
+#
+#environment:
+#  SODIUM_USE_PKG_CONFIG: 1
+#  NETWORK: sandbox
+#  OCTEZ_NODE_1_RPC_CONTEXT_ROOT: http://octez-node-1:8732
+#  OCTEZ_NODE_2_RPC_CONTEXT_ROOT: http://octez-node-2:8732
+#  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node:18732
+#  ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
+#  BOOTSTRAP1_SECRET: unencrypted:edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh
+#  BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
+#  BOOTSTRAP3_SECRET: unencrypted:edsk4ArLQgBTLWG5FJmnGnT689VKoqhXwmDPBuGx3z4cvwU9MmrPZZ
+#  TEZOS_LOG: debug
+#  LWT_LOG: debug
+#
+#steps:
+#
+#- name: prepare-cache-dir
+#  image: alpine/git
+#  user: root
+#  commands:
+#    - mkdir -p drone-cache
+#
+#- name: restore-cache
+#  image: meltwater/drone-cache
+#  pull: true
+#  environment:
+#    SFTP_USERNAME:
+#      from_secret: sftp_username
+#    SFTP_PASSWORD:
+#      from_secret: sftp_password
+#    SFTP_AUTH_METHOD: PASSWORD
+#    SFTP_HOST: 65.21.119.66
+#    SFTP_PORT: 22
+#    SFTP_CACHE_ROOT: "/upload"
+#  settings:
+#    restore: true
+#    debug: true
+#    backend: "sftp"
+#    cache_key: 'build-{{ .Build.Number }}'
+#    mount:
+#      - 'drone-cache' # <- builds a cache from this directory
+#
+#- name: prepare-data
+#  image: alpine/git
+#  user: root
+#  volumes:
+#    - name: sandbox-data
+#      path: /data/sandbox
+#  commands:
+#    - mkdir -p /data/sandbox
+#    - mkdir -p /data/sandbox/tezos-client
+#    - echo /data/sandbox
+#    - cp drone-cache/sandbox_files/tezedge_drone_sandbox.config /data/sandbox
+#    - cp drone-cache/sandbox_files/sandbox-patch-context.json /data/sandbox
+#    - cp drone-cache/sandbox_files/012-ithaca-protocol-parameters.json /data/sandbox
+#
+## run empty tezedge node and wait for it
+#- name: tezedge-node
+#  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+#  pull: if-not-exists
+#  user: root
+#  detach: true
+#  volumes:
+#    - name: sandbox-data
+#      path: /data/sandbox
+#  environment:
+#    SODIUM_USE_PKG_CONFIG: 1
+#    RUST_BACKTRACE: 1
+#  commands:
+#    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/tezedge_ip.txt
+#    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+#    - export LD_LIBRARY_PATH="drone-cache/build_files/ffi:$rust_libs"
+#    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+#    - drone-cache/build_files/light-node --config-file /data/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /data/sandbox/tezedge/identity.json --tezos-data-dir /data/sandbox/tezedge/tezos-node --bootstrap-db-path /data/sandbox/tezedge/light-node --network sandbox --protocol-runner ./drone-cache/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 2 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file /data/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file ./drone-cache/build_files/ffi/sapling-spend.params --init-sapling-output-params-file ./drone-cache/build_files/ffi/sapling-output.params
+#
+#- name: wait-for-tezedge-to-start
+#  image: tezedge/tezos-node-bootstrap:latest
+#  pull: if-not-exists
+#  commands:
+#    - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+#
+## run empty octez sandbox and wait for it
+#- name: octez-node-1
+#  user: root
+#  image: tezos/tezos:v13-release
+#  detach: true
+#  volumes:
+#    - name: sandbox-data
+#      path: /data/sandbox
+#  commands:
+#    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/octez1_ip.txt
+#    - export TEZOS_NODE_DIR=/data/sandbox/octez-1-data
+#    - mkdir -p $$TEZOS_NODE_DIR
+#    - tezos-node config init --network sandbox --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --expected-pow 0.0 --connections 1
+#    - tezos-node identity generate
+#    - tezos-node run --sandbox /data/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
+#
+## run empty octez sandbox and wait for it
+#- name: octez-node-2
+#  user: root
+#  image: tezos/tezos:v13-release
+#  detach: true
+#  volumes:
+#    - name: sandbox-data
+#      path: /data/sandbox
+#  commands:
+#    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /data/sandbox/octez2_ip.txt
+#    - export TEZOS_NODE_DIR=/data/sandbox/octez-2-data
+#    - mkdir -p $$TEZOS_NODE_DIR
+#    - tezos-node config init --network sandbox --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --allow-all-rpc 0.0.0.0:8732 --expected-pow 0.0 --connections 1
+#    - tezos-node identity generate
+#    - tezos-node run --sandbox /data/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
+#
+#
+#- name: wait-for-octez-to-start
+#  image: tezedge/tezos-node-bootstrap:latest
+#  pull: if-not-exists
+#  commands:
+#    - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_1_RPC_CONTEXT_ROOT}  $${OCTEZ_NODE_2_RPC_CONTEXT_ROOT}
+#
+## inject protocol to octez node, means it creates the first block with level 1
+#- name: inject-first-block-with-tezos_client
+#  user: root
+#  image: tezos/tezos:v13-release
+#  volumes:
+#    - name: sandbox-data
+#      path: /data/sandbox
+#  commands:
+#    - tezos-client -E http://tezedge-node:18732 import secret key activator $${ACTIVATOR_SECRET}
+#    - tezos-client -E http://tezedge-node:18732 --block genesis activate protocol Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A  with fitness 1 and key activator and parameters /data/sandbox/012-ithaca-protocol-parameters.json
+#
+## connect both nodes with tezos-admin-client
+#- name: connect-octez-and-tezedge
+#  user: root
+#  image: tezos/tezos:v13-release
+#  volumes:
+#    - name: sandbox-data
+#      path: /data/sandbox
+#  commands:
+#    - TEZEDGE_NODE_IP=$$(cat /data/sandbox/tezedge_ip.txt)
+#    - tezos-admin-client -E http://octez-node-1:8732 connect address $$TEZEDGE_NODE_IP:9732
+#    - tezos-admin-client -E http://octez-node-2:8732 connect address $$TEZEDGE_NODE_IP:9732
+#    - sleep 3
+## TODO: instead of sleep 3, check status established
+## TODO: write rpc test for check network/peers
+#
+## test checks if this block is synchronized to tezedge node through p2p
+#- name: wait-for-sync-on-level-1
+#  image: tezedge/tezos-node-bootstrap:latest
+#  pull: if-not-exists
+#  commands:
+#    - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCTEZ_NODE_1_RPC_CONTEXT_ROOT} $${OCTEZ_NODE_2_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+#
+#- name: run-tezos-baker-012-Psithaca
+#  user: root
+#  detach: true
+#  image: tezos/tezos:v13-release
+#  volumes:
+#    - name: sandbox-data
+#      path: /data/sandbox
+#  commands:
+#    - tezos-client -E http://tezedge-node:18732 import secret key bootstrap3 $${BOOTSTRAP3_SECRET}
+#    - tezos-baker-012-Psithaca -m json -E http://tezedge-node:18732 --log-requests run bootstrap3
+#
+#- name: check-endorsement-in-mempools
+#  user: root
+#  image: tezos/tezos:v13-release
+#  volumes:
+#    - name: sandbox-data
+#      path: /data/sandbox
+#  commands:
+#    - |
+#      set -xe
+#      apk add jq curl
+#      tezos-client -E http://tezedge-node:18732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
+#      tezos-client -E http://tezedge-node:18732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
+#      bake() {
+#          node=$1
+#          data_dir=$2
+#          address=$3
+#          tezos-client -E http://$node:8732 bake for $address --minimal-timestamp --context $data_dir/context
+#      }
+#      bake_both() {
+#          bake octez-node-1 /data/sandbox/octez-1-data bootstrap1 &
+#          bake octez-node-2 /data/sandbox/octez-2-data bootstrap2 &
+#      }
+#      bake_one() {
+#          bake octez-node-1 /data/sandbox/octez-1-data bootstrap1 &
+#      }
+#      check_heads() {
+#          header1=$(curl -s http://octez-node-1:8732/chains/main/blocks/head/header)
+#          header2=$(curl -s http://octez-node-2:8732/chains/main/blocks/head/header)
+#          echo $header1 | jq
+#          echo $header2 | jq
+#          head1=$(echo $header1 | jq -r .hash)
+#          head2=$(echo $header2 | jq -r .hash)
+#          level1=$(echo $header1 | jq -r .level)
+#          level2=$(echo $header1 | jq -r .level)
+#          if [ "$level1" -ne "$level2" ]; then
+#              echo "ERROR: Different levels"
+#              exit 1
+#          fi
+#          test "$head1" = "$head2"
+#      }
+#      check_endorsement() {
+#          operations=$(curl -s http://tezedge-node:18732/chains/main/mempool/pending_operations)
+#          echo $operations | jq
+#          applied=$(echo $operations | jq '.applied | length')
+#          if [ "$applied" -ne 1 ]; then
+#              echo "FAIL: endorsement not found"
+#              exit 1
+#          fi
+#      }
+#
+#      attempts=0
+#      tests=0
+#      while true; do
+#          bake_both
+#          sleep 3
+#          attempts=$((attempts+1))
+#          if check_heads; then
+#              echo "WARN: Same heads"
+#              continue
+#          fi
+#          if [ "$attempts" -ge 15 ]; then
+#              echo "ERROR: Cannot reproduce use case for $attempts attempts"
+#              exit 1
+#          fi
+#          tests=$((tests+1))
+#          check_endorsement
+#          if [ "$tests" -ge 5 ]; then
+#              exit
+#          fi
+#          bake_one
+#          sleep 3
+#          if check_heads; then
+#              true
+#          else
+#              echo "ERROR: Different heads"
+#              exit 1
+#          fi
+#      done
+#
+#volumes:
+#  - name: sandbox-data
+#    temp: {}
+#
+#depends_on:
+#  - build-tezedge-binaries
 
 
 ---
@@ -3208,7 +2722,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3274,7 +2788,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3440,7 +2954,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-edo2net-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3505,7 +3019,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3667,7 +3181,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-florencenet-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3732,7 +3246,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -3895,7 +3409,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-granadanet-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -3976,7 +3490,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -4109,7 +3623,7 @@ steps:
 # just run octez 3 mainnet snapshoted nodes
 - name: octez-node-mainnet-run-1
   user: root
-  image: tezos/tezos:v12-release
+  image: tezos/tezos:v13-release
   detach: true
   volumes:
     - name: octez-node-mainnet-snapshot-data-upgraded-1
@@ -4125,7 +3639,7 @@ steps:
 
 - name: octez-node-mainnet-run-2
   user: root
-  image: tezos/tezos:v12-release
+  image: tezos/tezos:v13-release
   detach: true
   volumes:
     - name: octez-node-mainnet-snapshot-data-upgraded-2
@@ -4141,7 +3655,7 @@ steps:
 
 - name: octez-node-mainnet-run-3
   user: root
-  image: tezos/tezos:v12-release
+  image: tezos/tezos:v13-release
   detach: true
   volumes:
     - name: octez-node-mainnet-snapshot-data-upgraded-3
@@ -4161,7 +3675,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-mainnet-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -4226,7 +3740,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   environment:
@@ -4403,7 +3917,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -4632,7 +4146,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -4754,7 +4268,7 @@ steps:
 
   - name: tezos-node
     user: root
-    image: tezos/tezos:v12-release
+    image: tezos/tezos:v13-release
     detach: true
     volumes:
       - name: tezos-data
@@ -4872,7 +4386,7 @@ steps:
 
   - name: octez-node
     user: root
-    image: tezos/tezos:v12-release
+    image: tezos/tezos:v13-release
     detach: true
     volumes:
       - name: tezos-data
@@ -4889,7 +4403,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=0 --nodes http://octez-node:8732
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -5019,7 +4533,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -5030,7 +4544,7 @@ steps:
     - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   commands:
     - sleep 10
 
@@ -5100,7 +4614,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -5111,7 +4625,7 @@ steps:
     - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   commands:
     - sleep 10
 
@@ -5182,7 +4696,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -5193,7 +4707,7 @@ steps:
     - apps/node_monitoring/drone-cache-monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   commands:
     - sleep 10
 
@@ -5268,7 +4782,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -5344,7 +4858,7 @@ steps:
         - 'drone-cache' # <- builds a cache from this directory
 
   - name: run-benchmarks
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     pull: if-not-exists
     user: root
     environment:
@@ -5361,7 +4875,7 @@ steps:
 
   # this is not triggered on pull request, because there is complex bench comparison on PR
   - name: criterion-benchmarks
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     pull: if-not-exists
     user: root
     environment:
@@ -5394,7 +4908,7 @@ steps:
 
   # prepare and compiles (async) bench for target branch (only for PR)
   - name: compile-benchmarks-for-target-branch
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     pull: if-not-exists
     user: root
     detach: true
@@ -5436,7 +4950,7 @@ steps:
         - refs/pull/*/head
 
   - name: compare-benchmarks-to-target-branch
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     pull: if-not-exists
     user: root
     volumes:
@@ -5540,7 +5054,7 @@ steps:
     detach: true
 
   - name: wait-for-benchmark-completion
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     pull: if-not-exists
     user: root
     volumes:
@@ -5590,7 +5104,7 @@ environment:
 steps:
 
 - name: run-dhat
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   user: root
   commands:
     - git remote add -f upstream https://github.com/tezedge/tezedge.git
@@ -5692,7 +5206,7 @@ steps:
         - 'drone-cache-old' # <- builds a cache from this directory
 
   - name: octez-bootstrap-node
-    image: tezos/tezos:v12-release
+    image: tezos/tezos:v13-release
     detach: true
     environment:
       TEZOS_NODE_DIR: /home/tezos/data
@@ -5714,7 +5228,7 @@ steps:
       - refs/pull/*/head
 
   - name: octez-node
-    image: tezos/tezos:v12-release
+    image: tezos/tezos:v13-release
     user: root
     environment:
       TEZOS_NODE_DIR: /tmp/tezos/data
@@ -5747,7 +5261,7 @@ steps:
         '
 
   - name: tezedge-new-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     user: root
     volumes:
       - name: tools
@@ -5790,7 +5304,7 @@ steps:
       - curl -s localhost:8732/stats/dbrw | jq .
 
   - name: tezedge-old-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     user: root
     volumes:
       - name: tools
@@ -5973,7 +5487,7 @@ steps:
 
 - name: octez-node
   user: root
-  image: tezos/tezos:v12-release
+  image: tezos/tezos:v13-release
   detach: true
   volumes:
     - name: data
@@ -5993,7 +5507,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
 
 - name: tezedge-updated-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -6013,7 +5527,7 @@ steps:
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-run
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
   pull: if-not-exists
   user: root
   detach: true
@@ -6173,7 +5687,7 @@ steps:
         - 'drone-cache' # <- builds a cache from this directory
 
   - name: octez-node
-    image: tezos/tezos:v12-release
+    image: tezos/tezos:v13-release
     detach: true
     environment:
       TEZOS_NODE_DIR: /home/tezos/data
@@ -6187,7 +5701,7 @@ steps:
       - tezos-node run --no-bootstrap-peers
 
   - name: tezedge-new-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     user: root
     environment:
       THROTTLING_QUOTA_DISABLE: true
@@ -6235,7 +5749,7 @@ steps:
       - ms_print new-node.massif.out > new-node.msp.out
 
   - name: tezedge-old-node
-    image: tezedge/tezedge-ci-builder:rust-1.58.1-v12.0-octez
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
     user: root
     environment:
       THROTTLING_QUOTA_DISABLE: true
@@ -6396,10 +5910,8 @@ depends_on:
   - corr/tezedge-unit-tests
   - perf/tezedge-all-benchmarks
   - corr/tezedge-integration-tests
-  - corr/sandbox-launcher-rpc-server-011-hangzhou
-  # - corr/sandbox-launcher-rpc-server-012-ithaca
-  - corr/tezedge-with-octez-baker-endorser-011-hangzhou
-  # - corr/tezedge-with-octez-baker-endorser-012-ithaca
+  - corr/sandbox-launcher-rpc-server-012-ithaca
+  #- corr/tezedge-with-octez-baker-endorser-012-ithaca
   - corr/octez-python-tests-applied-to-tezedge-012-ithaca
   - corr/octez-python-tests-applied-to-tezedge-012-ithaca-no-endorsement-prechecking
   - corr/octez-tezedge-connection-with-different-networks-each
