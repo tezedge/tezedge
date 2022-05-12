@@ -9,7 +9,7 @@ use hyper::{Body, Method, Request};
 
 use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
 
-use crypto::hash::{ChainId, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use shell_automaton::service::rpc_service::RpcRequestStream;
 
 use crate::helpers::{
@@ -151,32 +151,28 @@ pub async fn blocks(
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
-    let length = query.get_str("length").unwrap_or("0");
-    let head_param = query
-        .get("head")
-        .cloned()
-        .unwrap_or_else(|| vec!["head".to_string()]);
-    let head_param = if head_param.is_empty() {
-        vec!["head".to_string()]
+    let length = query.get_parsed("length")?;
+    let min_date = query.get_parsed("min_date")?;
+    let hashes: Vec<BlockHash> = if let Some(heads) = query.get("head") {
+        heads
+            .iter()
+            .map(|s| BlockHash::from_base58_check(s))
+            .collect::<Result<_, _>>()?
     } else {
-        head_param
+        let state_read = env
+            .state()
+            .read()
+            .map_err(|e| RpcServiceError::UnexpectedError {
+                reason: format!("Lock state error: {}", e),
+            })?;
+        vec![state_read.current_head().hash.clone()]
     };
-    let mut hashes = Vec::with_capacity(head_param.len());
-    for head_param in head_param {
-        hashes.push(parse_block_hash_or_fail!(&chain_id, &head_param, &env));
-    }
-    let min_date = query.get_str("min_date").unwrap_or("0");
 
     // TODO: This can be implemented in a more optimised and cleaner way
     // Note: Need to investigate the "more heads per level" variant
 
-    let block_hashes = base_services::get_blocks(
-        chain_id,
-        hashes,
-        length.parse::<usize>()?,
-        min_date.parse::<i64>()?,
-        env.persistent_storage(),
-    );
+    let block_hashes =
+        base_services::get_blocks(chain_id, hashes, length, min_date, env.persistent_storage());
 
     result_to_json_response(block_hashes, env.log())
 }
