@@ -77,6 +77,7 @@ pub async fn inject_operation(
             }
         })?;
     let operation_hash: OperationHash = operation.message_typed_hash()?;
+    return Ok(operation_hash.to_base58_check());
 
     let msg = RpcShellAutomatonMsg::InjectOperation {
         operation: operation.clone(),
