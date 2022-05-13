@@ -53,8 +53,10 @@ where
     if store.state().config.disable_mempool {
         match &action.action {
             Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, .. }) => {
-                let json = serde_json::Value::String("disabled".to_string());
-                store.service().rpc().respond(*rpc_id, json);
+                if let Some(rpc_id) = rpc_id.as_ref() {
+                    let json = serde_json::Value::String("disabled".to_string());
+                    store.service().rpc().respond(*rpc_id, json);
+                }
             }
             Action::MempoolGetPendingOperations(MempoolGetPendingOperationsAction { rpc_id }) => {
                 store
@@ -370,6 +372,9 @@ where
             store.dispatch(MempoolOperationValidateNextAction {});
         }
         Action::PrecheckerOperationValidated(action) => {
+            store.dispatch(MempoolPrequorumReachedAction {});
+            store.dispatch(MempoolQuorumReachedAction {});
+
             if let Some(result) = store.state.get().prechecker.result(&action.hash) {
                 let kind = result.kind();
                 let is_applied = matches!(kind, PrecheckerResultKind::Applied { .. });

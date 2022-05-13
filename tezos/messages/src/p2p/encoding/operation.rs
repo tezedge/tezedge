@@ -52,6 +52,12 @@ pub struct Operation {
     data: Bytes,
 }
 
+impl Operation {
+    pub fn new(branch: BlockHash, data: Bytes) -> Self {
+        Self { branch, data }
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum FromDecodedOperationError {
     #[error("Failed to decode from base58 string: {0}")]

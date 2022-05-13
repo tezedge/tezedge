@@ -349,9 +349,16 @@ pub struct DoubleEndorsementEvidenceOperation {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedEndorsement {
-    branch: BlockHash,
-    operations: InlinedEndorsementMempoolContents,
-    signature: Signature,
+    pub branch: BlockHash,
+    pub operations: InlinedEndorsementMempoolContents,
+    pub signature: Signature,
+}
+
+impl InlinedEndorsement {
+    pub fn endorsement(&self) -> &InlinedEndorsementMempoolContentsEndorsementVariant {
+        let InlinedEndorsementMempoolContents::Endorsement(op) = &self.operations;
+        op
+    }
 }
 
 /**
@@ -366,6 +373,15 @@ Endorsement (tag 21)
 pub enum InlinedEndorsementMempoolContents {
     #[encoding(tag = 21)]
     Endorsement(InlinedEndorsementMempoolContentsEndorsementVariant),
+}
+
+impl std::ops::Deref for InlinedEndorsementMempoolContents {
+    type Target = InlinedEndorsementMempoolContentsEndorsementVariant;
+
+    fn deref(&self) -> &Self::Target {
+        let Self::Endorsement(op) = self;
+        op
+    }
 }
 
 /**
@@ -388,10 +404,10 @@ Endorsement (tag 21)
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedEndorsementMempoolContentsEndorsementVariant {
-    slot: u16,
-    level: i32,
-    round: i32,
-    block_payload_hash: BlockPayloadHash,
+    pub slot: u16,
+    pub level: i32,
+    pub round: i32,
+    pub block_payload_hash: BlockPayloadHash,
 }
 
 /// Double_baking_evidence (tag 3).
@@ -473,9 +489,16 @@ pub struct DoublePreendorsementEvidenceOperation {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedPreendorsement {
-    branch: BlockHash,
-    operations: InlinedPreendorsementContents,
-    signature: Signature,
+    pub branch: BlockHash,
+    pub operations: InlinedPreendorsementContents,
+    pub signature: Signature,
+}
+
+impl InlinedPreendorsement {
+    pub fn preendorsement(&self) -> &InlinedPreendorsementVariant {
+        let InlinedPreendorsementContents::Preendorsement(op) = &self.operations;
+        op
+    }
 }
 
 /**
@@ -507,6 +530,15 @@ pub enum InlinedPreendorsementContents {
     Preendorsement(InlinedPreendorsementVariant),
 }
 
+impl std::ops::Deref for InlinedPreendorsementContents {
+    type Target = InlinedPreendorsementVariant;
+
+    fn deref(&self) -> &Self::Target {
+        let Self::Preendorsement(op) = self;
+        op
+    }
+}
+
 /**
 012-Psithaca.inlined.preendorsement.contents (43 bytes, 8-bit tag)
 ******************************************************************
@@ -531,10 +563,10 @@ Preendorsement (tag 20)
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedPreendorsementVariant {
-    slot: u16,
-    level: i32,
-    round: i32,
-    block_payload_hash: BlockPayloadHash,
+    pub slot: u16,
+    pub level: i32,
+    pub round: i32,
+    pub block_payload_hash: BlockPayloadHash,
 }
 
 /**

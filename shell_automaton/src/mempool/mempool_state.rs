@@ -10,13 +10,19 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
 use tezos_api::ffi::{Applied, Errored};
-use tezos_messages::p2p::encoding::{
-    block_header::{BlockHeader, Level},
-    operation::Operation,
+use tezos_messages::{
+    base::signature_public_key::SignaturePublicKey,
+    p2p::encoding::{
+        block_header::{BlockHeader, Level},
+        operation::Operation,
+    },
 };
 
 use crate::{
-    prechecker::OperationDecodedContents, rights::Slot, service::rpc_service::RpcId, ActionWithMeta,
+    prechecker::OperationDecodedContents,
+    rights::{EndorsingPower, Slot},
+    service::rpc_service::RpcId,
+    ActionWithMeta,
 };
 
 use super::validator::MempoolValidatorState;
@@ -62,6 +68,9 @@ pub struct MempoolState {
     pub operation_stats: OperationsStats,
 
     pub operations_state: BTreeMap<OperationHash, MempoolOperation>,
+
+    pub prequorum: QuorumState,
+    pub quorum: QuorumState,
 }
 
 impl MempoolState {
@@ -672,5 +681,40 @@ pub enum OperationState {
 impl OperationState {
     fn time_name(&self) -> String {
         self.to_string() + "_time"
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct QuorumState {
+    pub delegates: BTreeMap<SignaturePublicKey, EndorsingPower>,
+    pub total: EndorsingPower,
+    pub notified: bool,
+}
+
+impl QuorumState {
+    /// Whether or not quorum is reached.
+    ///
+    /// TODO(zura): at the moment quorum constant is hardcoded here,
+    /// read from context storage instead.
+    pub fn is_reached(&self) -> bool {
+        // TODO(zura): check if it should be strictly greater or greater
+        // or equal.
+        self.total > 4667
+    }
+
+    pub fn reset(&mut self) {
+        self.delegates.clear();
+        self.total = 0;
+        self.notified = false;
+    }
+
+    pub fn add(&mut self, delegate: SignaturePublicKey, endorsing_power: EndorsingPower) {
+        if self.delegates.insert(delegate, endorsing_power).is_none() {
+            self.total += endorsing_power;
+        }
+    }
+
+    pub fn set_notified(&mut self) {
+        self.notified = true;
     }
 }

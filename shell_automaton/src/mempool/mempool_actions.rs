@@ -85,7 +85,7 @@ impl EnablingCondition<State> for MempoolOperationRecvDoneAction {
 pub struct MempoolOperationInjectAction {
     pub operation: Operation,
     pub hash: OperationHash,
-    pub rpc_id: RpcId,
+    pub rpc_id: Option<RpcId>,
     pub injected_timestamp: u64,
 }
 
@@ -362,5 +362,25 @@ pub struct MempoolOperationValidateNextAction {}
 impl EnablingCondition<State> for MempoolOperationValidateNextAction {
     fn is_enabled(&self, state: &State) -> bool {
         !state.mempool.pending_operations.is_empty() && state.mempool.validator.is_ready()
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MempoolPrequorumReachedAction {}
+
+impl EnablingCondition<State> for MempoolPrequorumReachedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        !state.mempool.prequorum.notified && state.mempool.prequorum.is_reached()
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MempoolQuorumReachedAction {}
+
+impl EnablingCondition<State> for MempoolQuorumReachedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        !state.mempool.quorum.notified && state.mempool.quorum.is_reached()
     }
 }

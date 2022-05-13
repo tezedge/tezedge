@@ -13,10 +13,12 @@ use std::time::{Duration, SystemTime};
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
 use slog::{info, warn, Logger};
-use storage::{PersistentStorage, StorageInitInfo};
 
+use crypto::hash::SeedEd25519;
 use networking::network_channel::NetworkChannelRef;
+use storage::{PersistentStorage, StorageInitInfo};
 use tezos_identity::Identity;
+use tezos_messages::base::signature_public_key::SignaturePublicKey;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
@@ -27,8 +29,8 @@ pub use shell_automaton::service::actors_service::{ApplyBlockCallback, ApplyBloc
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
 use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use shell_automaton::service::{
-    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, ProtocolRunnerServiceDefault,
-    RpcServiceDefault, ServiceDefault, StorageServiceDefault,
+    ActorsServiceDefault, BakerServiceDefault, DnsServiceDefault, MioServiceDefault,
+    ProtocolRunnerServiceDefault, RpcServiceDefault, ServiceDefault, StorageServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::ShellAutomaton;
@@ -147,6 +149,16 @@ impl ShellAutomatonManager {
             log.new(slog::o!("service" => "protocol_runner")),
         );
 
+        let (public_key, secret_key) = SeedEd25519::from_base58_check(
+            "edsk3YYVqwt92imjohsgqCEdGV7xe9YXBjjP8cAMYqXuiBKWjdogQ1",
+        )
+        .unwrap()
+        .keypair()
+        .unwrap();
+        let public_key = SignaturePublicKey::Ed25519(public_key);
+        let mut baker_service = BakerServiceDefault::new();
+        baker_service.add_local_baker(public_key.clone(), secret_key);
+
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),
             dns: DnsServiceDefault::default(),
@@ -155,12 +167,15 @@ impl ShellAutomatonManager {
             storage: storage_service,
             rpc: rpc_service,
             actors: ActorsServiceDefault::new(automaton_receiver, network_channel),
+            baker: baker_service,
             statistics: Some(Default::default()),
         };
 
         let events = MioInternalEventsContainer::with_capacity(1024);
 
         let chain_id = init_storage_data.chain_id.clone();
+
+        let baker_config = shell_automaton::config::BakerConfig { public_key };
         let mut initial_state = shell_automaton::State::new(shell_automaton::Config {
             initial_time: SystemTime::now(),
 
@@ -207,14 +222,10 @@ impl ShellAutomatonManager {
             },
             record_actions: p2p_config.record_shell_automaton_actions,
 
-            quota: shell_automaton::Quota {
-                restore_duration_millis: env_variable("QUOTA_RESTORE_DURATION_MILLIS")
-                    .unwrap_or(1000),
-                read_quota: env_variable("QUOTA_READ_BYTES").unwrap_or(3 * 1024 * 1024), // 3MB
-                write_quota: env_variable("QUOTA_WRITE_BYTES").unwrap_or(3 * 1024 * 1024), // 3MB
-            },
             disable_block_precheck: p2p_config.disable_block_precheck,
             disable_endorsements_precheck: p2p_config.disable_endorsements_precheck,
+
+            bakers: vec![baker_config],
         });
 
         initial_state.set_logger(log.clone());

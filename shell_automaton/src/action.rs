@@ -158,6 +158,8 @@ use crate::storage::{
     kv_cycle_meta, kv_operations,
 };
 
+use crate::baker::block_endorser::*;
+
 use crate::shutdown::{ShutdownInitAction, ShutdownPendingAction, ShutdownSuccessAction};
 
 pub use redux_rs::{ActionId, EnablingCondition};
@@ -520,6 +522,9 @@ pub enum Action {
     MempoolValidatorValidatePending(MempoolValidatorValidatePendingAction),
     MempoolValidatorValidateSuccess(MempoolValidatorValidateSuccessAction),
 
+    MempoolPrequorumReached(MempoolPrequorumReachedAction),
+    MempoolQuorumReached(MempoolQuorumReachedAction),
+
     BlockInject(BlockInjectAction),
 
     PrecheckerCurrentHeadUpdate(PrecheckerCurrentHeadUpdateAction),
@@ -700,6 +705,30 @@ pub enum Action {
     ),
 
     StorageBlocksGenesisInitSuccess(StorageBlocksGenesisInitSuccessAction),
+
+    BakerBlockEndorserRightsGetInit(BakerBlockEndorserRightsGetInitAction),
+    BakerBlockEndorserRightsGetPending(BakerBlockEndorserRightsGetPendingAction),
+    BakerBlockEndorserRightsGetSuccess(BakerBlockEndorserRightsGetSuccessAction),
+    BakerBlockEndorserRightsNoRights(BakerBlockEndorserRightsNoRightsAction),
+
+    BakerBlockEndorserPreendorse(BakerBlockEndorserPreendorseAction),
+    BakerBlockEndorserPreendorsementSignPending(BakerBlockEndorserPreendorsementSignPendingAction),
+    BakerBlockEndorserPreendorsementSignSuccess(BakerBlockEndorserPreendorsementSignSuccessAction),
+    BakerBlockEndorserPreendorsementInjectPending(
+        BakerBlockEndorserPreendorsementInjectPendingAction,
+    ),
+    BakerBlockEndorserPreendorsementInjectSuccess(
+        BakerBlockEndorserPreendorsementInjectSuccessAction,
+    ),
+
+    BakerBlockEndorserPrequorumPending(BakerBlockEndorserPrequorumPendingAction),
+    BakerBlockEndorserPrequorumSuccess(BakerBlockEndorserPrequorumSuccessAction),
+
+    BakerBlockEndorserEndorse(BakerBlockEndorserEndorseAction),
+    BakerBlockEndorserEndorsementSignPending(BakerBlockEndorserEndorsementSignPendingAction),
+    BakerBlockEndorserEndorsementSignSuccess(BakerBlockEndorserEndorsementSignSuccessAction),
+    BakerBlockEndorserEndorsementInjectPending(BakerBlockEndorserEndorsementInjectPendingAction),
+    BakerBlockEndorserEndorsementInjectSuccess(BakerBlockEndorserEndorsementInjectSuccessAction),
 
     ShutdownInit(ShutdownInitAction),
     ShutdownPending(ShutdownPendingAction),

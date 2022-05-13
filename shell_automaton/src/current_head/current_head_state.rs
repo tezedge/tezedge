@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::BTreeMap;
+// use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash};
 use storage::BlockHeaderWithHash;
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::request::RequestId;
 use crate::service::storage_service::StorageError;
@@ -47,6 +49,21 @@ pub enum CurrentHeadState {
 
         /// Stores all applied blocks on last 2 levels.
         applied_blocks: BTreeMap<BlockHash, BlockHeaderWithHash>,
+        ///// Live blocks size equals to `operations_max_ttl`, which at
+        ///// the moment is last 120 blocks. So this will contain 118 blocks
+        ///// last cemented blocks so that
+        ///// `cemented_live_blocks` -> `HEAD~1` -> `HEAD` = last 120 blocks.
+        /////
+        ///// `Set` is used as a container instead of `Vec`, because we
+        ///// only need this data in memory for two things:
+        ///// 1. Return it in `live_blocks` rpc (this along with the
+        /////    `head` and `head_pred`). Blocks in the result must be
+        /////    sorted in a lexicographical order. That is exactly how
+        /////    `BTreeSet` will sort them and `BTreeSet::iter()` will
+        /////    give us already sorted values.
+        ///// 2. To check if the operation's branch is included in the
+        /////    live blocks.
+        //cemented_live_blocks: BTreeSet<BlockHash>,
     },
 }
 
@@ -108,10 +125,6 @@ impl CurrentHeadState {
         }
     }
 
-    pub fn get_hash(&self) -> Option<&BlockHash> {
-        self.get().map(|v| &v.hash)
-    }
-
     pub fn get_pred(&self) -> Option<&BlockHeaderWithHash> {
         match self {
             Self::Rehydrated { head_pred, .. } => head_pred.as_ref(),
@@ -119,9 +132,24 @@ impl CurrentHeadState {
         }
     }
 
+    pub fn hash(&self) -> Option<&BlockHash> {
+        self.get().map(|v| &v.hash)
+    }
+
+    pub fn level(&self) -> Option<Level> {
+        self.get().map(|v| v.header.level())
+    }
+
     pub fn payload_hash(&self) -> Option<&BlockPayloadHash> {
         match self {
             Self::Rehydrated { payload_hash, .. } => payload_hash.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn round(&self) -> Option<i32> {
+        match self {
+            Self::Rehydrated { head, .. } => head.header.fitness().round(),
             _ => None,
         }
     }
@@ -139,3 +167,29 @@ impl Default for CurrentHeadState {
         Self::new()
     }
 }
+
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct BlockHashWithLevelOrdByHash {
+//     hash: BlockHash,
+//     level: Level,
+// }
+
+// impl BlockHashWithLevelOrdByHash {
+//     pub fn new(hash: BlockHash, level: Level) -> Self {
+//         Self { hash, level }
+//     }
+
+//     pub fn hash(&self) -> &BlockHash {
+//         &self.hash
+//     }
+
+//     pub fn level(&self) -> Level {
+//         self.level
+//     }
+// }
+
+// impl Ord for BlockHashWithLevelOrdByHash {
+//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+//         self.hash.cmp(&other.hash)
+//     }
+// }
