@@ -73,6 +73,8 @@ use crate::storage::{
     kv_operations::reducer as kv_operations_reducer,
 };
 
+use crate::baker::block_endorser::baker_block_endorser_reducer;
+
 pub fn last_action_reducer(state: &mut State, action: &ActionWithMeta) {
     state.set_last_action(action);
 }
@@ -150,6 +152,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         kv_cycle_meta_reducer,
         kv_operations_reducer,
         shutdown_reducer,
+        baker_block_endorser_reducer,
         // needs to be last!
         applied_actions_count_reducer,
         last_action_reducer

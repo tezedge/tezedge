@@ -77,6 +77,8 @@ use crate::storage::{
 
 use crate::rpc::rpc_effects;
 
+use crate::baker::block_endorser::baker_block_endorser_effects;
+
 fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     if let Some(stats) = store.service.statistics() {
         stats.action_new(action)
@@ -197,6 +199,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     kv_cycle_eras_effects(store, action);
     kv_cycle_meta_effects(store, action);
     kv_operations_effects(store, action);
+
+    baker_block_endorser_effects(store, action);
 
     shutdown_effects(store, action);
 }

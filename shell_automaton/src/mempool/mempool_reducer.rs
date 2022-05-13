@@ -14,7 +14,7 @@ use tezos_messages::p2p::encoding::peer::PeerMessage;
 
 use crate::block_applier::BlockApplierApplyState;
 use crate::peers::remove::PeersRemoveAction;
-use crate::prechecker::{prechecking_enabled, PrecheckerResult};
+use crate::prechecker::{prechecking_enabled, OperationDecodedContents, PrecheckerResult};
 use crate::{Action, ActionWithMeta, State};
 
 use super::validator::MempoolValidatorValidateResult;
@@ -433,6 +433,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .map_or(true, |c| c.is_endorsement() || c.is_preendorsement())
             });
             slog::debug!(state.log, "validated_operations: removed old operations"; "time" => format!("{:?}", Instant::now() - t));
+
+            // reset quorum state.
+            state.mempool.prequorum.reset();
+            state.mempool.quorum.reset();
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
@@ -517,9 +521,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .unwrap_or(0);
             let ops = mempool_state.level_to_operation.entry(level).or_default();
             ops.push(operation_hash.clone());
-            mempool_state
-                .injecting_rpc_ids
-                .insert(operation_hash.clone(), *rpc_id);
+            if let Some(rpc_id) = rpc_id.as_ref() {
+                mempool_state
+                    .injecting_rpc_ids
+                    .insert(operation_hash.clone(), *rpc_id);
+            }
 
             if let Some(head) = state.current_head.get() {
                 let proto = head.header.proto();
@@ -647,6 +653,8 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 mempool_state.injected_rpc_ids.push(rpc_id);
             }
 
+            let is_applied = result.kind().is_applied();
+
             let mut update_stats = |state1, state2| {
                 if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
                     if matches!(
@@ -654,6 +662,43 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         OperationState::Decoded | OperationState::BranchDelayed
                     ) {
                         *operation_state = operation_state.next_state(state1, action);
+                        let op = operation_state
+                            .operation_decoded_contents
+                            .as_ref()
+                            .and_then(|op| match op {
+                                OperationDecodedContents::Proto012(operation) => Some(operation),
+                                _ => None,
+                            });
+
+                        Some(())
+                            .and_then(|_| {
+                                let op = op?.as_preendorsement()?;
+                                Some((op.level, op.round, op.slot))
+                            })
+                            .or_else(|| {
+                                let op = op?.as_endorsement()?;
+                                Some((op.level, op.round, op.slot))
+                            })
+                            .filter(|_| is_applied)
+                            .and_then(|(level, round, slot)| {
+                                let head_level = state.current_head.level()?;
+                                let head_round = state.current_head.round()?;
+                                if level != head_level || round != head_round {
+                                    return None;
+                                }
+                                let rights = state.rights.tenderbake_validators(level)?;
+                                let delegate = rights.validators.get(slot as usize)?;
+                                let endorsing_power = rights.slots.get(delegate)?.len() as u16;
+
+                                if op?.is_preendorsement() {
+                                    mempool_state
+                                        .prequorum
+                                        .add(delegate.clone(), endorsing_power);
+                                } else {
+                                    mempool_state.quorum.add(delegate.clone(), endorsing_power);
+                                }
+                                Some(())
+                            });
                     }
                 }
                 mempool_state
@@ -913,6 +958,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 })
                 .collect();
         }
+
         Action::MempoolRequestFullContent(MempoolRequestFullContentAction {
             address,
             operations,
@@ -927,6 +973,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
 
+        Action::MempoolPrequorumReached(_) => {
+            state.mempool.prequorum.set_notified();
+        }
+        Action::MempoolQuorumReached(_) => {
+            state.mempool.quorum.set_notified();
+        }
         _ => (),
     }
 }

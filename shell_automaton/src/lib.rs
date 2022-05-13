@@ -14,7 +14,7 @@ pub use action::{
 };
 
 pub mod config;
-pub use config::{Config, Quota};
+pub use config::Config;
 
 pub mod logger;
 pub use logger::Logger;
@@ -66,6 +66,8 @@ pub mod shutdown;
 
 pub mod current_head;
 pub mod current_head_precheck;
+
+pub mod baker;
 
 pub mod stats;
 
