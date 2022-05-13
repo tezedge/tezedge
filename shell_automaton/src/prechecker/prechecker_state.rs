@@ -79,6 +79,12 @@ pub(crate) enum PrecheckerResultKind<'a> {
     BranchDelayed,
 }
 
+impl<'a> PrecheckerResultKind<'a> {
+    pub fn is_applied(&self) -> bool {
+        matches!(self, Self::Applied)
+    }
+}
+
 impl<'a> TryFrom<&'a PrecheckerOperation> for PrecheckerResult<'a> {
     type Error = ();
 

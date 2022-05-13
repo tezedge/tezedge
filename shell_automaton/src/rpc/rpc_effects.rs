@@ -232,7 +232,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         store.dispatch(MempoolOperationInjectAction {
                             operation,
                             hash: operation_hash,
-                            rpc_id,
+                            rpc_id: Some(rpc_id),
                             injected_timestamp,
                         });
                     }

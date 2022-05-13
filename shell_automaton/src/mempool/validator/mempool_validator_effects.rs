@@ -77,7 +77,7 @@ where
                 {
                     slog::debug!(&store.state().log, "Got stale operation validation result";
                         "validated_for" => res.prevalidator.predecessor.to_base58_check(),
-                        "current_mempool_head" => format!("{:?}", store.state().current_head.get_hash()));
+                        "current_mempool_head" => format!("{:?}", store.state().current_head.hash()));
                     return;
                 }
                 let result = match &res.result {
