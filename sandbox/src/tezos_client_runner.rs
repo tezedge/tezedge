@@ -288,7 +288,7 @@ impl TezosClientRunner {
 
         self.run_client(
             node_ref,
-            ["bake", "for", alias].to_vec(),
+            ["bake", "for", alias, "--minimal-timestamp"].to_vec(),
             &mut client_output,
             log,
         )?;
