@@ -3,14 +3,17 @@
 
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::time::{Duration, SystemTime};
+use tezos_messages::base::signature_public_key::SignaturePublicKey;
 
 use ::storage::persistent::SchemaError;
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
+use crate::baker::BakerState;
 use crate::block_applier::BlockApplierState;
 use crate::bootstrap::BootstrapState;
 use crate::config::Config;
@@ -85,6 +88,8 @@ pub struct State {
     pub last_action: ActionIdWithKind,
     pub applied_actions_count: u64,
 
+    pub bakers: BTreeMap<SignaturePublicKey, BakerState>,
+
     pub shutdown: ShutdownState,
 }
 
@@ -95,6 +100,11 @@ impl State {
 
     pub fn new(config: Config) -> Self {
         let block_applier = BlockApplierState::new(&config);
+        let bakers = config
+            .bakers
+            .iter()
+            .map(|baker| (baker.public_key.clone(), BakerState::new()))
+            .collect();
         Self {
             log: Default::default(),
             config,
@@ -127,6 +137,8 @@ impl State {
                 kind: ActionKind::Init,
             },
             applied_actions_count: 0,
+
+            bakers,
 
             shutdown: ShutdownState::new(),
         }
@@ -279,6 +291,10 @@ impl State {
     /// If shutdown was initiated and finished or not.
     pub fn is_shutdown(&self) -> bool {
         matches!(self.shutdown, ShutdownState::Success { .. })
+    }
+
+    pub fn baker_keys_iter<'a>(&'a self) -> impl 'a + Iterator<Item = &'a SignaturePublicKey> {
+        self.bakers.iter().map(|(key, _)| key)
     }
 }
 

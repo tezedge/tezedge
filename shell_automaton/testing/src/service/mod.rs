@@ -22,3 +22,6 @@ pub use mio_service::*;
 
 mod protocol_runner_service;
 pub use protocol_runner_service::*;
+
+mod baker_service;
+pub use baker_service::*;
