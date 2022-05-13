@@ -354,6 +354,13 @@ pub struct InlinedEndorsement {
     pub signature: Signature,
 }
 
+impl InlinedEndorsement {
+    pub fn endorsement(&self) -> &InlinedEndorsementMempoolContentsEndorsementVariant {
+        let InlinedEndorsementMempoolContents::Endorsement(op) = &self.operations;
+        op
+    }
+}
+
 /**
 012-Psithaca.inlined.endorsement_mempool.contents (43 bytes, 8-bit tag)
 ***********************************************************************
@@ -366,6 +373,15 @@ Endorsement (tag 21)
 pub enum InlinedEndorsementMempoolContents {
     #[encoding(tag = 21)]
     Endorsement(InlinedEndorsementMempoolContentsEndorsementVariant),
+}
+
+impl std::ops::Deref for InlinedEndorsementMempoolContents {
+    type Target = InlinedEndorsementMempoolContentsEndorsementVariant;
+
+    fn deref(&self) -> &Self::Target {
+        let Self::Endorsement(op) = self;
+        op
+    }
 }
 
 /**
@@ -478,6 +494,13 @@ pub struct InlinedPreendorsement {
     pub signature: Signature,
 }
 
+impl InlinedPreendorsement {
+    pub fn preendorsement(&self) -> &InlinedPreendorsementVariant {
+        let InlinedPreendorsementContents::Preendorsement(op) = &self.operations;
+        op
+    }
+}
+
 /**
 012-Psithaca.inlined.preendorsement.contents (43 bytes, 8-bit tag)
 ******************************************************************
@@ -505,6 +528,15 @@ Preendorsement (tag 20)
 pub enum InlinedPreendorsementContents {
     #[encoding(tag = 20)]
     Preendorsement(InlinedPreendorsementVariant),
+}
+
+impl std::ops::Deref for InlinedPreendorsementContents {
+    type Target = InlinedPreendorsementVariant;
+
+    fn deref(&self) -> &Self::Target {
+        let Self::Preendorsement(op) = self;
+        op
+    }
 }
 
 /**
