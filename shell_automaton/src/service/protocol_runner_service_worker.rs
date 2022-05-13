@@ -22,7 +22,9 @@ use tokio::sync::Mutex;
 use crate::protocol_runner::ProtocolRunnerToken;
 
 use super::protocol_runner_service::{
-    ProtocolRunnerRequest, ProtocolRunnerResponse, ProtocolRunnerResult,
+    context_raw_bytes_from_rpc_response, cycle_delegates_from_rpc_response,
+    endorsing_rights_from_rpc_response, ProtocolRunnerRequest, ProtocolRunnerResponse,
+    ProtocolRunnerResult,
 };
 use super::service_async_channel::{
     ServiceWorkerAsyncResponder, ServiceWorkerAsyncResponderSender,
@@ -252,6 +254,29 @@ impl ProtocolRunnerServiceWorker {
                 let res = conn.latest_context_hashes(count).await;
                 let _ = channel
                     .send(ProtocolRunnerResult::LatestContextHashesGet((token, res)))
+                    .await;
+            }
+            ProtocolMessage::GetContextRawBytes(req) => {
+                let res = conn.call_protocol_rpc(req).await;
+                let res = res.map(context_raw_bytes_from_rpc_response);
+                let _ = channel
+                    .send(ProtocolRunnerResult::GetContextRawBytes((token, res)))
+                    .await;
+            }
+            ProtocolMessage::GetEndorsingRights(req) => {
+                let res = conn.call_protocol_rpc(req).await;
+                let _ = channel
+                    .send(ProtocolRunnerResult::GetEndorsingRights((
+                        token,
+                        res.map(endorsing_rights_from_rpc_response),
+                    )))
+                    .await;
+            }
+            ProtocolMessage::GetCycleDelegates(req) => {
+                let res = conn.call_protocol_rpc(req).await;
+                let res = res.map(cycle_delegates_from_rpc_response);
+                let _ = channel
+                    .send(ProtocolRunnerResult::GetCycleDelegates((token, res)))
                     .await;
             }
             _other => {

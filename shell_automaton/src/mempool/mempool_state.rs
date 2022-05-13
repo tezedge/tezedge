@@ -50,7 +50,8 @@ pub struct MempoolState {
     pub(super) pending_full_content: BTreeSet<OperationHash>,
     // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: MempoolPendingOperations,
-    pub(super) prechecking_operations: BTreeSet<OperationHash>,
+    pub(super) prechecking_operations: BTreeMap<OperationHash, u8>,
+    pub(super) prechecking_delayed_operations: BTreeSet<OperationHash>,
     pub validated_operations: ValidatedOperations,
     // track ttl
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
@@ -586,14 +587,19 @@ impl MempoolOperation {
         }
     }
 
-    pub(super) fn injected(level: Level, action: &ActionWithMeta) -> Self {
+    pub(super) fn injected(level: Level, inject_time: u64, action: &ActionWithMeta) -> Self {
         let state = OperationState::ReceivedContents; // TODO use separate id
+                                                      // TODO use separate notation (like `operation known`, `operation content known` etc)
+        let times = HashMap::from([
+            (OperationState::ReceivedHash.time_name(), inject_time), // time when injection has been initiated
+            (state.time_name(), action.time_as_nanos()), // time when injection reached statemachine
+        ]);
         Self {
             level,
             operation_decoded_contents: None,
             state,
             broadcast: BroadcastState::Pending,
-            times: HashMap::from([(state.time_name(), action.time_as_nanos())]),
+            times,
         }
     }
 
@@ -631,13 +637,6 @@ impl MempoolOperation {
         Self {
             times,
             broadcast: BroadcastState::Broadcast,
-            ..self.clone()
-        }
-    }
-
-    pub(super) fn broadcast_not_needed(&self) -> Self {
-        Self {
-            broadcast: BroadcastState::NotNeeded,
             ..self.clone()
         }
     }
