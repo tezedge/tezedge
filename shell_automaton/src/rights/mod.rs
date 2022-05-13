@@ -26,7 +26,7 @@ pub mod cycle_eras;
 pub struct RightsKey(RightsInput);
 
 impl RightsKey {
-    pub(super) fn baking(
+    pub fn baking(
         current_block_hash: BlockHash,
         level: Option<Level>,
         _max_priority: Option<u16>,
@@ -36,14 +36,14 @@ impl RightsKey {
             level,
         }))
     }
-    pub(super) fn endorsing(current_block_hash: BlockHash, level: Option<Level>) -> Self {
+    pub fn endorsing(current_block_hash: BlockHash, level: Option<Level>) -> Self {
         Self(RightsInput::Endorsing(EndorsingRightsInput {
             current_block_hash,
             level,
         }))
     }
 
-    pub(super) fn block(&self) -> &BlockHash {
+    pub fn block(&self) -> &BlockHash {
         match &self.0 {
             RightsInput::Baking(BakingRightsInput {
                 current_block_hash, ..
@@ -54,7 +54,7 @@ impl RightsKey {
         }
     }
 
-    pub(super) fn level(&self) -> Option<Level> {
+    pub fn level(&self) -> Option<Level> {
         match self.0 {
             RightsInput::Baking(BakingRightsInput { level, .. }) => level,
             RightsInput::Endorsing(EndorsingRightsInput { level, .. }) => level,
