@@ -23,6 +23,10 @@ def get_parameters(folder: str, network='test') -> dict:
         return json.load(params)
 
 
+# The protocol compiler location
+COMPILER = f'{paths.TEZOS_HOME}/tezos-protocol-compiler'
+
+
 # This is the secret key used to activate a protocol from genesis in sandbox
 # mode. The corresponding public key is hard-coded in the tezos node.
 GENESIS_SK = "edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6"
@@ -86,15 +90,15 @@ ALPHA_DAEMON = "alpha"  # tezos-baker-alpha
 ALPHA_FOLDER = "proto_alpha"
 ALPHA_PARAMETERS = get_parameters(ALPHA_FOLDER)
 
-HANGZHOU = "PtHangz2aRngywmSRGGvrcTyMbbdpWdpFKuS4uMWxg2RaH9i1qx"
-HANGZHOU_DAEMON = "011-PtHangz2"
-HANGZHOU_FOLDER = "proto_011_PtHangz2"
-HANGZHOU_PARAMETERS = get_parameters(HANGZHOU_FOLDER)
-
 ITHACA = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A"
 ITHACA_DAEMON = "012-Psithaca"
 ITHACA_FOLDER = "proto_012_Psithaca"
 ITHACA_PARAMETERS = get_parameters(ITHACA_FOLDER)
+
+JAKARTA = "PtJakart2xVj7pYXJBXrqHgd82rdkLey5ZeeGwDgPp9rhQUbSqY"
+JAKARTA_DAEMON = "013-PtJakart"
+JAKARTA_FOLDER = "proto_013_PtJakart"
+JAKARTA_PARAMETERS = get_parameters(JAKARTA_FOLDER)
 
 TEZOS_CRT = """
 Certificate:

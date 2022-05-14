@@ -304,7 +304,7 @@ class Sandbox:
         return client
 
     def init_node(self, node, snapshot, reconstruct):
-        """Generate node id and import snapshot """
+        """Generate node id and import snapshot"""
         node.init_id()
         node.init_config()
         if snapshot is not None:
@@ -597,15 +597,15 @@ class Sandbox:
         node.cleanup()
 
     def client(self, node_id: int) -> Client:
-        """ Returns client for node node_id """
+        """Returns client for node node_id"""
         return self.clients[node_id]
 
     def node(self, node_id: int) -> Node:
-        """ Returns node for node_id """
+        """Returns node for node_id"""
         return self.nodes[node_id]
 
     def baker(self, node_id: int, proto: str) -> Baker:
-        """ Returns baker for node node_i and proto """
+        """Returns baker for node node_i and proto"""
         return self.bakers[proto][node_id]
 
     def all_clients(self) -> List[Client]:
@@ -614,7 +614,7 @@ class Sandbox:
         return list(self.clients.values())
 
     def all_nodes(self) -> List[Node]:
-        """ Returns the list of all active nodes (no particular order)."""
+        """Returns the list of all active nodes (no particular order)."""
         return list(self.nodes.values())
 
     def __exit__(self, *exc):
