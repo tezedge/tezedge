@@ -53,15 +53,32 @@ pub enum BakerBlockEndorserState {
     Idle {
         time: u64,
     },
-    NoRights {
-        time: u64,
-    },
     RightsGetPending {
         time: u64,
     },
     RightsGetSuccess {
         time: u64,
         /// First slot for current block.
+        first_slot: u16,
+    },
+    NoRights {
+        time: u64,
+    },
+    /// Payload is older than the last locked payload.
+    PayloadOutdated {
+        time: u64,
+        first_slot: u16,
+    },
+    /// Current head is the same level as the last endorsed block, but
+    /// payload hash is different. We need to wait for prequorum.
+    PayloadLocked {
+        time: u64,
+        first_slot: u16,
+    },
+    /// Payload was locked, but prequorum was reached for the new
+    /// payload hash so unlock it to preendorse and endorse the payload.
+    PayloadUnlockedAsPreQuorumReached {
+        time: u64,
         first_slot: u16,
     },
     Preendorse {
@@ -137,10 +154,17 @@ pub enum BakerBlockEndorserState {
 }
 
 impl BakerBlockEndorserState {
+    pub fn is_idle(&self) -> bool {
+        matches!(self, Self::Idle { .. })
+    }
+
     pub fn first_slot(&self) -> Option<u16> {
         // TODO(zura)
         match self {
             Self::RightsGetSuccess { first_slot, .. }
+            | Self::PayloadOutdated { first_slot, .. }
+            | Self::PayloadLocked { first_slot, .. }
+            | Self::PayloadUnlockedAsPreQuorumReached { first_slot, .. }
             | Self::Preendorse { first_slot, .. }
             | Self::PreendorsementSignPending { first_slot, .. }
             | Self::PreendorsementSignSuccess { first_slot, .. }
