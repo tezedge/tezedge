@@ -3,13 +3,58 @@
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::Signature;
+use crypto::hash::{BlockPayloadHash, Signature};
 use tezos_messages::base::signature_public_key::SignaturePublicKey;
+use tezos_messages::p2p::encoding::block_header::Level;
 
+use crate::baker::BakerState;
+use crate::current_head::CurrentHeadState;
 use crate::rights::EndorsingPower;
 use crate::{EnablingCondition, State};
 
 use super::{BakerBlockEndorserState, EndorsementWithForgedBytes, PreendorsementWithForgedBytes};
+
+fn current_head_level_round_payload(state: &State) -> Option<(Level, i32, &BlockPayloadHash)> {
+    match &state.current_head {
+        CurrentHeadState::Rehydrated {
+            head, payload_hash, ..
+        } => {
+            let round = head.header.fitness().round()?;
+            Some((head.header.level(), round, payload_hash.as_ref()?))
+        }
+        _ => None,
+    }
+}
+
+fn is_payload_new(state: &State, baker: &BakerState) -> Option<bool> {
+    let (level, round, _) = current_head_level_round_payload(state)?;
+    let locked_payload = match baker.locked_payload.as_ref() {
+        Some(v) => v,
+        None => return Some(true),
+    };
+    Some(
+        locked_payload.level < level
+            || (locked_payload.level == level && round > locked_payload.round),
+    )
+}
+
+fn is_payload_outdated(state: &State, baker: &BakerState) -> Option<bool> {
+    is_payload_new(state, baker).map(|v| !v)
+}
+
+fn should_preendorse(state: &State, baker: &BakerState) -> Option<bool> {
+    let (level, _, payload_hash) = current_head_level_round_payload(state)?;
+    let locked_payload = match baker.locked_payload.as_ref() {
+        Some(v) => v,
+        None => return Some(true),
+    };
+
+    let can_accept_payload = locked_payload.level < level
+        || locked_payload.payload_hash.eq(payload_hash)
+        || state.mempool.prequorum.is_reached();
+
+    is_payload_new(state, baker).map(|v| v && can_accept_payload)
+}
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -29,9 +74,10 @@ pub struct BakerBlockEndorserRightsGetPendingAction {
 
 impl EnablingCondition<State> for BakerBlockEndorserRightsGetPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state.bakers.get(&self.baker).map_or(false, |baker| {
-            matches!(baker.block_endorser, BakerBlockEndorserState::Idle { .. })
-        })
+        state
+            .bakers
+            .get(&self.baker)
+            .map_or(false, |baker| baker.block_endorser.is_idle())
     }
 }
 
@@ -73,18 +119,74 @@ impl EnablingCondition<State> for BakerBlockEndorserRightsNoRightsAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BakerBlockEndorserPayloadOutdatedAction {
+    pub baker: SignaturePublicKey,
+}
+
+impl EnablingCondition<State> for BakerBlockEndorserPayloadOutdatedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        state.bakers.get(&self.baker).map_or(false, |baker| {
+            matches!(
+                baker.block_endorser,
+                BakerBlockEndorserState::RightsGetSuccess { .. }
+            ) && is_payload_outdated(state, baker).unwrap_or(false)
+        })
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BakerBlockEndorserPayloadLockedAction {
+    pub baker: SignaturePublicKey,
+}
+
+impl EnablingCondition<State> for BakerBlockEndorserPayloadLockedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        state.bakers.get(&self.baker).map_or(false, |baker| {
+            matches!(
+                baker.block_endorser,
+                BakerBlockEndorserState::RightsGetSuccess { .. }
+            ) && !is_payload_outdated(state, baker).unwrap_or(false)
+                && !should_preendorse(state, baker).unwrap_or(false)
+        })
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BakerBlockEndorserPayloadUnlockedAsPreQuorumReachedAction {
+    pub baker: SignaturePublicKey,
+}
+
+impl EnablingCondition<State> for BakerBlockEndorserPayloadUnlockedAsPreQuorumReachedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        state.bakers.get(&self.baker).map_or(false, |baker| {
+            matches!(
+                baker.block_endorser,
+                BakerBlockEndorserState::PayloadLocked { .. }
+            ) && should_preendorse(state, baker).unwrap_or(false)
+        })
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockEndorserPreendorseAction {
     pub baker: SignaturePublicKey,
 }
 
 impl EnablingCondition<State> for BakerBlockEndorserPreendorseAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state.bakers.get(&self.baker).map_or(false, |baker| {
-            matches!(
-                baker.block_endorser,
+        state
+            .bakers
+            .get(&self.baker)
+            .map_or(false, |baker| match &baker.block_endorser {
                 BakerBlockEndorserState::RightsGetSuccess { .. }
-            )
-        })
+                | BakerBlockEndorserState::PayloadUnlockedAsPreQuorumReached { .. } => {
+                    should_preendorse(state, baker).unwrap_or(false)
+                }
+                _ => false,
+            })
     }
 }
 

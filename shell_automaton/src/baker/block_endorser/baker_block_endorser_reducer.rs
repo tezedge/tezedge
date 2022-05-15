@@ -5,6 +5,7 @@ use crypto::hash::OperationHash;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::Operation;
 
+use crate::baker::LockedPayload;
 use crate::{Action, ActionWithMeta, State};
 
 use super::BakerBlockEndorserState;
@@ -36,6 +37,42 @@ pub fn baker_block_endorser_reducer(state: &mut State, action: &ActionWithMeta) 
                 baker.block_endorser = BakerBlockEndorserState::RightsGetSuccess {
                     time: action.time_as_nanos(),
                     first_slot: content.first_slot,
+                };
+            }
+        }
+        Action::BakerBlockEndorserPayloadOutdated(content) => {
+            if let Some(baker) = state.bakers.get_mut(&content.baker) {
+                let first_slot = match baker.block_endorser.first_slot() {
+                    Some(v) => v,
+                    None => return,
+                };
+                baker.block_endorser = BakerBlockEndorserState::PayloadOutdated {
+                    time: action.time_as_nanos(),
+                    first_slot,
+                };
+            }
+        }
+        Action::BakerBlockEndorserPayloadLocked(content) => {
+            if let Some(baker) = state.bakers.get_mut(&content.baker) {
+                let first_slot = match baker.block_endorser.first_slot() {
+                    Some(v) => v,
+                    None => return,
+                };
+                baker.block_endorser = BakerBlockEndorserState::PayloadLocked {
+                    time: action.time_as_nanos(),
+                    first_slot,
+                };
+            }
+        }
+        Action::BakerBlockEndorserPayloadUnlockedAsPreQuorumReached(content) => {
+            if let Some(baker) = state.bakers.get_mut(&content.baker) {
+                let first_slot = match baker.block_endorser.first_slot() {
+                    Some(v) => v,
+                    None => return,
+                };
+                baker.block_endorser = BakerBlockEndorserState::PayloadUnlockedAsPreQuorumReached {
+                    time: action.time_as_nanos(),
+                    first_slot,
                 };
             }
         }
@@ -258,6 +295,12 @@ pub fn baker_block_endorser_reducer(state: &mut State, action: &ActionWithMeta) 
                         signed_operation_bytes,
                         ..
                     } => {
+                        let op = operation.operation();
+                        baker.locked_payload = Some(LockedPayload {
+                            level: op.level,
+                            round: op.round,
+                            payload_hash: op.block_payload_hash.clone(),
+                        });
                         baker.block_endorser = BakerBlockEndorserState::EndorsementInjectSuccess {
                             time: action.time_as_nanos(),
                             first_slot: *first_slot,
