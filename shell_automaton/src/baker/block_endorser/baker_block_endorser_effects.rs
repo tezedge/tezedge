@@ -18,7 +18,9 @@ use super::{
     BakerBlockEndorserEndorseAction, BakerBlockEndorserEndorsementInjectPendingAction,
     BakerBlockEndorserEndorsementInjectSuccessAction,
     BakerBlockEndorserEndorsementSignPendingAction, BakerBlockEndorserEndorsementSignSuccessAction,
-    BakerBlockEndorserPreendorseAction, BakerBlockEndorserPreendorsementInjectPendingAction,
+    BakerBlockEndorserPayloadLockedAction, BakerBlockEndorserPayloadOutdatedAction,
+    BakerBlockEndorserPayloadUnlockedAsPreQuorumReachedAction, BakerBlockEndorserPreendorseAction,
+    BakerBlockEndorserPreendorsementInjectPendingAction,
     BakerBlockEndorserPreendorsementInjectSuccessAction,
     BakerBlockEndorserPreendorsementSignPendingAction,
     BakerBlockEndorserPreendorsementSignSuccessAction, BakerBlockEndorserPrequorumPendingAction,
@@ -97,6 +99,17 @@ where
             }
         }
         Action::BakerBlockEndorserRightsGetSuccess(content) => {
+            store.dispatch(BakerBlockEndorserPayloadOutdatedAction {
+                baker: content.baker.clone(),
+            });
+            store.dispatch(BakerBlockEndorserPayloadLockedAction {
+                baker: content.baker.clone(),
+            });
+            store.dispatch(BakerBlockEndorserPreendorseAction {
+                baker: content.baker.clone(),
+            });
+        }
+        Action::BakerBlockEndorserPayloadUnlockedAsPreQuorumReached(content) => {
             store.dispatch(BakerBlockEndorserPreendorseAction {
                 baker: content.baker.clone(),
             });
@@ -270,10 +283,16 @@ where
             store.dispatch(BakerBlockEndorserPrequorumPendingAction {
                 baker: content.baker.clone(),
             });
+            store.dispatch(BakerBlockEndorserEndorseAction {
+                baker: content.baker.clone(),
+            });
         }
         Action::MempoolPrequorumReached(_) => {
             let bakers = store.state().baker_keys_iter().cloned().collect::<Vec<_>>();
             for baker in bakers {
+                store.dispatch(BakerBlockEndorserPayloadUnlockedAsPreQuorumReachedAction {
+                    baker: baker.clone(),
+                });
                 store.dispatch(BakerBlockEndorserPrequorumSuccessAction { baker });
             }
         }

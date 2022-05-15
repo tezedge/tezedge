@@ -714,7 +714,13 @@ pub enum Action {
     BakerBlockEndorserRightsGetInit(BakerBlockEndorserRightsGetInitAction),
     BakerBlockEndorserRightsGetPending(BakerBlockEndorserRightsGetPendingAction),
     BakerBlockEndorserRightsGetSuccess(BakerBlockEndorserRightsGetSuccessAction),
+
     BakerBlockEndorserRightsNoRights(BakerBlockEndorserRightsNoRightsAction),
+    BakerBlockEndorserPayloadOutdated(BakerBlockEndorserPayloadOutdatedAction),
+    BakerBlockEndorserPayloadLocked(BakerBlockEndorserPayloadLockedAction),
+    BakerBlockEndorserPayloadUnlockedAsPreQuorumReached(
+        BakerBlockEndorserPayloadUnlockedAsPreQuorumReachedAction,
+    ),
 
     BakerBlockEndorserPreendorse(BakerBlockEndorserPreendorseAction),
     BakerBlockEndorserPreendorsementSignPending(BakerBlockEndorserPreendorsementSignPendingAction),
