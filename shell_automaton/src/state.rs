@@ -213,7 +213,7 @@ impl State {
             .handshaked_iter()
             .filter_map(|(_, peer)| peer.current_head.as_ref())
             .map(|current_head| (current_head_timestamp - current_head.header.timestamp()).i64())
-            .filter(|latency: &i64| latency.abs() < SYNC_LATENCY)
+            .filter(|latency: &i64| latency.saturating_abs() < SYNC_LATENCY)
             .count();
 
         bootstrapped_peers_len >= self.config.peers_bootstrapped_min
