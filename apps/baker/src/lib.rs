@@ -12,6 +12,6 @@ mod proof_of_work;
 pub mod machine;
 
 mod services;
-pub use self::services::{ActionInner, EventWithTime, Services};
+pub use self::services::{EventWithTime, Services};
 
 pub use tenderbake::Timestamp;

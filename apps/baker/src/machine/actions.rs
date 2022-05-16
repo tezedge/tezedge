@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Serialize, Deserialize};
+use derive_more::From;
 
 use crypto::hash::{BlockHash, ContractTz1Hash};
 use redux_rs::EnablingCondition;
@@ -360,7 +361,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, From)]
 pub enum BakerAction {
     // events
     RpcError(RpcErrorAction),
