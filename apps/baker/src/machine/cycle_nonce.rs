@@ -56,7 +56,8 @@ impl CycleNonce {
     pub fn gen_nonce(&mut self, level: i32) -> Option<NonceHash> {
         let level = level as u32;
         if level % self.blocks_per_commitment == 0 {
-            let nonce = Nonce(b"foo".to_vec());
+            // TODO: this is effect
+            let nonce = Nonce((0..self.nonce_length).map(|_| rand::random()).collect());
             let hash = NonceHash(blake2b::digest_256(&nonce.0).unwrap());
 
             let cycle = level / self.blocks_per_cycle;
