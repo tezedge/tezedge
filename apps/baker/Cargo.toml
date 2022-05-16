@@ -48,4 +48,3 @@ fuzzing = [
     "tezos_messages/fuzzing",
     "tenderbake/fuzzing",
 ]
-default = ["fuzzing"]
