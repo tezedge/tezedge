@@ -49,6 +49,7 @@ where
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub enum LogRecord {
     Proposal {
         level: i32,

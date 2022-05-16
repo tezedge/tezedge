@@ -1,6 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+#![forbid(unsafe_code)]
+#![cfg_attr(feature = "fuzzing", feature(no_coverage))]
+
 mod command_line;
 pub use self::command_line::{Arguments, Command};
 
@@ -10,3 +13,5 @@ pub mod machine;
 
 mod services;
 pub use self::services::{ActionInner, EventWithTime, Services};
+
+pub use tenderbake::Timestamp;
