@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use crypto::hash::{BlockHash, BlockPayloadHash, OperationHash, ProtocolHash};
+use crypto::hash::{BlockPayloadHash, OperationHash, ProtocolHash};
 use storage::BlockHeaderWithHash;
-use tezos_messages::p2p::encoding::{block_header::Level, operation::Operation};
+use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::{EnablingCondition, State};
 

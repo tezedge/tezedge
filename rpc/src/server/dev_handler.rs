@@ -414,6 +414,7 @@ pub async fn dev_shell_automaton_mempool_operation_stats_get(
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
+    use shell_automaton::service::rpc_service::MempoolOperationStatsFilter;
     let hash_filter = query
         .get("hash")
         .map(|v| {
@@ -423,8 +424,15 @@ pub async fn dev_shell_automaton_mempool_operation_stats_get(
                 .collect::<BTreeSet<_>>()
         })
         .filter(|v| !v.is_empty());
+    let head_filter = query.get_hash("head")?;
+    let filter = match (hash_filter, head_filter) {
+        (None, None) => MempoolOperationStatsFilter::None,
+        (Some(v), None) => MempoolOperationStatsFilter::OperationHashes(v),
+        (None, Some(v)) => MempoolOperationStatsFilter::BlockHash(v),
+        _ => return Err(anyhow::anyhow!("Either `hashes` or `head` is expected"))?,
+    };
     make_json_response(
-        &dev_services::get_shell_automaton_mempool_operation_stats(&env, hash_filter).await?,
+        &dev_services::get_shell_automaton_mempool_operation_stats(&env, filter).await?,
     )
 }
 
