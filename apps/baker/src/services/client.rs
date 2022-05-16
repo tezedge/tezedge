@@ -32,6 +32,9 @@ use tezos_messages::{
     protocol::proto_012::operation::FullHeader,
 };
 
+#[cfg(feature = "fuzzing")]
+use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
+
 use super::event::{Block, OperationSimple, Slots};
 use crate::machine::{BakerAction, OperationsEventAction, ProposalEventAction, RpcErrorAction};
 
@@ -87,9 +90,11 @@ pub enum RpcErrorInner {
 
 // signature watermark: 0x11 | chain_id
 #[derive(BinWriter, HasEncoding, NomReader, Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct ProtocolBlockHeader {
     pub payload_hash: BlockPayloadHash,
     pub payload_round: i32,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<8>))]
     pub proof_of_work_nonce: SizedBytes<8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed_nonce_hash: Option<NonceHash>,

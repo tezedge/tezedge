@@ -4,10 +4,12 @@
 #![forbid(unsafe_code)]
 #![no_std]
 
+#![cfg_attr(feature = "fuzzing", feature(no_coverage))]
+
 #[macro_use]
 extern crate alloc;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzzing"))]
 extern crate std;
 
 mod timestamp;

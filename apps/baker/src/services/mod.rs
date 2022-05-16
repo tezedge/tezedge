@@ -7,6 +7,9 @@ pub mod key;
 pub mod logger;
 pub mod timer;
 
+#[cfg(feature = "fuzzing")]
+mod operation_mutator;
+
 use std::{
     convert::TryInto,
     path::PathBuf,

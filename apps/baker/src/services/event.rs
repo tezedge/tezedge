@@ -8,9 +8,13 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{BlockHash, BlockPayloadHash, OperationHash, ProtocolHash, Signature};
 use tezos_messages::protocol::proto_012::operation::EndorsementOperation;
 
+use super::operation_mutator::OperationContentMutator;
+
 #[derive(Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct OperationSimple {
     pub branch: BlockHash,
+    #[cfg_attr(feature = "fuzzing", field_mutator(OperationContentMutator))]
     pub contents: Vec<serde_json::Value>,
     #[serde(default)]
     pub signature: Option<Signature>,
@@ -99,6 +103,7 @@ impl OperationSimple {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct Block {
     pub hash: BlockHash,
     pub level: i32,
@@ -112,6 +117,7 @@ pub struct Block {
 
 /// Adapter for serialize and deserialize
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct Slots(pub Vec<u16>);
 
 impl Serialize for Slots {

@@ -341,7 +341,7 @@ where
     }
 }
 
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+// #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProposeAction {
     pub protocol_header: ProtocolBlockHeader,

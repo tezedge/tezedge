@@ -11,6 +11,7 @@ use serde::{Serialize, Deserialize};
 
 /// Timestamp as a unix time
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct Timestamp {
     pub unix_epoch: Duration,
 }
