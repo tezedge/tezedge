@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{BlockHash, ChainId};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::time::Instant;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
@@ -168,20 +169,20 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .respond(rpc_id, serde_json::Value::Null);
                     }
 
-                    RpcRequest::GetMempoolOperationStats {
-                        channel,
-                        hash_filter,
-                    } => {
-                        let stats = &store.state().mempool.operation_stats;
-                        let stats = if let Some(hashes) = hash_filter {
-                            stats
-                                .iter()
-                                .filter(|(hash, _)| hashes.contains(hash))
-                                .map(|(hash, stat)| (hash.clone(), stat.clone()))
-                                .collect()
-                        } else {
-                            stats.clone()
-                        };
+                    RpcRequest::GetMempoolOperationStats { channel, filter } => {
+                        let stats = store
+                            .state()
+                            .mempool
+                            .operation_stats
+                            .iter()
+                            .filter_map(|(op, stats)| {
+                                if filter.enabled(op, stats) {
+                                    Some((op.clone(), stats.clone()))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<BTreeMap<_, _>>();
                         let _ = channel.send(stats);
                     }
                     RpcRequest::GetBlockStats { channel } => {
