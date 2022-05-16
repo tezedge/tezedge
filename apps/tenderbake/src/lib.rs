@@ -3,7 +3,6 @@
 
 #![forbid(unsafe_code)]
 #![no_std]
-
 #![cfg_attr(feature = "fuzzing", feature(no_coverage))]
 
 #[macro_use]

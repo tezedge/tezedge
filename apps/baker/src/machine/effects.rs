@@ -1,9 +1,17 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::{convert::TryInto, time::Duration};
+
 use redux_rs::{ActionWithMeta, Store, TimeService};
 
-use crate::{services::BakerService, ActionInner};
+use tenderbake as tb;
+use tezos_encoding::{enc::BinWriter, types::SizedBytes};
+use tezos_messages::protocol::{
+    proto_005::operation::SeedNonceRevelationOperation, proto_012::operation::Contents,
+};
+
+use crate::{proof_of_work::guess_proof_of_work, services::BakerService};
 
 use super::{actions::*, state::BakerState};
 
@@ -19,6 +27,8 @@ where
             store.dispatch(action);
         }
     }
+
+    let st = store.state.get().as_ref().as_ref().unwrap().as_ref();
 
     match action.action.as_ref() {
         // not our action
@@ -38,97 +48,126 @@ where
             store.dispatch(BakerAction::IdleEvent(IdleEventAction {}));
         }
         Some(BakerAction::LogError(LogErrorAction { description })) => {
-            store
-                .service
-                .execute(&ActionInner::LogError(description.clone()));
+            slog::error!(store.service.log(), " .  {description}");
         }
         Some(BakerAction::LogWarning(LogWarningAction { description })) => {
-            store
-                .service
-                .execute(&ActionInner::LogWarning(description.clone()));
+            slog::warn!(store.service.log(), " .  {description}");
         }
         Some(BakerAction::LogInfo(LogInfoAction {
-            with_prefix,
+            with_prefix: false,
             description,
         })) => {
-            store.service.execute(&ActionInner::LogInfo {
-                with_prefix: *with_prefix,
-                description: description.clone(),
-            });
+            slog::info!(store.service.log(), "{description}");
         }
-        Some(BakerAction::LogTenderbake(LogTenderbakeAction { record })) => {
-            store.service.execute(&ActionInner::LogTb(record.clone()));
+        Some(BakerAction::LogInfo(LogInfoAction {
+            with_prefix: true,
+            description,
+        })) => {
+            slog::info!(store.service.log(), " .  {description}");
         }
+        Some(BakerAction::LogTenderbake(LogTenderbakeAction { record })) => match record.level() {
+            tb::LogLevel::Info => slog::info!(store.service.log(), "{record}"),
+            tb::LogLevel::Warn => slog::warn!(store.service.log(), "{record}"),
+        },
         Some(BakerAction::GetSlots(GetSlotsAction { level })) => {
-            store
-                .service
-                .execute(&ActionInner::GetSlots { level: *level });
+            let level = *level;
+            match store.service.client().validators(level) {
+                Ok(delegates) => {
+                    store.dispatch(BakerAction::from(SlotsEventAction { level, delegates }))
+                }
+                Err(err) => store.dispatch(BakerAction::from(RpcErrorAction {
+                    error: err.to_string(),
+                })),
+            };
         }
         Some(BakerAction::GetOperationsForBlock(GetOperationsForBlockAction { block_hash })) => {
-            store.service.execute(&ActionInner::GetOperationsForBlock {
-                block_hash: block_hash.clone(),
-            });
+            let block_hash = block_hash.clone();
+            match store.service.client().get_operations_for_block(&block_hash) {
+                Ok(operations) => {
+                    store.dispatch(BakerAction::from(OperationsForBlockEventAction {
+                        block_hash,
+                        operations,
+                    }))
+                }
+                Err(err) => store.dispatch(BakerAction::from(RpcErrorAction {
+                    error: err.to_string(),
+                })),
+            };
         }
         Some(BakerAction::GetLiveBlocks(GetLiveBlocksAction { block_hash })) => {
-            store.service.execute(&ActionInner::GetLiveBlocks {
-                block_hash: block_hash.clone(),
-            });
+            let block_hash = block_hash.clone();
+            match store.service.client().get_live_blocks(&block_hash) {
+                Ok(live_blocks) => store.dispatch(BakerAction::from(LiveBlocksEventAction {
+                    block_hash,
+                    live_blocks,
+                })),
+                Err(err) => store.dispatch(BakerAction::from(RpcErrorAction {
+                    error: err.to_string(),
+                })),
+            };
         }
         Some(BakerAction::MonitorOperations(MonitorOperationsAction {})) => {
-            store.service.execute(&ActionInner::MonitorOperations);
+            // TODO: investigate it
+            let mut tries = 3;
+            while tries > 0 {
+                tries -= 1;
+                if let Err(err) = store
+                    .service
+                    .client()
+                    .monitor_operations(Duration::from_secs(3600))
+                {
+                    slog::error!(store.service.log(), " .  {err}");
+                } else {
+                    break;
+                }
+            }
         }
         Some(BakerAction::ScheduleTimeout(ScheduleTimeoutAction { deadline })) => {
-            store
-                .service
-                .execute(&ActionInner::ScheduleTimeout(*deadline));
+            store.service.timer().schedule(*deadline);
         }
         Some(BakerAction::RevealNonce(RevealNonceAction {
             branch,
             level,
             nonce,
         })) => {
-            store.service.execute(&ActionInner::RevealNonce {
-                chain_id: store
-                    .state
-                    .get()
-                    .as_ref()
-                    .as_ref()
-                    .unwrap()
-                    .as_ref()
-                    .chain_id
-                    .clone(),
-                branch: branch.clone(),
+            let content = Contents::SeedNonceRevelation(SeedNonceRevelationOperation {
                 level: *level,
-                nonce: nonce.clone(),
+                nonce: SizedBytes(nonce.as_slice().try_into().unwrap()),
             });
+            let mut bytes = branch.0.clone();
+            content.bin_write(&mut bytes).unwrap();
+            bytes.extend_from_slice(&[0; 64]);
+            let op_hex = hex::encode(bytes);
+            match store
+                .service
+                .client()
+                .inject_operation(&st.chain_id, op_hex, true)
+            {
+                Ok(hash) => slog::info!(store.service.log(), " .  inject nonce_reveal: {hash}"),
+                Err(err) => slog::error!(store.service.log(), " .  {err}"),
+            }
         }
         Some(BakerAction::PreVote(PreVoteAction { op })) => {
-            let chain_id = store
-                .state
-                .get()
-                .as_ref()
-                .as_ref()
-                .unwrap()
-                .as_ref()
-                .chain_id
-                .clone();
-            store
+            let (data, _) = store.service.crypto().sign(0x12, &st.chain_id, op).unwrap();
+            match store
                 .service
-                .execute(&ActionInner::PreVote(chain_id, op.clone()));
+                .client()
+                .inject_operation(&st.chain_id, hex::encode(data), false)
+            {
+                Ok(hash) => slog::info!(store.service.log(), " .  inject preendorsement: {hash}"),
+                Err(err) => slog::error!(store.service.log(), " .  {err}"),
+            }
         }
         Some(BakerAction::Vote(VoteAction { op })) => {
-            let chain_id = store
-                .state
-                .get()
-                .as_ref()
-                .as_ref()
-                .unwrap()
-                .as_ref()
-                .chain_id
-                .clone();
-            store
+            let (data, _) = store.service.crypto().sign(0x13, &st.chain_id, op).unwrap();
+            match store
                 .service
-                .execute(&ActionInner::Vote(chain_id, op.clone()));
+                .client()
+                .inject_operation(&st.chain_id, hex::encode(data), false)
+            {
+                Ok(hash) => slog::info!(store.service.log(), " .  inject endorsement: {hash}"),
+                Err(err) => slog::error!(store.service.log(), " .  {err}"),
+            }
         }
         Some(BakerAction::Propose(ProposeAction {
             protocol_header,
@@ -137,16 +176,66 @@ where
             timestamp,
             round,
         })) => {
-            let state = store.state.get().as_ref().as_ref().unwrap().as_ref();
-            store.service.execute(&ActionInner::Propose {
-                chain_id: state.chain_id.clone(),
-                proof_of_work_threshold: state.proof_of_work_threshold,
-                protocol_header: protocol_header.clone(),
-                predecessor_hash: predecessor_hash.clone(),
-                operations: operations.clone(),
-                timestamp: *timestamp,
-                round: *round,
-            });
+            let (_, signature) = store
+                .service
+                .crypto()
+                .sign(0x11, &st.chain_id, protocol_header)
+                .unwrap();
+            let mut protocol_header = protocol_header.clone();
+            protocol_header.signature = signature;
+
+            let (mut header, ops) = match store.service.client().preapply_block(
+                protocol_header,
+                predecessor_hash.clone(),
+                *timestamp,
+                operations.clone(),
+            ) {
+                Ok(v) => v,
+                Err(err) => {
+                    slog::error!(store.service.log(), " .  {err}");
+                    return;
+                }
+            };
+
+            header.signature.0 = vec![0x00; 64];
+            let p = guess_proof_of_work(&header, st.proof_of_work_threshold);
+            header.proof_of_work_nonce = SizedBytes(p);
+            slog::info!(store.service.log(), "{:?}", header);
+            header.signature.0.clear();
+            let (data, _) = store
+                .service
+                .crypto()
+                .sign(0x11, &st.chain_id, &header)
+                .unwrap();
+
+            let valid_operations = ops
+                .iter()
+                .filter_map(|v| {
+                    let applied = v.as_object()?.get("applied")?.clone();
+                    serde_json::from_value(applied).ok()
+                })
+                .collect();
+
+            match store
+                .service
+                .client()
+                .inject_block(hex::encode(data), valid_operations)
+            {
+                Ok(hash) => slog::info!(
+                    store.service.log(),
+                    " .  inject block: {}:{}, {hash}",
+                    header.level,
+                    round
+                ),
+                Err(err) => {
+                    slog::error!(store.service.log(), " .  {err}");
+                    slog::error!(
+                        store.service.log(),
+                        " .  {}",
+                        serde_json::to_string(&ops).unwrap()
+                    );
+                }
+            }
         }
     }
 }

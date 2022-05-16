@@ -8,11 +8,7 @@ use serde::{Serialize, Deserialize};
 
 use crypto::hash::{BlockHash, BlockPayloadHash as PayloadHash};
 
-use super::{
-    timestamp::Timestamp,
-    validator::Validator,
-    block::Block,
-};
+use super::{timestamp::Timestamp, validator::Validator, block::Block};
 
 #[derive(PartialEq, Eq, Clone)]
 pub struct BlockId {

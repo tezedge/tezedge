@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::BlockPayloadHash;
-use fuzzcheck::{MutatorWrapper, mutators::map::MapMutator, DefaultMutator};
+use fuzzcheck::{mutators::map::MapMutator, DefaultMutator, MutatorWrapper};
 
 #[derive(Clone)]
 #[cfg_attr(feature = "fuzzing", derive(DefaultMutator))]
@@ -36,7 +36,12 @@ impl MutatorWrapper for OperationContentMutator {
 impl Default for OperationContentMutator {
     #[no_coverage]
     fn default() -> Self {
-        OperationContentMutator(MapMutator::new(OperationContentInner::default_mutator(), parse, map, complexity))
+        OperationContentMutator(MapMutator::new(
+            OperationContentInner::default_mutator(),
+            parse,
+            map,
+            complexity,
+        ))
     }
 }
 
@@ -56,13 +61,19 @@ fn parse(v: &Vec<serde_json::Value>) -> Option<OperationContentInner> {
 
     match kind {
         "preendorsement" => Some(OperationContentInner::Preendorsement {
-            payload_hash: BlockPayloadHash::from_base58_check(obj.get("block_payload_hash")?.as_str()?).unwrap(),
+            payload_hash: BlockPayloadHash::from_base58_check(
+                obj.get("block_payload_hash")?.as_str()?,
+            )
+            .unwrap(),
             level: obj.get("level")?.as_i64()? as i32,
             round: obj.get("round")?.as_i64()? as i32,
             slot: obj.get("slot")?.as_i64()? as u16,
         }),
         "endorsement" => Some(OperationContentInner::Endorsement {
-            payload_hash: BlockPayloadHash::from_base58_check(obj.get("block_payload_hash")?.as_str()?).unwrap(),
+            payload_hash: BlockPayloadHash::from_base58_check(
+                obj.get("block_payload_hash")?.as_str()?,
+            )
+            .unwrap(),
             level: obj.get("level")?.as_i64()? as i32,
             round: obj.get("round")?.as_i64()? as i32,
             slot: obj.get("slot")?.as_i64()? as u16,
@@ -80,8 +91,14 @@ fn foo() {
 #[no_coverage]
 fn map(v: &OperationContentInner) -> Vec<serde_json::Value> {
     let json = match v {
-        OperationContentInner::Preendorsement { payload_hash, level, round, slot } => {
-            format!("\
+        OperationContentInner::Preendorsement {
+            payload_hash,
+            level,
+            round,
+            slot,
+        } => {
+            format!(
+                "\
                 {{\
                     \"block_payload_hash\":\"{payload_hash}\",\
                     \"kind\":\"preendorsement\",\
@@ -89,10 +106,17 @@ fn map(v: &OperationContentInner) -> Vec<serde_json::Value> {
                     \"round\":{round},\
                     \"slot\":{slot}\
                 }}\
-            ")
+            "
+            )
         }
-        OperationContentInner::Endorsement { payload_hash, level, round, slot } => {
-            format!("\
+        OperationContentInner::Endorsement {
+            payload_hash,
+            level,
+            round,
+            slot,
+        } => {
+            format!(
+                "\
                 {{\
                     \"block_payload_hash\":\"{payload_hash}\",\
                     \"kind\":\"endorsement\",\
@@ -100,11 +124,10 @@ fn map(v: &OperationContentInner) -> Vec<serde_json::Value> {
                     \"round\":{round},\
                     \"slot\":{slot}\
                 }}\
-            ")
+            "
+            )
         }
-        OperationContentInner::Other => {
-            "{\"kind\":\"falling_noop\"}".to_string()
-        }
+        OperationContentInner::Other => "{\"kind\":\"falling_noop\"}".to_string(),
     };
     vec![serde_json::from_str(&json).unwrap()]
 }

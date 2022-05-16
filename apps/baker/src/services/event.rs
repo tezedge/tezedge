@@ -38,7 +38,13 @@ impl OperationSimple {
     }
 
     #[cfg(test)]
-    pub fn preendorsement(branch: &BlockHash, payload_hash: &BlockPayloadHash, level: i32, round: i32, slot: u16) -> Self {
+    pub fn preendorsement(
+        branch: &BlockHash,
+        payload_hash: &BlockPayloadHash,
+        level: i32,
+        round: i32,
+        slot: u16,
+    ) -> Self {
         Self::new(branch, &format!("{{\"block_payload_hash\":\"{payload_hash}\",\"kind\":\"preendorsement\",\"level\":{level},\"round\":{round},\"slot\":{slot}}}"))
     }
 }

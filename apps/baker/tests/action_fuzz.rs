@@ -12,7 +12,7 @@ use fuzzcheck::{DefaultMutator, SerdeSerializer};
 use once_cell::sync::Lazy;
 
 use baker::{machine::*, Timestamp};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 pub static FUZZER_ARGS: Lazy<RwLock<Option<fuzzcheck::Arguments>>> =
     Lazy::new(|| RwLock::new(None));
@@ -42,10 +42,7 @@ fn test_baker() {
     use baker::EventWithTime;
 
     fn action_test_all(action_test: &AllActionsTest) {
-        let timestamp = FUZZER_STATE
-            .read()
-            .unwrap()
-            .1;
+        let timestamp = FUZZER_STATE.read().unwrap().1;
         let timestamp = timestamp + Duration::from_millis(1);
 
         let event = EventWithTime {
@@ -53,16 +50,18 @@ fn test_baker() {
                 AllActionsTest::IdleEvent(act) => BakerAction::IdleEvent(act.clone()),
                 AllActionsTest::ProposalEvent(act) => BakerAction::ProposalEvent(act.clone()),
                 AllActionsTest::SlotsEvent(act) => BakerAction::SlotsEvent(act.clone()),
-                AllActionsTest::OperationsForBlockEvent(act) => BakerAction::OperationsForBlockEvent(act.clone()),
+                AllActionsTest::OperationsForBlockEvent(act) => {
+                    BakerAction::OperationsForBlockEvent(act.clone())
+                }
                 AllActionsTest::LiveBlocksEvent(act) => BakerAction::LiveBlocksEvent(act.clone()),
                 AllActionsTest::OperationsEvent(act) => BakerAction::OperationsEvent(act.clone()),
                 AllActionsTest::TickEvent(act) => BakerAction::TickEvent(act.clone()),
             },
-            now: timestamp
+            now: timestamp,
         };
 
         let mut state_container = FUZZER_STATE.write().unwrap();
-        let state = state_container.0.0.take().unwrap();
+        let state = state_container.0 .0.take().unwrap();
         let state = state.handle_event(event);
         *state_container = (BakerStateEjectable(Some(state)), timestamp);
     }

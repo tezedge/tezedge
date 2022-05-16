@@ -1,7 +1,14 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{time::SystemTime, sync::{Arc, atomic::{Ordering, AtomicBool}}, fs::{File, self}};
+use std::{
+    fs::{self, File},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::SystemTime,
+};
 
 fn main() {
     use baker::{machine::*, Arguments, Command, Services};

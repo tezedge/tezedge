@@ -2,13 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::BTreeMap,
-    convert::TryInto,
-    io,
-    num::ParseIntError,
-    str,
-    sync::mpsc,
-    thread,
+    collections::BTreeMap, convert::TryInto, io, num::ParseIntError, str, sync::mpsc, thread,
     time::Duration,
 };
 
@@ -56,10 +50,7 @@ pub enum RpcError {
         inner: RpcErrorInner,
     },
     #[error("{inner}, url: {url}")]
-    WithContext {
-        url: Url,
-        inner: RpcErrorInner,
-    },
+    WithContext { url: Url, inner: RpcErrorInner },
     #[error("{_0}")]
     Less(RpcErrorInner),
 }
