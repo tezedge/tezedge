@@ -54,8 +54,8 @@ use crate::peers::dns_lookup::peers_dns_lookup_effects;
 use crate::peers::graylist::peers_graylist_effects;
 use crate::peers::init::peers_init_effects;
 
-use crate::mempool::mempool_effects;
 use crate::mempool::validator::mempool_validator_effects;
+use crate::mempool::{mempool_effects, MempoolTimeoutsInitAction};
 
 use crate::storage::blocks::genesis::check_applied::storage_blocks_genesis_check_applied_effects;
 use crate::storage::blocks::genesis::init::additional_data_put::storage_blocks_genesis_init_additional_data_put_effects;
@@ -102,6 +102,7 @@ fn applied_actions_count_effects<S: Service>(store: &mut Store<S>, action: &Acti
 pub fn check_timeouts<S: Service>(store: &mut Store<S>) {
     store.dispatch(PeersCheckTimeoutsInitAction {});
     store.dispatch(BootstrapCheckTimeoutsInitAction {});
+    store.dispatch(MempoolTimeoutsInitAction {});
 }
 
 pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
