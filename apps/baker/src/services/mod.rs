@@ -10,11 +10,7 @@ pub mod timer;
 #[cfg(feature = "fuzzing")]
 mod operation_mutator;
 
-use std::{
-    path::PathBuf,
-    sync::mpsc,
-    time::SystemTime,
-};
+use std::{path::PathBuf, sync::mpsc, time::SystemTime};
 
 use reqwest::Url;
 
@@ -71,7 +67,7 @@ impl Services {
 
 pub trait BakerService {
     fn client(&self) -> &client::RpcClient;
-    
+
     fn crypto(&self) -> &key::CryptoService;
 
     fn log(&self) -> &slog::Logger;
@@ -83,7 +79,7 @@ impl BakerService for Services {
     fn client(&self) -> &client::RpcClient {
         &self.client
     }
-    
+
     fn crypto(&self) -> &key::CryptoService {
         &self.crypto
     }

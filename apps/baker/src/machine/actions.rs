@@ -3,8 +3,8 @@
 
 use std::collections::BTreeMap;
 
-use serde::{Serialize, Deserialize};
 use derive_more::From;
+use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ContractTz1Hash};
 use redux_rs::EnablingCondition;

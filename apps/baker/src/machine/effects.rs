@@ -1,15 +1,17 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{time::Duration, convert::TryInto};
+use std::{convert::TryInto, time::Duration};
 
 use redux_rs::{ActionWithMeta, Store, TimeService};
 
 use tenderbake as tb;
-use tezos_encoding::{types::SizedBytes, enc::BinWriter};
-use tezos_messages::protocol::{proto_012::operation::Contents, proto_005::operation::SeedNonceRevelationOperation};
+use tezos_encoding::{enc::BinWriter, types::SizedBytes};
+use tezos_messages::protocol::{
+    proto_005::operation::SeedNonceRevelationOperation, proto_012::operation::Contents,
+};
 
-use crate::{services::BakerService, proof_of_work::guess_proof_of_work};
+use crate::{proof_of_work::guess_proof_of_work, services::BakerService};
 
 use super::{actions::*, state::BakerState};
 
@@ -26,13 +28,7 @@ where
         }
     }
 
-    let st = store
-        .state
-        .get()
-        .as_ref()
-        .as_ref()
-        .unwrap()
-        .as_ref();
+    let st = store.state.get().as_ref().as_ref().unwrap().as_ref();
 
     match action.action.as_ref() {
         // not our action
@@ -69,32 +65,45 @@ where
         })) => {
             slog::info!(store.service.log(), " .  {description}");
         }
-        Some(BakerAction::LogTenderbake(LogTenderbakeAction { record })) => {
-            match record.level() {
-                tb::LogLevel::Info => slog::info!(store.service.log(), "{record}"),
-                tb::LogLevel::Warn => slog::warn!(store.service.log(), "{record}"),
-            }
-        }
+        Some(BakerAction::LogTenderbake(LogTenderbakeAction { record })) => match record.level() {
+            tb::LogLevel::Info => slog::info!(store.service.log(), "{record}"),
+            tb::LogLevel::Warn => slog::warn!(store.service.log(), "{record}"),
+        },
         Some(BakerAction::GetSlots(GetSlotsAction { level })) => {
             let level = *level;
             match store.service.client().validators(level) {
-                Ok(delegates) => store
-                    .dispatch(BakerAction::from(SlotsEventAction { level, delegates })),
-                Err(err) => store.dispatch(BakerAction::from(RpcErrorAction { error: err.to_string() })),
+                Ok(delegates) => {
+                    store.dispatch(BakerAction::from(SlotsEventAction { level, delegates }))
+                }
+                Err(err) => store.dispatch(BakerAction::from(RpcErrorAction {
+                    error: err.to_string(),
+                })),
             };
         }
         Some(BakerAction::GetOperationsForBlock(GetOperationsForBlockAction { block_hash })) => {
             let block_hash = block_hash.clone();
             match store.service.client().get_operations_for_block(&block_hash) {
-                Ok(operations) => store.dispatch(BakerAction::from(OperationsForBlockEventAction { block_hash, operations })),
-                Err(err) => store.dispatch(BakerAction::from(RpcErrorAction { error: err.to_string() })),
+                Ok(operations) => {
+                    store.dispatch(BakerAction::from(OperationsForBlockEventAction {
+                        block_hash,
+                        operations,
+                    }))
+                }
+                Err(err) => store.dispatch(BakerAction::from(RpcErrorAction {
+                    error: err.to_string(),
+                })),
             };
         }
         Some(BakerAction::GetLiveBlocks(GetLiveBlocksAction { block_hash })) => {
             let block_hash = block_hash.clone();
             match store.service.client().get_live_blocks(&block_hash) {
-                Ok(live_blocks) => store.dispatch(BakerAction::from(LiveBlocksEventAction { block_hash, live_blocks })),
-                Err(err) => store.dispatch(BakerAction::from(RpcErrorAction { error: err.to_string() })),
+                Ok(live_blocks) => store.dispatch(BakerAction::from(LiveBlocksEventAction {
+                    block_hash,
+                    live_blocks,
+                })),
+                Err(err) => store.dispatch(BakerAction::from(RpcErrorAction {
+                    error: err.to_string(),
+                })),
             };
         }
         Some(BakerAction::MonitorOperations(MonitorOperationsAction {})) => {
@@ -102,7 +111,11 @@ where
             let mut tries = 3;
             while tries > 0 {
                 tries -= 1;
-                if let Err(err) = store.service.client().monitor_operations(Duration::from_secs(3600)) {
+                if let Err(err) = store
+                    .service
+                    .client()
+                    .monitor_operations(Duration::from_secs(3600))
+                {
                     slog::error!(store.service.log(), " .  {err}");
                 } else {
                     break;
@@ -125,21 +138,33 @@ where
             content.bin_write(&mut bytes).unwrap();
             bytes.extend_from_slice(&[0; 64]);
             let op_hex = hex::encode(bytes);
-            match store.service.client().inject_operation(&st.chain_id, op_hex, true) {
+            match store
+                .service
+                .client()
+                .inject_operation(&st.chain_id, op_hex, true)
+            {
                 Ok(hash) => slog::info!(store.service.log(), " .  inject nonce_reveal: {hash}"),
                 Err(err) => slog::error!(store.service.log(), " .  {err}"),
             }
         }
         Some(BakerAction::PreVote(PreVoteAction { op })) => {
             let (data, _) = store.service.crypto().sign(0x12, &st.chain_id, op).unwrap();
-            match store.service.client().inject_operation(&st.chain_id, hex::encode(data), false) {
+            match store
+                .service
+                .client()
+                .inject_operation(&st.chain_id, hex::encode(data), false)
+            {
                 Ok(hash) => slog::info!(store.service.log(), " .  inject preendorsement: {hash}"),
                 Err(err) => slog::error!(store.service.log(), " .  {err}"),
             }
         }
         Some(BakerAction::Vote(VoteAction { op })) => {
             let (data, _) = store.service.crypto().sign(0x13, &st.chain_id, op).unwrap();
-            match store.service.client().inject_operation(&st.chain_id, hex::encode(data), false) {
+            match store
+                .service
+                .client()
+                .inject_operation(&st.chain_id, hex::encode(data), false)
+            {
                 Ok(hash) => slog::info!(store.service.log(), " .  inject endorsement: {hash}"),
                 Err(err) => slog::error!(store.service.log(), " .  {err}"),
             }
@@ -151,7 +176,11 @@ where
             timestamp,
             round,
         })) => {
-            let (_, signature) = store.service.crypto().sign(0x11, &st.chain_id, protocol_header).unwrap();
+            let (_, signature) = store
+                .service
+                .crypto()
+                .sign(0x11, &st.chain_id, protocol_header)
+                .unwrap();
             let mut protocol_header = protocol_header.clone();
             protocol_header.signature = signature;
 
@@ -173,7 +202,11 @@ where
             header.proof_of_work_nonce = SizedBytes(p);
             slog::info!(store.service.log(), "{:?}", header);
             header.signature.0.clear();
-            let (data, _) = store.service.crypto().sign(0x11, &st.chain_id, &header).unwrap();
+            let (data, _) = store
+                .service
+                .crypto()
+                .sign(0x11, &st.chain_id, &header)
+                .unwrap();
 
             let valid_operations = ops
                 .iter()
@@ -183,7 +216,11 @@ where
                 })
                 .collect();
 
-            match store.service.client().inject_block(hex::encode(data), valid_operations) {
+            match store
+                .service
+                .client()
+                .inject_block(hex::encode(data), valid_operations)
+            {
                 Ok(hash) => slog::info!(
                     store.service.log(),
                     " .  inject block: {}:{}, {hash}",
@@ -192,7 +229,11 @@ where
                 ),
                 Err(err) => {
                     slog::error!(store.service.log(), " .  {err}");
-                    slog::error!(store.service.log(), " .  {}", serde_json::to_string(&ops).unwrap());
+                    slog::error!(
+                        store.service.log(),
+                        " .  {}",
+                        serde_json::to_string(&ops).unwrap()
+                    );
                 }
             }
         }

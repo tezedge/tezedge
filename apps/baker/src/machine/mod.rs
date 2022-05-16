@@ -18,8 +18,8 @@ pub use self::{
 
 #[cfg(test)]
 mod tests {
-    use crate::{EventWithTime, services::event::OperationSimple};
-    use super::{BakerState, BakerAction, OperationsEventAction};
+    use super::{BakerAction, BakerState, OperationsEventAction};
+    use crate::{services::event::OperationSimple, EventWithTime};
 
     use tenderbake::Timing;
 
@@ -51,25 +51,26 @@ mod tests {
                     .map(|s| (s.0[0], s.0.len()))
             };
 
-            let preendorsement = |slot| BakerAction::OperationsEvent(OperationsEventAction {
-                operations: vec![OperationSimple::preendorsement(
-                    &predecessor_hash,
-                    &payload_hash,
-                    level,
-                    round,
-                    slot,
-                )]
-            });
+            let preendorsement = |slot| {
+                BakerAction::OperationsEvent(OperationsEventAction {
+                    operations: vec![OperationSimple::preendorsement(
+                        &predecessor_hash,
+                        &payload_hash,
+                        level,
+                        round,
+                        slot,
+                    )],
+                })
+            };
 
             let now = timestamp;
             let mut total_power = 0;
             let mut state = state;
             for (slot, power) in validators {
-                state = state
-                    .handle_event(EventWithTime {
-                        action: preendorsement(slot),
-                        now,
-                    });
+                state = state.handle_event(EventWithTime {
+                    action: preendorsement(slot),
+                    now,
+                });
                 total_power += power;
 
                 if total_power >= quorum {
@@ -112,15 +113,17 @@ mod tests {
                     .map(|s| (s.0[0], s.0.len()))
             };
 
-            let preendorsement = |slot| BakerAction::OperationsEvent(OperationsEventAction {
-                operations: vec![OperationSimple::preendorsement(
-                    &predecessor_hash,
-                    &payload_hash,
-                    level,
-                    round,
-                    slot,
-                )]
-            });
+            let preendorsement = |slot| {
+                BakerAction::OperationsEvent(OperationsEventAction {
+                    operations: vec![OperationSimple::preendorsement(
+                        &predecessor_hash,
+                        &payload_hash,
+                        level,
+                        round,
+                        slot,
+                    )],
+                })
+            };
 
             let mut now = timestamp;
             let mut total_power = 0;
@@ -131,11 +134,10 @@ mod tests {
                     // preendorsements 0, 1, 2 accounted, but 3 and 4 was not
                     now += round_duration;
                 }
-                state = state
-                    .handle_event(EventWithTime {
-                        action: preendorsement(slot),
-                        now,
-                    });
+                state = state.handle_event(EventWithTime {
+                    action: preendorsement(slot),
+                    now,
+                });
                 total_power += power;
 
                 if total_power >= quorum {

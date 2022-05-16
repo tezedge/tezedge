@@ -935,8 +935,8 @@ mod tests {
     use crypto::hash::{BlockHash, BlockPayloadHash as PayloadHash};
 
     use crate::{
-        Machine, Config, TimingLinearGrow, ProposerMap, Event, Block, TimeHeader,
-        Timestamp, Payload, BlockId, Validator, Action,
+        Machine, Config, TimingLinearGrow, ProposerMap, Event, Block, TimeHeader, Timestamp,
+        Payload, BlockId, Validator, Action,
     };
 
     #[test]
