@@ -30,7 +30,7 @@ use crate::{
         PrecheckerResultKind,
     },
     rights::Slot,
-    service::RpcService,
+    service::{RandomnessService, RpcService},
     Action, ActionWithMeta, Service, State,
 };
 
@@ -342,7 +342,10 @@ where
                 None => return,
             };
             let ops = peer.requesting_full_content.iter().cloned().collect();
-            store.dispatch(MempoolMarkOperationsAsPendingAction { address: *address });
+            store.dispatch(MempoolMarkOperationsAsPendingAction {
+                address: *address,
+                timestamp: action.time_as_nanos(),
+            });
             for message in GetOperationsMessage::from_operations(ops) {
                 store.dispatch(PeerMessageWriteInitAction {
                     address: *address,
@@ -594,6 +597,35 @@ where
         }) => {
             let status = collect_operations(&store.state().mempool.operations_state, matcher);
             store.service.rpc().respond(*rpc_id, status);
+        }
+        Action::MempoolTimeoutsInit(_) => {
+            store.dispatch(MempoolGetOperationTimeoutAction {
+                timestamp: action.time_as_nanos(),
+            });
+        }
+        Action::MempoolGetOperationTimeout(MempoolGetOperationTimeoutAction { .. }) => {
+            let mut peers_to_request = BTreeMap::new();
+            let log = store.state().log.clone();
+            for (hash, peers) in &store.state.get().mempool.retrying_full_content {
+                if let Some(peer) = store.service.randomness().choose_peer(&peers) {
+                    slog::debug!(log, "Retrying full content for {hash}"; "peer" => peer);
+                    peers_to_request
+                        .entry(peer)
+                        .or_insert_with(|| Vec::new())
+                        .push(hash.clone());
+                } else {
+                    slog::warn!(log, "No peers found to retry full content for {hash}");
+                }
+            }
+            for (address, operations) in peers_to_request {
+                store.dispatch(MempoolRequestFullContentAction {
+                    address,
+                    operations,
+                });
+            }
+        }
+        Action::MempoolRequestFullContent(MempoolRequestFullContentAction { address, .. }) => {
+            store.dispatch(MempoolGetOperationsAction { address: *address });
         }
         _ => (),
     }

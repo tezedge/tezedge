@@ -120,6 +120,8 @@ pub struct Config {
 
     pub disable_block_precheck: bool,
     pub disable_endorsements_precheck: bool,
+
+    pub mempool_get_operation_timeout: Duration,
 }
 
 impl Config {
@@ -230,5 +232,7 @@ pub fn default_test_config() -> Config {
 
         disable_endorsements_precheck: false,
         disable_block_precheck: true,
+
+        mempool_get_operation_timeout: Duration::from_secs(1),
     }
 }

@@ -383,6 +383,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             // `drain_filter` is unstable for now
             for (_, ops) in mempool_state.level_to_operation.range(..level) {
                 for op in ops {
+                    mempool_state.pending_full_content.remove(op);
                     mempool_state.pending_operations.remove(op);
                     mempool_state.validated_operations.ops.remove(op);
                     mempool_state
@@ -443,7 +444,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
                 if !known {
                     ops.push(hash.clone());
-                    if !mempool_state.pending_full_content.contains(&hash) {
+                    if !mempool_state.pending_full_content.contains_key(&hash) {
                         peer.requesting_full_content.insert(hash.clone());
                         mempool_state
                             .operations_state
@@ -456,14 +457,15 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::MempoolMarkOperationsAsPending(MempoolMarkOperationsAsPendingAction {
             address,
+            timestamp,
         }) => {
             let peer = mempool_state.peer_state.entry(*address).or_default();
             mempool_state
                 .pending_full_content
-                .extend(peer.requesting_full_content.drain());
+                .extend_with_timestamp(*timestamp, peer.requesting_full_content.drain());
         }
         Action::MempoolOperationRecvDone(MempoolOperationRecvDoneAction { hash, operation }) => {
-            if !mempool_state.pending_full_content.remove(hash) {
+            if mempool_state.pending_full_content.remove(hash).is_none() {
                 // TODO(vlad): received operation, but we did not requested it, what should we do?
                 // We might already processed it.
                 return;
@@ -871,6 +873,50 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
         }
+
+        Action::MempoolGetOperationTimeout(MempoolGetOperationTimeoutAction { timestamp }) => {
+            let timeout_timestamp = if let Ok(v) =
+                u64::try_from(state.config.mempool_get_operation_timeout.as_nanos())
+            {
+                timestamp.saturating_sub(v)
+            } else {
+                return;
+            };
+            let drain = mempool_state
+                .pending_full_content
+                .drain_older_than(timeout_timestamp);
+            mempool_state.retrying_full_content = drain
+                .map(|(hash, _)| {
+                    let peers = mempool_state
+                        .peer_state
+                        .iter()
+                        .filter_map(|(addr, peer_state)| {
+                            if peer_state.seen_operations.contains(&hash) {
+                                Some(addr)
+                            } else {
+                                None
+                            }
+                        })
+                        .cloned()
+                        .collect();
+                    (hash, peers)
+                })
+                .collect();
+        }
+        Action::MempoolRequestFullContent(MempoolRequestFullContentAction {
+            address,
+            operations,
+        }) => {
+            if let Some(peer_state) = mempool_state.peer_state.get_mut(address) {
+                peer_state
+                    .requesting_full_content
+                    .extend(operations.clone());
+            }
+            for hash in operations {
+                mempool_state.retrying_full_content.remove(hash);
+            }
+        }
+
         _ => (),
     }
 }
