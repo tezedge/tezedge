@@ -22,7 +22,9 @@ use tezos_messages::p2p::encoding::{
 };
 
 use crate::{
-    mempool::mempool_actions::ConsensusOperationMatcher, request::RequestId, rpc::ValidBlocksQuery,
+    mempool::{mempool_actions::ConsensusOperationMatcher, OperationStats},
+    request::RequestId,
+    rpc::ValidBlocksQuery,
     storage::request::StorageRequestor,
 };
 use crate::{Action, State};
@@ -92,7 +94,7 @@ pub enum RpcRequest {
 
     GetMempoolOperationStats {
         channel: oneshot::Sender<crate::mempool::OperationsStats>,
-        hash_filter: Option<BTreeSet<OperationHash>>,
+        filter: MempoolOperationStatsFilter,
     },
     GetMempooEndrosementsStats {
         channel: oneshot::Sender<BTreeMap<OperationHash, crate::mempool::OperationStats>>,
@@ -134,6 +136,23 @@ pub enum RpcRequest {
         level: Level,
         round: Option<i32>,
     },
+}
+
+#[derive(Debug)]
+pub enum MempoolOperationStatsFilter {
+    None,
+    OperationHashes(BTreeSet<OperationHash>),
+    BlockHash(BlockHash),
+}
+
+impl MempoolOperationStatsFilter {
+    pub(crate) fn enabled(&self, op: &OperationHash, stat: &OperationStats) -> bool {
+        match self {
+            MempoolOperationStatsFilter::None => true,
+            MempoolOperationStatsFilter::OperationHashes(hashes) => hashes.contains(op),
+            MempoolOperationStatsFilter::BlockHash(hash) => stat.current_heads.contains(hash),
+        }
+    }
 }
 
 #[derive(Debug)]

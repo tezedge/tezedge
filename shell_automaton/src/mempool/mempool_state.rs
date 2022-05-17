@@ -183,6 +183,7 @@ pub struct OperationStats {
     pub validations: Vec<OperationValidationStats>,
     pub nodes: BTreeMap<CryptoboxPublicKeyHash, OperationNodeStats>,
     pub injected_timestamp: Option<u64>,
+    pub current_heads: BTreeSet<BlockHash>,
 }
 
 impl OperationStats {
@@ -299,8 +300,12 @@ impl OperationStats {
     pub fn received_in_current_head(
         &mut self,
         node_pkh: &CryptoboxPublicKeyHash,
+        block_hash: Option<BlockHash>,
         stats: OperationNodeCurrentHeadStats,
     ) {
+        if let Some(block_hash) = block_hash {
+            self.current_heads.insert(block_hash);
+        }
         self.min_time = Some(
             self.min_time
                 .map_or(stats.time, |time| time.min(stats.time)),

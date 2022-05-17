@@ -757,6 +757,7 @@ pub struct OperationStats {
     validations: Vec<OperationValidationStats>,
     nodes: HashMap<String, OperationNodeStats>,
     injected_timestamp: Option<u64>,
+    current_heads: BTreeSet<BlockHash>,
 }
 
 #[derive(Serialize)]
@@ -791,7 +792,7 @@ pub struct OperationValidationStats {
 
 pub(crate) async fn get_shell_automaton_mempool_operation_stats(
     env: &RpcServiceEnvironment,
-    hash_filter: Option<BTreeSet<OperationHash>>,
+    filter: shell_automaton::service::rpc_service::MempoolOperationStatsFilter,
 ) -> Result<OperationsStats, tokio::sync::oneshot::error::RecvError> {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
@@ -799,7 +800,7 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
         .shell_automaton_sender()
         .send(RpcShellAutomatonMsg::GetMempoolOperationStats {
             channel: tx,
-            hash_filter,
+            filter,
         })
         .await;
 
@@ -1129,6 +1130,7 @@ fn map_operations_stats(
                         )
                     })
                     .collect(),
+                current_heads: op_stats.current_heads,
             };
 
             (op_hash.to_base58_check(), op_stats)

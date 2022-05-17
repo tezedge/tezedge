@@ -787,6 +787,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             match content.message.message() {
                 PeerMessage::CurrentHead(msg) => {
                     let block_header = msg.current_block_header();
+                    let block_hash = block_header.message_typed_hash().ok();
                     let mempool = msg.current_mempool();
                     let op_hash_iter = mempool
                         .pending()
@@ -801,6 +802,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                             .or_insert_with(OperationStats::new)
                             .received_in_current_head(
                                 peer_pkh,
+                                block_hash.clone(),
                                 OperationNodeCurrentHeadStats {
                                     time,
                                     block_level: block_header.level(),
