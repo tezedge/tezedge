@@ -13,7 +13,7 @@ pub struct Arguments {
     #[structopt(long)]
     pub endpoint: Url,
     #[structopt(short)]
-    pub log_requests: bool,
+    pub archive: bool,
     #[structopt(subcommand)]
     pub command: Command,
 }
