@@ -375,7 +375,7 @@ where
         Action::PeerMessageReadError(content) => {
             store.dispatch(PeersGraylistAddressAction {
                 address: content.address,
-                reason: PeerGraylistReason::MessageReadError,
+                reason: PeerGraylistReason::MessageReadError(content.error.clone()),
             });
         }
         _ => {}
