@@ -17,7 +17,7 @@ fn main() {
     let Arguments {
         base_dir,
         endpoint,
-        log_requests: _,
+        archive,
         command,
     } = Arguments::from_args();
 
@@ -45,7 +45,12 @@ fn main() {
 
             // store the state here, and then atomically swap to avoid corruption
             // due to unexpected power outage
-            let file_path_swap = base_dir.join(format!("state_{baker}_{chain_id}.swap.json"));
+            let file_path_swap = base_dir.join(format!(".state_{baker}_{chain_id}.json"));
+
+            let archive_path = base_dir.join(format!("state_{baker}_{chain_id}_archive"));
+            if archive {
+                let _ = fs::create_dir_all(&archive_path);
+            }
 
             let file_path = base_dir.join(format!("state_{baker}_{chain_id}.json"));
             let persistent_state = File::open(&file_path)
@@ -66,14 +71,23 @@ fn main() {
             for event in events {
                 store.dispatch::<BakerAction>(event.action.into());
                 let state = store.state.get().as_ref().as_ref().unwrap();
-                if let BakerState::Idle(_) = state {
+                if let BakerState::Idle(st) = state {
                     if !previous_is_idle {
                         // the state is idle, store the state into file
-                        let _ = fs::remove_file(&file_path_swap);
                         let file_swap = File::create(&file_path_swap).expect("msg");
                         serde_json::to_writer(file_swap, state).unwrap();
                         fs::rename(&file_path_swap, &file_path).unwrap();
+                        let _ = fs::remove_file(&file_path_swap);
                         slog::info!(log, "stored on disk");
+
+                        if archive {
+                            let name = format!(
+                                "{}_{}",
+                                st.tb_state.level().unwrap_or(0),
+                                st.tb_state.round().unwrap_or(0),
+                            );
+                            fs::copy(&file_path, archive_path.join(name)).unwrap();
+                        }
 
                         if terminating.load(Ordering::SeqCst) {
                             // ctrl+c pressed, state is on disk, terminate the baker
