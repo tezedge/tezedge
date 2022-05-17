@@ -531,6 +531,21 @@ impl From<TezosErrorTrace> for RestoreContextError {
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
+pub enum IntegrityCheckContextError {
+    #[error("OCaml failed to restore the context from a dump, message: {message}!")]
+    IntegrityError { message: String },
+}
+
+impl From<TezosErrorTrace> for IntegrityCheckContextError {
+    fn from(error: TezosErrorTrace) -> Self {
+        Self::IntegrityError {
+            message: error.trace_json,
+        }
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Error, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum ApplyBlockError {
     #[error("Incomplete operations, expected: {expected}, has actual: {actual}!")]

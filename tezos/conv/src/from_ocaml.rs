@@ -35,11 +35,11 @@ use tezos_api::ffi::{
     CommitGenesisResult, ComputePathError, ComputePathResponse, CycleRollsOwnerSnapshot,
     DumpContextError, Errored, FfiJsonEncoderError, ForkingTestchainData, GetDataError,
     GetLastContextHashesError, HelpersPreapplyError, HelpersPreapplyResponse,
-    InitProtocolContextResult, OperationClassification, PreFilterOperationError,
-    PreFilterOperationResponse, PreFilterOperationResult, PrevalidatorWrapper, ProtocolDataError,
-    ProtocolRpcError, ProtocolRpcResponse, Rational, RestoreContextError, RpcArgDesc, RpcMethod,
-    TezosErrorTrace, TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
-    ValidateOperationResult,
+    InitProtocolContextResult, IntegrityCheckContextError, OperationClassification,
+    PreFilterOperationError, PreFilterOperationResponse, PreFilterOperationResult,
+    PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError, ProtocolRpcResponse, Rational,
+    RestoreContextError, RpcArgDesc, RpcMethod, TezosErrorTrace, TezosStorageInitError,
+    ValidateOperationError, ValidateOperationResponse, ValidateOperationResult,
 };
 use tezos_context_api::{
     ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration,
@@ -452,6 +452,8 @@ impl_from_ocaml_polymorphic_variant! {
             NodeMessage::DumpContextResponse(result),
         RestoreContextResponse(result: Result<(), OCamlTezosErrorTrace>) =>
             NodeMessage::RestoreContextResponse(result),
+        IntegrityCheckContextResponse(result: Result<(), OCamlTezosErrorTrace>) =>
+            NodeMessage::IntegrityCheckContextResponse(result),
 
         ContextGetLatestContextHashesResult(result: Result<OCamlList<OCamlContextHash>, OCamlTezosErrorTrace>) =>
             NodeMessage::ContextGetLatestContextHashesResult(result),
@@ -498,3 +500,4 @@ from_ocaml_tezos_error_trace!(ComputePathError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(DumpContextError);
 from_ocaml_tezos_error_trace!(GetLastContextHashesError);
 from_ocaml_tezos_error_trace!(RestoreContextError);
+from_ocaml_tezos_error_trace!(IntegrityCheckContextError);

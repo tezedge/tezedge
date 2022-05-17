@@ -95,6 +95,7 @@ pub struct OCamlContextGetTreeByPrefixRequest {}
 // Dumps
 pub struct OCamlDumpContextRequest {}
 pub struct OCamlRestoreContextRequest {}
+pub struct OCamlIntegrityCheckContextRequest {}
 
 // Requests
 
