@@ -67,7 +67,9 @@ impl CycleNonce {
                 self.previous = mem::take(&mut self.this);
             }
             if cycle > self.cycle + 1 {
+                self.cycle = cycle;
                 self.previous.clear();
+                self.this.clear();
             }
             self.this.insert(nonce, pos);
 
