@@ -21,7 +21,7 @@ use storage::BlockHeaderWithHash;
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
-use tezos_messages::p2p::encoding::prelude::{CurrentBranch, GetCurrentBranchMessage};
+use tezos_messages::p2p::encoding::prelude::{BlockLocator, GetCurrentBranchMessage};
 
 fn data(current_head_level: Level) -> (Cluster, Vec<BlockHeaderWithHash>) {
     let initial_time = SystemTime::now();
@@ -184,7 +184,7 @@ fn test(
             .map(|b| b.hash)
             .collect();
 
-        CurrentBranch::new((*expected_current_head.header).clone(), history)
+        BlockLocator::new((*expected_current_head.header).clone(), history)
     };
 
     assert_eq!(current_branch, expected_current_branch);
