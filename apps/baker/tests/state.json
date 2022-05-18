@@ -13,15 +13,10 @@
                 "666f6f": 4
             }
         },
-        "ahead_ops": {},
         "live_blocks": [
             "BLHwimq98o5x1m3bAqU2DjLcNf23RzL5EBXqJBRFG2dNwxX5oDZ",
             "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2",
             "BMbPyy9oSxHpNQ5JC9zFU66CVZYiLPkSLDJn3S2ixbMGjJgqXkL"
-        ],
-        "this_level": [
-            "BKwDqeomPkhw9WXqTPkJtc9qDZdvZY9hs9EUGbHjeCDzZXewq5G",
-            "BKwSyuPYcehCmGE9nLf8QRntfV466RGe83GCFbC5Xc29Gga1s2t"
         ],
         "operations": [],
         "tb_config": {
@@ -205,7 +200,9 @@
                             }
                         }
                     },
-                    "timeout_next_level": null
+                    "timeout_next_level": null,
+                    "ahead_preendorsements": [],
+                    "ahead_endorsements": []
                 }
             }
         },
