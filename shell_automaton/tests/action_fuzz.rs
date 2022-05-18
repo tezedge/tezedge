@@ -1431,6 +1431,6 @@ fn test_all() {
         .default_sensor_and_pool()
         .arguments_from_cargo_fuzzcheck();
 
-    *FUZZER_ARGS.write().unwrap() = Some(builder.arguments.clone());
+    // *FUZZER_ARGS.write().unwrap() = Some(builder.arguments.clone());
     builder.stop_after_first_test_failure(true).launch();
 }
