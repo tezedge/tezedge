@@ -39,7 +39,7 @@ impl<'a> TryFrom<FitnessRef<'a>> for FitnessRepr {
         if slice.len() != 5 {
             return Err(IncorrectFitness);
         }
-        if &slice[0] != VERSION {
+        if slice[0] != VERSION {
             return Err(IncorrectFitness);
         }
         let level = slice_to_i32(&slice[1])?;
