@@ -10,7 +10,7 @@ use crypto::hash::{BlockHash, BlockPayloadHash as PayloadHash};
 
 use super::{timestamp::Timestamp, validator::Validator, block::Block};
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct BlockId {
     pub level: i32,
     pub round: i32,
