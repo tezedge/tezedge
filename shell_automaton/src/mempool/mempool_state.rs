@@ -19,7 +19,7 @@ use crate::{
     prechecker::OperationDecodedContents, rights::Slot, service::rpc_service::RpcId, ActionWithMeta,
 };
 
-use super::validator::MempoolValidatorState;
+use super::{map_with_timestamps::BTreeMapWithTimestamps, validator::MempoolValidatorState};
 
 /// https://gitlab.com/tezedge/tezos/-/blob/v12.2/src/lib_shell/prevalidator.ml#L219
 ///
@@ -47,7 +47,8 @@ pub struct MempoolState {
     // let's track what our peers know, and what we waiting from them
     pub(super) peer_state: BTreeMap<SocketAddr, PeerState>,
     // we sent GetOperations and pending full content of those operations
-    pub(super) pending_full_content: BTreeSet<OperationHash>,
+    pub(super) pending_full_content: BTreeMapWithTimestamps<OperationHash>,
+    pub(super) retrying_full_content: BTreeMap<OperationHash, Vec<SocketAddr>>,
     // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: MempoolPendingOperations,
     pub(super) prechecking_operations: BTreeMap<OperationHash, u8>,

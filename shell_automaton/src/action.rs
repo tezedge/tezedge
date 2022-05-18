@@ -510,6 +510,9 @@ pub enum Action {
     MempoolOperationDecoded(MempoolOperationDecodedAction),
     MempoolRpcEndorsementsStatusGet(MempoolRpcEndorsementsStatusGetAction),
     MempoolOperationValidateNext(MempoolOperationValidateNextAction),
+    MempoolTimeoutsInit(MempoolTimeoutsInitAction),
+    MempoolGetOperationTimeout(MempoolGetOperationTimeoutAction),
+    MempoolRequestFullContent(MempoolRequestFullContentAction),
 
     MempoolValidatorInit(MempoolValidatorInitAction),
     MempoolValidatorPending(MempoolValidatorPendingAction),

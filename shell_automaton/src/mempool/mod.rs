@@ -15,4 +15,5 @@ pub use self::mempool_reducer::mempool_reducer;
 mod mempool_effects;
 pub use self::mempool_effects::mempool_effects;
 
+pub mod map_with_timestamps;
 mod monitored_operation;
