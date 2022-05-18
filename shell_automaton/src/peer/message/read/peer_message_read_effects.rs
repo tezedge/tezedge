@@ -356,6 +356,18 @@ where
                         message: msg.clone(),
                     });
                 }
+                PeerMessage::GetProtocolBranch(msg) => {
+                    slog::warn!(
+                        store.state().log,
+                        "Received GetProtocolBranch message: {msg:?}, ignoring it"
+                    );
+                }
+                PeerMessage::GetPredecessorHeader(msg) => {
+                    slog::warn!(
+                        store.state().log,
+                        "Received GetPredecessorHeader message: {msg:?}, ignoring it"
+                    );
+                }
                 _ => {}
             }
 
