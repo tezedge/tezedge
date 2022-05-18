@@ -19,16 +19,13 @@ pub struct Arguments {
     #[structopt(long)]
     base_dir: PathBuf,
     #[structopt(long)]
-    endpoint: Url,
-    #[structopt(short)]
-    archive: bool,
-    #[allow(dead_code)]
-    #[structopt(short)]
-    log_rpc: bool,
-    #[structopt(long)]
-    node_dir: PathBuf,
-    #[structopt(long)]
     baker: String,
+    #[structopt(long)]
+    endpoint: Url,
+    #[structopt(short, long)]
+    archive: bool,
+    // #[structopt(long)]
+    // node_dir: Option<PathBuf>,
 }
 
 fn main() {
@@ -37,11 +34,9 @@ fn main() {
 
     let Arguments {
         base_dir,
+        baker,
         endpoint,
         archive,
-        log_rpc: _,
-        node_dir,
-        baker,
     } = Arguments::from_args();
 
     let env = env_logger::Env::default().default_filter_or("info");
@@ -50,8 +45,9 @@ fn main() {
         .try_init()
         .unwrap();
 
-    // We don't use context storage and protocol_runner
-    let _ = node_dir;
+    let terminating = Arc::new(AtomicBool::new(false));
+    signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&terminating))
+        .expect("cannot handle signals");
 
     let (srv, events) = Services::new(endpoint, &base_dir, &baker);
     let chain_id = srv.client.get_chain_id().unwrap();
@@ -59,10 +55,6 @@ fn main() {
     let constants = srv.client.get_constants().unwrap();
     srv.client.monitor_heads(&chain_id).unwrap();
     let log = srv.log.clone();
-
-    let terminating = Arc::new(AtomicBool::new(false));
-    signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&terminating))
-        .expect("cannot handle signals");
 
     // store the state here, and then atomically swap to avoid corruption
     // due to unexpected power outage
