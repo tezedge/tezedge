@@ -103,12 +103,8 @@ pub struct Initialized {
     pub this: ContractTz1Hash,
     // cycle state
     pub nonces: CycleNonce,
-    // operations which came ahead of the block stored heres
-    pub ahead_ops: BTreeMap<BlockHash, Vec<OperationSimple>>,
     // live blocks
     pub live_blocks: Vec<BlockHash>,
-    // blocks at this level and their predecessors
-    pub this_level: BTreeSet<BlockHash>,
     // operations in this proposal
     pub operations: Vec<Vec<OperationSimple>>,
     // tenderbake machine
@@ -185,9 +181,7 @@ impl BakerState {
                 previous: BTreeMap::new(),
                 this: BTreeMap::new(),
             },
-            ahead_ops: BTreeMap::new(),
             live_blocks: Vec::new(),
-            this_level: BTreeSet::new(),
             operations: Vec::new(),
             tb_config,
             tb_state: tb::Machine::<ContractTz1Hash, OperationSimple, 200>::default(),
@@ -315,14 +309,7 @@ impl BakerState {
                             description,
                         }));
                         state.handle_tb_actions(tb_actions);
-                        if let Some(operations) = state.ahead_ops.remove(&current_block.predecessor) {
-                            BakerState::Idle(state).handle_event_inner(EventWithTime {
-                                action: BakerAction::OperationsEvent(OperationsEventAction { operations }),
-                                now,
-                            })
-                        } else {
-                            BakerState::Idle(state)
-                        }
+                        BakerState::Idle(state)
                     },
                     s => s,
                 }
@@ -336,7 +323,6 @@ impl BakerState {
                 }
                 let gathering = if block.level > state.tb_config.map.level {
                     // a new level
-                    state.this_level.clear();
                     state.actions.push(BakerAction::GetSlots(GetSlotsAction {
                         level: block.level + 1,
                     }));
@@ -348,8 +334,6 @@ impl BakerState {
                     }));
                     Gathering::GetOperations(Request::new(block.hash.clone()))
                 };
-                state.this_level.insert(block.hash.clone());
-                state.this_level.insert(block.predecessor.clone());
 
                 let nonces = state.nonces.reveal_nonce(block.level);
                 let branch = block.predecessor.clone();
@@ -420,12 +404,6 @@ impl BakerState {
                             state.actions.push(BakerAction::LogError(LogErrorAction { description }));
                         }
                         Some(OperationKind::Preendorsement(content)) => {
-                            if !state.this_level.contains(&op.branch) {
-                                let description = format!("the op is ahead, or very outdated {op:?}");
-                                state.actions.push(BakerAction::LogWarning(LogWarningAction { description }));
-                                state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
-                                continue;
-                            };
                             if let Some(validator) =
                                 state
                                     .tb_config

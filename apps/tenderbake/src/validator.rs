@@ -7,7 +7,7 @@ use alloc::collections::BTreeMap;
 use serde::{Serialize, Deserialize};
 
 /// Represents a pre-vote or vote
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Validator<Id, Op> {
     // id of the validator
     pub id: Id,

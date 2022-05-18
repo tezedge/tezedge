@@ -79,6 +79,9 @@ where
     timeout_this_level: Option<Timeout<Id>>,
     inner_: VotesState<Id, Op>,
     timeout_next_level: Option<Timeout<Id>>,
+    // ahead
+    ahead_preendorsements: Vec<(BlockId, Validator<Id, Op>)>,
+    ahead_endorsements: Vec<(BlockId, Validator<Id, Op>)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -109,6 +112,7 @@ where
     Done {
         round: i32,
         hash: BlockHash,
+        payload_hash: PayloadHash,
         cer: Certificate<Id, Op>,
     },
 }
@@ -155,7 +159,7 @@ where
                                 .into_iter()
                                 .map(|(k, v)| (k, TimeHeader::into_prev(v)))
                                 .collect();
-                            Initialized::next_level(time_headers, &mut log, config, *block, now)
+                            Initialized::next_level(time_headers, vec![], vec![], &mut log, config, *block, now)
                         } else if block.level == self_.level {
                             log.push(LogRecord::AcceptAtTransitionState { next_level: false });
                             self_.next_round(*block).map_left(Err)
@@ -176,7 +180,7 @@ where
                                 .into_iter()
                                 .map(|(k, v)| (k, TimeHeader::into_prev(v)))
                                 .collect();
-                            Initialized::next_level(time_headers, &mut log, config, *block, now)
+                            Initialized::next_level(time_headers, self_.ahead_preendorsements, self_.ahead_endorsements, &mut log, config, *block, now)
                         } else if block.level == self_.level - 1 {
                             let mut self_ = self_;
                             self_
@@ -329,6 +333,8 @@ where
 {
     fn next_level<T, P>(
         pred_time_headers: BTreeMap<BlockHash, TimeHeader<true>>,
+        ahead_preendorsements: Vec<(BlockId, Validator<Id, Op>)>,
+        ahead_endorsements: Vec<(BlockId, Validator<Id, Op>)>,
         log: &mut ArrayVec<LogRecord>,
         config: &Config<T, P>,
         block: Block<Id, Op>,
@@ -428,27 +434,34 @@ where
                 .map(|t| Action::ScheduleTimeout(t.timestamp + delay)),
         );
 
+        let self_ = Initialized {
+            level: block.level,
+            pred_time_headers,
+            this_time_headers: BTreeMap::default(),
+            hash: block.hash,
+            this_time_header: block.time_header,
+            pred_hash: block.pred_hash,
+            payload_hash: payload.hash,
+            cer: payload.cer,
+            payload_round: payload.payload_round,
+            operations: payload.operations,
+            new_operations: vec![],
+            locked: None,
+            inner,
+            timeout_this_level,
+            inner_: VotesState::Collecting {
+                incomplete: Votes::default(),
+            },
+            timeout_next_level: None,
+            ahead_preendorsements,
+            ahead_endorsements,
+        };
+
+        let Pair(s, mut a) = self_.retry_ahead_ops(log, config, now);
+        actions.append(&mut a);
+
         Pair(
-            Ok(Initialized {
-                level: block.level,
-                pred_time_headers,
-                this_time_headers: BTreeMap::default(),
-                hash: block.hash,
-                this_time_header: block.time_header,
-                pred_hash: block.pred_hash,
-                payload_hash: payload.hash,
-                cer: payload.cer,
-                payload_round: payload.payload_round,
-                operations: payload.operations,
-                new_operations: vec![],
-                locked: None,
-                inner,
-                timeout_this_level,
-                inner_: VotesState::Collecting {
-                    incomplete: Votes::default(),
-                },
-                timeout_next_level: None,
-            }),
+            Ok(s),
             actions,
         )
     }
@@ -634,7 +647,9 @@ where
                 })
             }
 
-            Pair(Ok(self_), actions)
+            let Pair(s, mut a) = self_.retry_ahead_ops(log, config, now);
+            actions.append(&mut a);
+            Pair(Ok(s), actions)
         } else {
             log.push(LogRecord::UnexpectedRoundBounded {
                 last: self_.this_time_header.round,
@@ -642,6 +657,34 @@ where
             });
             Pair(Ok(self_), ArrayVec::default())
         }
+    }
+
+    fn retry_ahead_ops<T, P>(
+        self,
+        log: &mut ArrayVec<LogRecord>,
+        config: &Config<T, P>,
+        now: Timestamp,
+    ) -> Pair<Self, Id, Op>
+    where
+        T: Timing,
+        P: ProposerMap<Id = Id>,
+    {
+        let mut self_ = self;
+        let mut actions = vec![];
+
+        for (block_id, validator) in mem::take(&mut self_.ahead_preendorsements) {
+            let Pair(s, mut a) = self_.pre_voted(log, config, block_id, validator, now);
+            self_ = s;
+            actions.append(&mut a);
+        }
+
+        for (block_id, validator) in mem::take(&mut self_.ahead_endorsements) {
+            let Pair(s, mut a) = self_.voted(log, config, block_id, validator, now);
+            self_ = s;
+            actions.append(&mut a);
+        }
+
+        Pair(self_, actions)
     }
 
     fn pre_voted<T, P>(
@@ -733,11 +776,12 @@ where
         // if we have elected block, and the vote is late, let's include it anyway
         if let VotesState::Done {
             ref round,
+            ref payload_hash,
             ref mut cer,
             ..
         } = &mut self.inner_
         {
-            if round.eq(&block_id.round) {
+            if round.eq(&block_id.round) && payload_hash.eq(&block_id.payload_hash) {
                 cer.votes += validator;
             }
             return Pair(self, ArrayVec::default());
@@ -748,6 +792,11 @@ where
             || block_id.round != self.this_time_header.round
             || block_id.round < current_round
         {
+            if block_id.level > self.level ||
+                (block_id.level == self.level && block_id.round > self.this_time_header.round)
+            {
+                self.ahead_endorsements.push((block_id, validator));
+            }
             return Pair(self, ArrayVec::default());
         }
 
@@ -773,6 +822,7 @@ where
             self.inner_ = VotesState::Done {
                 hash: self.hash.clone(),
                 round: block_id.round,
+                payload_hash: block_id.payload_hash,
                 cer: Certificate {
                     votes: mem::take(votes),
                 },
