@@ -47,6 +47,7 @@ mod proto_009;
 mod proto_010;
 mod proto_011;
 mod proto_012;
+mod proto_013;
 
 use cached::proc_macro::cached;
 use cached::TimedSizedCache;
@@ -257,6 +258,9 @@ pub(crate) async fn check_and_get_baking_rights(
         SupportedProtocol::Proto012 => Err(RightsError::UnsupportedProtocolError {
             protocol: "".into(),
         }),
+        SupportedProtocol::Proto013 => Err(RightsError::UnsupportedProtocolError {
+            protocol: "".into(),
+        }),
     }
 }
 
@@ -430,6 +434,9 @@ pub(crate) async fn check_and_get_endorsing_rights(
         SupportedProtocol::Proto012 => Err(RightsError::UnsupportedProtocolError {
             protocol: "".into(),
         }),
+        SupportedProtocol::Proto013 => Err(RightsError::UnsupportedProtocolError {
+            protocol: "".into(),
+        }),
     }
 }
 
@@ -570,6 +577,9 @@ pub(crate) async fn get_votes_listings(
         }
         SupportedProtocol::Proto012 => {
             proto_012::votes_service::get_votes_listings(env, &context_hash).await
+        }
+        SupportedProtocol::Proto013 => {
+            proto_013::votes_service::get_votes_listings(env, &context_hash).await
         }
     }
 }
@@ -1029,6 +1039,10 @@ pub fn get_blocks_per_cycle(
         )?
         .blocks_per_cycle()),
         SupportedProtocol::Proto012 => Ok(serde_json::from_str::<proto_012::ProtocolConstants>(
+            serialized_constants,
+        )?
+        .blocks_per_cycle()),
+        SupportedProtocol::Proto013 => Ok(serde_json::from_str::<proto_012::ProtocolConstants>(
             serialized_constants,
         )?
         .blocks_per_cycle()),
