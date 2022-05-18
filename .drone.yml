@@ -4563,6 +4563,7 @@ steps:
 
   - name: tzkt-sync
     image: bakingbad/tzkt-sync:latest
+    user: root
     volumes:
       - name: tools
         path: /tools
@@ -4719,6 +4720,7 @@ steps:
 
   - name: tzkt-sync
     image: bakingbad/tzkt-sync:latest
+    user: root
     volumes:
       - name: tools
         path: /tools
