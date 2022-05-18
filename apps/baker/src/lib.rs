@@ -4,9 +4,6 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(feature = "fuzzing", feature(no_coverage))]
 
-mod command_line;
-pub use self::command_line::{Arguments, Command};
-
 mod proof_of_work;
 
 pub mod machine;
