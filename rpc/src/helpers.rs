@@ -216,6 +216,8 @@ pub struct BlockHeaderInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub liquidity_baking_escape_vote: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub liquidity_baking_toggle_vote: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<HeaderContent>,
 }
 
@@ -283,6 +285,9 @@ impl BlockHeaderInfo {
         let liquidity_baking_escape_vote = header_data
             .get("liquidity_baking_escape_vote")
             .map(|val| val.as_bool().unwrap());
+        let liquidity_baking_toggle_vote = header_data
+            .get("liquidity_baking_toggle_vote")
+            .map(|val| val.as_str().unwrap().to_string());
 
         let mut content: Option<HeaderContent> = None;
         if let Some(header_content) = header_data.get("content") {
@@ -308,6 +313,7 @@ impl BlockHeaderInfo {
             seed_nonce_hash,
             proof_of_work_nonce,
             liquidity_baking_escape_vote,
+            liquidity_baking_toggle_vote,
             content,
         })
     }
