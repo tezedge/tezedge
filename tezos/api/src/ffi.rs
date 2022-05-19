@@ -205,6 +205,87 @@ pub struct ValidateOperationRequest {
     pub operation: Operation,
 }
 
+#[cfg(feature = "fuzzing")]
+use tezos_encoding::fuzzing::bigint::BigIntMutator;
+
+// Used to represent an operation weight after pre-filter prioritization
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Rational {
+    #[cfg_attr(feature = "fuzzing", field_mutator(BigIntMutator))]
+    pub num: num_bigint::BigInt,
+    #[cfg_attr(feature = "fuzzing", field_mutator(BigIntMutator))]
+    pub den: num_bigint::BigInt,
+}
+
+fn safe_parse_bigint(buf: &[u8], default: i32) -> num_bigint::BigInt {
+    if let Some(bigint) = num_bigint::BigInt::parse_bytes(buf, 10) {
+        bigint
+    } else {
+        let s = String::from_utf8_lossy(buf);
+
+        eprintln!(
+            "WARNING: got unparseable BigInt from OCaml FFI: {s:?} - returning {default} instead"
+        );
+
+        num_bigint::BigInt::from(default)
+    }
+}
+
+impl Rational {
+    pub fn from_bytes(buf: &[u8]) -> Self {
+        let mut num_den = buf.splitn(2, |c| c == &b'/');
+        let num = num_den.next();
+        let den = num_den.next();
+
+        match (num, den) {
+            (Some(num), None) => Self {
+                num: safe_parse_bigint(num, 0),
+                den: num_bigint::BigInt::from(1i32),
+            },
+            (Some(num), Some(den)) => Self {
+                num: safe_parse_bigint(num, 0),
+                den: safe_parse_bigint(den, 1),
+            },
+            _ => {
+                let s = String::from_utf8_lossy(buf);
+
+                eprintln!(
+                    "WARNING: got unparseable Rational from OCaml FFI: {s:?} - returning 0/1 instead"
+                );
+
+                Self {
+                    num: num_bigint::BigInt::from(0i32),
+                    den: num_bigint::BigInt::from(1i32),
+                }
+            }
+        }
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PreFilterOperationResult {
+    Unparseable,
+    Drop,
+    High,
+    Medium,
+    Low(Vec<Rational>),
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+
+pub struct PreFilterOperationResponse {
+    pub prevalidator: PrevalidatorWrapper,
+    pub operation_hash: OperationHash,
+    pub result: PreFilterOperationResult,
+    pub pre_filter_operation_started_at: f64,
+    pub parse_operation_started_at: f64,
+    pub parse_operation_ended_at: f64,
+    pub pre_filter_operation_ended_at: f64,
+}
+
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ValidateOperationResponse {
@@ -613,6 +694,33 @@ impl From<CallError> for BeginConstructionError {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Error, Serialize, Deserialize, Debug, Clone)]
+pub enum PreFilterOperationError {
+    #[error("Failed to pre-filter operation - message: {message}!")]
+    FailedToPreFiltereOperation { message: String },
+    #[error("Invalid request/response data - message: {message}!")]
+    InvalidRequestResponseData { message: String },
+}
+
+impl From<CallError> for PreFilterOperationError {
+    fn from(error: CallError) -> Self {
+        match error {
+            CallError::FailedToCall { trace_message, .. } => {
+                PreFilterOperationError::FailedToPreFiltereOperation {
+                    message: trace_message,
+                }
+            }
+            CallError::InvalidRequestData { message } => {
+                PreFilterOperationError::InvalidRequestResponseData { message }
+            }
+            CallError::InvalidResponseData { message } => {
+                PreFilterOperationError::InvalidRequestResponseData { message }
+            }
+        }
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum ValidateOperationError {
     #[error("Failed to validate operation - message: {message}!")]
     FailedToValidateOperation { message: String },
@@ -986,6 +1094,8 @@ pub enum ProtocolError {
     BeginApplicationError { reason: BeginApplicationError },
     #[error("Begin construction error: {reason}")]
     BeginConstructionError { reason: BeginConstructionError },
+    #[error("Pre-filter operation error: {reason}")]
+    PreFilterOperationError { reason: PreFilterOperationError },
     #[error("Validate operation error: {reason}")]
     ValidateOperationError { reason: ValidateOperationError },
     #[error("Protocol rpc call error: {reason}")]

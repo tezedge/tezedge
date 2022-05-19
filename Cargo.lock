@@ -4050,7 +4050,7 @@ dependencies = [
  "mio",
  "networking",
  "nix",
- "nom 6.1.2",
+ "nom",
  "num-bigint 0.3.3",
  "once_cell",
  "rand 0.7.3",
@@ -4607,6 +4607,7 @@ dependencies = [
  "fuzzcheck",
  "hex",
  "nom",
+ "num-bigint 0.3.3",
  "serde 1.0.130",
  "serde_json",
  "slog",
@@ -4692,6 +4693,7 @@ name = "tezos_conv"
 version = "2.3.0"
 dependencies = [
  "crypto",
+ "num-bigint 0.3.3",
  "ocaml-interop",
  "tezos-sys",
  "tezos_api",

@@ -6,7 +6,9 @@ use std::convert::TryFrom;
 use crate::{
     OCamlApplyBlockExecutionTimestamps, OCamlBlockPayloadHash, OCamlClassifiedOperation,
     OCamlCommitGenesisResult, OCamlComputePathResponse, OCamlCycleRollsOwnerSnapshot,
-    OCamlInitProtocolContextResult, OCamlNodeMessage, OCamlTezosContextTezedgeOnDiskBackendOptions,
+    OCamlInitProtocolContextResult, OCamlNodeMessage, OCamlPreFilterOperationResponse,
+    OCamlPreFilterOperationResult, OCamlRationalString,
+    OCamlTezosContextTezedgeOnDiskBackendOptions,
 };
 
 use super::{
@@ -33,8 +35,9 @@ use tezos_api::ffi::{
     CommitGenesisResult, ComputePathError, ComputePathResponse, CycleRollsOwnerSnapshot,
     DumpContextError, Errored, FfiJsonEncoderError, ForkingTestchainData, GetDataError,
     GetLastContextHashesError, HelpersPreapplyError, HelpersPreapplyResponse,
-    InitProtocolContextResult, OperationClassification, PrevalidatorWrapper, ProtocolDataError,
-    ProtocolRpcError, ProtocolRpcResponse, RestoreContextError, RpcArgDesc, RpcMethod,
+    InitProtocolContextResult, OperationClassification, PreFilterOperationError,
+    PreFilterOperationResponse, PreFilterOperationResult, PrevalidatorWrapper, ProtocolDataError,
+    ProtocolRpcError, ProtocolRpcResponse, Rational, RestoreContextError, RpcArgDesc, RpcMethod,
     TezosErrorTrace, TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
     ValidateOperationResult,
 };
@@ -229,10 +232,44 @@ impl_from_ocaml_record! {
     }
 }
 
+unsafe impl FromOCaml<OCamlRationalString> for Rational {
+    fn from_ocaml(v: OCaml<OCamlRationalString>) -> Self {
+        // We use `OCamlRationalString` here so that we can define this trait in this crate
+        // for `Rational` that is defined elsewhere. But it is just `OCamlBytes` so this
+        // transmute here is safe. The string passed from ocaml has the shape
+        // "numerator_digits/denominator_digits", so the unwraps here are safe.
+        let v: OCaml<OCamlBytes> = unsafe { core::intrinsics::transmute(v) };
+
+        Self::from_bytes(v.as_bytes())
+    }
+}
+
+impl_from_ocaml_polymorphic_variant! {
+    OCamlPreFilterOperationResult => PreFilterOperationResult {
+        Unparseable => PreFilterOperationResult::Unparseable,
+        Drop => PreFilterOperationResult::Drop,
+        High => PreFilterOperationResult::High,
+        Medium => PreFilterOperationResult::Medium,
+        Low(weights: OCamlList<OCamlRationalString>) => PreFilterOperationResult::Low(weights),
+    }
+}
+
 impl_from_ocaml_variant! {
     OCamlValidateOperationResult => ValidateOperationResult {
         ValidateOperationResult::Unparseable,
         ValidateOperationResult::Classified(classified_operation: OCamlClassifiedOperation),
+    }
+}
+
+impl_from_ocaml_record! {
+    OCamlPreFilterOperationResponse => PreFilterOperationResponse {
+        prevalidator: OCamlPrevalidatorWrapper,
+        operation_hash: OCamlOperationHash,
+        result: OCamlPreFilterOperationResult,
+        pre_filter_operation_started_at: OCamlFloat,
+        parse_operation_started_at: OCamlFloat,
+        parse_operation_ended_at: OCamlFloat,
+        pre_filter_operation_ended_at: OCamlFloat,
     }
 }
 
@@ -381,6 +418,8 @@ impl_from_ocaml_polymorphic_variant! {
             NodeMessage::BeginApplicationResult(result),
         BeginConstructionResult(result: Result<OCamlPrevalidatorWrapper, OCamlTezosErrorTrace>) =>
             NodeMessage::BeginConstructionResult(result),
+        PreFilterOperationResult(result: Result<OCamlPreFilterOperationResponse, OCamlTezosErrorTrace>) =>
+            NodeMessage::PreFilterOperationResult(result),
         ValidateOperationResponse(result: Result<OCamlValidateOperationResponse, OCamlTezosErrorTrace>) =>
             NodeMessage::ValidateOperationResponse(result),
         RpcResponse(result: Result<OCamlProtocolRpcResponse, OCamlProtocolRpcError>) =>
@@ -447,6 +486,7 @@ from_ocaml_tezos_error_trace!(ApplyBlockError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(ProtocolDataError);
 from_ocaml_tezos_error_trace!(BeginApplicationError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(BeginConstructionError, tezos_api::ffi::CallError);
+from_ocaml_tezos_error_trace!(PreFilterOperationError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(ValidateOperationError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(HelpersPreapplyError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(TezosStorageInitError);

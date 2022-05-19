@@ -428,6 +428,20 @@ impl ProtocolRunnerConnection {
         )
     }
 
+    /// Pre-filter operation
+    pub async fn pre_filter_operation(
+        &mut self,
+        request: ValidateOperationRequest,
+    ) -> Result<PreFilterOperationResponse, ProtocolServiceError> {
+        handle_request!(
+            self.io,
+            PreFilterOperation(request),
+            PreFilterOperationResult(result),
+            PreFilterOperationError,
+            Some(Self::VALIDATE_OPERATION_TIMEOUT),
+        )
+    }
+
     /// Validate operation
     pub async fn validate_operation(
         &mut self,
