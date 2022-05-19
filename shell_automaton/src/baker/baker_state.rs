@@ -4,8 +4,10 @@
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockPayloadHash;
+use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
+use super::block_baker::BakerBlockBakerState;
 use super::block_endorser::BakerBlockEndorserState;
 
 /// Locked payload by endorser.
@@ -24,16 +26,20 @@ pub struct LockedPayload {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerState {
     pub block_endorser: BakerBlockEndorserState,
+    pub block_baker: BakerBlockBakerState,
 
     pub locked_payload: Option<LockedPayload>,
+    pub elected_block: Option<BlockHeaderWithHash>,
 }
 
 impl BakerState {
     pub fn new() -> Self {
         Self {
             block_endorser: BakerBlockEndorserState::Idle { time: 0 },
+            block_baker: BakerBlockBakerState::Idle { time: 0 },
 
             locked_payload: None,
+            elected_block: None,
         }
     }
 }
