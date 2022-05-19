@@ -16,6 +16,7 @@ slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trac
 strum = "0.20"
 strum_macros = "0.20"
 nom = "6.1"
+num-bigint = "0.3"
 url = "2.2"
 # local dependencies
 crypto = { path = "../../crypto" }
