@@ -309,14 +309,6 @@ impl From<serde_json::Error> for RightsError {
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DelegateSelection {
-    Random,
-    RoundRobin,
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProtocolConstants {
     pub blocks_per_cycle: i32,
@@ -324,8 +316,6 @@ pub struct ProtocolConstants {
     pub nonce_length: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endorsers_per_block: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub delegate_selection: Option<DelegateSelection>,
 }
 
 impl ProtocolConstants {
@@ -340,9 +330,5 @@ impl ProtocolConstants {
     }
     pub fn nonce_length(&self) -> Option<u8> {
         Some(self.nonce_length)
-    }
-
-    pub fn delegate_selection(&self) -> Option<DelegateSelection> {
-        self.delegate_selection
     }
 }
