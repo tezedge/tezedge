@@ -1,0 +1,206 @@
+#!/bin/sh
+
+TEZEDGE_ENV=${TEZEDGE_ENV:-$(dirname $0)/tezedge.env}
+if [ -f "$TEZEDGE_ENV" ]; then
+    . "$TEZEDGE_ENV"
+fi
+
+if [ -n "$RUN_OCTEZ_NODE" ]; then
+    exec "$0".octez "$@"
+fi
+
+LIGHT_NODE=${LIGHT_NODE:-$(dirname $0)/light-node}
+PROTOCOL_RUNNER=${PROTOCOL_RUNNER:-$(dirname $LIGHT_NODE)/protocol-runner}
+LIB_TEZOS_DIR=${LIB_TEZOS_DIR:-$(dirname $LIGHT_NODE)}
+LIGHT_NODE_CONFIG=${LIGHT_NODE_CONFIG:-$(dirname $LIGHT_NODE)/tezedge.config}
+
+config_init() {
+    TEMP=$(getopt -o '' --long 'data-dir:,network:,net-addr:,rpc-addr:,expected-pow:,connections:' -n "$0 config init" -- "$@")
+    if [ $? -ne 0 ]; then
+	    echo 'Terminating...' >&2
+	    exit 1
+    fi
+    eval set -- "$TEMP"
+    unset TEMP
+
+    config=$(mktemp)
+    if [ -f "$LIGHT_NODE_CONFIG" ]; then
+        cat >"$config" <"$LIGHT_NODE_CONFIG"
+    fi
+
+    while true; do
+        case "$1" in
+            --data-dir)
+                echo "--tezos-data-dir=$2" >> "$config"
+                data_dir="$2";
+                shift 2;
+            ;;
+            --network)
+                echo "--network=$2" >> "$config"
+                shift 2
+            ;;
+            --net-addr)
+                echo "--p2p-port=${2##*:}" >> "$config"
+                shift 2
+            ;;
+            --rpc-addr)
+                echo "--rpc-port=${2##*:}" >> "$config"
+                shift 2
+            ;;
+            --expected-pow)
+                echo "--identity-expected-pow=$2" >> "$config"
+                shift 2
+            ;;
+            --connections)
+                shift 2
+		    ;;
+		    '--')
+			    shift
+			    break
+	        ;;
+		    *)
+			    echo 'Internal error!' >&2
+			    exit 1
+	        ;;
+        esac
+    done
+    cat >> "$config" <<EOF
+--bootstrap-db-path=bootstrap_db
+--protocol-runner=$PROTOCOL_RUNNER
+--tezos-context-storage=irmin
+--identity-file=identity.json
+--log-format=simple
+--log-level=trace
+--ocaml-log-enabled=false
+--compute-context-action-tree-hashes=false
+--tokio-threads=0
+--enable-testchain=false
+--peer-thresh-low=0
+--peer-thresh-high=10
+--disable-peer-graylist
+EOF
+
+    mkdir -p "$data_dir"
+    mv "$config" "$data_dir/tezedge-node.config"
+}
+
+identity_generate() {
+    # noop
+    true
+}
+
+run() {
+    TEMP=$(getopt -o '' --long 'data-dir:,network:,net-addr:,rpc-addr:,expected-pow:,connections:,synchronisation-threshold:,no-bootstrap-peers,peer:,private-mode,sandbox:,cors-origin:' -n "$0 run" -- "$@")
+    if [ $? -ne 0 ]; then
+	    echo 'Terminating...' >&2
+	    exit 1
+    fi
+    eval set -- "$TEMP"
+    unset TEMP
+
+    ARGS=""
+    while true; do
+        case "$1" in
+            --data-dir)
+                DATA_DIR="$2";
+                shift 2;
+            ;;
+            --network)
+                ARGS="$ARGS --network $2"
+                shift 2
+            ;;
+            --net-addr)
+                shift 2
+            ;;
+            --rpc-addr)
+                shift 2
+            ;;
+            --expected-pow)
+                shift 2
+            ;;
+            --connections)
+                shift 2
+		    ;;
+            --synchronisation-threshold)
+                ARGS="$ARGS --synchronization-thresh=$2"
+                shift 2
+            ;;
+            --no-bootstrap-peers)
+                ARGS="$ARGS --disable-bootstrap-lookup"
+                shift 1
+            ;;
+            --peer)
+                PEERS="${PEERS:+$PEERS,}$2"
+                shift 2
+            ;;
+            --private-mode)
+                ARGS="$ARGS --private-node true"
+                shift 1
+            ;;
+            --sandbox)
+                ARGS="$ARGS --sandbox-patch-context-json-file $2"
+                shift 2
+            ;;
+            --cors-origin)
+                shift 2
+            ;;
+		    '--')
+			    shift
+			    break
+	        ;;
+		    *)
+			    echo 'Internal error! ' $1 >&2
+			    exit 1
+	        ;;
+        esac
+    done
+    ARGS="--config-file=$DATA_DIR/tezedge-node.config $ARGS --peers=$PEERS --log-level=trace"
+    export LD_LIBRARY_PATH="$LIB_TEZOS_DIR:$LD_LIBRARY_PATH"
+    echo "running $LIGHT_NODE $ARGS"
+    exec "$LIGHT_NODE" $ARGS
+}
+
+config() {
+    case "$1" in
+        init)
+            shift
+            config_init "$@"
+        ;;
+        *)
+            echo 'Unknown config command: ' "$1" >&2;
+            exit 1
+        ;;
+    esac
+}
+
+identity() {
+    case "$1" in
+        generate)
+            shift
+            identity_generate "$@"
+        ;;
+        *)
+            echo 'Unknown identity command: ' "$1" >&2;
+            exit 1
+        ;;
+    esac
+}
+
+case "$1" in
+    config)
+        shift
+        config "$@"
+    ;;
+    identity)
+        shift
+        identity "$@"
+    ;;
+    run)
+        shift
+        run "$@"
+    ;;
+    *)
+        echo 'Unknown command: ' $1 >&2;
+        exit 1
+    ;;
+esac
