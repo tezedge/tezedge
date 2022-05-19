@@ -1,0 +1,86 @@
+#!/bin/sh
+
+run_octez_baker() {
+    CMD="$0.octez -m json"
+    while true; do
+        case $1 in
+            --dump-state)
+                if [ -n "$2" ]; then
+                    shift 2
+                else
+                    shift
+                fi
+                ;;
+            "")
+                break
+                ;;
+            *)
+                CMD="$CMD $1"
+                shift
+                ;;
+        esac
+    done
+
+    # shellcheck disable=SC2086
+    exec $CMD
+}
+
+run_tezedge_baker() {
+    CMD="$0.tezedge"
+    while true; do
+        case $1 in
+            run|with|local)
+                shift
+            ;;
+            node)
+                if [ -n "$3" ]; then
+                    CMD="$CMD --baker $3"
+                    shift 3
+                elif [ -n $2 ]; then
+                    shift 2
+                else
+                    shift
+                fi
+            ;;
+            --base-dir|-d)
+                if [ -n "$2" ]; then
+                    CMD="$CMD --base-dir $2"
+                    shift 2
+                else
+                    CMD="$CMD --base-dir"
+                    shift
+                fi
+            ;;
+            --endpoint|-E)
+                if [ -n "$2" ]; then
+                    E=$2 #${2#http*://}
+                    CMD="$CMD --endpoint $E"
+                    shift 2
+                else
+                    CMD="$CMD --endpoint"
+                    shift
+                fi
+            ;;
+            "")
+                break
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    # shellcheck disable=SC2086
+    exec $CMD
+}
+
+TEZEDGE_ENV=${TEZEDGE_ENV:-$(dirname $0)/tezedge.env}
+if [ -f "$TEZEDGE_ENV" ]; then
+    . "$TEZEDGE_ENV"
+fi
+
+if [ -n "$RUN_OCTEZ_BAKER" ]; then
+    run_octez_baker "$@"
+else
+    run_tezedge_baker "$@"
+fi
