@@ -384,7 +384,7 @@ impl EnablingCondition<State> for MempoolGetOperationTimeoutAction {
             .mempool
             .pending_full_content
             .earliest_timestamp()
-            .map_or(false, |t| t >= timeout_timestamp)
+            .map_or(false, |t| t <= timeout_timestamp)
     }
 }
 
