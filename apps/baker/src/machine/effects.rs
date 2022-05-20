@@ -141,7 +141,7 @@ where
             match store
                 .service
                 .client()
-                .inject_operation(&st.chain_id, op_hex, true)
+                .inject_operation(&st.chain_id, op_hex, false)
             {
                 Ok(hash) => slog::info!(store.service.log(), " .  inject nonce_reveal: {hash}"),
                 Err(err) => slog::error!(store.service.log(), " .  {err}"),
@@ -239,3 +239,23 @@ where
         }
     }
 }
+
+// #[test]
+// fn nonce_op() {
+//     use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
+    
+//     let branch = crypto::hash::BlockHash::from_base58_check("BKwRsK7quhsjPQoWMxVUsAV5vw9XuBbyE2hN7BHVk9RiA4nJ72s").unwrap();
+//     let content = Contents::SeedNonceRevelation(SeedNonceRevelationOperation {
+//         level: 135 * 4096 + 384,
+//         nonce: SizedBytes(hex::decode("e4f4e472f807e285d510bdf2af925e7a6dba73c4d839d8b0c0f0af78027a88c4").unwrap().as_slice().try_into().unwrap()),
+//     });
+//     let mut bytes = branch.0.clone();
+//     content.bin_write(&mut bytes).unwrap();
+//     bytes.extend_from_slice(&[0; 64]);
+
+//     let op = tezos_messages::p2p::encoding::operation::Operation::from_bytes(&bytes).unwrap();
+//     let hash = op.message_typed_hash::<crypto::hash::OperationHash>().unwrap();
+
+//     println!("{hash}");
+//     println!("{}", hex::encode(bytes));
+// }

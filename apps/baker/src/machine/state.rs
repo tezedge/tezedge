@@ -335,7 +335,9 @@ impl BakerState {
                     Gathering::GetOperations(Request::new(block.hash.clone()))
                 };
 
-                let nonces = state.nonces.reveal_nonce(block.level);
+                // already final block is block.level - 2
+                let final_block_level = block.level - 2;
+                let nonces = state.nonces.reveal_nonce(final_block_level);
                 let branch = block.predecessor.clone();
                 let nonces = nonces.map(|(level, nonce)| BakerAction::RevealNonce(RevealNonceAction {
                     branch: branch.clone(),

@@ -60,17 +60,7 @@ impl CycleNonce {
             let nonce = Nonce((0..self.nonce_length).map(|_| rand::random()).collect());
             let hash = NonceHash(blake2b::digest_256(&nonce.0).unwrap());
 
-            let cycle = level / self.blocks_per_cycle;
             let pos = level % self.blocks_per_cycle;
-            if cycle == self.cycle + 1 {
-                self.cycle = cycle;
-                self.previous = mem::take(&mut self.this);
-            }
-            if cycle > self.cycle + 1 {
-                self.cycle = cycle;
-                self.previous.clear();
-                self.this.clear();
-            }
             self.this.insert(nonce, pos);
 
             Some(hash)
@@ -83,6 +73,15 @@ impl CycleNonce {
         let level = level as u32;
 
         let cycle = level / self.blocks_per_cycle;
+        if cycle == self.cycle + 1 {
+            self.cycle = cycle;
+            self.previous = mem::take(&mut self.this);
+        }
+        if cycle > self.cycle + 1 {
+            self.cycle = cycle;
+            self.previous.clear();
+            self.this.clear();
+        }
 
         let previous = if cycle == self.cycle {
             mem::take(&mut self.previous)
@@ -96,6 +95,5 @@ impl CycleNonce {
                 let level = ((cycle - 1) * self.blocks_per_cycle + pos) as i32;
                 (level, nonce)
             })
-            .into_iter()
     }
 }
