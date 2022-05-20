@@ -14,6 +14,7 @@ pub use self::{
     effects::baker_effects,
     reducer::baker_reducer,
     state::{BakerState, BakerStateEjectable},
+    cycle_nonce::Nonce,
 };
 
 #[cfg(test)]
