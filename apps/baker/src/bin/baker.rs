@@ -69,15 +69,11 @@ fn main() {
     let persistent_state = File::open(&file_path)
         .and_then(|rdr| serde_json::from_reader::<_, BakerState>(rdr).map_err(From::from));
 
-    let mut initial_state = if let Ok(persistent_state) = persistent_state {
+    let initial_state = if let Ok(persistent_state) = persistent_state {
         persistent_state
     } else {
         BakerState::new(chain_id, constants, srv.crypto.public_key_hash().clone())
     };
-
-    if let Ok(mut prev_seeds) = File::open(base_dir.join("seed_patch.json")).and_then(|rdr| serde_json::from_reader::<_, std::collections::BTreeMap<baker::machine::Nonce, u32>>(rdr).map_err(From::from)) {
-        initial_state.as_mut().nonces.previous.append(&mut prev_seeds);
-    }
 
     let initial_state = BakerStateEjectable(Some(initial_state));
     let reducer = baker_reducer::<BakerStateEjectable, Action>;
