@@ -4478,6 +4478,7 @@ dependencies = [
  "fuzzcheck",
  "hex",
  "nom 6.1.2",
+ "num-bigint 0.3.3",
  "serde 1.0.136",
  "serde_json",
  "slog",
@@ -4563,6 +4564,7 @@ name = "tezos_conv"
 version = "2.3.0"
 dependencies = [
  "crypto",
+ "num-bigint 0.3.3",
  "ocaml-interop",
  "tezos-sys",
  "tezos_api",

@@ -128,13 +128,16 @@ pub struct OCamlRpcArgDesc {}
 pub struct OCamlRpcMethod {}
 pub struct OCamlTezosContextTezEdgeStorageConfiguration {}
 pub struct OCamlTezosErrorTrace {}
+pub struct OCamlPreFilterOperationResponse {}
 pub struct OCamlValidateOperationResponse {}
 pub struct OCamlClassifiedOperation {}
+pub struct OCamlPreFilterOperationResult {}
 pub struct OCamlValidateOperationResult {}
 pub struct OCamlOperationClassification {}
 pub struct OCamlInitProtocolContextResult {}
 pub struct OCamlCommitGenesisResult {}
 pub struct OCamlComputePathResponse {}
+pub struct OCamlRationalString {}
 
 // Other
 

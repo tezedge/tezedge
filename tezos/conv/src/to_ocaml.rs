@@ -556,6 +556,7 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::AssertEncodingForProtocolDataCall(hash: OCamlProtocolHash, data: OCamlBytes),
         ProtocolMessage::BeginApplicationCall(req: OCamlBeginApplicationRequest),
         ProtocolMessage::BeginConstruction(req: OCamlBeginConstructionRequest),
+        ProtocolMessage::PreFilterOperation(req: OCamlValidateOperationRequest),
         ProtocolMessage::ValidateOperation(req: OCamlValidateOperationRequest),
         ProtocolMessage::ProtocolRpcCall(req: OCamlProtocolRpcRequest),
         ProtocolMessage::HelpersPreapplyOperationsCall(req: OCamlProtocolRpcRequest),
