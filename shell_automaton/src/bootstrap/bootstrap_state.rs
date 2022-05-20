@@ -553,16 +553,16 @@ impl BootstrapState {
     }
 
     pub fn can_inject_block(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Self::Idle { .. }
-            | Self::Init { .. }
-            | Self::PeersConnectPending { .. }
-            | Self::PeersConnectSuccess { .. }
-            | Self::PeersMainBranchFindPending { .. }
-            | Self::PeersMainBranchFindSuccess { .. }
-            | Self::Finished { .. } => true,
-            _ => false,
-        }
+                | Self::Init { .. }
+                | Self::PeersConnectPending { .. }
+                | Self::PeersConnectSuccess { .. }
+                | Self::PeersMainBranchFindPending { .. }
+                | Self::PeersMainBranchFindSuccess { .. }
+                | Self::Finished { .. }
+        )
     }
 
     pub fn timeouts_last_check(&self) -> Option<u64> {

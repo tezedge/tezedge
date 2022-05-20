@@ -45,7 +45,7 @@ pub fn rights_cycle_eras_reducer(state: &mut crate::State, action: &crate::Actio
         }) => {
             if let Some(state) = eras_state.get_state_mut(protocol_hash) {
                 if let CycleErasQueryState::PendingContext(kv_error) = state {
-                    *state = CycleErasQueryState::ContextRequested(token.clone(), kv_error.clone());
+                    *state = CycleErasQueryState::ContextRequested(*token, kv_error.clone());
                 }
             }
         }

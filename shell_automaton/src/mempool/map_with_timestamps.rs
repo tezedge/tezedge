@@ -68,6 +68,7 @@ where
         let iter = iter.into_iter();
         self.order.reserve(iter.size_hint().0);
         let i = self.order.partition_point(|(_, t)| *t <= timestamp);
+        #[allow(clippy::needless_collect)]
         let drain = self.order.drain(i..).collect::<Vec<_>>();
         for v in iter {
             self.map.insert(v.clone(), timestamp);

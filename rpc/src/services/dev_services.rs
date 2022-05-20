@@ -916,7 +916,7 @@ pub(crate) async fn get_shell_automaton_endorsing_rights(
 fn adjust_times(base_time: u64, value: &mut serde_json::Value) -> anyhow::Result<()> {
     let obj = value
         .as_object_mut()
-        .ok_or(anyhow::format_err!("object expected"))?;
+        .ok_or_else(|| anyhow::format_err!("object expected"))?;
     obj.iter_mut().for_each(|(_, v)| {
         if let Some(v) = v.as_object_mut() {
             v.iter_mut().for_each(|(k, v)| {

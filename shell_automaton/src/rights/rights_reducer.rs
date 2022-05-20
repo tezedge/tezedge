@@ -371,7 +371,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         start: *start,
                         level: *level,
                         delegates: delegates.clone(),
-                        token: token.clone(),
+                        token: *token,
                     };
                 }
             }
