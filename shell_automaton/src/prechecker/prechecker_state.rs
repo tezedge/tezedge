@@ -253,14 +253,14 @@ pub enum PrecheckerOperationState {
 
 impl PrecheckerOperationState {
     pub(super) fn is_result(&self) -> bool {
-        match self {
+        matches!(
+            self,
             PrecheckerOperationState::Applied { .. }
-            | PrecheckerOperationState::Refused { .. }
-            | PrecheckerOperationState::BranchRefused { .. }
-            | PrecheckerOperationState::BranchDelayed { .. }
-            | PrecheckerOperationState::Outdated { .. } => true,
-            _ => false,
-        }
+                | PrecheckerOperationState::Refused { .. }
+                | PrecheckerOperationState::BranchRefused { .. }
+                | PrecheckerOperationState::BranchDelayed { .. }
+                | PrecheckerOperationState::Outdated { .. }
+        )
     }
 
     pub(super) fn caching_level(&self) -> Option<Level> {

@@ -148,12 +148,12 @@ pub fn context_query(
         key = tail;
     }
 
-    let query = Query {
+    let query = Box::new(Query {
         query_kind,
         key: string,
         irmin_time,
         tezedge_time,
-    };
+    });
 
     if let Err(e) = send_msg(TimingMessage::Query(query)) {
         eprintln!("Timing context_query hook error = {:?}", e);

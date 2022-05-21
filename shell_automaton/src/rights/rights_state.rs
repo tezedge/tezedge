@@ -336,13 +336,13 @@ impl ProtocolConstants {
         Some(self.preserved_cycles)
     }
     pub fn endorsers_per_block(&self) -> Option<u16> {
-        self.endorsers_per_block.clone()
+        self.endorsers_per_block
     }
     pub fn nonce_length(&self) -> Option<u8> {
         Some(self.nonce_length)
     }
 
     pub fn delegate_selection(&self) -> Option<DelegateSelection> {
-        self.delegate_selection.clone()
+        self.delegate_selection
     }
 }

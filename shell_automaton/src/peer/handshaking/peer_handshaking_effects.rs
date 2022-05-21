@@ -428,7 +428,7 @@ where
                                 .map(|x| x.to_string())
                                 .collect::<Vec<_>>();
 
-                            AckMessage::Nack(NackInfo::new(motive.clone(), &nack_potential_peers))
+                            AckMessage::Nack(NackInfo::new(*motive, &nack_potential_peers))
                         }
                         None => AckMessage::Ack,
                     };

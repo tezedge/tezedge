@@ -59,10 +59,7 @@ where
             }
         }
 
-        Action::RightsCycleErasKVError(RightsCycleErasKVErrorAction {
-            protocol_hash,
-            ..
-        }) => {
+        Action::RightsCycleErasKVError(RightsCycleErasKVErrorAction { protocol_hash, .. }) => {
             if let Some(CycleErasQuery {
                 block_header,
                 block_hash,
@@ -90,8 +87,8 @@ where
                 });
             }
         }
-        Action::ProtocolRunnerResponse(resp) => match &resp.result {
-            ProtocolRunnerResult::GetContextRawBytes((token, result)) => {
+        Action::ProtocolRunnerResponse(resp) => {
+            if let ProtocolRunnerResult::GetContextRawBytes((token, result)) = &resp.result {
                 for protocol_hash in cycle_eras
                     .iter()
                     .filter_map(|(k, v)| {
@@ -133,15 +130,26 @@ where
                     }
                 }
             }
-            _ => {}
-        },
-        Action::RightsCycleErasKVSuccess(RightsCycleErasKVSuccessAction { protocol_hash, .. }) |
-        Action::RightsCycleErasContextSuccess(RightsCycleErasContextSuccessAction { protocol_hash, .. }) => {
-            store.dispatch(RightsCycleErasSuccessAction { protocol_hash: protocol_hash.clone() });
         }
-        Action::RightsCycleErasContextError(RightsCycleErasContextErrorAction { protocol_hash, error }) => {
+        Action::RightsCycleErasKVSuccess(RightsCycleErasKVSuccessAction {
+            protocol_hash, ..
+        })
+        | Action::RightsCycleErasContextSuccess(RightsCycleErasContextSuccessAction {
+            protocol_hash,
+            ..
+        }) => {
+            store.dispatch(RightsCycleErasSuccessAction {
+                protocol_hash: protocol_hash.clone(),
+            });
+        }
+        Action::RightsCycleErasContextError(RightsCycleErasContextErrorAction {
+            protocol_hash,
+            error,
+        }) => {
             slog::warn!(log, "Error getting cycle eras from context"; "error" => FnValue(|_| error.to_string()));
-            store.dispatch(RightsCycleErasErrorAction { protocol_hash: protocol_hash.clone() });
+            store.dispatch(RightsCycleErasErrorAction {
+                protocol_hash: protocol_hash.clone(),
+            });
         }
         _ => (),
     }
@@ -154,5 +162,5 @@ fn cycle_eras_from_bytes(bytes: &[u8]) -> Result<CycleEras, BinaryReaderError> {
         eras: Vec<CycleEra>,
     }
 
-    Ok(Encoding::from_bytes(bytes).map(|result| result.eras)?)
+    Encoding::from_bytes(bytes).map(|result| result.eras)
 }

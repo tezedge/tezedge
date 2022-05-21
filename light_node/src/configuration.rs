@@ -925,6 +925,7 @@ impl ImportSnapshot {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum TezedgeEnv {
     ImportSnapshot(ImportSnapshot),
     Normal(Environment),

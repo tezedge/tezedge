@@ -165,7 +165,6 @@ where
                 (payload_hash, FitnessRepr::try_from(head.header.fitness()))
             {
                 let predecessor = head.header.predecessor().clone();
-                let payload_hash = payload_hash.clone();
                 Some(EndorsementBranch {
                     predecessor,
                     payload_hash,
