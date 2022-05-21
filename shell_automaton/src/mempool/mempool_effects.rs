@@ -607,11 +607,11 @@ where
             let mut peers_to_request = BTreeMap::new();
             let log = store.state().log.clone();
             for (hash, peers) in &store.state.get().mempool.retrying_full_content {
-                if let Some(peer) = store.service.randomness().choose_peer(&peers) {
+                if let Some(peer) = store.service.randomness().choose_peer(peers) {
                     slog::debug!(log, "Retrying full content for {hash}"; "peer" => peer);
                     peers_to_request
                         .entry(peer)
-                        .or_insert_with(|| Vec::new())
+                        .or_insert_with(Vec::new)
                         .push(hash.clone());
                 } else {
                     slog::warn!(log, "No peers found to retry full content for {hash}");

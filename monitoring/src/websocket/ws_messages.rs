@@ -50,6 +50,7 @@ pub struct IncomingTransferMetrics {
 }
 
 impl IncomingTransferMetrics {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         eta: f32,
         current_block_count: usize,

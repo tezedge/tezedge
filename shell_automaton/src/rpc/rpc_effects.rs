@@ -488,14 +488,14 @@ fn enqueue_injected_block<S: Service>(store: &mut Store<S>) {
     let mut has_accepted = false;
     for (injected_block_hash, rpc_id, _) in blocks {
         let block_hash = injected_block_hash.clone();
-        if !store.dispatch(RpcRejectOutdatedInjectedBlockAction { rpc_id, block_hash }) {
-            if !has_accepted {
-                has_accepted = true;
-                store.dispatch(BlockApplierEnqueueBlockAction {
-                    injector_rpc_id: Some(rpc_id),
-                    block_hash: injected_block_hash.into(),
-                });
-            }
+        if !store.dispatch(RpcRejectOutdatedInjectedBlockAction { rpc_id, block_hash })
+            && !has_accepted
+        {
+            has_accepted = true;
+            store.dispatch(BlockApplierEnqueueBlockAction {
+                injector_rpc_id: Some(rpc_id),
+                block_hash: injected_block_hash.into(),
+            });
         }
     }
 }

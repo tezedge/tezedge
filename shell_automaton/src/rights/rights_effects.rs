@@ -710,33 +710,30 @@ where
                 store.dispatch(RightsContextRequestedAction { key: key.clone(), token });
             }
         }
-        Action::ProtocolRunnerResponse(resp) => match &resp.result {
-            ProtocolRunnerResult::GetEndorsingRights((token, result)) => {
-                if let Some(key) = requests.iter().find_map(|(k, v)| {
-                    if matches!(v, RightsRequest::PendingRightsFromContextIthaca { token: t, .. } if token == t) {
-                        Some(k)
-                    } else {
-                        None
-                    }
-                }).cloned() {
-                    match result {
-                        Ok(Ok(result)) => {
-                                store.dispatch(RightsIthacaContextSuccessAction {
-                                    key,
-                                    endorsing_rights: result.clone(),
-                                });
-                        }
-                        Ok(Err(err)) => {
-                            store.dispatch(RightsErrorAction {
+        Action::ProtocolRunnerResponse(resp) => if let ProtocolRunnerResult::GetEndorsingRights((token, result)) = &resp.result {
+            if let Some(key) = requests.iter().find_map(|(k, v)| {
+                if matches!(v, RightsRequest::PendingRightsFromContextIthaca { token: t, .. } if token == t) {
+                    Some(k)
+                } else {
+                    None
+                }
+            }).cloned() {
+                match result {
+                    Ok(Ok(result)) => {
+                            store.dispatch(RightsIthacaContextSuccessAction {
                                 key,
-                                error: err.clone().into(),
+                                endorsing_rights: result.clone(),
                             });
-                        }
-                        _ => {}
                     }
+                    Ok(Err(err)) => {
+                        store.dispatch(RightsErrorAction {
+                            key,
+                            error: err.clone().into(),
+                        });
+                    }
+                    _ => {}
                 }
             }
-            _ => {}
         }
 
         Action::RightsIthacaContextSuccess(RightsIthacaContextSuccessAction { key, .. }) => {

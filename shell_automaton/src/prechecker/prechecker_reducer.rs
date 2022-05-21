@@ -89,64 +89,62 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
         }
 
         Action::PrecheckerRevalidateOperation(action) => {
-            if let Some(result) = operations.get_mut(&action.hash) {
-                if let Ok(PrecheckerOperation {
-                    state: op_state, ..
-                }) = result
-                {
-                    let endorsing_rights_verified = match op_state {
-                        PrecheckerOperationState::Applied { .. } => true,
-                        PrecheckerOperationState::BranchDelayed {
-                            endorsing_rights_verified,
-                            ..
-                        } => *endorsing_rights_verified,
-                        _ => false,
-                    };
-                    match op_state {
-                        PrecheckerOperationState::Applied {
-                            operation_decoded_contents,
-                        }
-                        | PrecheckerOperationState::BranchRefused {
-                            operation_decoded_contents,
-                        }
-                        | PrecheckerOperationState::BranchDelayed {
-                            operation_decoded_contents,
-                            ..
-                        }
-                        | PrecheckerOperationState::Outdated {
-                            operation_decoded_contents,
-                        } => {
-                            if let Some(consensus_contents) =
-                                operation_decoded_contents.as_tenderbake_consensus()
-                            {
-                                slog::debug!(state.log, "Revalidating operation `{}`", action.hash);
-                                *op_state = PrecheckerOperationState::TenderbakeConsensus {
-                                    operation_decoded_contents: operation_decoded_contents.clone(),
-                                    consensus_contents,
-                                    endorsing_rights_verified,
-                                };
-                            }
-                        }
-                        _ => {}
+            if let Some(Ok(PrecheckerOperation {
+                state: op_state, ..
+            })) = operations.get_mut(&action.hash)
+            {
+                let endorsing_rights_verified = match op_state {
+                    PrecheckerOperationState::Applied { .. } => true,
+                    PrecheckerOperationState::BranchDelayed {
+                        endorsing_rights_verified,
+                        ..
+                    } => *endorsing_rights_verified,
+                    _ => false,
+                };
+                match op_state {
+                    PrecheckerOperationState::Applied {
+                        operation_decoded_contents,
                     }
+                    | PrecheckerOperationState::BranchRefused {
+                        operation_decoded_contents,
+                    }
+                    | PrecheckerOperationState::BranchDelayed {
+                        operation_decoded_contents,
+                        ..
+                    }
+                    | PrecheckerOperationState::Outdated {
+                        operation_decoded_contents,
+                    } => {
+                        if let Some(consensus_contents) =
+                            operation_decoded_contents.as_tenderbake_consensus()
+                        {
+                            slog::debug!(state.log, "Revalidating operation `{}`", action.hash);
+                            *op_state = PrecheckerOperationState::TenderbakeConsensus {
+                                operation_decoded_contents: operation_decoded_contents.clone(),
+                                consensus_contents,
+                                endorsing_rights_verified,
+                            };
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
 
         Action::PrecheckerDecodeOperation(action) => {
-            if let Some(result) = operations.get_mut(&action.hash) {
-                if let Ok(PrecheckerOperation { operation, state }) = result {
-                    if let PrecheckerOperationState::Init { protocol } = state {
-                        *state = match OperationDecodedContents::parse(operation, protocol) {
-                            Ok(operation_decoded_contents) => PrecheckerOperationState::Decoded {
-                                operation_decoded_contents,
-                            },
-                            Err(error) => PrecheckerOperationState::Refused {
-                                operation_decoded_contents: None,
-                                error,
-                            },
-                        };
-                    }
+            if let Some(Ok(PrecheckerOperation { operation, state })) =
+                operations.get_mut(&action.hash)
+            {
+                if let PrecheckerOperationState::Init { protocol } = state {
+                    *state = match OperationDecodedContents::parse(operation, protocol) {
+                        Ok(operation_decoded_contents) => PrecheckerOperationState::Decoded {
+                            operation_decoded_contents,
+                        },
+                        Err(error) => PrecheckerOperationState::Refused {
+                            operation_decoded_contents: None,
+                            error,
+                        },
+                    };
                 }
             }
         }
@@ -178,10 +176,11 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
 
-        Action::PrecheckerValidateOperation(action) => match operations.get_mut(&action.hash) {
-            Some(Ok(PrecheckerOperation {
+        Action::PrecheckerValidateOperation(action) => {
+            if let Some(Ok(PrecheckerOperation {
                 state: op_state, ..
-            })) => {
+            })) = operations.get_mut(&action.hash)
+            {
                 let (operation_decoded_contents, consensus_contents, endorsing_rights_verified) =
                     match op_state {
                         PrecheckerOperationState::TenderbakeConsensus {
@@ -228,7 +227,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                         // check signature in advance
                         if *endorsing_rights_verified {
                             error_state
-                                .as_prechecker_operation_state(operation_decoded_contents, true)
+                                .into_prechecker_operation_state(operation_decoded_contents, true)
                         } else if let Err(err) = validate_tenderbake_consensus_operation_signature(
                             &action.hash,
                             &operation_decoded_contents,
@@ -243,10 +242,10 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                             }
                         } else {
                             error_state
-                                .as_prechecker_operation_state(operation_decoded_contents, true)
+                                .into_prechecker_operation_state(operation_decoded_contents, true)
                         }
                     } else {
-                        error_state.as_prechecker_operation_state(
+                        error_state.into_prechecker_operation_state(
                             operation_decoded_contents,
                             *endorsing_rights_verified,
                         )
@@ -276,8 +275,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                     }
                 }
             }
-            _ => {}
-        },
+        }
 
         Action::PrecheckerCacheProtocol(PrecheckerCacheProtocolAction {
             proto,
@@ -331,7 +329,7 @@ impl<'a> TenderbakeConsensusResult<'a> {
         matches!(self, Self::LevelInFuture(..) | Self::RoundInFuture(..))
     }
 
-    fn as_prechecker_operation_state(
+    fn into_prechecker_operation_state(
         self,
         operation_decoded_contents: OperationDecodedContents,
         endorsing_rights_verified: bool,
@@ -406,7 +404,7 @@ fn validate_tenderbake_consensus_operation_contents<'a>(
         ));
     }
 
-    if &actual.payload_hash != &expected.payload_hash {
+    if actual.payload_hash != expected.payload_hash {
         return Err(TenderbakeConsensusResult::CompetingProposal(
             &expected.payload_hash,
             &actual.payload_hash,

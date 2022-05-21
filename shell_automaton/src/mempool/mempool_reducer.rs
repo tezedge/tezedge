@@ -325,7 +325,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     &mut mempool_state.validated_operations.branch_refused,
                     &mempool_state.validated_operations.ops,
                 ) {
-                    if let Some(_) = mempool_state.validated_operations.ops.remove(&v.hash) {
+                    if mempool_state
+                        .validated_operations
+                        .ops
+                        .remove(&v.hash)
+                        .is_some()
+                    {
                         mempool_state.prechecking_delayed_operations.insert(v.hash);
                     }
                 }
@@ -336,7 +341,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 &mut mempool_state.validated_operations.branch_delayed,
                 &mempool_state.validated_operations.ops,
             ) {
-                if let Some(_) = mempool_state.validated_operations.ops.remove(&v.hash) {
+                if mempool_state
+                    .validated_operations
+                    .ops
+                    .remove(&v.hash)
+                    .is_some()
+                {
                     mempool_state.prechecking_delayed_operations.insert(v.hash);
                 }
             }
@@ -1006,7 +1016,7 @@ fn as_errored(hash: &OperationHash, result: PrecheckerResult) -> Errored {
             .contents()
             .map_or(serde_json::Value::Null, |contents| contents.as_json())
             .to_string(),
-        error_json: result.error().unwrap_or("<no error>".to_string()),
+        error_json: result.error().unwrap_or_else(|| "<no error>".to_string()),
     }
 }
 

@@ -390,7 +390,9 @@ impl StorageServiceDefault {
                             };
                             let additional_data = block_meta_storage
                                 .get_additional_data(&head.hash)?
-                                .ok_or(StorageError("missing additional_data".to_owned()))?;
+                                .ok_or_else(|| {
+                                    StorageError("missing additional_data".to_owned())
+                                })?;
                             Ok((head, pred, additional_data))
                         });
                     match result {

@@ -23,17 +23,16 @@ pub fn mempool_validator_reducer(state: &mut State, action: &ActionWithMeta) {
             };
         }
         Action::MempoolValidatorSuccess(content) => {
-            match &state.mempool.validator {
-                MempoolValidatorState::Pending {
-                    time, block_hash, ..
-                } => {
-                    let dur = action.time_as_nanos() - time;
-                    slog::info!(&state.log, "Constructed prevalidator";
+            if let MempoolValidatorState::Pending {
+                time, block_hash, ..
+            } = &state.mempool.validator
+            {
+                let dur = action.time_as_nanos() - time;
+                slog::info!(&state.log, "Constructed prevalidator";
                         "block_hash" => block_hash.to_base58_check(),
                         "duration" => format!("{}ms", dur / 1_000_000));
-                }
-                _ => {}
             }
+
             state.mempool.validator = MempoolValidatorState::Success {
                 time: action.time_as_nanos(),
                 prevalidator: content.prevalidator.clone(),
@@ -68,19 +67,17 @@ pub fn mempool_validator_reducer(state: &mut State, action: &ActionWithMeta) {
                 MempoolValidatorState::Ready { validate, .. } => validate,
                 _ => return,
             };
-            match validate {
-                MempoolValidatorValidateState::Init {
-                    op_hash,
-                    op_content,
-                    ..
-                } => {
-                    *validate = MempoolValidatorValidateState::Pending {
-                        time: action.time_as_nanos(),
-                        op_hash: op_hash.clone(),
-                        op_content: op_content.clone(),
-                    };
-                }
-                _ => (),
+            if let MempoolValidatorValidateState::Init {
+                op_hash,
+                op_content,
+                ..
+            } = validate
+            {
+                *validate = MempoolValidatorValidateState::Pending {
+                    time: action.time_as_nanos(),
+                    op_hash: op_hash.clone(),
+                    op_content: op_content.clone(),
+                };
             }
         }
         Action::MempoolValidatorValidateSuccess(content) => {
@@ -88,17 +85,14 @@ pub fn mempool_validator_reducer(state: &mut State, action: &ActionWithMeta) {
                 MempoolValidatorState::Ready { validate, .. } => validate,
                 _ => return,
             };
-            match validate {
-                MempoolValidatorValidateState::Pending { op_hash, .. } => {
-                    *validate = MempoolValidatorValidateState::Success {
-                        time: action.time_as_nanos(),
-                        op_hash: op_hash.clone(),
-                        result: content.result.clone(),
-                        protocol_preapply_start: content.protocol_preapply_start,
-                        protocol_preapply_end: content.protocol_preapply_end,
-                    };
-                }
-                _ => (),
+            if let MempoolValidatorValidateState::Pending { op_hash, .. } = validate {
+                *validate = MempoolValidatorValidateState::Success {
+                    time: action.time_as_nanos(),
+                    op_hash: op_hash.clone(),
+                    result: content.result.clone(),
+                    protocol_preapply_start: content.protocol_preapply_start,
+                    protocol_preapply_end: content.protocol_preapply_end,
+                };
             }
         }
         _ => {}

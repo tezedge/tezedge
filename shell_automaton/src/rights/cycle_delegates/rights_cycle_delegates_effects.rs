@@ -18,7 +18,10 @@ pub fn rights_cycle_delegates_effects<S>(
 {
     let delegates_state = &store.state.get().rights.cycle_delegates;
     match &action.action {
-        Action::RightsCycleDelegatesGet(RightsCycleDelegatesGetAction { cycle, block_header }) => {
+        Action::RightsCycleDelegatesGet(RightsCycleDelegatesGetAction {
+            cycle,
+            block_header,
+        }) => {
             let req = ProtocolRpcRequest {
                 block_header: block_header.clone(),
                 chain_arg: "main".to_string(),
@@ -37,8 +40,8 @@ pub fn rights_cycle_delegates_effects<S>(
             let token = store.service.protocol_runner().get_cycle_delegates(req);
             store.dispatch(RightsCycleDelegatesRequestedAction { cycle, token });
         }
-        Action::ProtocolRunnerResponse(resp) => match &resp.result {
-            ProtocolRunnerResult::GetCycleDelegates((token, result)) => {
+        Action::ProtocolRunnerResponse(resp) => {
+            if let ProtocolRunnerResult::GetCycleDelegates((token, result)) = &resp.result {
                 for cycle in delegates_state
                     .iter()
                     .filter_map(|(k, v)| {
@@ -53,9 +56,9 @@ pub fn rights_cycle_delegates_effects<S>(
                 {
                     match result {
                         Ok(Ok(delegates)) => {
-                                store.dispatch(RightsCycleDelegatesSuccessAction {
-                                    cycle,
-                                    delegates: delegates.clone(),
+                            store.dispatch(RightsCycleDelegatesSuccessAction {
+                                cycle,
+                                delegates: delegates.clone(),
                             });
                         }
                         Ok(Err(err)) => {
@@ -73,8 +76,7 @@ pub fn rights_cycle_delegates_effects<S>(
                     }
                 }
             }
-            _ => {}
-        },
+        }
 
         _ => (),
     }
