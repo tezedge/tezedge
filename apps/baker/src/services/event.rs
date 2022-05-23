@@ -48,6 +48,17 @@ impl OperationSimple {
     ) -> Self {
         Self::new(branch, &format!("{{\"block_payload_hash\":\"{payload_hash}\",\"kind\":\"preendorsement\",\"level\":{level},\"round\":{round},\"slot\":{slot}}}"))
     }
+
+    #[cfg(test)]
+    pub fn endorsement(
+        branch: &BlockHash,
+        payload_hash: &BlockPayloadHash,
+        level: i32,
+        round: i32,
+        slot: u16,
+    ) -> Self {
+        Self::new(branch, &format!("{{\"block_payload_hash\":\"{payload_hash}\",\"kind\":\"endorsement\",\"level\":{level},\"round\":{round},\"slot\":{slot}}}"))
+    }
 }
 
 pub enum OperationKind {
