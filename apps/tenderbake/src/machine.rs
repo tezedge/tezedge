@@ -892,16 +892,16 @@ where
                 round,
                 timestamp,
             },
-        ) = match (&mut self.timeout_this_level, &mut self.timeout_next_level) {
-            (Some(ref mut this), Some(ref mut next)) => {
+        ) = match (&self.timeout_this_level, &self.timeout_next_level) {
+            (Some(ref this), Some(ref next)) => {
                 if this.timestamp < next.timestamp {
                     (true, this.clone())
                 } else {
                     (false, next.clone())
                 }
             }
-            (Some(ref mut this), None) => (true, this.clone()),
-            (None, Some(ref mut next)) => (false, next.clone()),
+            (Some(ref this), None) => (true, this.clone()),
+            (None, Some(ref next)) => (false, next.clone()),
             (None, None) => return ArrayVec::default(),
         };
         let time_header = TimeHeader { round, timestamp };
