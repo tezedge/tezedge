@@ -292,7 +292,7 @@ impl RpcClient {
                     round,
                 )
             } else {
-                (BlockPayloadHash(vec![0; 32]), 0, 0)
+                (BlockPayloadHash(vec![0x55; 32]), 0, 0)
             };
 
             Ok(BakerAction::ProposalEvent(ProposalEventAction {

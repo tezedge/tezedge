@@ -18,7 +18,7 @@ where
     match action.action.as_ref() {
         // not our action
         None => (),
-        Some(baker_action) => {
+        Some(baker_action) => if baker_action.is_event() {
             let now = tb::Timestamp {
                 unix_epoch: Duration::from_nanos(action.time_as_nanos()),
             };

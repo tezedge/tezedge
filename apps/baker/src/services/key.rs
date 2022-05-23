@@ -113,10 +113,11 @@ impl CryptoService {
             chain_id.bin_write(&mut v)?;
             v
         };
+        let cut = value_bytes.len() - 64;
         let signature = self
             .secret_key
-            .sign(&[watermark_bytes.as_slice(), value_bytes.as_slice()])?;
-        value_bytes.extend_from_slice(&signature.0);
+            .sign(&[watermark_bytes.as_slice(), &value_bytes[..cut]])?;
+        value_bytes.splice(cut.., signature.0.iter().cloned());
         Ok((value_bytes, signature))
     }
 }

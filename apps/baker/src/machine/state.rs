@@ -530,7 +530,7 @@ impl Initialized {
                     block_payload_hash: BlockPayloadHash(block_id.payload_hash.0.to_vec()),
                 },
             ),
-            signature: Signature(vec![]),
+            signature: Signature(vec![0x55; 64]),
         };
         self.actions
             .push(BakerAction::PreVote(PreVoteAction { op: preendorsement }));
@@ -558,7 +558,7 @@ impl Initialized {
                     block_payload_hash: BlockPayloadHash(block_id.payload_hash.0.to_vec()),
                 },
             ),
-            signature: Signature(vec![]),
+            signature: Signature(vec![0x55; 64]),
         };
         self.actions
             .push(BakerAction::Vote(VoteAction { op: endorsement }));
@@ -610,7 +610,7 @@ impl Initialized {
                 Some(OperationKind::Anonymous) => {
                     let mut op = op;
                     if op.signature.is_none() {
-                        op.signature = Some(Signature(vec![0; 64]));
+                        op.signature = Some(Signature(vec![0x55; 64]));
                     }
                     operations[2].push(op)
                 }
@@ -618,7 +618,7 @@ impl Initialized {
             }
         }
         let payload_round = payload.payload_round;
-        let payload_hash = if payload.hash.0.as_slice() != [0; 32] {
+        let payload_hash = if payload.hash.0.as_slice() != [0x55; 32] {
             BlockPayloadHash(payload.hash.0.to_vec())
         } else {
             let hashes = operations[1..]
@@ -642,7 +642,7 @@ impl Initialized {
             seed_nonce_hash,
             proof_of_work_nonce: SizedBytes(0x7985fafe1fb70300u64.to_be_bytes()),
             liquidity_baking_escape_vote: false,
-            signature: Signature(vec![]),
+            signature: Signature(vec![0x55; 64]),
         };
         let timestamp = block.time_header.timestamp.unix_epoch.as_secs() as i64;
 

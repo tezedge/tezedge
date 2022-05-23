@@ -855,11 +855,11 @@ where
             let mut actions = ArrayVec::default();
             let new_block = Block {
                 pred_hash: self.hash.clone(),
-                hash: BlockHash(vec![0; 32]),
+                hash: BlockHash(vec![0x55; 32]),
                 level: self.level + 1,
                 time_header: TimeHeader { round, timestamp },
                 payload: Some(Payload {
-                    hash: PayloadHash(vec![0; 32]),
+                    hash: PayloadHash(vec![0x55; 32]),
                     payload_round: round,
                     pre_cer: None,
                     cer: None,
@@ -914,7 +914,7 @@ where
                     pre_cer,
                 } => Block {
                     pred_hash: pred_hash.clone(),
-                    hash: BlockHash(vec![0; 32]),
+                    hash: BlockHash(vec![0x55; 32]),
                     level: self.level,
                     time_header,
                     payload: Some(Payload {
@@ -927,11 +927,11 @@ where
                 },
                 PreVotesState::Collecting { .. } => Block {
                     pred_hash: self.pred_hash.clone(),
-                    hash: BlockHash(vec![0; 32]),
+                    hash: BlockHash(vec![0x55; 32]),
                     level: self.level,
                     time_header,
                     payload: Some(Payload {
-                        hash: PayloadHash(vec![0; 32]),
+                        hash: PayloadHash(vec![0x55; 32]),
                         payload_round: 0,
                         pre_cer: None,
                         cer: self.cer.clone(),
@@ -944,11 +944,11 @@ where
             match &self.inner_ {
                 VotesState::Done { cer, hash, .. } => Block {
                     pred_hash: hash.clone(),
-                    hash: BlockHash(vec![0; 32]),
+                    hash: BlockHash(vec![0x55; 32]),
                     level: self.level + 1,
                     time_header,
                     payload: Some(Payload {
-                        hash: PayloadHash(vec![0; 32]),
+                        hash: PayloadHash(vec![0x55; 32]),
                         payload_round: round,
                         pre_cer: None,
                         cer: Some(cer.clone()),
