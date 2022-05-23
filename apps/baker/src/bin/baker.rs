@@ -12,7 +12,10 @@ use std::{
 };
 
 use reqwest::Url;
+use serde::{Serialize, Deserialize};
 use structopt::StructOpt;
+
+use baker::EventWithTime;
 
 #[derive(StructOpt, Debug)]
 pub struct Arguments {
@@ -80,11 +83,28 @@ fn main() {
     let effects = baker_effects::<BakerStateEjectable, Services, Action>;
     let initial_time = SystemTime::now();
     let mut store = Store::new(reducer, effects, srv, initial_time, initial_state);
+
+    #[derive(Serialize, Deserialize)]
+    struct ActionWithInternal {
+        event: EventWithTime,
+        actions: Vec<BakerAction>,
+    }
+
     let mut previous_checkpoint = (0, 0);
+    let mut to_store = vec![];
     for event in events {
-        store.dispatch::<BakerAction>(event.action.into());
+        store.dispatch::<BakerAction>(event.clone().action.into());
         let state = store.state.get().as_ref().as_ref().unwrap();
         let st = state.as_ref();
+
+        if archive {
+            let action_with_internal = ActionWithInternal {
+                event,
+                actions: st.actions.clone(),
+            };
+            to_store.push(action_with_internal);
+        }
+
         let this_checkpoint = (
             st.tb_state.level().unwrap_or(0),
             st.tb_state.round().unwrap_or(0),
@@ -97,6 +117,11 @@ fn main() {
             slog::info!(log, "stored on disk");
 
             if archive {
+                let name = format!("_{}_{}_actions.json", this_checkpoint.0, this_checkpoint.1);
+                let file_actions = File::create(archive_path.join(name)).expect("msg");
+                serde_json::to_writer(file_actions, &to_store).unwrap();
+                to_store.clear();
+
                 let name = format!("_{}_{}.json", this_checkpoint.0, this_checkpoint.1);
                 let dst = archive_path.join(name);
                 slog::info!(log, "archive {}", dst.display());

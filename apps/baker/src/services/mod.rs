@@ -13,6 +13,7 @@ mod operation_mutator;
 use std::{path::PathBuf, sync::mpsc, time::SystemTime};
 
 use reqwest::Url;
+use serde::{Serialize, Deserialize};
 
 use redux_rs::TimeService;
 use tenderbake as tb;
@@ -26,6 +27,7 @@ pub struct Services {
     pub timer: timer::Timer,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct EventWithTime {
     pub action: BakerAction,
     pub now: tenderbake::Timestamp,
