@@ -97,3 +97,53 @@ impl CycleNonce {
             })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::CycleNonce;
+
+    #[test]
+    fn cycle_nonce_seed_reveal() {
+        let mut state = CycleNonce {
+            blocks_per_commitment: 4,
+            blocks_per_cycle: 4096,
+            nonce_length: 32,
+            cycle: 0,
+            previous: BTreeMap::new(),
+            this: BTreeMap::new(),
+        };
+
+        let mut c = 0;
+        let l = state.blocks_per_cycle as i32;
+
+        // should have seeds
+        let mut n = 0;
+
+        // simulate one cycle
+        for level in (c * l)..((c + 1) * l) {
+            let reveal = state.reveal_nonce(level).collect::<Vec<_>>();
+            assert!(reveal.is_empty());
+
+            // 1/8 chance
+            if rand::random::<u8>() < (256 / 8) as u8 {
+                state.gen_nonce(level);
+                if (level as u32) % state.blocks_per_commitment == 0 {
+                    n += 1;
+                }
+            }
+        }
+
+        // simulate next cycle
+        c += 1;
+        let mut revealed = vec![];
+        for level in (c * l)..((c + 1) * l) {
+            let mut reveal = state.reveal_nonce(level).collect::<Vec<_>>();
+            revealed.append(&mut reveal);
+        }
+
+        assert_eq!(revealed.len(), n);
+        println!("{n}");
+    }
+}
