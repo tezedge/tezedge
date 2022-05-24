@@ -113,6 +113,8 @@ pub struct ApplyBlockResponse {
     /// Note: This is calculated from ops_metadata_hashes - we need this in request
     ///       This is calculated as merkle tree hash, like operation paths
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
+    pub cycle: Option<i32>,
+    pub cycle_position: Option<i32>,
     pub cycle_rolls_owner_snapshots: Vec<CycleRollsOwnerSnapshot>,
     pub new_protocol_constants_json: Option<String>,
     pub new_cycle_eras_json: Option<String>,
