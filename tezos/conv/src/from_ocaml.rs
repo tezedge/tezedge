@@ -155,6 +155,8 @@ impl_from_ocaml_record! {
         block_metadata_hash: Option<OCamlBlockMetadataHash>,
         ops_metadata_hashes: Option<OCamlList<OCamlList<OCamlOperationMetadataHash>>>,
         ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
+        cycle: Option<OCamlInt>,
+        cycle_position: Option<OCamlInt>,
         cycle_rolls_owner_snapshots: OCamlList<OCamlCycleRollsOwnerSnapshot>,
         new_protocol_constants_json: Option<String>,
         new_cycle_eras_json: Option<String>,

@@ -326,6 +326,8 @@ fn test_apply_block_response_conv() {
         block_metadata_hash: None,
         ops_metadata_hashes: None,
         ops_metadata_hash: None,
+        cycle: None,
+        cycle_position: None,
         cycle_rolls_owner_snapshots: vec![],
         new_protocol_constants_json: None,
         new_cycle_eras_json: None,
