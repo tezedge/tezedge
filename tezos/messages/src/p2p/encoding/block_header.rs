@@ -8,9 +8,10 @@ use serde::{Deserialize, Serialize};
 use crate::Timestamp;
 
 use super::fitness::Fitness;
-use crypto::hash::{BlockHash, ContextHash, OperationListListHash};
+use crypto::hash::{BlockHash, ContextHash, OperationListListHash, Signature};
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
+use tezos_encoding::types::SizedBytes;
 use tezos_encoding::{enc::BinWriter, types::Bytes};
 
 use super::limits::{
@@ -105,6 +106,24 @@ pub struct BlockHeader {
     #[builder(default)]
     #[encoding(hash)]
     hash: EncodingHash,
+}
+
+impl BlockHeader {
+    pub fn set_proof_of_work_nonce(&mut self, nonce: &SizedBytes<8>) {
+        let mut data: Vec<_> = std::mem::take(&mut self.protocol_data).into();
+        let pos = 36;
+        data[pos..(pos + 8)].clone_from_slice(nonce.as_ref());
+        self.protocol_data = data.into();
+    }
+
+    pub fn set_signature(&mut self, signature: &Signature) {
+        let mut data: Vec<_> = std::mem::take(&mut self.protocol_data).into();
+        // remove old signature bytes.
+        let len = data.len().saturating_sub(64);
+        data.resize(len, 0);
+        data.extend_from_slice(signature.as_ref());
+        self.protocol_data = data.into();
+    }
 }
 
 impl std::fmt::Debug for BlockHeader {

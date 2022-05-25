@@ -14,7 +14,8 @@ use slog::Logger;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, CommitGenesisResult,
-    InitProtocolContextResult, PrevalidatorWrapper, ProtocolRpcRequest, ProtocolRpcResponse,
+    ComputePathRequest, ComputePathResponse, InitProtocolContextResult, PreapplyBlockRequest,
+    PreapplyBlockResponse, PrevalidatorWrapper, ProtocolRpcRequest, ProtocolRpcResponse,
     TezosRuntimeConfiguration, ValidateOperationRequest, ValidateOperationResponse,
 };
 use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
@@ -69,6 +70,13 @@ pub enum ProtocolRunnerResult {
         ),
     ),
 
+    PreapplyBlock(
+        (
+            ProtocolRunnerToken,
+            Result<PreapplyBlockResponse, ProtocolServiceError>,
+        ),
+    ),
+
     ApplyBlock(
         (
             ProtocolRunnerToken,
@@ -111,6 +119,13 @@ pub enum ProtocolRunnerResult {
         ),
     ),
 
+    ComputeOperationsPaths(
+        (
+            ProtocolRunnerToken,
+            Result<ComputePathResponse, ProtocolServiceError>,
+        ),
+    ),
+
     ShutdownServer(Result<(), ProtocolRunnerError>),
 }
 
@@ -123,12 +138,14 @@ impl ProtocolRunnerResult {
             Self::InitContextIpcServer((token, _)) => Some(*token),
             Self::GenesisCommitResultGet((token, _)) => Some(*token),
             Self::LatestContextHashesGet((token, _)) => Some(*token),
+            Self::PreapplyBlock((token, _)) => Some(*token),
             Self::ApplyBlock((token, _)) => Some(*token),
             Self::BeginConstruction((token, _)) => Some(*token),
             Self::ValidateOperation((token, _)) => Some(*token),
             Self::GetContextRawBytes((token, _)) => Some(*token),
             Self::GetEndorsingRights((token, _)) => Some(*token),
             Self::GetCycleDelegates((token, _)) => Some(*token),
+            Self::ComputeOperationsPaths((token, _)) => Some(*token),
 
             Self::ShutdownServer(_) => None,
         }
@@ -169,6 +186,8 @@ pub trait ProtocolRunnerService {
 
     fn get_latest_context_hashes(&mut self, count: i64) -> ProtocolRunnerToken;
 
+    fn preapply_block(&mut self, req: PreapplyBlockRequest) -> ProtocolRunnerToken;
+
     fn apply_block(&mut self, req: ApplyBlockRequest);
 
     // Prevalidator
@@ -183,6 +202,8 @@ pub trait ProtocolRunnerService {
     fn get_endorsing_rights(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken;
 
     fn get_cycle_delegates(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken;
+
+    fn compute_operations_paths(&mut self, req: ComputePathRequest) -> ProtocolRunnerToken;
 
     /// Notify status of protocol runner's and it's context initialization.
     fn notify_status(&mut self, initialized: bool);
@@ -316,6 +337,16 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
         token
     }
 
+    fn preapply_block(&mut self, req: PreapplyBlockRequest) -> ProtocolRunnerToken {
+        let token = self.new_token();
+        let message = ProtocolMessage::PreapplyBlock(req);
+        self.channel
+            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
+            .unwrap();
+
+        token
+    }
+
     fn apply_block(&mut self, req: ApplyBlockRequest) {
         let token = self.new_token();
         let message = ProtocolMessage::ApplyBlockCall(req);
@@ -363,6 +394,15 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
     fn get_cycle_delegates(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken {
         let token = self.new_token();
         let message = ProtocolMessage::GetCycleDelegates(req);
+        self.channel
+            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
+            .unwrap();
+        token
+    }
+
+    fn compute_operations_paths(&mut self, req: ComputePathRequest) -> ProtocolRunnerToken {
+        let token = self.new_token();
+        let message = ProtocolMessage::ComputePathCall(req);
         self.channel
             .blocking_send(ProtocolRunnerRequest::Message((token, message)))
             .unwrap();

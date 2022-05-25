@@ -279,6 +279,12 @@ impl ProtocolRunnerServiceWorker {
                     .send(ProtocolRunnerResult::GetCycleDelegates((token, res)))
                     .await;
             }
+            ProtocolMessage::ComputePathCall(req) => {
+                let res = conn.compute_path(req).await;
+                let _ = channel
+                    .send(ProtocolRunnerResult::ComputeOperationsPaths((token, res)))
+                    .await;
+            }
             _other => {
                 // TODO: say which message
                 slog::warn!(

@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{
-    ApplyBlockRequest, BeginConstructionRequest, ProtocolRpcRequest, TezosRuntimeConfiguration,
-    ValidateOperationRequest,
+    ApplyBlockRequest, BeginConstructionRequest, ComputePathRequest, PreapplyBlockRequest,
+    ProtocolRpcRequest, TezosRuntimeConfiguration, ValidateOperationRequest,
 };
 use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
 use tezos_protocol_ipc_client::ProtocolServiceError;
@@ -79,6 +79,10 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDummy {
         self.new_token()
     }
 
+    fn preapply_block(&mut self, _req: PreapplyBlockRequest) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
     fn apply_block(&mut self, _: ApplyBlockRequest) {}
 
     fn begin_construction(&mut self, _: BeginConstructionRequest) -> ProtocolRunnerToken {
@@ -98,6 +102,10 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDummy {
     }
 
     fn get_cycle_delegates(&mut self, _: ProtocolRpcRequest) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
+    fn compute_operations_paths(&mut self, _: ComputePathRequest) -> ProtocolRunnerToken {
         self.new_token()
     }
 

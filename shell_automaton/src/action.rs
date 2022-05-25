@@ -158,6 +158,7 @@ use crate::storage::{
     kv_cycle_meta, kv_operations,
 };
 
+use crate::baker::block_baker::*;
 use crate::baker::block_endorser::*;
 
 use crate::shutdown::{ShutdownInitAction, ShutdownPendingAction, ShutdownSuccessAction};
@@ -738,6 +739,39 @@ pub enum Action {
     BakerBlockEndorserEndorsementSignSuccess(BakerBlockEndorserEndorsementSignSuccessAction),
     BakerBlockEndorserEndorsementInjectPending(BakerBlockEndorserEndorsementInjectPendingAction),
     BakerBlockEndorserEndorsementInjectSuccess(BakerBlockEndorserEndorsementInjectSuccessAction),
+
+    BakerBlockBakerRightsGetInit(BakerBlockBakerRightsGetInitAction),
+    BakerBlockBakerRightsGetPending(BakerBlockBakerRightsGetPendingAction),
+    BakerBlockBakerRightsGetCurrentLevelSuccess(BakerBlockBakerRightsGetCurrentLevelSuccessAction),
+    BakerBlockBakerRightsGetNextLevelSuccess(BakerBlockBakerRightsGetNextLevelSuccessAction),
+    BakerBlockBakerRightsGetSuccess(BakerBlockBakerRightsGetSuccessAction),
+    BakerBlockBakerRightsNoRights(BakerBlockBakerRightsNoRightsAction),
+    BakerBlockBakerTimeoutPending(BakerBlockBakerTimeoutPendingAction),
+    BakerBlockBakerNextLevelTimeoutSuccessQuorumPending(
+        BakerBlockBakerNextLevelTimeoutSuccessQuorumPendingAction,
+    ),
+    BakerBlockBakerBakeNextLevel(BakerBlockBakerBakeNextLevelAction),
+    BakerBlockBakerBakeNextRound(BakerBlockBakerBakeNextRoundAction),
+    BakerBlockBakerBuildBlockInit(BakerBlockBakerBuildBlockInitAction),
+    BakerBlockBakerBuildBlockSuccess(BakerBlockBakerBuildBlockSuccessAction),
+    BakerBlockBakerPreapplyInit(BakerBlockBakerPreapplyInitAction),
+    BakerBlockBakerPreapplyPending(BakerBlockBakerPreapplyPendingAction),
+    BakerBlockBakerPreapplySuccess(BakerBlockBakerPreapplySuccessAction),
+    BakerBlockBakerComputeProofOfWorkInit(BakerBlockBakerComputeProofOfWorkInitAction),
+    BakerBlockBakerComputeProofOfWorkPending(BakerBlockBakerComputeProofOfWorkPendingAction),
+    BakerBlockBakerComputeProofOfWorkSuccess(BakerBlockBakerComputeProofOfWorkSuccessAction),
+    BakerBlockBakerSignPending(BakerBlockBakerSignPendingAction),
+    BakerBlockBakerSignSuccess(BakerBlockBakerSignSuccessAction),
+    BakerBlockBakerComputeOperationsPathsInit(BakerBlockBakerComputeOperationsPathsInitAction),
+    BakerBlockBakerComputeOperationsPathsPending(
+        BakerBlockBakerComputeOperationsPathsPendingAction,
+    ),
+    BakerBlockBakerComputeOperationsPathsSuccess(
+        BakerBlockBakerComputeOperationsPathsSuccessAction,
+    ),
+    BakerBlockBakerInjectInit(BakerBlockBakerInjectInitAction),
+    BakerBlockBakerInjectPending(BakerBlockBakerInjectPendingAction),
+    BakerBlockBakerInjectSuccess(BakerBlockBakerInjectSuccessAction),
 
     ShutdownInit(ShutdownInitAction),
     ShutdownPending(ShutdownPendingAction),

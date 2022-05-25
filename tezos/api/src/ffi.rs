@@ -8,8 +8,8 @@ use std::{convert::TryFrom, fmt};
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use tezos_messages::p2p::encoding::block_header::Level;
-use tezos_messages::Timestamp;
 use tezos_messages::p2p::encoding::fitness::Fitness;
+use tezos_messages::Timestamp;
 use thiserror::Error;
 
 use crypto::hash::{
