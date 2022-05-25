@@ -72,6 +72,9 @@ pub struct CurrentHeadRehydrateSuccessAction {
 
     pub block_metadata_hash: Option<BlockMetadataHash>,
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
+
+    pub pred_block_metadata_hash: Option<BlockMetadataHash>,
+    pub pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
 impl EnablingCondition<State> for CurrentHeadRehydrateSuccessAction {
@@ -105,6 +108,8 @@ pub struct CurrentHeadUpdateAction {
     pub payload_hash: Option<BlockPayloadHash>,
     pub block_metadata_hash: Option<BlockMetadataHash>,
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
+    pub pred_block_metadata_hash: Option<BlockMetadataHash>,
+    pub pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
 impl EnablingCondition<State> for CurrentHeadUpdateAction {
