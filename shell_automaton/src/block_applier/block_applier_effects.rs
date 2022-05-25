@@ -223,6 +223,8 @@ where
                     injector_rpc_id,
                     block_additional_data,
                     payload_hash,
+                    pred_block_metadata_hash,
+                    pred_ops_metadata_hash,
                     ..
                 } => {
                     let chain_id = store.state().config.chain_id.clone();
@@ -243,6 +245,8 @@ where
                     let next_protocol = block_additional_data.next_protocol_hash.clone();
                     let block_metadata_hash = block_additional_data.block_metadata_hash().clone();
                     let ops_metadata_hash = block_additional_data.ops_metadata_hash().clone();
+                    let pred_block_metadata_hash = pred_block_metadata_hash.clone();
+                    let pred_ops_metadata_hash = pred_ops_metadata_hash.clone();
                     store.dispatch(CurrentHeadUpdateAction {
                         new_head,
                         protocol,
@@ -250,6 +254,8 @@ where
                         payload_hash,
                         block_metadata_hash,
                         ops_metadata_hash,
+                        pred_block_metadata_hash,
+                        pred_ops_metadata_hash,
                     });
                 }
                 _ => return,
