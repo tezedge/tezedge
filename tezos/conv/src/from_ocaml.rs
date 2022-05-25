@@ -6,9 +6,9 @@ use std::convert::TryFrom;
 use crate::{
     OCamlApplyBlockExecutionTimestamps, OCamlBlockPayloadHash, OCamlClassifiedOperation,
     OCamlCommitGenesisResult, OCamlComputePathResponse, OCamlCycleRollsOwnerSnapshot,
-    OCamlInitProtocolContextResult, OCamlNodeMessage, OCamlPreFilterOperationResponse,
-    OCamlPreFilterOperationResult, OCamlRationalString,
-    OCamlTezosContextTezedgeOnDiskBackendOptions,
+    OCamlInitProtocolContextResult, OCamlNodeMessage, OCamlOperationListListHash,
+    OCamlPreFilterOperationResponse, OCamlPreFilterOperationResult, OCamlPreapplyBlockResponse,
+    OCamlRationalString, OCamlTezosContextTezedgeOnDiskBackendOptions,
 };
 
 use super::{
@@ -23,11 +23,11 @@ use super::{
 };
 use crypto::hash::{
     BlockHash, BlockMetadataHash, BlockPayloadHash, ChainId, ContextHash, Hash, OperationHash,
-    OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
+    OperationListListHash, OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use ocaml_interop::{
     impl_from_ocaml_polymorphic_variant, impl_from_ocaml_record, impl_from_ocaml_variant,
-    FromOCaml, OCaml, OCamlBytes, OCamlFloat, OCamlInt, OCamlInt32, OCamlList,
+    FromOCaml, OCaml, OCamlBytes, OCamlFloat, OCamlInt, OCamlInt32, OCamlInt64, OCamlList,
 };
 use tezos_api::ffi::{
     Applied, ApplyBlockError, ApplyBlockExecutionTimestamps, ApplyBlockResponse,
@@ -37,15 +37,22 @@ use tezos_api::ffi::{
     GetLastContextHashesError, HelpersPreapplyError, HelpersPreapplyResponse,
     InitProtocolContextResult, IntegrityCheckContextError, OperationClassification,
     PreFilterOperationError, PreFilterOperationResponse, PreFilterOperationResult,
-    PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError, ProtocolRpcResponse, Rational,
-    RestoreContextError, RpcArgDesc, RpcMethod, TezosErrorTrace, TezosStorageInitError,
-    ValidateOperationError, ValidateOperationResponse, ValidateOperationResult,
+    PreapplyBlockResponse, PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError,
+    ProtocolRpcResponse, Rational, RestoreContextError, RpcArgDesc, RpcMethod, TezosErrorTrace,
+    TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
+    ValidateOperationResult,
 };
 use tezos_context_api::{
     ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration,
     TezosContextTezedgeOnDiskBackendOptions,
 };
-use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathItem};
+use tezos_messages::{
+    p2p::encoding::{
+        fitness::Fitness,
+        operations_for_blocks::{Path, PathItem},
+    },
+    Timestamp,
+};
 use tezos_protocol_ipc_messages::NodeMessage;
 
 macro_rules! from_ocaml_hash {
@@ -76,6 +83,7 @@ macro_rules! from_ocaml_typed_hash {
 
 from_ocaml_hash!(OCamlHash, Hash);
 from_ocaml_typed_hash!(OCamlOperationHash, OperationHash);
+from_ocaml_typed_hash!(OCamlOperationListListHash, OperationListListHash);
 from_ocaml_typed_hash!(OCamlBlockHash, BlockHash);
 from_ocaml_typed_hash!(OCamlContextHash, ContextHash);
 from_ocaml_typed_hash!(OCamlProtocolHash, ProtocolHash);
@@ -287,6 +295,52 @@ impl_from_ocaml_record! {
     }
 }
 
+// Internal definitions to help with the conversion of PreapplyBlockResponse
+struct OCamlIntU8 {}
+struct OCamlInt64Timestamp {}
+struct OCamlFitness {}
+
+unsafe impl FromOCaml<OCamlIntU8> for u8 {
+    fn from_ocaml(v: OCaml<OCamlIntU8>) -> Self {
+        // Safe transmute, we know OCamlIntU8 is just OCamlInt
+        let n: OCaml<OCamlInt> = unsafe { std::mem::transmute(v) };
+        let n: i32 = n.to_rust();
+        n as u8
+    }
+}
+
+unsafe impl FromOCaml<OCamlInt64Timestamp> for Timestamp {
+    fn from_ocaml(v: OCaml<OCamlInt64Timestamp>) -> Self {
+        // Safe transmute, we know OCamlInt64Timestamp is just OCamlInt64
+        let n: OCaml<OCamlInt64> = unsafe { std::mem::transmute(v) };
+        let n: i64 = n.to_rust();
+        n.into()
+    }
+}
+
+unsafe impl FromOCaml<OCamlFitness> for Fitness {
+    fn from_ocaml(v: OCaml<OCamlFitness>) -> Self {
+        // Safe transmute, we know OCamlFitness is just OCamlList<OCamlBytes>
+        let f: OCaml<OCamlList<OCamlBytes>> = unsafe { std::mem::transmute(v) };
+        let f: Vec<Vec<u8>> = f.to_rust();
+        f.into()
+    }
+}
+
+impl_from_ocaml_record! {
+    OCamlPreapplyBlockResponse => PreapplyBlockResponse {
+        level: OCamlInt32,
+        proto: OCamlIntU8,
+        predecessor: OCamlBlockHash,
+        timestamp: OCamlInt64Timestamp,
+        validation_pass: OCamlIntU8,
+        operations_hash: OCamlOperationListListHash,
+        fitness: OCamlFitness,
+        context: OCamlContextHash,
+        applied_operations: OCamlList<OCamlOperationHash>,
+    }
+}
+
 impl_from_ocaml_record! {
     OCamlHelpersPreapplyResponse => HelpersPreapplyResponse {
         body: OCamlBytes,
@@ -424,6 +478,8 @@ impl_from_ocaml_polymorphic_variant! {
             NodeMessage::PreFilterOperationResult(result),
         ValidateOperationResponse(result: Result<OCamlValidateOperationResponse, OCamlTezosErrorTrace>) =>
             NodeMessage::ValidateOperationResponse(result),
+        PreapplyBlockResponse(result: Result<OCamlPreapplyBlockResponse, OCamlTezosErrorTrace>) =>
+            NodeMessage::PreapplyBlockResponse(result),
         RpcResponse(result: Result<OCamlProtocolRpcResponse, OCamlProtocolRpcError>) =>
             NodeMessage::RpcResponse(result),
         HelpersPreapplyResponse(result: Result<OCamlHelpersPreapplyResponse, OCamlTezosErrorTrace>) =>

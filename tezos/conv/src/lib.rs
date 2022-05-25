@@ -103,6 +103,7 @@ pub struct OCamlApplyBlockRequest {}
 pub struct OCamlBeginApplicationRequest {}
 pub struct OCamlBeginConstructionRequest {}
 pub struct OCamlValidateOperationRequest {}
+pub struct OCamlPreapplyBlockRequest {}
 
 pub struct OCamlRpcRequest {}
 pub struct OCamlProtocolRpcRequest {}
@@ -131,6 +132,7 @@ pub struct OCamlTezosContextTezEdgeStorageConfiguration {}
 pub struct OCamlTezosErrorTrace {}
 pub struct OCamlPreFilterOperationResponse {}
 pub struct OCamlValidateOperationResponse {}
+pub struct OCamlPreapplyBlockResponse {}
 pub struct OCamlClassifiedOperation {}
 pub struct OCamlPreFilterOperationResult {}
 pub struct OCamlValidateOperationResult {}
