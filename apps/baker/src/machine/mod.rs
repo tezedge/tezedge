@@ -115,7 +115,10 @@ mod tests {
                             .unwrap();
     
                         state = state.handle_event(EventWithTime {
-                            action: BakerAction::TickEvent(TickEventAction {}),
+                            action: BakerAction::TickEvent(TickEventAction {
+                                scheduled_at_level: level,
+                                scheduled_at_round: round,
+                            }),
                             now: deadline,
                         });
     
@@ -197,7 +200,10 @@ mod tests {
                     .unwrap();
 
                 state = state.handle_event(EventWithTime {
-                    action: BakerAction::TickEvent(TickEventAction {}),
+                    action: BakerAction::TickEvent(TickEventAction {
+                        scheduled_at_level: level,
+                        scheduled_at_round: round,
+                    }),
                     now: deadline,
                 });
 

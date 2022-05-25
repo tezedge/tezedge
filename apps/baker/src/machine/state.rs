@@ -455,14 +455,16 @@ impl BakerState {
                 }
                 self
             }
-            BakerAction::TickEvent(TickEventAction {}) => {
+            BakerAction::TickEvent(TickEventAction { scheduled_at_level, scheduled_at_round }) => {
                 let state = self.as_mut();
-                let (tb_actions, records) =
-                    state.tb_state.handle(&state.tb_config, tb::Event::Timeout);
-                state.actions.extend(records.into_iter().map(|record| {
-                    BakerAction::LogTenderbake(LogTenderbakeAction { record })
-                }));
-                state.handle_tb_actions(tb_actions);
+                if scheduled_at_level == state.tb_state.level().unwrap_or(1) && scheduled_at_round == state.tb_state.round().unwrap_or(0) {
+                    let (tb_actions, records) =
+                        state.tb_state.handle(&state.tb_config, tb::Event::Timeout);
+                    state.actions.extend(records.into_iter().map(|record| {
+                        BakerAction::LogTenderbake(LogTenderbakeAction { record })
+                    }));
+                    state.handle_tb_actions(tb_actions);
+                }
                 self
             }
             _ => self,

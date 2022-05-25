@@ -55,7 +55,12 @@ fn main() {
     let (srv, events) = Services::new(endpoint, &base_dir, &baker);
     let chain_id = srv.client.get_chain_id().unwrap();
     let _ = srv.client.wait_bootstrapped().unwrap();
-    let constants = srv.client.get_constants().unwrap();
+    let constants = loop {
+        match srv.client.get_constants() {
+            Ok(v) => break v,
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(200)),
+        }
+    };
     srv.client.monitor_heads(&chain_id).unwrap();
     let log = srv.log.clone();
 
@@ -93,6 +98,22 @@ fn main() {
     let mut previous_checkpoint = (0, 0);
     let mut to_store = vec![];
     for event in events {
+        if let BakerAction::ProposalEvent(_) = &event.action {
+            if !to_store.is_empty() {
+                let state = store.state.get().as_ref().as_ref().unwrap();
+                let st = state.as_ref();
+
+                let name = format!(
+                    "_{}_{}_actions.json",
+                    st.tb_state.level().unwrap_or(0),
+                    st.tb_state.round().unwrap_or(0),
+                );
+                let file_actions = File::create(archive_path.join(name)).expect("msg");
+                serde_json::to_writer(file_actions, &to_store).unwrap();
+                to_store.clear();
+            }
+        }
+
         store.dispatch::<BakerAction>(event.clone().action.into());
         let state = store.state.get().as_ref().as_ref().unwrap();
         let st = state.as_ref();
@@ -117,11 +138,6 @@ fn main() {
             slog::info!(log, "stored on disk");
 
             if archive {
-                let name = format!("_{}_{}_actions.json", this_checkpoint.0, this_checkpoint.1);
-                let file_actions = File::create(archive_path.join(name)).expect("msg");
-                serde_json::to_writer(file_actions, &to_store).unwrap();
-                to_store.clear();
-
                 let name = format!("_{}_{}.json", this_checkpoint.0, this_checkpoint.1);
                 let dst = archive_path.join(name);
                 slog::info!(log, "archive {}", dst.display());
@@ -135,5 +151,12 @@ fn main() {
             }
         }
         previous_checkpoint = this_checkpoint;
+
+        // if terminating.load(Ordering::SeqCst) {
+        //     // ctrl+c pressed, state is on disk, terminate the baker
+        //     slog::info!(log, "terminated gracefully");
+        //     fs_extra::dir::copy(base_dir, "../../python-test-logs", &Default::default()).unwrap();
+        //     break;
+        // }
     }
 }

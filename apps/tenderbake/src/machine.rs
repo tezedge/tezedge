@@ -298,7 +298,7 @@ where
         let mut actions = ArrayVec::default();
         // bake only if it is transition block (payload is none)
         let timeout_next_level = if block.payload.is_none() {
-            block.time_header.calculate(config, now, block.level)
+            block.time_header.calculate(log, config, now, block.level)
         } else {
             None
         };
@@ -426,7 +426,7 @@ where
             }
         };
 
-        let timeout_this_level = pred_time_header.calculate(config, now, block.level);
+        let timeout_this_level = pred_time_header.calculate(log, config, now, block.level);
         let delay = Duration::from_millis(DELAY_MS);
         actions.extend(
             timeout_this_level
@@ -596,10 +596,10 @@ where
                     .this_time_headers
                     .get(hash)
                     .expect("invariant")
-                    .calculate(config, now, self_.level),
+                    .calculate(log, config, now, self_.level),
                 VotesState::Collecting { .. } => None,
             };
-            self_.timeout_this_level = pred_time_header.calculate(config, now, block.level);
+            self_.timeout_this_level = pred_time_header.calculate(log, config, now, block.level);
 
             let delay = Duration::from_millis(DELAY_MS);
             let t = match (&self_.timeout_this_level, &self_.timeout_next_level) {
@@ -827,7 +827,7 @@ where
                     votes: mem::take(votes),
                 },
             };
-            self.timeout_next_level = self.this_time_header.calculate(config, now, self.level);
+            self.timeout_next_level = self.this_time_header.calculate(log, config, now, self.level);
 
             if let Some(ref n) = &self.timeout_next_level {
                 let timestamp = n.timestamp;

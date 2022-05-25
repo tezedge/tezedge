@@ -134,7 +134,10 @@ where
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct TickEventAction {}
+pub struct TickEventAction {
+    pub scheduled_at_level: i32,
+    pub scheduled_at_round: i32,
+}
 
 impl<S> EnablingCondition<S> for TickEventAction
 where

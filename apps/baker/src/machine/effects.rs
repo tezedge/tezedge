@@ -127,7 +127,11 @@ where
             }
         }
         Some(BakerAction::ScheduleTimeout(ScheduleTimeoutAction { deadline })) => {
-            store.service.timer().schedule(*deadline);
+            store.service.timer().schedule(
+                *deadline,
+                st.tb_state.level().unwrap_or(1),
+                st.tb_state.round().unwrap_or(0),
+            );
         }
         Some(BakerAction::RevealNonce(RevealNonceAction {
             branch,
