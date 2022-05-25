@@ -57,13 +57,21 @@ where
             }
 
             match &content.response.result {
-                Ok(StorageResponseSuccess::CurrentHeadGetSuccess(head, pred, additional_data)) => {
+                Ok(StorageResponseSuccess::CurrentHeadGetSuccess(data)) => {
                     store.dispatch(CurrentHeadRehydrateSuccessAction {
-                        head: head.clone(),
-                        head_pred: pred.clone(),
+                        head: data.head.clone(),
+                        head_pred: data.pred.clone(),
 
-                        block_metadata_hash: additional_data.block_metadata_hash().clone(),
-                        ops_metadata_hash: additional_data.ops_metadata_hash().clone(),
+                        block_metadata_hash: data.additional_data.block_metadata_hash().clone(),
+                        ops_metadata_hash: data.additional_data.ops_metadata_hash().clone(),
+                        pred_block_metadata_hash: data
+                            .pred_additional_data
+                            .as_ref()
+                            .and_then(|v| v.block_metadata_hash().clone()),
+                        pred_ops_metadata_hash: data
+                            .pred_additional_data
+                            .as_ref()
+                            .and_then(|v| v.ops_metadata_hash().clone()),
                     });
                 }
                 Err(StorageResponseError::CurrentHeadGetError(error)) => {

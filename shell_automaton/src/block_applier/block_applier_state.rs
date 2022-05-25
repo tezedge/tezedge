@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, BlockPayloadHash};
+use crypto::hash::{BlockHash, BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash};
 use storage::block_meta_storage::Meta;
 use storage::{BlockAdditionalData, BlockHeaderWithHash};
 use tezos_api::ffi::{ApplyBlockRequest, ApplyBlockResponse};
@@ -73,6 +73,8 @@ pub enum BlockApplierApplyState {
         block: Arc<BlockHeaderWithHash>,
         block_meta: Arc<Meta>,
         block_operations: Vec<Vec<Operation>>,
+        pred_block_metadata_hash: Option<BlockMetadataHash>,
+        pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
         retry: Option<ProtocolServiceError>,
@@ -87,6 +89,8 @@ pub enum BlockApplierApplyState {
         block: Arc<BlockHeaderWithHash>,
         block_meta: Arc<Meta>,
         block_operations: Vec<Vec<Operation>>,
+        pred_block_metadata_hash: Option<BlockMetadataHash>,
+        pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
         retry: Option<ProtocolServiceError>,
@@ -100,6 +104,8 @@ pub enum BlockApplierApplyState {
         block: Arc<BlockHeaderWithHash>,
         block_additional_data: Arc<BlockAdditionalData>,
         block_operations: Vec<Vec<Operation>>,
+        pred_block_metadata_hash: Option<BlockMetadataHash>,
+        pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
         retry: Option<ProtocolServiceError>,
@@ -119,6 +125,8 @@ pub enum BlockApplierApplyState {
         block: Arc<BlockHeaderWithHash>,
         block_additional_data: Arc<BlockAdditionalData>,
         block_operations: Vec<Vec<Operation>>,
+        pred_block_metadata_hash: Option<BlockMetadataHash>,
+        pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
         apply_result: Arc<ApplyBlockResponse>,
         /// Is retry or not and if yes, what is the reason.
         retry: Option<ProtocolServiceError>,
