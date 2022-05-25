@@ -55,7 +55,12 @@ fn main() {
     let (srv, events) = Services::new(endpoint, &base_dir, &baker);
     let chain_id = srv.client.get_chain_id().unwrap();
     let _ = srv.client.wait_bootstrapped().unwrap();
-    let constants = srv.client.get_constants().unwrap();
+    let constants = loop {
+        match srv.client.get_constants() {
+            Ok(v) => break v,
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(200)),
+        }
+    };
     srv.client.monitor_heads(&chain_id).unwrap();
     let log = srv.log.clone();
 
