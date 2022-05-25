@@ -35,6 +35,8 @@ pub enum CurrentHeadState {
 
         block_metadata_hash: Option<BlockMetadataHash>,
         ops_metadata_hash: Option<OperationMetadataListListHash>,
+        pred_block_metadata_hash: Option<BlockMetadataHash>,
+        pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
     },
 
     Rehydrated {
@@ -46,6 +48,8 @@ pub enum CurrentHeadState {
         // for prevalidation request.
         block_metadata_hash: Option<BlockMetadataHash>,
         ops_metadata_hash: Option<OperationMetadataListListHash>,
+        pred_block_metadata_hash: Option<BlockMetadataHash>,
+        pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
 
         /// Stores all applied blocks on last 2 levels.
         applied_blocks: BTreeMap<BlockHash, BlockHeaderWithHash>,
@@ -90,6 +94,8 @@ impl CurrentHeadState {
             payload_hash: None,
             block_metadata_hash: None,
             ops_metadata_hash: None,
+            pred_block_metadata_hash: None,
+            pred_ops_metadata_hash: None,
             applied_blocks,
         }
     }
@@ -114,6 +120,31 @@ impl CurrentHeadState {
         } = self
         {
             *ops_metadata_hash = value;
+        }
+        self
+    }
+
+    pub fn set_pred_block_metadata_hash(&mut self, value: Option<BlockMetadataHash>) -> &mut Self {
+        if let Self::Rehydrated {
+            pred_block_metadata_hash,
+            ..
+        } = self
+        {
+            *pred_block_metadata_hash = value;
+        }
+        self
+    }
+
+    pub fn set_pred_ops_metadata_hash(
+        &mut self,
+        value: Option<OperationMetadataListListHash>,
+    ) -> &mut Self {
+        if let Self::Rehydrated {
+            pred_ops_metadata_hash,
+            ..
+        } = self
+        {
+            *pred_ops_metadata_hash = value;
         }
         self
     }
@@ -150,6 +181,25 @@ impl CurrentHeadState {
     pub fn round(&self) -> Option<i32> {
         match self {
             Self::Rehydrated { head, .. } => head.header.fitness().round(),
+            _ => None,
+        }
+    }
+
+    pub fn block_metadata_hash(&self) -> Option<&BlockMetadataHash> {
+        match self {
+            Self::Rehydrated {
+                block_metadata_hash,
+                ..
+            } => block_metadata_hash.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn ops_metadata_hash(&self) -> Option<&OperationMetadataListListHash> {
+        match self {
+            Self::Rehydrated {
+                ops_metadata_hash, ..
+            } => ops_metadata_hash.as_ref(),
             _ => None,
         }
     }

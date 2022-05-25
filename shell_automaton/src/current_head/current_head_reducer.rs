@@ -31,32 +31,30 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 head_pred: content.head_pred.clone(),
                 block_metadata_hash: content.block_metadata_hash.clone(),
                 ops_metadata_hash: content.ops_metadata_hash.clone(),
+                pred_block_metadata_hash: content.pred_block_metadata_hash.clone(),
+                pred_ops_metadata_hash: content.pred_ops_metadata_hash.clone(),
             };
         }
-        Action::CurrentHeadRehydrated(_) => {
-            let (head, head_pred, block_metadata_hash, ops_metadata_hash) =
-                match &state.current_head {
-                    CurrentHeadState::RehydrateSuccess {
-                        head,
-                        head_pred,
-                        block_metadata_hash,
-                        ops_metadata_hash,
-                        ..
-                    } => (
-                        head.clone(),
-                        head_pred.clone(),
-                        block_metadata_hash.clone(),
-                        ops_metadata_hash.clone(),
-                    ),
-                    _ => return,
-                };
-
-            state.current_head = CurrentHeadState::rehydrated(head, head_pred);
-            state
-                .current_head
-                .set_block_metadata_hash(block_metadata_hash)
-                .set_ops_metadata_hash(ops_metadata_hash);
-        }
+        Action::CurrentHeadRehydrated(_) => match &state.current_head {
+            CurrentHeadState::RehydrateSuccess {
+                head,
+                head_pred,
+                block_metadata_hash,
+                ops_metadata_hash,
+                pred_block_metadata_hash,
+                pred_ops_metadata_hash,
+                ..
+            } => {
+                let mut new_head = CurrentHeadState::rehydrated(head.clone(), head_pred.clone());
+                new_head
+                    .set_block_metadata_hash(block_metadata_hash.clone())
+                    .set_ops_metadata_hash(ops_metadata_hash.clone())
+                    .set_pred_block_metadata_hash(pred_block_metadata_hash.clone())
+                    .set_pred_ops_metadata_hash(pred_ops_metadata_hash.clone());
+                state.current_head = new_head;
+            }
+            _ => {}
+        },
         Action::CurrentHeadUpdate(content) => {
             let mut applied_blocks = match &mut state.current_head {
                 CurrentHeadState::Rehydrated { applied_blocks, .. } => {
@@ -83,6 +81,8 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 payload_hash: content.payload_hash.clone(),
                 block_metadata_hash: content.block_metadata_hash.clone(),
                 ops_metadata_hash: content.ops_metadata_hash.clone(),
+                pred_block_metadata_hash: content.pred_block_metadata_hash.clone(),
+                pred_ops_metadata_hash: content.pred_ops_metadata_hash.clone(),
                 applied_blocks,
             };
         }
