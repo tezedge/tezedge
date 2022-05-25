@@ -28,6 +28,8 @@ env_logger = { version = "0.9.0" }
 rand = { version = "0.8.5" }
 signal-hook = { version = "0.3.13" }
 
+# fs_extra = { version = "1.2" }
+
 fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
 fuzzcheck_mutators_derive = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
 

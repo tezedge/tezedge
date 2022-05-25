@@ -3,11 +3,13 @@
 
 use core::fmt;
 
+use alloc::vec::Vec;
 use serde::{Serialize, Deserialize};
 
 use super::{
     timestamp::{Timestamp, Timing},
     validator::ProposerMap,
+    event::LogRecord,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -47,6 +49,7 @@ impl<const PREV: bool> TimeHeader<PREV> {
 
     pub fn calculate<T, P>(
         &self,
+        log: &mut Vec<LogRecord>,
         config: &Config<T, P>,
         now: Timestamp,
         level: i32,
@@ -60,10 +63,14 @@ impl<const PREV: bool> TimeHeader<PREV> {
         config
             .map
             .proposer(level + l, current_round + r)
-            .map(|(round, proposer)| Timeout {
-                proposer,
-                round,
-                timestamp: self.timestamp_at_round(&config.timing, round),
+            .map(|(round, proposer)| {
+                let timestamp = self.timestamp_at_round(&config.timing, round);
+                if PREV {
+                    log.push(LogRecord::WillBakeThisLevel { round, timestamp });
+                } else {
+                    log.push(LogRecord::WillBakeNextLevel { round, timestamp });
+                }
+                Timeout { proposer, round, timestamp }
             })
     }
 }

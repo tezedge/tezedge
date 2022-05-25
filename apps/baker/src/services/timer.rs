@@ -9,20 +9,25 @@ use crate::machine::{BakerAction, TickEventAction};
 
 pub struct Timer {
     handle: Option<thread::JoinHandle<()>>,
-    task_tx: Option<mpsc::Sender<tb::Timestamp>>,
+    task_tx: Option<mpsc::Sender<(tb::Timestamp, i32, i32)>>,
 }
 
 impl Timer {
     pub fn spawn(event_sender: mpsc::Sender<BakerAction>) -> Self {
-        let (task_tx, task_rx) = mpsc::channel::<tb::Timestamp>();
+        let (task_tx, task_rx) = mpsc::channel::<(tb::Timestamp, i32, i32)>();
         let handle = thread::spawn(move || {
             let mut timeout_duration = None;
+            let mut scheduled_at_level = 0;
+            let mut scheduled_at_round = 0;
             loop {
-                let next = match timeout_duration.take() {
+                let (next, l, r) = match timeout_duration.take() {
                     Some(duration) => match task_rx.recv_timeout(duration) {
                         Ok(next) => next,
                         Err(mpsc::RecvTimeoutError::Timeout) => {
-                            let _ = event_sender.send(BakerAction::TickEvent(TickEventAction {}));
+                            let _ = event_sender.send(BakerAction::TickEvent(TickEventAction {
+                                scheduled_at_level,
+                                scheduled_at_round,
+                            }));
                             continue;
                         }
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -37,6 +42,8 @@ impl Timer {
                     .expect("the unix epoch has begun");
                 if next.unix_epoch > now {
                     timeout_duration = Some(next.unix_epoch - now);
+                    scheduled_at_level = l;
+                    scheduled_at_round = r;
                 }
             }
         });
@@ -47,11 +54,11 @@ impl Timer {
         }
     }
 
-    pub fn schedule(&self, timestamp: tb::Timestamp) {
+    pub fn schedule(&self, timestamp: tb::Timestamp, level: i32, round: i32) {
         self.task_tx
             .as_ref()
             .expect("cannot fail")
-            .send(timestamp)
+            .send((timestamp, level, round))
             .expect("timer thread running");
     }
 }
