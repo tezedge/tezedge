@@ -115,6 +115,15 @@ impl StorageRequestPayload {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CurrentHeadData {
+    pub head: BlockHeaderWithHash,
+    pub pred: Option<BlockHeaderWithHash>,
+    pub additional_data: BlockAdditionalData,
+    pub pred_additional_data: Option<BlockAdditionalData>,
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageResponseSuccess {
     StateSnapshotPutSuccess(ActionId),
     ActionPutSuccess(ActionId),
@@ -130,11 +139,7 @@ pub enum StorageResponseSuccess {
     CycleMetaGetSuccess(CycleKey, Option<CycleData>),
 
     /// Returns: `(CurrentHead, CurrentHeadPredecessor)`.
-    CurrentHeadGetSuccess(
-        BlockHeaderWithHash,
-        Option<BlockHeaderWithHash>,
-        BlockAdditionalData,
-    ),
+    CurrentHeadGetSuccess(CurrentHeadData),
 
     BlockHeaderPutSuccess(bool),
     BlockOperationsPutSuccess(bool),
@@ -393,12 +398,20 @@ impl StorageServiceDefault {
                                 .ok_or_else(|| {
                                     StorageError("missing additional_data".to_owned())
                                 })?;
-                            Ok((head, pred, additional_data))
+                            let pred_additional_data = pred
+                                .as_ref()
+                                .map(|pred| block_meta_storage.get_additional_data(&pred.hash))
+                                .transpose()?
+                                .flatten();
+                            Ok(CurrentHeadData {
+                                head,
+                                pred,
+                                additional_data,
+                                pred_additional_data,
+                            })
                         });
                     match result {
-                        Ok((head, pred, additional_data)) => {
-                            Ok(CurrentHeadGetSuccess(head, pred, additional_data))
-                        }
+                        Ok(data) => Ok(CurrentHeadGetSuccess(data)),
                         Err(err) => Err(CurrentHeadGetError(err)),
                     }
                 }
