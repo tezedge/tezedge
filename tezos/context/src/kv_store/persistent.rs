@@ -666,6 +666,7 @@ hashes_file={:?}, in sizes.db={:?}",
         let strings_file = self.strings_file.try_clone()?;
         let big_strings_file = self.big_strings_file.try_clone()?;
         let commit_index_file = self.commit_index_file.try_clone()?;
+        let hashes_file = self.hashes.hashes_file.try_clone()?;
 
         // Spawn the deserializers
         let thread_shapes = std::thread::spawn(move || {
@@ -705,6 +706,8 @@ hashes_file={:?}, in sizes.db={:?}",
                     reason: format!("{:?}", e),
                 })??;
 
+        // `Hashes` needs to be re-created because the size of the file might have changed
+        self.hashes = Hashes::try_new(hashes_file);
         self.shapes = shapes;
         self.string_interner = string_interner;
         self.context_hashes = context_hashes.index;

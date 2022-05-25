@@ -402,7 +402,20 @@ impl<const T: TaggedFile> File<T> {
     ) -> Result<(), io::Error> {
         use std::os::unix::prelude::FileExt;
 
-        self.file.read_exact_at(buffer, offset.as_u64())
+        match self.file.read_exact_at(buffer, offset.as_u64()) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let buf_len = buffer.len();
+                elog!(
+                    "read_exact_at file={:?} offset={:?} length={:?} err={:?}",
+                    T,
+                    offset,
+                    buf_len,
+                    e
+                );
+                Err(e)
+            }
+        }
     }
 
     pub fn read_at_most<'a>(
@@ -419,7 +432,19 @@ impl<const T: TaggedFile> File<T> {
             buffer = &mut buffer[..buf_len - (end - eof)];
         }
 
-        self.read_exact_at(buffer, offset)?;
+        match self.read_exact_at(buffer, offset) {
+            Ok(()) => {}
+            Err(e) => {
+                elog!(
+                    "read_at_most file={:?} offset={:?} length={:?} err={:?}",
+                    T,
+                    offset,
+                    buf_len,
+                    e
+                );
+                return Err(e);
+            }
+        }
 
         Ok(buffer)
     }
