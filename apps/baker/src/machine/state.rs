@@ -771,7 +771,10 @@ fn proposal(
 
 #[cfg(test)]
 mod tests {
-    use crate::{services::event::{OperationSimple, OperationKind}, machine::state::SlotsInfo};
+    use crate::{
+        machine::state::SlotsInfo,
+        services::event::{OperationKind, OperationSimple},
+    };
 
     use tenderbake as tb;
 

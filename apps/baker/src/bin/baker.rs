@@ -12,7 +12,7 @@ use std::{
 };
 
 use reqwest::Url;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use baker::EventWithTime;

@@ -159,7 +159,15 @@ where
                                 .into_iter()
                                 .map(|(k, v)| (k, TimeHeader::into_prev(v)))
                                 .collect();
-                            Initialized::next_level(time_headers, vec![], vec![], &mut log, config, *block, now)
+                            Initialized::next_level(
+                                time_headers,
+                                vec![],
+                                vec![],
+                                &mut log,
+                                config,
+                                *block,
+                                now,
+                            )
                         } else if block.level == self_.level {
                             log.push(LogRecord::AcceptAtTransitionState { next_level: false });
                             self_.next_round(*block).map_left(Err)
@@ -180,7 +188,15 @@ where
                                 .into_iter()
                                 .map(|(k, v)| (k, TimeHeader::into_prev(v)))
                                 .collect();
-                            Initialized::next_level(time_headers, self_.ahead_preendorsements, self_.ahead_endorsements, &mut log, config, *block, now)
+                            Initialized::next_level(
+                                time_headers,
+                                self_.ahead_preendorsements,
+                                self_.ahead_endorsements,
+                                &mut log,
+                                config,
+                                *block,
+                                now,
+                            )
                         } else if block.level == self_.level - 1 {
                             let mut self_ = self_;
                             self_
@@ -460,10 +476,7 @@ where
         let Pair(s, mut a) = self_.retry_ahead_ops(log, config, now);
         actions.append(&mut a);
 
-        Pair(
-            Ok(s),
-            actions,
-        )
+        Pair(Ok(s), actions)
     }
 
     fn next_round<T, P>(
@@ -792,8 +805,8 @@ where
             || block_id.round != self.this_time_header.round
             || block_id.round < current_round
         {
-            if block_id.level > self.level ||
-                (block_id.level == self.level && block_id.round > self.this_time_header.round)
+            if block_id.level > self.level
+                || (block_id.level == self.level && block_id.round > self.this_time_header.round)
             {
                 self.ahead_endorsements.push((block_id, validator));
             }
@@ -827,7 +840,9 @@ where
                     votes: mem::take(votes),
                 },
             };
-            self.timeout_next_level = self.this_time_header.calculate(log, config, now, self.level);
+            self.timeout_next_level = self
+                .this_time_header
+                .calculate(log, config, now, self.level);
 
             if let Some(ref n) = &self.timeout_next_level {
                 let timestamp = n.timestamp;

@@ -70,7 +70,11 @@ impl<const PREV: bool> TimeHeader<PREV> {
                 } else {
                     log.push(LogRecord::WillBakeNextLevel { round, timestamp });
                 }
-                Timeout { proposer, round, timestamp }
+                Timeout {
+                    proposer,
+                    round,
+                    timestamp,
+                }
             })
     }
 }

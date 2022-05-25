@@ -89,12 +89,10 @@ impl CycleNonce {
             BTreeMap::default()
         };
 
-        previous
-            .into_iter()
-            .map(move |(Nonce(nonce), pos)| {
-                let level = ((cycle - 1) * self.blocks_per_cycle + pos) as i32;
-                (level, nonce)
-            })
+        previous.into_iter().map(move |(Nonce(nonce), pos)| {
+            let level = ((cycle - 1) * self.blocks_per_cycle + pos) as i32;
+            (level, nonce)
+        })
     }
 }
 

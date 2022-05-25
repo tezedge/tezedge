@@ -49,7 +49,7 @@ mod tests {
     }
 
     mod quorum {
-        use crate::machine::{TickEventAction, ScheduleTimeoutAction};
+        use crate::machine::{ScheduleTimeoutAction, TickEventAction};
 
         use super::*;
 
@@ -58,29 +58,34 @@ mod tests {
             test_initialized(|state, level, validators| {
                 let tb_state = &state.as_ref().tb_state;
                 let tb_config = &state.as_ref().tb_config;
-    
+
                 let quorum_size = tb_config.quorum as usize;
                 let predecessor_hash = tb_state.predecessor_hash().unwrap();
                 let payload_hash = tb_state.payload_hash().unwrap();
                 let round = tb_state.round().unwrap();
                 let preendorsements = {
                     BakerAction::OperationsEvent(OperationsEventAction {
-                        operations: validators.iter().map(|&(slot, _)| OperationSimple::preendorsement(
-                            &predecessor_hash,
-                            &payload_hash,
-                            level,
-                            round,
-                            slot,
-                        )).collect(),
+                        operations: validators
+                            .iter()
+                            .map(|&(slot, _)| {
+                                OperationSimple::preendorsement(
+                                    &predecessor_hash,
+                                    &payload_hash,
+                                    level,
+                                    round,
+                                    slot,
+                                )
+                            })
+                            .collect(),
                     })
                 };
-    
+
                 let now = tb_state.timestamp().unwrap();
                 let state = state.handle_event(EventWithTime {
                     action: preendorsements,
                     now,
                 });
-    
+
                 let endorsement = |slot| {
                     BakerAction::OperationsEvent(OperationsEventAction {
                         operations: vec![OperationSimple::endorsement(
@@ -92,7 +97,7 @@ mod tests {
                         )],
                     })
                 };
-    
+
                 let mut total_power = 0;
                 let mut state = state;
                 state.as_mut().actions.clear();
@@ -102,18 +107,20 @@ mod tests {
                         now,
                     });
                     total_power += power;
-    
+
                     if total_power >= quorum_size {
                         let deadline = state
                             .as_ref()
                             .actions
                             .iter()
                             .find_map(|a| match a {
-                                BakerAction::ScheduleTimeout(ScheduleTimeoutAction { deadline }) => Some(*deadline),
+                                BakerAction::ScheduleTimeout(ScheduleTimeoutAction {
+                                    deadline,
+                                }) => Some(*deadline),
                                 _ => None,
                             })
                             .unwrap();
-    
+
                         state = state.handle_event(EventWithTime {
                             action: BakerAction::TickEvent(TickEventAction {
                                 scheduled_at_level: level,
@@ -121,14 +128,14 @@ mod tests {
                             }),
                             now: deadline,
                         });
-    
+
                         let propose_action = state
                             .as_ref()
                             .actions
                             .iter()
                             .find(|a| matches!(a, &BakerAction::Propose(_)));
                         assert!(propose_action.is_some());
-    
+
                         return;
                     } else {
                         assert!(state.as_ref().actions.is_empty());
@@ -142,22 +149,27 @@ mod tests {
             test_initialized(|state, level, validators| {
                 let tb_state = &state.as_ref().tb_state;
                 let tb_config = &state.as_ref().tb_config;
-    
+
                 let predecessor_hash = tb_state.predecessor_hash().unwrap();
                 let payload_hash = tb_state.payload_hash().unwrap();
                 let round = tb_state.round().unwrap();
                 let preendorsements = {
                     BakerAction::OperationsEvent(OperationsEventAction {
-                        operations: validators.iter().map(|&(slot, _)| OperationSimple::preendorsement(
-                            &predecessor_hash,
-                            &payload_hash,
-                            level,
-                            round,
-                            slot,
-                        )).collect(),
+                        operations: validators
+                            .iter()
+                            .map(|&(slot, _)| {
+                                OperationSimple::preendorsement(
+                                    &predecessor_hash,
+                                    &payload_hash,
+                                    level,
+                                    round,
+                                    slot,
+                                )
+                            })
+                            .collect(),
                     })
                 };
-    
+
                 let endorsement = |slot| {
                     BakerAction::OperationsEvent(OperationsEventAction {
                         operations: vec![OperationSimple::endorsement(
@@ -176,7 +188,7 @@ mod tests {
                     action: preendorsements,
                     now,
                 });
-    
+
                 let mut actions = vec![];
                 for (n, (slot, _)) in validators.into_iter().enumerate() {
                     // add endorsements number 0, 1, 2, 3, it should be enough,
@@ -194,7 +206,9 @@ mod tests {
                 let deadline = actions
                     .iter()
                     .find_map(|a| match a {
-                        BakerAction::ScheduleTimeout(ScheduleTimeoutAction { deadline }) => Some(*deadline),
+                        BakerAction::ScheduleTimeout(ScheduleTimeoutAction { deadline }) => {
+                            Some(*deadline)
+                        }
                         _ => None,
                     })
                     .unwrap();
@@ -218,7 +232,11 @@ mod tests {
                     .unwrap();
 
                 let consensus_operations = &propose_action.operations[0];
-                assert_eq!(consensus_operations.len(), 5, "late endorsements are not included");
+                assert_eq!(
+                    consensus_operations.len(),
+                    5,
+                    "late endorsements are not included"
+                );
             })
         }
     }

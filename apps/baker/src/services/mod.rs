@@ -13,7 +13,7 @@ mod operation_mutator;
 use std::{path::PathBuf, sync::mpsc, time::SystemTime};
 
 use reqwest::Url;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use redux_rs::TimeService;
 use tenderbake as tb;
@@ -41,18 +41,13 @@ impl Services {
     ) -> (Self, impl Iterator<Item = EventWithTime>) {
         let (tx, rx) = mpsc::channel();
 
+        let log = logger::main_logger();
         let srv = Services {
             client: client::RpcClient::new(endpoint, tx.clone()),
-            crypto: key::CryptoService::read_key(base_dir, baker).unwrap(),
-            log: logger::main_logger(),
+            crypto: key::CryptoService::read_key(&log, base_dir, baker).unwrap(),
+            log,
             timer: timer::Timer::spawn(tx),
         };
-
-        slog::info!(
-            srv.log,
-            "crypto service ready: {}",
-            srv.crypto.public_key_hash()
-        );
 
         (
             srv,
