@@ -13,7 +13,7 @@ mod operation_mutator;
 use std::{path::PathBuf, sync::mpsc, time::SystemTime};
 
 use reqwest::Url;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use redux_rs::TimeService;
 use tenderbake as tb;

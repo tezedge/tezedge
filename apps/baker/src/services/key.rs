@@ -1,16 +1,19 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{convert::TryFrom, io, path::PathBuf, str::FromStr, fs::File};
+use std::{convert::TryFrom, fs::File, io, path::PathBuf, str::FromStr};
 
 use derive_more::From;
-use reqwest::{Url, blocking::Client};
+use reqwest::{blocking::Client, Url};
 use serde::Deserialize;
 use thiserror::Error;
 
 use crypto::{
     base58::FromBase58CheckError,
-    hash::{ChainId, ContractTz1Hash, SecretKeyEd25519, Signature, TryFromPKError, SeedEd25519, Ed25519Signature},
+    hash::{
+        ChainId, ContractTz1Hash, Ed25519Signature, SecretKeyEd25519, SeedEd25519, Signature,
+        TryFromPKError,
+    },
     CryptoError,
 };
 use tezos_encoding::enc::{BinError, BinWriter};
@@ -158,17 +161,17 @@ impl FromStr for Signer {
                 if !value.starts_with("edsk") {
                     return Err(SignerParseError::UnsupportedKey);
                 }
-                let (public_key, secret_key) = SeedEd25519::from_base58_check(value)?
-                    .keypair()?;
+                let (public_key, secret_key) = SeedEd25519::from_base58_check(value)?.keypair()?;
 
                 Ok(Signer {
                     backend: SignerBackend::LiteralSecretKey(secret_key),
                     pkh: ContractTz1Hash::try_from(public_key.clone())?,
                 })
-            },
+            }
             "http" | "https" => {
                 let url = Url::parse(s)?;
-                let pkh_str = url.path_segments()
+                let pkh_str = url
+                    .path_segments()
                     .ok_or(SignerParseError::MissingPkhPathSegment)?
                     .last()
                     .ok_or(SignerParseError::MissingPkhPathSegment)?;
@@ -178,7 +181,7 @@ impl FromStr for Signer {
                     backend: SignerBackend::RemoteHttps(client, url),
                     pkh,
                 })
-            },
+            }
             s => Err(SignerParseError::UnknownSchema(s.to_string())),
         }
     }
