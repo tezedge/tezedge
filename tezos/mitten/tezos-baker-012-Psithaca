@@ -25,7 +25,7 @@ run_octez_baker() {
     exec $CMD
 }
 
-run_tezedge_baker() {
+run_external_baker() {
     CMD="$0.tezedge"
     while true; do
         case $1 in
@@ -74,13 +74,75 @@ run_tezedge_baker() {
     exec $CMD
 }
 
-TEZEDGE_ENV=${TEZEDGE_ENV:-$(dirname $0)/tezedge.env}
+run_internal_baker() {
+    while true; do
+        case $1 in
+            run|with|local)
+                shift
+            ;;
+            node)
+                if [ -n "$3" ]; then
+                    BAKER="$3"
+                    shift 3
+                elif [ -n "$2" ]; then
+                    shift 2
+                else
+                    shift
+                fi
+            ;;
+            --base-dir|-d)
+                if [ -n "$2" ]; then
+                    BASE_DIR="$2"
+                    shift 2
+                else
+                    shift
+                fi
+            ;;
+            --endpoint|-E)
+                if [ -n "$2" ]; then
+                    ENDPOINT="$2"
+                    shift 2
+                else
+                    shift
+                fi
+            ;;
+            "")
+                break
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    if [ -z "$BASE_DIR" ] || [ -z "$BAKER" ] || [ -z "$ENDPOINT" ]; then
+        echo "missing parameters" >&2
+        exit 1
+    fi
+
+    BAKER=$(jq -r ".[] | select(.name == \"$BAKER\") | .value | sub(\".*:\"; \"\")" "$BASE_DIR/secret_keys")
+    echo "baker is $BAKER" >&2
+    curl -X PATCH "$ENDPOINT/dev/shell/automaton/bakers" --data "$BAKER"
+}
+
+TEZEDGE_ENV=${TEZEDGE_ENV:-$(dirname "$0")/tezedge.env}
 if [ -f "$TEZEDGE_ENV" ]; then
+    # shellcheck disable=SC1090
     . "$TEZEDGE_ENV"
 fi
 
-if [ -n "$RUN_OCTEZ_BAKER" ]; then
-    run_octez_baker "$@"
-else
-    run_tezedge_baker "$@"
-fi
+case "$RUN_TEZEDGE_BAKER" in
+    internal)
+        run_internal_baker "$@"
+    ;;
+    external)
+        run_external_baker "$@"
+    ;;
+    ''|octez)
+        run_octez_baker "$@"
+    ;;
+    *)
+        echo "Unknown tezedge baker: $RUN_TEZEDGE_BAKER" >&2
+        exit 1
+    ;;
+esac
