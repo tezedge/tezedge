@@ -557,15 +557,15 @@ pub fn default_networks() -> HashMap<TezosEnvironment, TezosEnvironmentConfigura
         },
         bootstrap_lookup_addresses: vec![
             "jakartanet.teztnets.xyz".to_string(),
-        "jakartanet.boot.ecadinfra.com".to_string(),
-        "jakartanet.kaml.fr".to_string(),
-        "jakartanet.visualtez.com".to_string(),
+            "jakartanet.boot.ecadinfra.com".to_string(),
+            "jakartanet.kaml.fr".to_string(),
+            "jakartanet.visualtez.com".to_string(),
         ],
         version: "TEZOS_JAKARTANET_2022-04-27T15:00:00Z".to_string(),
         protocol_overrides: ProtocolOverrides {
             user_activated_upgrades: vec![
                 (
-                    8191_i32,
+                    8192_i32,
                     "PtJakart2xVj7pYXJBXrqHgd82rdkLey5ZeeGwDgPp9rhQUbSqY".to_string(),
                 ),
             ],
