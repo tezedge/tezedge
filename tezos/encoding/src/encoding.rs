@@ -334,7 +334,7 @@ hash_has_encoding!(PublicKeyEd25519, PUBLIC_KEY_ED25519);
 hash_has_encoding!(PublicKeySecp256k1, PUBLIC_KEY_SECP256K1);
 hash_has_encoding!(PublicKeyP256, PUBLIC_KEY_P256);
 hash_has_encoding!(Signature, SIGNATURE);
-hash_has_encoding!(NonceHash, CYCLE_NONCE_HASH);
+hash_has_encoding!(NonceHash, NONCE_HASH);
 
 /// Creates impl HasEncoding for given struct backed by lazy_static ref instance with encoding.
 #[macro_export]

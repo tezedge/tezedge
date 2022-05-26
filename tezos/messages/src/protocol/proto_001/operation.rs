@@ -294,7 +294,7 @@ pub struct TransactionOperation {
     pub storage_limit: Mutez,
     pub amount: Mutez,
     pub destination: ContractId,
-    #[serde(skip)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parameters: Option<X0>,
 }
 
@@ -394,7 +394,8 @@ pub struct ScriptedContract {
 /// alpha.contract_id (22 bytes, 8-bit tag).
 /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#alpha-contract-id-22-bytes-8-bit-tag.
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, HasEncoding, NomReader, BinWriter)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
+#[serde(untagged)]
 pub enum ContractId {
     /// Implicit (tag 0).
     /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#implicit-tag-0.
@@ -403,40 +404,6 @@ pub enum ContractId {
     /// Originated (tag 1).
     /// See https://tezos.gitlab.io/shell/p2p_api.html?highlight=p2p%20encodings#originated-tag-1.
     Originated(OriginatedContractId),
-}
-
-impl serde::Serialize for ContractId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            ContractId::Implicit(v) => v.serialize(serializer),
-            ContractId::Originated(v) => v.serialize(serializer),
-        }
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for ContractId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        if s.starts_with("tz1") | s.starts_with("tz2") | s.starts_with("tz3") {
-            SignaturePublicKeyHash::from_b58_hash(&s)
-                .map_err(serde::de::Error::custom)
-                .map(ContractId::Implicit)
-        } else if s.starts_with("KT1") {
-            Ok(ContractId::Originated(OriginatedContractId {
-                contract_hash: ContractKt1Hash::from_b58check(&s)
-                    .map_err(serde::de::Error::custom)?,
-                padding: 0,
-            }))
-        } else {
-            unimplemented!()
-        }
-    }
 }
 
 /// Originated (tag 1).

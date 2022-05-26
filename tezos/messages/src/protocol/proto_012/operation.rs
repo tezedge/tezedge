@@ -24,8 +24,8 @@ pub use super::super::proto_011::operation::{
 use std::convert::TryFrom;
 
 use crypto::hash::{
-    BlockHash, BlockPayloadHash, ContextHash, HashTrait, NonceHash, OperationHash,
-    OperationListListHash, ProtocolHash, Signature,
+    BlockHash, BlockPayloadHash, ContextHash, HashTrait, NonceHash, OperationListListHash,
+    Signature,
 };
 use tezos_encoding::{
     binary_reader::BinaryReaderError,
@@ -64,12 +64,7 @@ pub struct Operation {
     pub branch: BlockHash,
     #[encoding(reserve = "Signature::hash_size()")]
     pub contents: Vec<Contents>,
-    #[serde(default)]
-    pub signature: Option<Signature>,
-    #[serde(default)]
-    pub hash: Option<OperationHash>,
-    #[serde(default)]
-    pub protocol: Option<ProtocolHash>,
+    pub signature: Signature,
 }
 
 impl TryFrom<P2POperation> for Operation {
@@ -85,9 +80,7 @@ impl TryFrom<P2POperation> for Operation {
         Ok(Operation {
             branch,
             contents,
-            signature: Some(signature),
-            hash: None,
-            protocol: None,
+            signature,
         })
     }
 }
