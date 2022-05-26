@@ -5,7 +5,7 @@ if [ -f "$TEZEDGE_ENV" ]; then
     . "$TEZEDGE_ENV"
 fi
 
-if [ -n "$RUN_OCTEZ_NODE" ]; then
+if [ -z "$RUN_TEZEDGE_NODE" ]; then
     exec "$0".octez "$@"
 fi
 
@@ -31,7 +31,7 @@ config_init() {
     while true; do
         case "$1" in
             --data-dir)
-                echo "--tezos-data-dir=$2" >> "$config"
+                echo "--tezos-data-dir=$(data_dir $2)" >> "$config"
                 data_dir="$2";
                 shift 2;
             ;;
@@ -80,13 +80,21 @@ config_init() {
 --disable-peer-graylist
 EOF
 
-    mkdir -p "$data_dir"
     mv "$config" "$data_dir/tezedge-node.config"
 }
 
 identity_generate() {
     # noop
     true
+}
+
+data_dir() {
+    DIR=$1
+    if [ "${DIR#/}" == "$DIR" ]; then
+        echo "$PWD$DIR"
+    else
+        echo $DIR
+    fi
 }
 
 run() {
@@ -102,7 +110,7 @@ run() {
     while true; do
         case "$1" in
             --data-dir)
-                DATA_DIR="$2";
+                DATA_DIR=$(data_dir "$2");
                 shift 2;
             ;;
             --network)
@@ -156,7 +164,7 @@ run() {
     done
     ARGS="--config-file=$DATA_DIR/tezedge-node.config $ARGS --peers=$PEERS --log-level=trace"
     export LD_LIBRARY_PATH="$LIB_TEZOS_DIR:$LD_LIBRARY_PATH"
-    echo "running $LIGHT_NODE $ARGS"
+    # shellcheck disable=SC2086
     exec "$LIGHT_NODE" $ARGS
 }
 
