@@ -123,7 +123,7 @@ enum SignerBackend {
     // http also works here
     /// example: http://127.0.0.1:6732/keys/tz1TXkLKR4F4HUSCQKve7daPPLSxhZNx45px
     RemoteHttps(Client, Url),
-    // example: tcp://127.0.0.1:7732/keys/tz1TXkLKR4F4HUSCQKve7daPPLSxhZNx45px
+    // example: tcp://127.0.0.1:7732/tz1TXkLKR4F4HUSCQKve7daPPLSxhZNx45px
     // RemoteTcp(SocketAddr),
     // example: unix:/home/dev/.tezos-signer/socket?pkh=tz1TXkLKR4F4HUSCQKve7daPPLSxhZNx45px
     // UnixDomainSocket(PathBuf),
