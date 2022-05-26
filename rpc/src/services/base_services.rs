@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash};
-use storage::{BlockAdditionalData, BlockHeaderWithHash, Direction, PersistentStorage};
+use storage::{BlockAdditionalData, BlockHeaderWithHash, PersistentStorage};
 use storage::{
     BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
     OperationsStorage, OperationsStorageReader,
@@ -43,22 +43,46 @@ pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 60;
 pub(crate) fn get_blocks(
     _chain_id: ChainId,
     block_hashes: Vec<BlockHash>,
-    limit: usize,
-    min_date: i64,
+    limit: Option<usize>,
+    _min_date: Option<i64>,
     persistent_storage: &PersistentStorage,
-) -> Result<Vec<Vec<String>>, RpcServiceError> {
-    let mut response = Vec::with_capacity(block_hashes.len() * usize::min(1, limit));
-    for hash in block_hashes {
-        let r = BlockStorage::new(persistent_storage)
-            .get_multiple_with_direction(&hash, limit, Direction::Reverse)?
-            .into_iter()
-            .filter(|b| b.header.timestamp().i64() >= min_date)
-            .map(|b| b.hash.to_base58_check())
-            .collect::<Vec<_>>();
-        response.push(r);
+) -> Result<Vec<Vec<BlockHash>>, RpcServiceError> {
+    let mut stop_blocks = HashSet::new();
+    let mut response = Vec::<Vec<BlockHash>>::with_capacity(usize::min(1, block_hashes.len()));
+    let bms = BlockMetaStorage::new(persistent_storage);
+    for block_hash in block_hashes {
+        if let Some(hashes) = response.last() {
+            stop_blocks.extend(hashes.iter().cloned());
+        }
+        let mut hashes = Vec::with_capacity(usize::min(1, limit.unwrap_or(1)));
+        hashes.push(block_hash.clone());
+        if let Some(limit) = limit {
+            get_predecessors(&mut hashes, block_hash, limit, &stop_blocks, &bms)?;
+        }
+        response.push(hashes);
     }
-
     Ok(response)
+}
+
+fn get_predecessors(
+    result: &mut Vec<BlockHash>,
+    mut current: BlockHash,
+    limit: usize,
+    stop_blocks: &HashSet<BlockHash>,
+    bms: &BlockMetaStorage,
+) -> Result<(), RpcServiceError> {
+    while result.len() < limit {
+        if let Some(hash) = bms.find_block_at_distance(current, 1)? {
+            result.push(hash.clone());
+            if stop_blocks.contains(&hash) {
+                break;
+            }
+            current = hash;
+        } else {
+            break;
+        }
+    }
+    Ok(())
 }
 
 /// Get block metadata

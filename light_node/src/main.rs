@@ -476,7 +476,7 @@ fn set_gcov_handler() {
 
     extern "C" {
         fn __gcov_dump();
-        fn __gcov_reset();
+        //fn __gcov_reset();
     }
 
     std::thread::spawn(move || {
@@ -484,7 +484,7 @@ fn set_gcov_handler() {
             eprintln!("!!! SIGUSR2: saving coverage info...");
             unsafe {
                 __gcov_dump();
-                __gcov_reset();
+                //__gcov_reset();
             }
         }
     });

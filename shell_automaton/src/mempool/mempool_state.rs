@@ -19,7 +19,7 @@ use crate::{
     prechecker::OperationDecodedContents, rights::Slot, service::rpc_service::RpcId, ActionWithMeta,
 };
 
-use super::validator::MempoolValidatorState;
+use super::{map_with_timestamps::BTreeMapWithTimestamps, validator::MempoolValidatorState};
 
 /// https://gitlab.com/tezedge/tezos/-/blob/v12.2/src/lib_shell/prevalidator.ml#L219
 ///
@@ -47,10 +47,12 @@ pub struct MempoolState {
     // let's track what our peers know, and what we waiting from them
     pub(super) peer_state: BTreeMap<SocketAddr, PeerState>,
     // we sent GetOperations and pending full content of those operations
-    pub(super) pending_full_content: BTreeSet<OperationHash>,
+    pub(super) pending_full_content: BTreeMapWithTimestamps<OperationHash>,
+    pub(super) retrying_full_content: BTreeMap<OperationHash, Vec<SocketAddr>>,
     // operations that passed basic checks, sent to protocol validator
     pub(super) pending_operations: MempoolPendingOperations,
-    pub(super) prechecking_operations: BTreeSet<OperationHash>,
+    pub(super) prechecking_operations: BTreeMap<OperationHash, u8>,
+    pub(super) prechecking_delayed_operations: BTreeSet<OperationHash>,
     pub validated_operations: ValidatedOperations,
     // track ttl
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
@@ -182,6 +184,7 @@ pub struct OperationStats {
     pub validations: Vec<OperationValidationStats>,
     pub nodes: BTreeMap<CryptoboxPublicKeyHash, OperationNodeStats>,
     pub injected_timestamp: Option<u64>,
+    pub current_heads: BTreeSet<BlockHash>,
 }
 
 impl OperationStats {
@@ -298,8 +301,12 @@ impl OperationStats {
     pub fn received_in_current_head(
         &mut self,
         node_pkh: &CryptoboxPublicKeyHash,
+        block_hash: Option<BlockHash>,
         stats: OperationNodeCurrentHeadStats,
     ) {
+        if let Some(block_hash) = block_hash {
+            self.current_heads.insert(block_hash);
+        }
         self.min_time = Some(
             self.min_time
                 .map_or(stats.time, |time| time.min(stats.time)),
@@ -586,14 +593,19 @@ impl MempoolOperation {
         }
     }
 
-    pub(super) fn injected(level: Level, action: &ActionWithMeta) -> Self {
+    pub(super) fn injected(level: Level, inject_time: u64, action: &ActionWithMeta) -> Self {
         let state = OperationState::ReceivedContents; // TODO use separate id
+                                                      // TODO use separate notation (like `operation known`, `operation content known` etc)
+        let times = HashMap::from([
+            (OperationState::ReceivedHash.time_name(), inject_time), // time when injection has been initiated
+            (state.time_name(), action.time_as_nanos()), // time when injection reached statemachine
+        ]);
         Self {
             level,
             operation_decoded_contents: None,
             state,
             broadcast: BroadcastState::Pending,
-            times: HashMap::from([(state.time_name(), action.time_as_nanos())]),
+            times,
         }
     }
 
@@ -631,13 +643,6 @@ impl MempoolOperation {
         Self {
             times,
             broadcast: BroadcastState::Broadcast,
-            ..self.clone()
-        }
-    }
-
-    pub(super) fn broadcast_not_needed(&self) -> Self {
-        Self {
-            broadcast: BroadcastState::NotNeeded,
             ..self.clone()
         }
     }

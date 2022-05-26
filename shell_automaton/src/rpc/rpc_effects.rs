@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{BlockHash, ChainId};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::time::Instant;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 use crate::block_applier::BlockApplierApplyState;
@@ -30,6 +32,7 @@ use super::BootstrapState;
 pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     match &action.action {
         Action::WakeupEvent(_) => {
+            let wakeup_timestamp = Instant::now();
             while let Ok((msg, rpc_id)) = store.service().rpc().try_recv_stream() {
                 match msg {
                     RpcRequestStream::Bootstrapped => {
@@ -166,20 +169,20 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .respond(rpc_id, serde_json::Value::Null);
                     }
 
-                    RpcRequest::GetMempoolOperationStats {
-                        channel,
-                        hash_filter,
-                    } => {
-                        let stats = &store.state().mempool.operation_stats;
-                        let stats = if let Some(hashes) = hash_filter {
-                            stats
-                                .iter()
-                                .filter(|(hash, _)| hashes.contains(hash))
-                                .map(|(hash, stat)| (hash.clone(), stat.clone()))
-                                .collect()
-                        } else {
-                            stats.clone()
-                        };
+                    RpcRequest::GetMempoolOperationStats { channel, filter } => {
+                        let stats = store
+                            .state()
+                            .mempool
+                            .operation_stats
+                            .iter()
+                            .filter_map(|(op, stats)| {
+                                if filter.enabled(op, stats) {
+                                    Some((op.clone(), stats.clone()))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<BTreeMap<_, _>>();
                         let _ = channel.send(stats);
                     }
                     RpcRequest::GetBlockStats { channel } => {
@@ -219,6 +222,12 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         operation_hash,
                         injected,
                     } => {
+                        let now = Instant::now();
+                        slog::debug!(
+                            store.state().log,
+                            "Injected operation `{operation_hash}` reached statemachine in {:?}, {:?} since wakeup event",
+                            now - injected, now - wakeup_timestamp
+                        );
                         let injected_timestamp = store.monotonic_to_time(injected);
                         store.dispatch(MempoolOperationInjectAction {
                             operation,
@@ -479,14 +488,14 @@ fn enqueue_injected_block<S: Service>(store: &mut Store<S>) {
     let mut has_accepted = false;
     for (injected_block_hash, rpc_id, _) in blocks {
         let block_hash = injected_block_hash.clone();
-        if !store.dispatch(RpcRejectOutdatedInjectedBlockAction { rpc_id, block_hash }) {
-            if !has_accepted {
-                has_accepted = true;
-                store.dispatch(BlockApplierEnqueueBlockAction {
-                    injector_rpc_id: Some(rpc_id),
-                    block_hash: injected_block_hash.into(),
-                });
-            }
+        if !store.dispatch(RpcRejectOutdatedInjectedBlockAction { rpc_id, block_hash })
+            && !has_accepted
+        {
+            has_accepted = true;
+            store.dispatch(BlockApplierEnqueueBlockAction {
+                injector_rpc_id: Some(rpc_id),
+                block_hash: injected_block_hash.into(),
+            });
         }
     }
 }

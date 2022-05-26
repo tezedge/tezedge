@@ -19,7 +19,10 @@ use shell_automaton::mempool::validator as mempool_validator;
 use shell_automaton::peers::init::PeersInitAction;
 use shell_automaton::prechecker::prechecker_actions;
 use shell_automaton::protocol_runner;
-use shell_automaton::rights::rights_actions;
+use shell_automaton::rights::{
+    cycle_delegates::rights_cycle_delegates_actions, cycle_eras::rights_cycle_eras_actions,
+    rights_actions,
+};
 use shell_automaton::shutdown::ShutdownInitAction;
 use shell_automaton::shutdown::ShutdownPendingAction;
 use shell_automaton::shutdown::ShutdownSuccessAction;
@@ -448,12 +451,15 @@ impl CurrentHeadActionTest {
 #[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum RightsActionTest {
     TestRightsGetAction(rights_actions::RightsGetAction),
+    TestRightsInitAction(rights_actions::RightsInitAction),
+    TestRightsEndorsingOldReadyAction(rights_actions::RightsEndorsingOldReadyAction),
+    TestRightsBakingOldReadyAction(rights_actions::RightsBakingOldReadyAction),
+    TestRightsErrorAction(rights_actions::RightsErrorAction),
     TestRightsRpcGetAction(rights_actions::RightsRpcGetAction),
     TestRightsRpcEndorsingReadyAction(rights_actions::RightsRpcEndorsingReadyAction),
     TestRightsRpcBakingReadyAction(rights_actions::RightsRpcBakingReadyAction),
     TestRightsRpcErrorAction(rights_actions::RightsRpcErrorAction),
     TestRightsRpcPruneAction(rights_actions::RightsRpcPruneAction),
-    TestRightsInitAction(rights_actions::RightsInitAction),
     TestRightsGetBlockHeaderAction(rights_actions::RightsGetBlockHeaderAction),
     TestRightsBlockHeaderReadyAction(rights_actions::RightsBlockHeaderReadyAction),
     TestRightsGetProtocolHashAction(rights_actions::RightsGetProtocolHashAction),
@@ -467,21 +473,55 @@ enum RightsActionTest {
     TestRightsGetCycleDataAction(rights_actions::RightsGetCycleDataAction),
     TestRightsCycleDataReadyAction(rights_actions::RightsCycleDataReadyAction),
     TestRightsCalculateAction(rights_actions::RightsCalculateAction),
+    TestRightsGetCycleDelegatesAction(rights_actions::RightsGetCycleDelegatesAction),
+    TestRightsCycleDelegatesReadyAction(rights_actions::RightsCycleDelegatesReadyAction),
+    TestRightsCalculateIthacaAction(rights_actions::RightsCalculateIthacaAction),
+    TestRightsContextRequestedAction(rights_actions::RightsContextRequestedAction),
+    TestRightsIthacaContextSuccessAction(rights_actions::RightsIthacaContextSuccessAction),
     TestRightsEndorsingReadyAction(rights_actions::RightsEndorsingReadyAction),
-    TestRightsBakingReadyAction(rights_actions::RightsBakingReadyAction),
-    TestRightsErrorAction(rights_actions::RightsErrorAction),
+
+    TestRightsCycleDelegatesGetAction(
+        rights_cycle_delegates_actions::RightsCycleDelegatesGetAction,
+    ),
+    TestRightsCycleDelegatesRequestedAction(
+        rights_cycle_delegates_actions::RightsCycleDelegatesRequestedAction,
+    ),
+    TestRightsCycleDelegatesSuccessAction(
+        rights_cycle_delegates_actions::RightsCycleDelegatesSuccessAction,
+    ),
+    TestRightsCycleDelegatesErrorAction(
+        rights_cycle_delegates_actions::RightsCycleDelegatesErrorAction,
+    ),
+
+    TestRightsCycleErasGetAction(rights_cycle_eras_actions::RightsCycleErasGetAction),
+    TestRightsCycleErasKVSuccessAction(rights_cycle_eras_actions::RightsCycleErasKVSuccessAction),
+    TestRightsCycleErasKVErrorAction(rights_cycle_eras_actions::RightsCycleErasKVErrorAction),
+    TestRightsCycleErasContextRequestedAction(
+        rights_cycle_eras_actions::RightsCycleErasContextRequestedAction,
+    ),
+    TestRightsCycleErasContextSuccessAction(
+        rights_cycle_eras_actions::RightsCycleErasContextSuccessAction,
+    ),
+    TestRightsCycleErasContextErrorAction(
+        rights_cycle_eras_actions::RightsCycleErasContextErrorAction,
+    ),
+    TestRightsCycleErasSuccessAction(rights_cycle_eras_actions::RightsCycleErasSuccessAction),
+    TestRightsCycleErasErrorAction(rights_cycle_eras_actions::RightsCycleErasErrorAction),
 }
 
 impl RightsActionTest {
     fn to_action(&self) -> Action {
         match self.clone() {
             Self::TestRightsGetAction(a) => a.into(),
+            Self::TestRightsInitAction(a) => a.into(),
+            Self::TestRightsEndorsingOldReadyAction(a) => a.into(),
+            Self::TestRightsBakingOldReadyAction(a) => a.into(),
+            Self::TestRightsErrorAction(a) => a.into(),
             Self::TestRightsRpcGetAction(a) => a.into(),
             Self::TestRightsRpcEndorsingReadyAction(a) => a.into(),
             Self::TestRightsRpcBakingReadyAction(a) => a.into(),
             Self::TestRightsRpcErrorAction(a) => a.into(),
             Self::TestRightsRpcPruneAction(a) => a.into(),
-            Self::TestRightsInitAction(a) => a.into(),
             Self::TestRightsGetBlockHeaderAction(a) => a.into(),
             Self::TestRightsBlockHeaderReadyAction(a) => a.into(),
             Self::TestRightsGetProtocolHashAction(a) => a.into(),
@@ -495,9 +535,26 @@ impl RightsActionTest {
             Self::TestRightsGetCycleDataAction(a) => a.into(),
             Self::TestRightsCycleDataReadyAction(a) => a.into(),
             Self::TestRightsCalculateAction(a) => a.into(),
+            Self::TestRightsGetCycleDelegatesAction(a) => a.into(),
+            Self::TestRightsCycleDelegatesReadyAction(a) => a.into(),
+            Self::TestRightsCalculateIthacaAction(a) => a.into(),
+            Self::TestRightsContextRequestedAction(a) => a.into(),
+            Self::TestRightsIthacaContextSuccessAction(a) => a.into(),
             Self::TestRightsEndorsingReadyAction(a) => a.into(),
-            Self::TestRightsBakingReadyAction(a) => a.into(),
-            Self::TestRightsErrorAction(a) => a.into(),
+
+            Self::TestRightsCycleDelegatesGetAction(a) => a.into(),
+            Self::TestRightsCycleDelegatesRequestedAction(a) => a.into(),
+            Self::TestRightsCycleDelegatesSuccessAction(a) => a.into(),
+            Self::TestRightsCycleDelegatesErrorAction(a) => a.into(),
+
+            Self::TestRightsCycleErasGetAction(a) => a.into(),
+            Self::TestRightsCycleErasKVSuccessAction(a) => a.into(),
+            Self::TestRightsCycleErasKVErrorAction(a) => a.into(),
+            Self::TestRightsCycleErasContextRequestedAction(a) => a.into(),
+            Self::TestRightsCycleErasContextSuccessAction(a) => a.into(),
+            Self::TestRightsCycleErasContextErrorAction(a) => a.into(),
+            Self::TestRightsCycleErasSuccessAction(a) => a.into(),
+            Self::TestRightsCycleErasErrorAction(a) => a.into(),
         }
     }
 }
@@ -905,44 +962,25 @@ impl MempoolActionTest {
 
 #[derive(fuzzcheck::DefaultMutator, Serialize, Deserialize, Debug, Clone)]
 enum PrecheckerActionTest {
-    TestPrecheckerPrecheckOperationRequestAction(
-        prechecker_actions::PrecheckerPrecheckOperationRequestAction,
+    TestPrecheckerCurrentHeadUpdateAction(prechecker_actions::PrecheckerCurrentHeadUpdateAction),
+    TestPrecheckerStoreEndorsementBranchAction(
+        prechecker_actions::PrecheckerStoreEndorsementBranchAction,
     ),
-    TestPrecheckerPrecheckOperationResponseAction(
-        prechecker_actions::PrecheckerPrecheckOperationResponseAction,
-    ),
-    TestPrecheckerCacheAppliedBlockAction(prechecker_actions::PrecheckerCacheAppliedBlockAction),
-    TestPrecheckerPrecheckOperationInitAction(
-        prechecker_actions::PrecheckerPrecheckOperationInitAction,
+    TestPrecheckerPrecheckOperationAction(prechecker_actions::PrecheckerPrecheckOperationAction),
+    TestPrecheckerPrecheckDelayedOperationAction(
+        prechecker_actions::PrecheckerPrecheckDelayedOperationAction,
     ),
     TestPrecheckerDecodeOperationAction(prechecker_actions::PrecheckerDecodeOperationAction),
-    TestPrecheckerOperationDecodedAction(prechecker_actions::PrecheckerOperationDecodedAction),
-    //TestPrecheckerWaitForBlockApplicationAction(
-    //    prechecker_actions::PrecheckerWaitForBlockApplicationAction,
-    //),
-    TestPrecheckerWaitForBlockPrecheckedAction(
-        prechecker_actions::PrecheckerWaitForBlockPrecheckedAction,
-    ),
-    TestPrecheckerBlockPrecheckedAction(prechecker_actions::PrecheckerBlockPrecheckedAction),
-    TestPrecheckerWaitForBlockApplied(prechecker_actions::PrecheckerWaitForBlockAppliedAction),
-    TestPrecheckerBlockAppliedAction(prechecker_actions::PrecheckerBlockAppliedAction),
-    TestPrecheckerGetEndorsingRightsAction(prechecker_actions::PrecheckerGetEndorsingRightsAction),
-    TestPrecheckerEndorsingRightsReadyAction(
-        prechecker_actions::PrecheckerEndorsingRightsReadyAction,
-    ),
-    TestPrecheckerValidateEndorsementAction(
-        prechecker_actions::PrecheckerValidateEndorsementAction,
-    ),
-    TestPrecheckerEndorsementValidationAppliedAction(
-        prechecker_actions::PrecheckerEndorsementValidationAppliedAction,
-    ),
-    TestPrecheckerEndorsementValidationRefusedAction(
-        prechecker_actions::PrecheckerEndorsementValidationRefusedAction,
+    TestPrecheckerCategorizeOperationAction(
+        prechecker_actions::PrecheckerCategorizeOperationAction,
     ),
     TestPrecheckerProtocolNeededAction(prechecker_actions::PrecheckerProtocolNeededAction),
+    TestPrecheckerValidateOperationAction(prechecker_actions::PrecheckerValidateOperationAction),
+    TestPrecheckerOperationValidatedAction(prechecker_actions::PrecheckerOperationValidatedAction),
     TestPrecheckerErrorAction(prechecker_actions::PrecheckerErrorAction),
-    TestPrecheckerPrecacheEndorsingRightsAction(
-        prechecker_actions::PrecheckerPrecacheEndorsingRightsAction,
+    TestPrecheckerCacheProtocolAction(prechecker_actions::PrecheckerCacheProtocolAction),
+    TestPrecheckerCacheDelayedOperationAction(
+        prechecker_actions::PrecheckerCacheDelayedOperationAction,
     ),
     TestPrecheckerPruneOperationAction(prechecker_actions::PrecheckerPruneOperationAction),
 }
@@ -950,25 +988,18 @@ enum PrecheckerActionTest {
 impl PrecheckerActionTest {
     fn to_action(&self) -> Action {
         match self.clone() {
-            Self::TestPrecheckerPrecheckOperationRequestAction(a) => a.into(),
-            Self::TestPrecheckerPrecheckOperationResponseAction(a) => a.into(),
-            Self::TestPrecheckerCacheAppliedBlockAction(a) => a.into(),
-            Self::TestPrecheckerPrecheckOperationInitAction(a) => a.into(),
+            Self::TestPrecheckerCurrentHeadUpdateAction(a) => a.into(),
+            Self::TestPrecheckerStoreEndorsementBranchAction(a) => a.into(),
+            Self::TestPrecheckerPrecheckOperationAction(a) => a.into(),
+            Self::TestPrecheckerPrecheckDelayedOperationAction(a) => a.into(),
             Self::TestPrecheckerDecodeOperationAction(a) => a.into(),
-            Self::TestPrecheckerOperationDecodedAction(a) => a.into(),
-            //Self::TestPrecheckerWaitForBlockApplicationAction(a) => a.into(),
-            Self::TestPrecheckerWaitForBlockPrecheckedAction(a) => a.into(),
-            Self::TestPrecheckerBlockPrecheckedAction(a) => a.into(),
-            Self::TestPrecheckerWaitForBlockApplied(a) => a.into(),
-            Self::TestPrecheckerBlockAppliedAction(a) => a.into(),
-            Self::TestPrecheckerGetEndorsingRightsAction(a) => a.into(),
-            Self::TestPrecheckerEndorsingRightsReadyAction(a) => a.into(),
-            Self::TestPrecheckerValidateEndorsementAction(a) => a.into(),
-            Self::TestPrecheckerEndorsementValidationAppliedAction(a) => a.into(),
-            Self::TestPrecheckerEndorsementValidationRefusedAction(a) => a.into(),
+            Self::TestPrecheckerCategorizeOperationAction(a) => a.into(),
             Self::TestPrecheckerProtocolNeededAction(a) => a.into(),
+            Self::TestPrecheckerValidateOperationAction(a) => a.into(),
+            Self::TestPrecheckerOperationValidatedAction(a) => a.into(),
             Self::TestPrecheckerErrorAction(a) => a.into(),
-            Self::TestPrecheckerPrecacheEndorsingRightsAction(a) => a.into(),
+            Self::TestPrecheckerCacheProtocolAction(a) => a.into(),
+            Self::TestPrecheckerCacheDelayedOperationAction(a) => a.into(),
             Self::TestPrecheckerPruneOperationAction(a) => a.into(),
         }
     }

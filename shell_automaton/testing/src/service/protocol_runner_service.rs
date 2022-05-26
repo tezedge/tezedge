@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{
-    ApplyBlockRequest, BeginConstructionRequest, TezosRuntimeConfiguration,
+    ApplyBlockRequest, BeginConstructionRequest, ProtocolRpcRequest, TezosRuntimeConfiguration,
     ValidateOperationRequest,
 };
 use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
@@ -86,6 +86,18 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDummy {
     }
 
     fn validate_operation(&mut self, _: ValidateOperationRequest) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
+    fn get_context_raw_bytes(&mut self, _: ProtocolRpcRequest) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
+    fn get_endorsing_rights(&mut self, _: ProtocolRpcRequest) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
+    fn get_cycle_delegates(&mut self, _: ProtocolRpcRequest) -> ProtocolRunnerToken {
         self.new_token()
     }
 

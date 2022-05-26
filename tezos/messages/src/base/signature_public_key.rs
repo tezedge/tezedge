@@ -12,7 +12,7 @@ use std::{
 use crypto::{
     blake2b,
     hash::{
-        ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashTrait, PublicKeyEd25519,
+        ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, PublicKeyEd25519,
         PublicKeyP256, PublicKeySecp256k1, Signature,
     },
     CryptoError, PublicKeySignatureVerifier,
@@ -30,11 +30,12 @@ use tezos_encoding::{enc::BinWriter, encoding::HasEncoding, nom::NomReader};
 /// - 0x02 + chain id for an endorsement signature,
 /// - 0x03 for other operations
 #[derive(Clone, Debug)]
-pub enum SignatureWatermark {
-    BlockHeader(ChainId),
-    Endorsement(ChainId),
+pub enum SignatureWatermark<'a> {
+    BlockHeader(&'a ChainId),
+    Endorsement(&'a ChainId),
+    Preendorsement(&'a ChainId),
     GenericOperation,
-    Custom(Vec<u8>),
+    Custom(&'a [u8]),
     None,
 }
 
@@ -45,6 +46,12 @@ pub enum SignaturePublicKey {
     Ed25519(PublicKeyEd25519),
     Secp256k1(PublicKeySecp256k1),
     P256(PublicKeyP256),
+}
+
+impl std::fmt::Display for SignaturePublicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string_representation())
+    }
 }
 
 impl std::fmt::Debug for SignaturePublicKey {
@@ -153,49 +160,35 @@ impl SignaturePublicKey {
         }
     }
 
-    pub fn verify_signature<B>(
+    pub fn verify_signature<'a, T>(
         &self,
         signature: &Signature,
-        watermark: &SignatureWatermark,
-        bytes: B,
+        watermark: SignatureWatermark<'a>,
+        bytes: T,
     ) -> Result<bool, CryptoError>
     where
-        B: AsRef<[u8]>,
+        T: IntoIterator<Item = &'a [u8]>,
     {
-        // TODO directly use `sodiumoxide::generichash` to avoid constructing single slice to be hashed
-        let bytes_ref = bytes.as_ref();
-        let bytes = match watermark {
+        let mut bytes_refs: Vec<&[u8]> = match watermark {
             SignatureWatermark::BlockHeader(chain_id) => {
-                let mut bytes = Vec::with_capacity(1 + ChainId::hash_size() + bytes_ref.len());
-                bytes.push(0x01);
-                bytes.extend_from_slice(chain_id.as_ref());
-                bytes.extend_from_slice(bytes_ref);
-                bytes
+                vec![&[0x01], chain_id.as_ref()]
+            }
+            SignatureWatermark::Preendorsement(chain_id) => {
+                vec![&[0x12], chain_id.as_ref()]
             }
             SignatureWatermark::Endorsement(chain_id) => {
-                let mut bytes = Vec::with_capacity(1 + ChainId::hash_size() + bytes_ref.len());
-                bytes.push(0x02);
-                bytes.extend_from_slice(chain_id.as_ref());
-                bytes.extend_from_slice(bytes_ref);
-                bytes
+                vec![&[0x13], chain_id.as_ref()]
             }
             SignatureWatermark::GenericOperation => {
-                let mut bytes = Vec::with_capacity(1 + bytes_ref.len());
-                bytes.push(0x03);
-                bytes.extend_from_slice(bytes_ref);
-                bytes
+                vec![&[0x03]]
             }
             SignatureWatermark::Custom(prefix) => {
-                let mut bytes = Vec::with_capacity(prefix.len() + bytes_ref.len());
-                bytes.extend_from_slice(prefix);
-                bytes.extend_from_slice(bytes_ref);
-                bytes
+                vec![prefix]
             }
-            SignatureWatermark::None => bytes_ref.to_vec(),
+            SignatureWatermark::None => vec![],
         };
-        let hash = blake2b::digest(&bytes, 32)
-            .map_err(|_| ())
-            .map_err(|_| CryptoError::InvalidMessage)?;
+        bytes_refs.extend(bytes.into_iter());
+        let hash = blake2b::digest_all(bytes_refs, 32).map_err(|_| CryptoError::InvalidMessage)?;
         match self {
             SignaturePublicKey::Ed25519(pk) => pk.verify_signature(signature, &hash),
             SignaturePublicKey::Secp256k1(pk) => pk.verify_signature(signature, &hash),
@@ -247,6 +240,12 @@ pub enum SignaturePublicKeyHash {
     Ed25519(ContractTz1Hash),
     Secp256k1(ContractTz2Hash),
     P256(ContractTz3Hash),
+}
+
+impl std::fmt::Display for SignaturePublicKeyHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string_representation())
+    }
 }
 
 impl std::fmt::Debug for SignaturePublicKeyHash {

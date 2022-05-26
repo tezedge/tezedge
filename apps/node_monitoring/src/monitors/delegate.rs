@@ -14,7 +14,7 @@ use crypto::hash::BlockHash;
 use itertools::Itertools;
 use reqwest::Response;
 use serde::{de::DeserializeOwned, Deserialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use slog::Logger;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tokio::{
@@ -220,7 +220,7 @@ impl DelegatesMonitor {
                     endorsing_failures.remove(delegate);
                 } else {
                     *endorsing_failures.entry(delegate).or_insert(0) += 1;
-                    self.on_missed_endorsement(level).await?;
+                    self.on_missed_endorsement(level, hash).await?;
                 }
             }
         }
@@ -372,11 +372,17 @@ impl DelegatesMonitor {
         }
         if each_failure || prev_failures.is_none() {
             let levels = ((level - 2)..(level + 2)).join(",");
-            let path = format!("/dev/shell/automaton/actions_stats_for_blocks?level={}", levels);
+            let path = format!(
+                "/dev/shell/automaton/actions_stats_for_blocks?level={}",
+                levels
+            );
             let summary = self.endorsmenet_summary_storage.get(level)?;
             let mut action_stats = node_get::<Value, _>(self.node_addr, path).await?;
 
-            let summary = format!("*Summary*: {}", summary.map_or("`Error(Not Found)`".to_owned(), |s| s.to_string()));
+            let summary = format!(
+                "*Summary*: {}",
+                summary.map_or("`Error(Not Found)`".to_owned(), |s| s.to_string())
+            );
             let action_stats_body = action_stats
                 .as_array_mut()
                 .map(|v| std::mem::take(v))
@@ -392,7 +398,8 @@ impl DelegatesMonitor {
                         true => "*",
                         false => "",
                     };
-                    Some(format!("{}level: {} round: {} - cpu_idle: {:.3}s, cpu_busy: {:.3}s{}",
+                    Some(format!(
+                        "{}level: {} round: {} - cpu_idle: {:.3}s, cpu_busy: {:.3}s{}",
                         bold,
                         level,
                         round,
@@ -402,14 +409,17 @@ impl DelegatesMonitor {
                     ))
                 })
                 .join("\n");
-            let action_stats_explorer_link = self.explorer_url.as_ref().map_or("`Error(Missing Explorer Url)`".to_owned(), |explorer_url| {
-                format!("{}/#/resources/state/{}", explorer_url, level)
-            });
+            let action_stats_explorer_link = self
+                .explorer_url
+                .as_ref()
+                .map_or("`Error(Missing Explorer Url)`".to_owned(), |explorer_url| {
+                    format!("{}/#/resources/state/{}", explorer_url, level)
+                });
             let action_stats_header = format!("*Action Stats:* {action_stats_explorer_link}");
             let action_stats = format!("{action_stats_header}\n{action_stats_body}");
 
             self.report_error(format!(
-                "Missed `{delegate}`'s endorsement for level `{level}`\n\n{summary}\n\n{action_stats}{}",
+                "Missed `{delegate}`'s endorsement for level `{level}`\n\n{summary}\n\n{action_stats}",
             ));
         }
 
@@ -449,7 +459,7 @@ impl DelegatesMonitor {
         }
     }
 
-    async fn on_missed_endorsement(&self, level: i32) -> anyhow::Result<()> {
+    async fn on_missed_endorsement(&self, level: i32, head: &BlockHash) -> anyhow::Result<()> {
         let stats_dir = if let Some(p) = &self.stats_dir {
             p
         } else {
@@ -488,20 +498,9 @@ impl DelegatesMonitor {
             let path = format!("/dev/shell/automaton/preendorsements_status?level={level}&round={round}&base_time={base_time}",);
             slog::debug!(self.log, "fetching preendorsements using {path}");
             let preendorsements = node_get::<Value, _>(self.node_addr, path).await?;
-            let hashes = if let Some(e) = endorsements.as_object() {
-                e.keys().cloned().collect::<Vec<_>>()
-            } else {
-                continue;
-            };
-            let operation_stats = if !hashes.is_empty() {
-                let path = format!(
-                    "/dev/shell/automaton/mempool/operation_stats?hash={hashes}",
-                    hashes = hashes.join(",")
-                );
-                node_get::<Value, _>(self.node_addr, path).await?
-            } else {
-                json!([])
-            };
+            let path = format!("/dev/shell/automaton/mempool/operation_stats?head={head}");
+            slog::debug!(self.log, "fetching operation stats using {path}");
+            let operation_stats = node_get::<Value, _>(self.node_addr, path).await?;
 
             for (name, json) in [
                 ("application", block),

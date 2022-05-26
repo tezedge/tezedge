@@ -274,10 +274,6 @@ impl Default for StatisticsService {
 }
 
 impl StatisticsService {
-    pub(crate) fn get_mut(&mut self, hash: &BlockHash) -> Option<&mut BlockApplyStats> {
-        self.blocks_apply.get_mut(hash)
-    }
-
     pub fn action_new(&mut self, action: &ActionWithMeta) {
         let pred_action_id = self.last_action_id.replace(action.id).unwrap_or(action.id);
         let pred_action_kind = self.last_action_kind.replace(action.action.kind());
