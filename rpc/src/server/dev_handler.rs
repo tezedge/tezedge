@@ -9,7 +9,7 @@ use crate::{empty, make_json_response, required_param, result_to_json_response, 
 use anyhow::format_err;
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
 use crypto::PublicKeyWithHash;
-use hyper::{Body, Request, Response};
+use hyper::{body, Body, Request, Response};
 use shell_automaton::service::{BlockApplyStats, BlockPeerStats};
 use slog::warn;
 use std::collections::BTreeSet;
@@ -770,4 +770,17 @@ pub async fn best_remote_level(
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     make_json_response(&dev_services::get_best_remote_level(&env).await?)
+}
+
+pub async fn patch_bakers(
+    req: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let body = req.into_body();
+    let body_bytes = body::to_bytes(body).await?;
+    let baker = std::str::from_utf8(&body_bytes)?;
+
+    make_json_response(&dev_services::patch_bakers(baker.to_string(), &env).await?)
 }

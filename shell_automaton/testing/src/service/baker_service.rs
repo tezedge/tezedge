@@ -32,6 +32,8 @@ impl Default for BakerServiceDummy {
 }
 
 impl BakerService for BakerServiceDummy {
+    fn add_local_baker(&mut self, _public_key: SignaturePublicKey, _secret_key: SecretKeyEd25519) {}
+
     fn try_recv(&mut self) -> Result<(RequestId, BakerWorkerMessage), mpsc::TryRecvError> {
         Err(mpsc::TryRecvError::Empty)
     }

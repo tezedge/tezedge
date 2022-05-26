@@ -35,7 +35,7 @@ where
     S: Service,
 {
     match &action.action {
-        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) | Action::BakerAdd(_) => {
             store.dispatch(BakerBlockEndorserRightsGetInitAction {});
         }
         Action::BakerBlockEndorserRightsGetInit(_) => {
@@ -66,6 +66,7 @@ where
                 return;
             }
 
+            eprintln!("======= endorsing for {block}");
             let level = block.header.level();
             let rights = store.state().rights.cache.endorsing.get(&level);
             let rights = match rights {

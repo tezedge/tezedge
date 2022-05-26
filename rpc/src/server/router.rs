@@ -388,6 +388,12 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
     );
 
     routes.handle(
+        hash_set![Method::PATCH],
+        "/dev/shell/automaton/bakers",
+        dev_handler::patch_bakers,
+    );
+
+    routes.handle(
         hash_set![Method::GET],
         "/stats/memory",
         dev_handler::dev_stats_memory,

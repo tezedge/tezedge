@@ -136,6 +136,9 @@ pub enum RpcRequest {
         level: Level,
         round: Option<i32>,
     },
+    PatchBakers {
+        baker: String,
+    },
 }
 
 #[derive(Debug)]

@@ -36,7 +36,7 @@ where
     S: Service,
 {
     match &action.action {
-        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) | Action::BakerAdd(_) => {
             store.dispatch(BakerBlockBakerRightsGetInitAction {});
         }
         Action::BakerBlockBakerRightsGetInit(_) => {
@@ -56,6 +56,7 @@ where
             });
         }
         Action::RightsEndorsingReady(content) => {
+            slog::trace!(store.state().log, "=== endorsing rights ready");
             let head = match store.state().current_head.get() {
                 Some(v) => v,
                 None => return,

@@ -1148,3 +1148,16 @@ pub(crate) async fn get_best_remote_level(
         Ok(None)
     }
 }
+
+pub(crate) async fn patch_bakers(
+    baker: String,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<serde_json::Value> {
+    let rx = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::PatchBakers { baker })
+        .await?;
+
+    let response = rx.await?;
+    Ok(response)
+}

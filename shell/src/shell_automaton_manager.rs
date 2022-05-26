@@ -29,7 +29,7 @@ pub use shell_automaton::service::actors_service::{ApplyBlockCallback, ApplyBloc
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
 use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use shell_automaton::service::{
-    ActorsServiceDefault, BakerServiceDefault, DnsServiceDefault, MioServiceDefault,
+    ActorsServiceDefault, BakerService, BakerServiceDefault, DnsServiceDefault, MioServiceDefault,
     ProtocolRunnerServiceDefault, RpcServiceDefault, ServiceDefault, StorageServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
@@ -149,15 +149,18 @@ impl ShellAutomatonManager {
             log.new(slog::o!("service" => "protocol_runner")),
         );
 
-        let (public_key, secret_key) = SeedEd25519::from_base58_check(
-            "edsk3YYVqwt92imjohsgqCEdGV7xe9YXBjjP8cAMYqXuiBKWjdogQ1",
-        )
-        .unwrap()
-        .keypair()
-        .unwrap();
-        let public_key = SignaturePublicKey::Ed25519(public_key);
         let mut baker_service = BakerServiceDefault::new();
-        baker_service.add_local_baker(public_key.clone(), secret_key);
+        let bakers = if let Ok(key) = env::var("TEZEDGE_BAKER") {
+            let (public_key, secret_key) = SeedEd25519::from_base58_check(&key)
+                .unwrap()
+                .keypair()
+                .unwrap();
+            let public_key = SignaturePublicKey::Ed25519(public_key);
+            baker_service.add_local_baker(public_key.clone(), secret_key);
+            vec![shell_automaton::config::BakerConfig { public_key }]
+        } else {
+            vec![]
+        };
 
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),
@@ -175,7 +178,6 @@ impl ShellAutomatonManager {
 
         let chain_id = init_storage_data.chain_id.clone();
 
-        let baker_config = shell_automaton::config::BakerConfig { public_key };
         let mut initial_state = shell_automaton::State::new(shell_automaton::Config {
             initial_time: SystemTime::now(),
 
@@ -228,7 +230,7 @@ impl ShellAutomatonManager {
                 env_variable("MEMPOOL_GET_OPERATIONS_TIMEOUT_SECS").unwrap_or(1),
             ),
 
-            bakers: vec![baker_config],
+            bakers,
         });
 
         initial_state.set_logger(log.clone());
