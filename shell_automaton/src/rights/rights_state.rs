@@ -40,11 +40,11 @@ pub struct RightsState {
 }
 
 impl RightsState {
-    pub(crate) fn tenderbake_endorsing_rights(&self, level: Level) -> Option<&EndorsingRights> {
+    pub(crate) fn tenderbake_validators(&self, level: Level) -> Option<&Validators> {
         self.cache
-            .endorsing
+            .validators
             .get(&level)
-            .map(|(_, endorsing_rights)| endorsing_rights)
+            .map(|(_, validators)| validators)
     }
 }
 
@@ -53,7 +53,7 @@ pub struct RightsCache {
     pub time: Duration,
     pub baking: BTreeMap<Level, (ActionId, BakingRightsOld)>,
     pub endorsing_old: BTreeMap<Level, (ActionId, EndorsingRightsOld)>,
-    pub endorsing: BTreeMap<Level, (ActionId, EndorsingRights)>,
+    pub validators: BTreeMap<Level, (ActionId, Validators)>,
 }
 
 impl Default for RightsCache {
@@ -62,7 +62,7 @@ impl Default for RightsCache {
             time: Duration::from_secs(600),
             baking: Default::default(),
             endorsing_old: Default::default(),
-            endorsing: Default::default(),
+            validators: Default::default(),
         }
     }
 }
@@ -71,6 +71,17 @@ pub type Delegate = SignaturePublicKey;
 pub type Slot = u16;
 pub type Slots = Vec<Slot>;
 pub type EndorsingPower = u16;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct Validators {
+    pub level: Level,
+    pub validators: ValidatorsTable,
+    pub slots: ValidatorSlots,
+}
+
+pub type ValidatorsTable = Vec<SignaturePublicKey>;
+pub type ValidatorSlots = BTreeMap<SignaturePublicKey, Vec<Slot>>;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -223,6 +234,7 @@ pub enum RightsRequest {
     EndorsingOldReady(EndorsingRightsOld),
     BakingOldReady(BakingRightsOld),
     EndorsingReady(EndorsingRights),
+    ValidatorsReady(Validators),
     Error(RightsError),
 }
 
@@ -249,6 +261,8 @@ pub enum RightsError {
     CycleDelegates(#[from] DelegatesError),
     #[error("Error fetching endorsing rights form context: {0}")]
     ContextRights(#[from] crate::service::protocol_runner_service::EndorsingRightsError),
+    #[error("Error fetching validators form context: {0}")]
+    ContextValidators(#[from] crate::service::protocol_runner_service::ValidatorsError),
     #[error("Error calculating endorsing rights: {0}")]
     Calculation(#[from] RightsCalculationError),
     #[error("Unsupported protocol: {0}")]

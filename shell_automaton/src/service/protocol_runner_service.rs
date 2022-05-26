@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 
-use crypto::hash::ContextHash;
+use crypto::hash::{ChainId, ContextHash};
 use crypto::PublicKeyWithHash;
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +20,7 @@ use tezos_api::ffi::{
 use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
 use tezos_messages::base::signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash};
 use tezos_messages::base::ConversionError;
+use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerError, ProtocolServiceError};
 use tezos_protocol_ipc_messages::{
     GenesisResultDataParams, InitProtocolContextParams, ProtocolMessage,
@@ -104,6 +105,13 @@ pub enum ProtocolRunnerResult {
         ),
     ),
 
+    GetValidators(
+        (
+            ProtocolRunnerToken,
+            Result<ValidatorsResponse, ProtocolServiceError>,
+        ),
+    ),
+
     GetCycleDelegates(
         (
             ProtocolRunnerToken,
@@ -128,6 +136,7 @@ impl ProtocolRunnerResult {
             Self::ValidateOperation((token, _)) => Some(*token),
             Self::GetContextRawBytes((token, _)) => Some(*token),
             Self::GetEndorsingRights((token, _)) => Some(*token),
+            Self::GetValidators((token, _)) => Some(*token),
             Self::GetCycleDelegates((token, _)) => Some(*token),
 
             Self::ShutdownServer(_) => None,
@@ -181,6 +190,13 @@ pub trait ProtocolRunnerService {
     fn get_context_raw_bytes(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken;
 
     fn get_endorsing_rights(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken;
+
+    fn get_validators(
+        &mut self,
+        chain_id: ChainId,
+        block_header: BlockHeader,
+        level: Level,
+    ) -> ProtocolRunnerToken;
 
     fn get_cycle_delegates(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken;
 
@@ -360,6 +376,32 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
         token
     }
 
+    fn get_validators(
+        &mut self,
+        chain_id: ChainId,
+        block_header: BlockHeader,
+        level: Level,
+    ) -> ProtocolRunnerToken {
+        let req = ProtocolRpcRequest {
+            block_header,
+            chain_arg: "main".to_string(),
+            chain_id,
+            request: tezos_api::ffi::RpcRequest {
+                body: String::new(),
+                accept: None,
+                content_type: None,
+                context_path: format!("/chains/main/blocks/head/helpers/validators?level={level}"),
+                meth: tezos_api::ffi::RpcMethod::GET,
+            },
+        };
+        let token = self.new_token();
+        let message = ProtocolMessage::GetValidators(req);
+        self.channel
+            .blocking_send(ProtocolRunnerRequest::Message((token, message)))
+            .unwrap();
+        token
+    }
+
     fn get_cycle_delegates(&mut self, req: ProtocolRpcRequest) -> ProtocolRunnerToken {
         let token = self.new_token();
         let message = ProtocolMessage::GetCycleDelegates(req);
@@ -526,4 +568,72 @@ pub(super) fn cycle_delegates_from_rpc_response(
         .map(|pk| pk.pk_hash().map(|pkh| (pkh, pk)))
         .collect::<Result<_, _>>()?;
     Ok(delegates)
+}
+
+pub type ValidatorsResponse = Result<Validators, ValidatorsError>;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct Validators {
+    pub validators: ValidatorsTable,
+    pub slots: ValidatorSlots,
+}
+
+pub type ValidatorsTable = Vec<SignaturePublicKeyHash>;
+pub type ValidatorSlots = BTreeMap<SignaturePublicKeyHash, Vec<Slot>>;
+
+#[derive(Debug, Clone, thiserror::Error, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub enum ValidatorsError {
+    #[error(transparent)]
+    Response(#[from] ProtocolRpcResponseError),
+    #[error("Missing delegate for slot `{0}`")]
+    MissingDelegate(Slot),
+    #[error("JSON parse error: {0}")]
+    Json(String),
+}
+
+impl From<serde_json::Error> for ValidatorsError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Json(error.to_string())
+    }
+}
+
+pub(super) fn validators_from_rpc_response(res: ProtocolRpcResponse) -> ValidatorsResponse {
+    let body = res.ok_body_or().map_err(ProtocolRpcResponseError::from)?;
+
+    #[derive(serde::Deserialize)]
+    pub struct ValidatorJson {
+        delegate: SignaturePublicKeyHash,
+        slots: Vec<Slot>,
+    }
+
+    let rpc_validators = serde_json::from_str::<Vec<ValidatorJson>>(&body)?;
+    let slots = rpc_validators
+        .iter()
+        .fold(Vec::new(), |mut slots, validator| {
+            for slot in &validator.slots {
+                let slot = *slot as usize;
+                if slot >= slots.len() {
+                    slots.resize(slot + 1, Option::<&SignaturePublicKeyHash>::None);
+                }
+                slots[slot] = Some(&validator.delegate);
+            }
+            slots
+        });
+
+    let validators = slots
+        .into_iter()
+        .enumerate()
+        .map(|(i, d)| {
+            d.cloned()
+                .ok_or_else(|| ValidatorsError::MissingDelegate(i as Slot))
+        })
+        .collect::<Result<_, _>>()?;
+    let slots = rpc_validators
+        .into_iter()
+        .map(|validator| (validator.delegate, validator.slots))
+        .collect();
+
+    Ok(Validators { validators, slots })
 }

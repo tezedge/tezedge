@@ -406,11 +406,36 @@ impl EnablingCondition<State> for RightsIthacaContextSuccessAction {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct RightsIthacaContextValidatorsSuccessAction {
+    pub key: RightsKey,
+    pub validators: crate::service::protocol_runner_service::Validators,
+}
+
+impl EnablingCondition<State> for RightsIthacaContextValidatorsSuccessAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct RightsEndorsingReadyAction {
     pub key: RightsKey,
 }
 
 impl EnablingCondition<State> for RightsEndorsingReadyAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct RightsValidatorsReadyAction {
+    pub key: RightsKey,
+}
+
+impl EnablingCondition<State> for RightsValidatorsReadyAction {
     fn is_enabled(&self, _state: &State) -> bool {
         true
     }

@@ -10,7 +10,7 @@ use crypto::{
 use slog::Logger;
 use tezos_messages::{p2p::encoding::block_header::Level, protocol::SupportedProtocol};
 
-use crate::{rights::EndorsingRights, Action, ActionWithMeta, State};
+use crate::{rights::Validators, Action, ActionWithMeta, State};
 
 use super::{
     prechecker_actions::*, ConsensusOperationError, EndorsementBranch, OperationDecodedContents,
@@ -203,7 +203,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                         }
                     };
                 let tenderbake_validators =
-                    if let Some(v) = rights.tenderbake_endorsing_rights(consensus_contents.level) {
+                    if let Some(v) = rights.tenderbake_validators(consensus_contents.level) {
                         v
                     } else {
                         *op_state = PrecheckerOperationState::TenderbakePendingRights {
@@ -418,15 +418,25 @@ fn validate_tenderbake_consensus_operation_signature(
     hash: &OperationHash,
     operation_decoded_contents: &OperationDecodedContents,
     consensus_contents: &TenderbakeConsensusContents,
-    tenderbake_validators: &EndorsingRights,
+    tenderbake_validators: &Validators,
     chain_id: &ChainId,
     log: &Logger,
 ) -> Result<(), ConsensusOperationError> {
     let TenderbakeConsensusContents { slot, .. } = consensus_contents;
-    let (delegate, _) = tenderbake_validators
+
+    let delegate = if let Some(d) = tenderbake_validators.validators.get(*slot as usize) {
+        d
+    } else {
+        return Err(ConsensusOperationError::IncorrectSlot(*slot));
+    };
+    if tenderbake_validators
         .slots
-        .get(slot)
-        .ok_or_else(|| ConsensusOperationError::IncorrectSlot(*slot))?;
+        .get(delegate)
+        .and_then(|slots| slots.first())
+        != Some(slot)
+    {
+        return Err(ConsensusOperationError::IncorrectSlot(*slot));
+    }
     slog::debug!(log, "Delegate found for `{hash}`"; "delegate" => slog::FnValue(|_| delegate.pk_hash().map(|pkh| pkh.to_string_representation()).unwrap_or_default()));
     match operation_decoded_contents.verify_signature(delegate, chain_id) {
         Ok(true) => Ok(()),

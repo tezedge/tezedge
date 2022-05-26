@@ -10,7 +10,6 @@ use std::{
 
 use slog::{error, trace, warn, FnValue};
 use storage::cycle_storage::CycleData;
-use tezos_api::ffi::{ProtocolRpcRequest, RpcMethod, RpcRequest};
 use tezos_messages::{
     base::{
         signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash},
@@ -70,10 +69,10 @@ where
                     if let Some((_, _)) = key
                         .level()
                         .as_ref()
-                        .and_then(|level| cache.endorsing.get(level))
+                        .and_then(|level| cache.validators.get(level))
                     {
                         trace!(log, "Endorsing rights using cache"; "key" => FnValue(|_| format!("{:?}", key)));
-                        store.dispatch(RightsEndorsingReadyAction {
+                        store.dispatch(RightsValidatorsReadyAction {
                             key: key.clone(),
                         });
                         return;
@@ -692,25 +691,14 @@ where
         Action::RightsCalculateIthaca(RightsCalculateIthacaAction { key }) => {
             if let Some(RightsRequest::PendingRightsCalculationIthaca { block_header, level, .. } ) = requests.get(key)
             {
-                let req = ProtocolRpcRequest {
-                    block_header: block_header.clone(),
-                    chain_arg: "main".to_string(),
-                    chain_id: store.state().config.chain_id.clone(),
-                    request: RpcRequest {
-                        body: String::new(),
-                        accept: None,
-                        content_type: None,
-                        context_path: format!(
-                            "/chains/main/blocks/head/helpers/endorsing_rights?level={level}"
-                        ),
-                        meth: RpcMethod::GET,
-                    },
-                };
-                let token = store.service.protocol_runner().get_endorsing_rights(req);
+                let chain_id = store.state().config.chain_id.clone();
+                let block_header = block_header.clone();
+                let level = *level;
+                let token = store.service.protocol_runner().get_validators(chain_id, block_header, level);
                 store.dispatch(RightsContextRequestedAction { key: key.clone(), token });
             }
         }
-        Action::ProtocolRunnerResponse(resp) => if let ProtocolRunnerResult::GetEndorsingRights((token, result)) = &resp.result {
+        Action::ProtocolRunnerResponse(resp) => if let ProtocolRunnerResult::GetValidators((token, result)) = &resp.result {
             if let Some(key) = requests.iter().find_map(|(k, v)| {
                 if matches!(v, RightsRequest::PendingRightsFromContextIthaca { token: t, .. } if token == t) {
                     Some(k)
@@ -720,10 +708,10 @@ where
             }).cloned() {
                 match result {
                     Ok(Ok(result)) => {
-                            store.dispatch(RightsIthacaContextSuccessAction {
-                                key,
-                                endorsing_rights: result.clone(),
-                            });
+                        store.dispatch(RightsIthacaContextValidatorsSuccessAction {
+                            key,
+                            validators: result.clone(),
+                        });
                     }
                     Ok(Err(err)) => {
                         store.dispatch(RightsErrorAction {
@@ -736,9 +724,9 @@ where
             }
         }
 
-        Action::RightsIthacaContextSuccess(RightsIthacaContextSuccessAction { key, .. }) => {
-            if let Some(RightsRequest::EndorsingReady(_)) = requests.get(key) {
-                store.dispatch(RightsEndorsingReadyAction {
+        Action::RightsIthacaContextValidatorsSuccess(RightsIthacaContextValidatorsSuccessAction { key, .. }) => {
+            if let Some(RightsRequest::ValidatorsReady(_)) = requests.get(key) {
+                store.dispatch(RightsValidatorsReadyAction {
                     key: key.clone(),
                 });
             }

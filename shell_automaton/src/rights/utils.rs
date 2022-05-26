@@ -124,7 +124,6 @@ impl TezosPRNG {
             let r = num_from_slice!(self.state, 0, i32).abs();
 
             if r >= i32::MAX - (i32::MAX % bound) {
-                eprintln!("get_next continue: `{r}`");
                 continue;
             } else {
                 break r % bound;

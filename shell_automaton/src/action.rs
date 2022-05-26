@@ -567,10 +567,12 @@ pub enum Action {
     RightsCalculateIthaca(RightsCalculateIthacaAction),
     RightsContextRequested(RightsContextRequestedAction),
     RightsIthacaContextSuccess(RightsIthacaContextSuccessAction),
+    RightsIthacaContextValidatorsSuccess(RightsIthacaContextValidatorsSuccessAction),
 
     RightsEndorsingOldReady(RightsEndorsingOldReadyAction),
     RightsBakingOldReady(RightsBakingOldReadyAction),
     RightsEndorsingReady(RightsEndorsingReadyAction),
+    RightsValidatorsReady(RightsValidatorsReadyAction),
     RightsError(RightsErrorAction),
 
     RightsCycleErasGet(RightsCycleErasGetAction),

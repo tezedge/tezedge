@@ -3,13 +3,13 @@
 
 use std::collections::hash_map::Entry;
 
-use crate::{service::protocol_runner_service::EndorsingRightsLevel, Action, State};
+use crate::{Action, State};
 use redux_rs::ActionWithMeta;
 
 use super::{
     cycle_delegates::{CycleDelegatesQuery, CycleDelegatesQueryState},
     rights_actions::*,
-    EndorsingRights, RightsRequest,
+    RightsRequest, Validators,
 };
 
 pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
@@ -376,10 +376,12 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 }
             }
         }
-        Action::RightsIthacaContextSuccess(RightsIthacaContextSuccessAction {
-            key,
-            endorsing_rights,
-        }) => {
+        Action::RightsIthacaContextValidatorsSuccess(
+            RightsIthacaContextValidatorsSuccessAction {
+                key,
+                validators: context_validators,
+            },
+        ) => {
             if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::PendingRightsFromContextIthaca {
                     start: _,
@@ -388,36 +390,23 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     ..
                 } = request
                 {
-                    if let Some((
-                        EndorsingRightsLevel {
-                            delegates: endorsing_rights,
-                            ..
-                        },
-                        [],
-                    )) = endorsing_rights.split_first()
-                    {
-                        let slots = endorsing_rights
-                            .iter()
-                            .filter_map(|d| {
-                                delegates
-                                    .get(&d.delegate)
-                                    .map(|v| (d.first_slot, (v.clone(), d.endorsing_power)))
-                            })
-                            .collect();
-                        let delegates = endorsing_rights
-                            .iter()
-                            .filter_map(|d| {
-                                delegates
-                                    .get(&d.delegate)
-                                    .map(|v| (v.clone(), (d.first_slot, d.endorsing_power)))
-                            })
-                            .collect();
-                        *request = RightsRequest::EndorsingReady(EndorsingRights {
-                            level: *level,
-                            slots,
-                            delegates,
+                    let validators = context_validators
+                        .validators
+                        .iter()
+                        .filter_map(|pkh| delegates.get(pkh).cloned())
+                        .collect();
+                    let slots = context_validators
+                        .slots
+                        .iter()
+                        .filter_map(|(pkh, rights)| {
+                            delegates.get(pkh).cloned().map(|pk| (pk, rights.clone()))
                         })
-                    }
+                        .collect();
+                    *request = RightsRequest::ValidatorsReady(Validators {
+                        level: *level,
+                        validators,
+                        slots,
+                    });
                 }
             }
         }
@@ -449,18 +438,18 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 );
             }
         }
-        Action::RightsEndorsingReady(RightsEndorsingReadyAction { key }) => {
+        Action::RightsValidatorsReady(RightsValidatorsReadyAction { key }) => {
             if let Entry::Occupied(entry) = requests.entry(key.clone()) {
-                if let RightsRequest::EndorsingReady(endorsing_rights) = entry.get() {
-                    let endorsing_rights = endorsing_rights.clone();
+                if let RightsRequest::ValidatorsReady(validators) = entry.get() {
+                    let validators = validators.clone();
                     entry.remove();
-                    let cache = &mut state.rights.cache.endorsing;
+                    let cache = &mut state.rights.cache.validators;
                     let duration = state.rights.cache.time;
                     cache.retain(|_, (timestamp, _)| {
                         action.id.duration_since(*timestamp) < duration
                     });
-                    slog::trace!(&state.log, "cached endorsing rights"; "level" => endorsing_rights.level);
-                    cache.insert(endorsing_rights.level, (action.id, endorsing_rights));
+                    slog::trace!(&state.log, "cached endorsing rights"; "level" => validators.level);
+                    cache.insert(validators.level, (action.id, validators));
                 }
             }
         }

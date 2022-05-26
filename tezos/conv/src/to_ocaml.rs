@@ -578,6 +578,7 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::ContextGetLatestContextHashes(req: OCamlInt),
         ProtocolMessage::GetContextRawBytes(req: OCamlProtocolRpcRequest),
         ProtocolMessage::GetEndorsingRights(req: OCamlProtocolRpcRequest),
+        ProtocolMessage::GetValidators(req: OCamlProtocolRpcRequest),
         ProtocolMessage::GetCycleDelegates(req: OCamlProtocolRpcRequest),
         ProtocolMessage::Ping,
         ProtocolMessage::ShutdownCall,

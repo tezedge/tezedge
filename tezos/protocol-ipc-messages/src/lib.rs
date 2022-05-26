@@ -51,6 +51,7 @@ pub enum ProtocolMessage {
     ContextGetTreeByPrefix(ContextGetTreeByPrefixRequest),
     GetContextRawBytes(ProtocolRpcRequest),
     GetEndorsingRights(ProtocolRpcRequest),
+    GetValidators(ProtocolRpcRequest),
     GetCycleDelegates(ProtocolRpcRequest),
     DumpContext(DumpContextRequest),
     RestoreContext(RestoreContextRequest),
