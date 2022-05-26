@@ -9,8 +9,6 @@ pub use tezos_encoding_derive::BinWriter;
 
 use thiserror::Error;
 
-use crate::types::Mutez;
-
 #[derive(Debug, Error)]
 /// Encoding error kind.
 pub enum BinErrorKind {
@@ -233,6 +231,8 @@ mod integers {
 }
 
 pub use integers::*;
+
+use crate::types::Mutez;
 
 macro_rules! encode_hash {
     ($hash_name:ty) => {
