@@ -780,11 +780,11 @@ where
         T: Timing,
         P: ProposerMap<Id = Id>,
     {
-        let pred_time_header = self
-            .pred_time_headers
-            .get(&self.pred_hash)
-            .expect("invariant");
-        let current_round = pred_time_header.round_local_coord(&config.timing, now);
+        // let pred_time_header = self
+        //     .pred_time_headers
+        //     .get(&self.pred_hash)
+        //     .expect("invariant");
+        // let current_round = pred_time_header.round_local_coord(&config.timing, now);
 
         // if we have elected block, and the vote is late, let's include it anyway
         if let VotesState::Done {
@@ -803,7 +803,9 @@ where
         if block_id.level != self.level
             || block_id.payload_hash != self.payload_hash.clone()
             || block_id.round != self.this_time_header.round
-            || block_id.round < current_round
+        // let's still accept late endorsements until we receive new proposal
+        // despite our `current_round` is bigger
+        // || block_id.round < current_round
         {
             if block_id.level > self.level
                 || (block_id.level == self.level && block_id.round > self.this_time_header.round)
