@@ -149,6 +149,16 @@ impl CurrentHeadState {
         self
     }
 
+    pub fn add_applied_block(&mut self, block: &BlockHeaderWithHash) -> &mut Self {
+        if let Self::Rehydrated { applied_blocks, .. } = self {
+            if !applied_blocks.contains_key(&block.hash) {
+                applied_blocks.insert(block.hash.clone(), block.clone());
+                applied_blocks.retain(|_, b| b.header.level() + 1 >= block.header.level());
+            }
+        }
+        self
+    }
+
     pub fn get(&self) -> Option<&BlockHeaderWithHash> {
         match self {
             Self::Rehydrated { head, .. } => Some(head),
