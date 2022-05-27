@@ -6330,6 +6330,7 @@ steps:
   <<: *mitten-test
 
 - name: simple_pred_fork_negative
+  failure: ignore
   <<: *mitten-test
 
 - name: advanced_fork_with_double_bake_and_preendorse
@@ -6424,7 +6425,7 @@ steps:
 
 ---
 ##############################################################################################################
-# This pipeline runs Mitten scenarios against Tezedge nodes
+# This pipeline runs Mitten scenarios against Tezedge nodes and bakers
 ##############################################################################################################
 
 kind: pipeline
@@ -6458,6 +6459,7 @@ defs:
       - LOGS_DIR=$PWD/logs/$$DRONE_STEP_NAME
       - eval $(opam env)
       - dune exec src/mitten/scenarios/$$DRONE_STEP_NAME.exe -- --data-dir $DATA_DIR --logs-dir $LOGS_DIR --binaries-dir bins --verbose 2 --timeout 400
+    failure: ignore
 
 steps:
 
@@ -6641,7 +6643,7 @@ steps:
 
 ---
 ##############################################################################################################
-# This pipeline runs Mitten scenarios against Tezedge nodes
+# This pipeline runs Mitten scenarios against Octez nodes and Tezedge bakers
 ##############################################################################################################
 
 kind: pipeline
@@ -6675,6 +6677,7 @@ defs:
       - LOGS_DIR=$PWD/logs/$$DRONE_STEP_NAME
       - eval $(opam env)
       - dune exec src/mitten/scenarios/$$DRONE_STEP_NAME.exe -- --data-dir $DATA_DIR --logs-dir $LOGS_DIR --binaries-dir bins --verbose 2 --timeout 400
+    failure: ignore
 
 steps:
 
