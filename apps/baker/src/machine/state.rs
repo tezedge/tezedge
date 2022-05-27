@@ -668,12 +668,18 @@ impl tb::ProposerMap for SlotsInfo {
                 self.delegates
                     .get(&level)?
                     .get(our)
-                    .map(|Slots(s)| s)
-                    .into_iter()
-                    .flatten()
-                    .skip_while(|c| **c < (round as u32 % self.committee_size) as u16)
-                    .next()
-                    .map(|r| (*r as i32, our.clone()))
+                    .map(|Slots(s)| {
+                        let c = self.committee_size as i32;
+                        let m = round / c;
+                        let r = (round % c) as u16;
+                        let p = s.partition_point(|s| *s < r);
+                        if p < s.len() {
+                            s[p] as i32 + c * m
+                        } else {
+                            s[0] as i32 + c * (m + 1)
+                        }
+                    })
+                    .map(|r| (r as i32, our.clone()))
             })
             .min_by(|(a, _), (b, _)| a.cmp(b))
     }
