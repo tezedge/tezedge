@@ -15,7 +15,7 @@ getset = "0.1"
 hex = "0.4"
 itertools = "0.10"
 num_cpus = "1.13"
-rocksdb = {version = "0.17", features = ["snappy", "lz4", "zstd", "zlib"], default-features = false }
+rocksdb = {version = "0.18", features = ["snappy", "lz4", "zstd", "zlib"], default-features = false }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }

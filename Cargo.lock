@@ -2209,13 +2209,16 @@ dependencies = [
 
 [[package]]
 name = "librocksdb-sys"
-version = "6.20.3"
-source = "git+https://github.com/tezedge/rust-rocksdb.git?tag=tezedge-v0.17.0-1#cba1d783f0ff40b433bc89efc136db0633490855"
+version = "0.6.1+6.28.2"
+source = "git+https://github.com/tezedge/rust-rocksdb.git?tag=tezedge-v2.3.0#eb39c8fe6de51411fe0b901151dea07dd2439396"
 dependencies = [
  "bindgen",
+ "bzip2-sys",
  "cc",
  "glob",
  "libc",
+ "libz-sys",
+ "zstd-sys",
 ]
 
 [[package]]
@@ -3537,9 +3540,9 @@ dependencies = [
 
 [[package]]
 name = "rocksdb"
-version = "0.17.0"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a62eca5cacf2c8261128631bed9f045598d40bfbe4b29f5163f0f802f8f44a7"
+checksum = "620f4129485ff1a7128d184bc687470c21c7951b64779ebc9cfdad3dcd920290"
 dependencies = [
  "libc",
  "librocksdb-sys",
