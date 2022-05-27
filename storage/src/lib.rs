@@ -494,6 +494,9 @@ pub fn store_applied_block_result(
         Head::new(block_hash.clone(), block_metadata.level(), block_fitness),
     )?;
 
+    // Flush to disk
+    block_storage.flush()?;
+
     // return additional data for later use
     Ok(block_additional_data)
 }

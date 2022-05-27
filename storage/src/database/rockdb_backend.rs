@@ -164,6 +164,7 @@ impl TezedgeDatabaseBackendStore for RocksDBBackend {
 
     fn flush(&self) -> Result<usize, Error> {
         self.db.flush()?;
+        self.db.flush_wal(true)?;
         Ok(0)
     }
 
