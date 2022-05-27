@@ -6,7 +6,7 @@ use tezos_messages::protocol::proto_012::FitnessRepr;
 use crate::{
     mempool::MempoolOperationDecodedAction,
     rights::{
-        rights_actions::{RightsEndorsingReadyAction, RightsGetAction},
+        rights_actions::{RightsGetAction, RightsValidatorsReadyAction},
         RightsKey,
     },
     Action, ActionWithMeta, Service, Store,
@@ -128,7 +128,7 @@ where
                 _ => {}
             }
         }
-        Action::RightsEndorsingReady(RightsEndorsingReadyAction { key }) => {
+        Action::RightsValidatorsReady(RightsValidatorsReadyAction { key }) => {
             if let Some((current_block_hash, Some(level))) = key.endorsing_input() {
                 for hash in prechecker_state_operations
                     .iter()

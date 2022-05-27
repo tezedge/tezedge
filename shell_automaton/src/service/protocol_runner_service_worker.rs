@@ -23,8 +23,8 @@ use crate::protocol_runner::ProtocolRunnerToken;
 
 use super::protocol_runner_service::{
     context_raw_bytes_from_rpc_response, cycle_delegates_from_rpc_response,
-    endorsing_rights_from_rpc_response, ProtocolRunnerRequest, ProtocolRunnerResponse,
-    ProtocolRunnerResult,
+    endorsing_rights_from_rpc_response, validators_from_rpc_response, ProtocolRunnerRequest,
+    ProtocolRunnerResponse, ProtocolRunnerResult,
 };
 use super::service_async_channel::{
     ServiceWorkerAsyncResponder, ServiceWorkerAsyncResponderSender,
@@ -269,6 +269,15 @@ impl ProtocolRunnerServiceWorker {
                     .send(ProtocolRunnerResult::GetEndorsingRights((
                         token,
                         res.map(endorsing_rights_from_rpc_response),
+                    )))
+                    .await;
+            }
+            ProtocolMessage::GetValidators(req) => {
+                let res = conn.call_protocol_rpc(req).await;
+                let _ = channel
+                    .send(ProtocolRunnerResult::GetValidators((
+                        token,
+                        res.map(validators_from_rpc_response),
                     )))
                     .await;
             }
