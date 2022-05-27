@@ -6210,7 +6210,7 @@ depends_on:
 ##############################################################################################################
 
 kind: pipeline
-name: corr/mitten-scenarios-applied-to-tezedge
+name: corr/mitten-tezedge-node-octez-baker
 
 trigger:
   branch:
@@ -6410,9 +6410,10 @@ steps:
   settings:
     rebuild: true
     backend: "sftp"
-    cache_key: 'mitten-logs-{{ .Build.Number }}'
+    cache_key: 'mitten-{{ .Build.Number }}'
     mount:
       - 'tezos-mitten/logs' # <- builds a cache from this directory
+      - 'tezos-mitten/data' # <- builds a cache from this directory
   when:
     status:
       - success
