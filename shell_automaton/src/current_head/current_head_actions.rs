@@ -114,6 +114,11 @@ pub struct CurrentHeadUpdateAction {
 
 impl EnablingCondition<State> for CurrentHeadUpdateAction {
     fn is_enabled(&self, state: &State) -> bool {
-        matches!(&state.current_head, CurrentHeadState::Rehydrated { .. })
+        match &state.current_head {
+            CurrentHeadState::Rehydrated { head, .. } => {
+                self.new_head.header.fitness().gt(head.header.fitness())
+            }
+            _ => false,
+        }
     }
 }

@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crate::block_applier::BlockApplierApplyState;
 use crate::{Action, ActionWithMeta, State};
 
 use super::CurrentHeadState;
@@ -55,8 +56,16 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             _ => {}
         },
+        Action::BlockApplierApplySuccess(_) => {
+            let block = match &state.block_applier.current {
+                BlockApplierApplyState::Success { block, .. } => &**block,
+                _ => return,
+            };
+            state.current_head.add_applied_block(block);
+        }
         Action::CurrentHeadUpdate(content) => {
-            let mut applied_blocks = match &mut state.current_head {
+            state.current_head.add_applied_block(&content.new_head);
+            let applied_blocks = match &mut state.current_head {
                 CurrentHeadState::Rehydrated { applied_blocks, .. } => {
                     std::mem::take(applied_blocks)
                 }
@@ -71,9 +80,6 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 .filter(|pred| &pred.hash == head.header.predecessor())
                 .or_else(|| applied_blocks.get(head.header.predecessor()))
                 .cloned();
-
-            applied_blocks.insert(head.hash.clone(), head.clone());
-            applied_blocks.retain(|_, b| b.header.level() + 1 >= head.header.level());
 
             state.current_head = CurrentHeadState::Rehydrated {
                 head,
