@@ -8,89 +8,161 @@ use slog::{error, Logger};
 use crate::helpers::RpcServiceError;
 
 pub mod encoding;
-mod helpers;
-mod services;
+pub mod helpers;
+pub mod services;
 
-mod server;
+pub mod server;
 pub use server::rpc_server::{handle_notify_rpc_server_msg, RpcServer};
 pub use server::{RpcServiceEnvironment, RpcServiceEnvironmentRef};
 
+pub enum ServiceResultBody {
+    RawBytes(&'static [u8]),
+    RawString(String),
+    Json(serde_json::Value),
+}
+
+impl Default for ServiceResultBody {
+    fn default() -> Self {
+        Self::Json(Default::default())
+    }
+}
+
+impl From<serde_json::Value> for ServiceResultBody {
+    fn from(json: serde_json::Value) -> Self {
+        Self::Json(json)
+    }
+}
+
+impl From<String> for ServiceResultBody {
+    fn from(s: String) -> Self {
+        Self::RawString(s)
+    }
+}
+
+impl From<&'static [u8]> for ServiceResultBody {
+    fn from(raw: &'static [u8]) -> Self {
+        Self::RawBytes(raw)
+    }
+}
+
+impl serde::Serialize for ServiceResultBody {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ServiceResultBody::Json(json) => json.serialize(serializer),
+            ServiceResultBody::RawBytes(raw) => {
+                let result = serde_json::value::RawValue::from_string(
+                    String::from_utf8_lossy(raw).to_string(),
+                );
+                match result {
+                    Ok(v) => v.serialize(serializer),
+                    Err(err) => Err(serde::ser::Error::custom(err)),
+                }
+            }
+            ServiceResultBody::RawString(s) => {
+                let result = serde_json::value::RawValue::from_string(s.clone());
+                match result {
+                    Ok(v) => v.serialize(serializer),
+                    Err(err) => Err(serde::ser::Error::custom(err)),
+                }
+            }
+        }
+    }
+}
+
 /// Crate level custom result
-pub type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
+pub type ServiceResult =
+    Result<(Response<Body>, ServiceResultBody), Box<dyn std::error::Error + Sync + Send>>;
 
 /// Generate options response with supported methods, headers
 pub(crate) fn options() -> ServiceResult {
-    Ok(Response::builder()
-        .status(StatusCode::from_u16(200)?)
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
-            "x-requested-with",
-        )
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
-            "GET, POST, OPTIONS, PUT",
-        )
-        .body(Body::empty())?)
+    Ok((
+        Response::builder()
+            .status(StatusCode::from_u16(200)?)
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
+                "x-requested-with",
+            )
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, POST, OPTIONS, PUT",
+            )
+            .body(Body::empty())?,
+        Default::default(),
+    ))
 }
 
 /// Function to generate JSON response from serializable object
 pub fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceResult {
-    Ok(Response::builder()
-        .header(hyper::header::CONTENT_TYPE, "application/json")
-        // TODO: add to config
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
-            "x-requested-with",
-        )
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
-            "GET, POST, OPTIONS, PUT",
-        )
-        .body(Body::from(serde_json::to_string(content)?))?)
+    let value = ServiceResultBody::Json(serde_json::to_value(content)?);
+    Ok((
+        Response::builder()
+            .header(hyper::header::CONTENT_TYPE, "application/json")
+            // TODO: add to config
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
+                "x-requested-with",
+            )
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, POST, OPTIONS, PUT",
+            )
+            .body(Body::from(serde_json::to_string(content)?))?,
+        value,
+    ))
 }
 
 pub fn make_raw_response(raw: &'static [u8]) -> ServiceResult {
-    Ok(Response::builder()
-        .header(hyper::header::CONTENT_TYPE, "application/json")
-        // TODO: add to config
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
-            "x-requested-with",
-        )
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
-            "GET, POST, OPTIONS, PUT",
-        )
-        .body(Body::from(raw))?)
+    Ok((
+        Response::builder()
+            .header(hyper::header::CONTENT_TYPE, "application/json")
+            // TODO: add to config
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
+                "x-requested-with",
+            )
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, POST, OPTIONS, PUT",
+            )
+            .body(Body::from(raw))?,
+        raw.into(),
+    ))
 }
 
 /// Produces a JSON response from an FFI RPC response
 pub fn make_response_with_status_and_json_string(status_code: u16, body: &str) -> ServiceResult {
-    Ok(Response::builder()
-        .header(hyper::header::CONTENT_TYPE, "application/json")
-        // TODO: add to config
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
-            "x-requested-with",
-        )
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
-            "GET, POST, OPTIONS, PUT",
-        )
-        .status(status_code)
-        .body(Body::from(body.to_owned()))?)
+    let value = body.to_string().into();
+    Ok((
+        Response::builder()
+            .header(hyper::header::CONTENT_TYPE, "application/json")
+            // TODO: add to config
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
+                "x-requested-with",
+            )
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, POST, OPTIONS, PUT",
+            )
+            .status(status_code)
+            .body(Body::from(body.to_owned()))?,
+        value,
+    ))
 }
 
 /// Function to generate JSON response from a stream
@@ -99,20 +171,23 @@ pub(crate) fn make_json_stream_response<
 >(
     content: T,
 ) -> ServiceResult {
-    Ok(Response::builder()
-        .header(hyper::header::CONTENT_TYPE, "application/json")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
-            "x-requested-with",
-        )
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
-            "GET, POST, OPTIONS, PUT",
-        )
-        .body(Body::wrap_stream(content))?)
+    Ok((
+        Response::builder()
+            .header(hyper::header::CONTENT_TYPE, "application/json")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
+                "x-requested-with",
+            )
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, POST, OPTIONS, PUT",
+            )
+            .body(Body::wrap_stream(content))?,
+        Default::default(),
+    ))
 }
 
 /// Returns result as a JSON response.
@@ -165,31 +240,37 @@ pub(crate) fn result_to_empty_json_response(
 
 /// Generate empty response
 pub(crate) fn empty() -> ServiceResult {
-    Ok(Response::builder()
-        .status(StatusCode::from_u16(204)?)
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
-            "x-requested-with",
-        )
-        .body(Body::empty())?)
+    Ok((
+        Response::builder()
+            .status(StatusCode::from_u16(204)?)
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
+                "x-requested-with",
+            )
+            .body(Body::empty())?,
+        Default::default(),
+    ))
 }
 
 /// Generate 404 response
 pub(crate) fn not_found() -> ServiceResult {
-    Ok(Response::builder()
-        .status(StatusCode::from_u16(404)?)
-        .header(hyper::header::CONTENT_TYPE, "text/plain")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
-            "x-requested-with",
-        )
-        .body(Body::empty())?)
+    Ok((
+        Response::builder()
+            .status(StatusCode::from_u16(404)?)
+            .header(hyper::header::CONTENT_TYPE, "text/plain")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
+                "x-requested-with",
+            )
+            .body(Body::empty())?,
+        Default::default(),
+    ))
 }
 
 /// Generate 500 error
@@ -209,16 +290,20 @@ pub(crate) fn handle_rpc_service_error(error: RpcServiceError) -> ServiceResult 
 
 /// Generate 500 error with message as body
 pub(crate) fn error_with_message(error_msg: String) -> ServiceResult {
-    Ok(Response::builder()
-        .status(StatusCode::from_u16(500)?)
-        .header(hyper::header::CONTENT_TYPE, "text/plain")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
-            "x-requested-with",
-        )
-        .header(hyper::header::TRANSFER_ENCODING, "chunked")
-        .body(Body::from(error_msg))?)
+    let value = error_msg.clone().into();
+    Ok((
+        Response::builder()
+            .status(StatusCode::from_u16(500)?)
+            .header(hyper::header::CONTENT_TYPE, "text/plain")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
+                "x-requested-with",
+            )
+            .header(hyper::header::TRANSFER_ENCODING, "chunked")
+            .body(Body::from(error_msg))?,
+        value,
+    ))
 }

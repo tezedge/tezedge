@@ -17,7 +17,7 @@ macro_rules! hash_set {
     };
 }
 
-pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler> {
+pub fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler> {
     let mut routes = PathTree::<MethodHandler>::new();
 
     // Shell rpc - implemented
