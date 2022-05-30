@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use slog::FnValue;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 
@@ -76,11 +75,6 @@ pub fn peer_message_read_reducer(state: &mut State, action: &ActionWithMeta) {
                         } => crypto,
                         _ => return,
                     };
-
-                    slog::trace!(state.log, "Peer message read success";
-                                 "address" => FnValue(|_| format!("{}", action.address)),
-                                 "message" => FnValue(|_| format!("{:?}", action.message))
-                    );
 
                     *message_read = PeerMessageReadState::Success {
                         read_crypto: read_crypto.clone(),

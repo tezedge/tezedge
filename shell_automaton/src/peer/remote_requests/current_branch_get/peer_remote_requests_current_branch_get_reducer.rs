@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::seeded_step::{Seed, Step};
-use tezos_messages::p2p::encoding::prelude::BlockLocator;
+use tezos_messages::p2p::encoding::prelude::CurrentBranch;
 
 use crate::{Action, ActionWithMeta, State};
 
@@ -102,7 +102,7 @@ pub fn peer_remote_requests_current_branch_get_reducer(state: &mut State, action
                     current_head,
                     history,
                     ..
-                } => BlockLocator::new(current_head.clone(), history.clone()),
+                } => CurrentBranch::new(current_head.clone(), history.clone()),
                 _ => return,
             };
 

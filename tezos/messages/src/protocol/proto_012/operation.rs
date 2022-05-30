@@ -349,9 +349,9 @@ pub struct DoubleEndorsementEvidenceOperation {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedEndorsement {
-    pub branch: BlockHash,
-    pub operations: InlinedEndorsementMempoolContents,
-    pub signature: Signature,
+    branch: BlockHash,
+    operations: InlinedEndorsementMempoolContents,
+    signature: Signature,
 }
 
 /**
@@ -388,10 +388,10 @@ Endorsement (tag 21)
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedEndorsementMempoolContentsEndorsementVariant {
-    pub slot: u16,
-    pub level: i32,
-    pub round: i32,
-    pub block_payload_hash: BlockPayloadHash,
+    slot: u16,
+    level: i32,
+    round: i32,
+    block_payload_hash: BlockPayloadHash,
 }
 
 /// Double_baking_evidence (tag 3).
@@ -473,9 +473,9 @@ pub struct DoublePreendorsementEvidenceOperation {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedPreendorsement {
-    pub branch: BlockHash,
-    pub operations: InlinedPreendorsementContents,
-    pub signature: Signature,
+    branch: BlockHash,
+    operations: InlinedPreendorsementContents,
+    signature: Signature,
 }
 
 /**
@@ -531,10 +531,10 @@ Preendorsement (tag 20)
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedPreendorsementVariant {
-    pub slot: u16,
-    pub level: i32,
-    pub round: i32,
-    pub block_payload_hash: BlockPayloadHash,
+    slot: u16,
+    level: i32,
+    round: i32,
+    block_payload_hash: BlockPayloadHash,
 }
 
 /**

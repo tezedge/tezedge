@@ -21,11 +21,11 @@ pub struct CurrentBranchMessage {
     #[get = "pub"]
     chain_id: ChainId,
     #[get = "pub"]
-    current_branch: BlockLocator,
+    current_branch: CurrentBranch,
 }
 
 impl CurrentBranchMessage {
-    pub fn new(chain_id: ChainId, current_branch: BlockLocator) -> Self {
+    pub fn new(chain_id: ChainId, current_branch: CurrentBranch) -> Self {
         CurrentBranchMessage {
             chain_id,
             current_branch,
@@ -38,7 +38,7 @@ impl CurrentBranchMessage {
 #[derive(
     Clone, Serialize, Deserialize, Eq, PartialEq, Debug, Getters, HasEncoding, NomReader, BinWriter,
 )]
-pub struct BlockLocator {
+pub struct CurrentBranch {
     #[get = "pub"]
     #[encoding(dynamic = "super::limits::BLOCK_HEADER_MAX_SIZE")]
     current_head: BlockHeader,
@@ -48,9 +48,9 @@ pub struct BlockLocator {
     history: Vec<BlockHash>,
 }
 
-impl BlockLocator {
+impl CurrentBranch {
     pub fn new(current_head: BlockHeader, history: Vec<BlockHash>) -> Self {
-        BlockLocator {
+        CurrentBranch {
             current_head,
             history,
         }

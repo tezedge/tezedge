@@ -17,9 +17,7 @@ pub mod metadata;
 pub mod operation;
 pub mod operations_for_blocks;
 pub mod peer;
-pub mod predecessor_header;
 pub mod protocol;
-pub mod protocol_branch;
 pub mod swap;
 pub mod version;
 
@@ -30,7 +28,7 @@ pub mod prelude {
         BlockHeader, BlockHeaderBuilder, BlockHeaderMessage, GetBlockHeadersMessage,
     };
     pub use super::connection::ConnectionMessage;
-    pub use super::current_branch::{BlockLocator, CurrentBranchMessage, GetCurrentBranchMessage};
+    pub use super::current_branch::{CurrentBranch, CurrentBranchMessage, GetCurrentBranchMessage};
     pub use super::current_head::{CurrentHeadMessage, GetCurrentHeadMessage};
     pub use super::deactivate::DeactivateMessage;
     pub use super::mempool::Mempool;

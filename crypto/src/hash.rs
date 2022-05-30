@@ -11,7 +11,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use zeroize::Zeroize;
 
 mod prefix_bytes {
     pub const CHAIN_ID: [u8; 3] = [87, 82, 0];
@@ -32,11 +31,9 @@ mod prefix_bytes {
     pub const PUBLIC_KEY_ED25519: [u8; 4] = [13, 15, 37, 217];
     pub const PUBLIC_KEY_SECP256K1: [u8; 4] = [3, 254, 226, 86];
     pub const PUBLIC_KEY_P256: [u8; 4] = [3, 178, 139, 127];
-    pub const SEED_ED25519: [u8; 4] = [43, 246, 78, 7];
     pub const ED22519_SIGNATURE_HASH: [u8; 5] = [9, 245, 205, 134, 18];
     pub const GENERIC_SIGNATURE_HASH: [u8; 3] = [4, 130, 43];
     pub const NONCE_HASH: [u8; 3] = [69, 220, 169];
-    pub const OPERATION_LIST_HASH: [u8; 2] = [133, 233];
 }
 
 pub type Hash = Vec<u8>;
@@ -290,11 +287,9 @@ define_hash!(CryptoboxPublicKeyHash);
 define_hash!(PublicKeyEd25519);
 define_hash!(PublicKeySecp256k1);
 define_hash!(PublicKeyP256);
-define_hash!(SeedEd25519);
 define_hash!(Ed25519Signature);
 define_hash!(Signature);
 define_hash!(NonceHash);
-define_hash!(OperationListHash);
 
 /// Note: see Tezos ocaml lib_crypto/base58.ml
 #[derive(Debug, Copy, Clone, PartialEq, strum_macros::AsRefStr)]
@@ -335,16 +330,12 @@ pub enum HashType {
     PublicKeySecp256k1,
     // "\003\178\139\127" (* p2pk(55) *)
     PublicKeyP256,
-    // "\043\246\078\007" (* edsk(98) *)
-    SeedEd25519,
     // "\009\245\205\134\018" (* edsig(99) *)
     Ed25519Signature,
     // "\004\130\043" (* sig(96) *)
     Signature,
     // "\069\220\169" (* nce(53) *)
     NonceHash,
-    // "\133\233" (* Lo(52) *)
-    OperationListHash,
 }
 
 impl HashType {
@@ -370,11 +361,9 @@ impl HashType {
             HashType::PublicKeyEd25519 => &PUBLIC_KEY_ED25519,
             HashType::PublicKeySecp256k1 => &PUBLIC_KEY_SECP256K1,
             HashType::PublicKeyP256 => &PUBLIC_KEY_P256,
-            HashType::SeedEd25519 => &SEED_ED25519,
             HashType::Ed25519Signature => &ED22519_SIGNATURE_HASH,
             HashType::Signature => &GENERIC_SIGNATURE_HASH,
             HashType::NonceHash => &NONCE_HASH,
-            HashType::OperationListHash => &OPERATION_LIST_HASH,
         }
     }
 
@@ -392,15 +381,13 @@ impl HashType {
             | HashType::OperationMetadataHash
             | HashType::OperationMetadataListListHash
             | HashType::PublicKeyEd25519
-            | HashType::NonceHash
-            | HashType::OperationListHash => 32,
+            | HashType::NonceHash => 32,
             HashType::CryptoboxPublicKeyHash => 16,
             HashType::ContractKt1Hash
             | HashType::ContractTz1Hash
             | HashType::ContractTz2Hash
             | HashType::ContractTz3Hash => 20,
             HashType::PublicKeySecp256k1 | HashType::PublicKeyP256 => 33,
-            HashType::SeedEd25519 => 32,
             HashType::Ed25519Signature | HashType::Signature => 64,
         }
     }
@@ -551,47 +538,6 @@ impl TryFrom<&Signature> for sodiumoxide::crypto::sign::Signature {
     }
 }
 
-impl SeedEd25519 {
-    pub fn keypair(self) -> Result<(PublicKeyEd25519, SecretKeyEd25519), CryptoError> {
-        let mut v = self.0;
-        let seed_bytes = v
-            .as_slice()
-            .try_into()
-            .map_err(|_| CryptoError::InvalidKeySize {
-                expected: 32,
-                actual: v.len(),
-            })?;
-        v.zeroize();
-        let seed = sodiumoxide::crypto::sign::Seed(seed_bytes);
-        let (pk, sk) = sodiumoxide::crypto::sign::keypair_from_seed(&seed);
-        Ok((PublicKeyEd25519(pk.0.to_vec()), SecretKeyEd25519(sk)))
-    }
-}
-
-pub struct SecretKeyEd25519(sodiumoxide::crypto::sign::SecretKey);
-
-impl PublicKeyEd25519 {
-    /// Generates public key hash for public key ed25519
-    pub fn public_key_hash(
-        &self,
-    ) -> Result<CryptoboxPublicKeyHash, crate::crypto_box::PublicKeyError> {
-        CryptoboxPublicKeyHash::try_from(crate::blake2b::digest_128(self.0.as_ref())?)
-            .map_err(Into::into)
-    }
-}
-
-impl SecretKeyEd25519 {
-    pub fn sign<T, I>(&self, data: T) -> Result<Signature, CryptoError>
-    where
-        T: IntoIterator<Item = I>,
-        I: AsRef<[u8]>,
-    {
-        let digest = blake2b::digest_all(data, 32).map_err(|_| CryptoError::InvalidMessage)?;
-        let signature = sodiumoxide::crypto::sign::sign_detached(&digest, &self.0);
-        Ok(Signature(signature.0.to_vec()))
-    }
-}
-
 impl PublicKeySignatureVerifier for PublicKeyEd25519 {
     type Signature = Signature;
     type Error = CryptoError;
@@ -692,28 +638,6 @@ impl PublicKeySignatureVerifier for PublicKeyP256 {
             .verify_digest(NoHash::default().chain(bytes), &sig)
             .map(|_| true)
             .unwrap_or(false))
-    }
-}
-
-impl OperationListHash {
-    pub fn calculate(list: &[OperationHash]) -> Result<Self, Blake2bError> {
-        blake2b::merkle_tree(list).map(OperationListHash)
-    }
-}
-
-impl BlockPayloadHash {
-    pub fn calculate(
-        predecessor: &BlockHash,
-        round: u32,
-        operation_list_hash: &OperationListHash,
-    ) -> Result<Self, Blake2bError> {
-        let round = round.to_be_bytes();
-        let input = [
-            predecessor.0.as_ref(),
-            round.as_ref(),
-            operation_list_hash.0.as_ref(),
-        ];
-        blake2b::digest_all(&input, 32).map(BlockPayloadHash)
     }
 }
 
@@ -1183,30 +1107,5 @@ mod tests {
         test!(ed25519_sig, Ed25519Signature, ["edsigtXomBKi5CTRf5cjATJWSyaRvhfYNHqSUGrn4SdbYRcGwQrUGjzEfQDTuqHhuA8b2d8NarZjz8TRf65WkpQmo423BtomS8Q"]);
 
         test!(generic_sig, Signature, ["sigNCaj9CnmD94eZH9C7aPPqBbVCJF72fYmCFAXqEbWfqE633WNFWYQJFnDUFgRUQXR8fQ5tKSfJeTe6UAi75eTzzQf7AEc1"]);
-    }
-
-    #[test]
-    fn block_payload_hash() {
-        let operation_0 = "oom9d3PpjjaMzgg9mZ1pDrF8kjdyzDb41Bd2XE6Y3kRtFHXLku3";
-        let operation_1 = "oojiRXrrXHgukj8Q7d2AV8QCmJHTM4qpxhZqqbAnuG1RHtnbvim";
-        let operation_2 = "oo3h4gpQBjXaL63GDSiK54mP7sLydhgDQwBfjBWDhGt1gAcnGfA";
-        let operation_list_hash = OperationListHash::calculate(&[
-            OperationHash::from_base58_check(operation_0).unwrap(),
-            OperationHash::from_base58_check(operation_1).unwrap(),
-            OperationHash::from_base58_check(operation_2).unwrap(),
-        ])
-        .unwrap();
-
-        let predecessor = "BLc1ntjBDjsszZkGrbyHMoQ6gByJzkEjMs94T7UaM1ogGXa1PzF";
-        let payload_hash = BlockPayloadHash::calculate(
-            &BlockHash::from_base58_check(predecessor).unwrap(),
-            53,
-            &operation_list_hash,
-        )
-        .unwrap();
-        assert_eq!(
-            payload_hash.to_base58_check(),
-            "vh3Ed4mvDcNYVtskGLCYKKk1aBxJTpQNc46Hyi4EedpGCmgZ4LiG",
-        );
     }
 }

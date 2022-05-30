@@ -23,10 +23,6 @@ pub struct PeerRequestsPotentialPeersGetInitAction {
 
 impl PeerRequestsPotentialPeersGetInitAction {
     pub fn should_request(state: &State) -> bool {
-        if state.config.private_node {
-            return false;
-        }
-
         // only request from 1 peer at a time.
         if state
             .peers
