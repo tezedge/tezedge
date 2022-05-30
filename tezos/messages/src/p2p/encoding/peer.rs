@@ -14,6 +14,8 @@ use crate::p2p::encoding::prelude::*;
 use crate::p2p::peer_message_size;
 
 use super::limits::MESSAGE_MAX_SIZE;
+use super::predecessor_header::{GetPredecessorHeaderMessage, PredecessorHeaderMessage};
+use super::protocol_branch::{GetProtocolBranchMessage, ProtocolBranchMessage};
 
 pub const MESSAGE_TYPE_COUNT: usize = 18;
 
@@ -40,7 +42,16 @@ pub const MESSAGE_TYPE_TEXTS: [&str; MESSAGE_TYPE_COUNT] = [
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(
-    Serialize, Deserialize, Eq, PartialEq, Debug, Clone, HasEncoding, NomReader, BinWriter,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    Debug,
+    Clone,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    strum_macros::AsRefStr,
 )]
 #[encoding(tags = "u16")]
 pub enum PeerMessage {
@@ -80,43 +91,14 @@ pub enum PeerMessage {
     GetOperationsForBlocks(GetOperationsForBlocksMessage),
     #[encoding(tag = 0x61)]
     OperationsForBlocks(OperationsForBlocksMessage),
-}
-
-impl PeerMessage {
-    pub fn type_str_for_message_index(index: usize) -> &'static str {
-        if index < MESSAGE_TYPE_COUNT {
-            MESSAGE_TYPE_TEXTS[index]
-        } else {
-            "<invalid index for message type>"
-        }
-    }
-
-    pub fn index(&self) -> usize {
-        match self {
-            PeerMessage::Disconnect => 0,
-            PeerMessage::Advertise(_) => 1,
-            PeerMessage::SwapRequest(_) => 2,
-            PeerMessage::SwapAck(_) => 3,
-            PeerMessage::Bootstrap => 4,
-            PeerMessage::GetCurrentBranch(_) => 5,
-            PeerMessage::CurrentBranch(_) => 6,
-            PeerMessage::Deactivate(_) => 7,
-            PeerMessage::GetCurrentHead(_) => 8,
-            PeerMessage::CurrentHead(_) => 9,
-            PeerMessage::GetBlockHeaders(_) => 10,
-            PeerMessage::BlockHeader(_) => 11,
-            PeerMessage::GetOperations(_) => 12,
-            PeerMessage::Operation(_) => 13,
-            PeerMessage::GetProtocols(_) => 14,
-            PeerMessage::Protocol(_) => 15,
-            PeerMessage::GetOperationsForBlocks(_) => 16,
-            PeerMessage::OperationsForBlocks(_) => 17,
-        }
-    }
-
-    pub fn get_type_str(&self) -> &'static str {
-        Self::type_str_for_message_index(self.index())
-    }
+    #[encoding(tag = 0x80)]
+    GetProtocolBranch(GetProtocolBranchMessage),
+    #[encoding(tag = 0x81)]
+    ProtocolBranch(ProtocolBranchMessage),
+    #[encoding(tag = 0x90)]
+    GetPredecessorHeader(GetPredecessorHeaderMessage),
+    #[encoding(tag = 0x91)]
+    PredecessorHeader(PredecessorHeaderMessage),
 }
 
 impl slog::Value for PeerMessage {
@@ -126,10 +108,7 @@ impl slog::Value for PeerMessage {
         _: slog::Key,
         s: &mut dyn slog::Serializer,
     ) -> slog::Result {
-        s.emit_arguments(
-            "peer_message_kind",
-            &format_args!("{}", self.get_type_str()),
-        )?;
+        s.emit_arguments("peer_message_kind", &format_args!("{}", self.as_ref()))?;
         match self {
             PeerMessage::Disconnect => Ok(()),
             PeerMessage::Advertise(v) => s.emit_arguments(
@@ -240,6 +219,19 @@ impl slog::Value for PeerMessage {
                     "peer_message_operations_for_blocks",
                     &format_args!("{:?}", v),
                 )
+            }
+            PeerMessage::GetProtocolBranch(v) => {
+                s.emit_arguments("peer_message_get_protocol_branch", &format_args!("{v:?}"))
+            }
+            PeerMessage::ProtocolBranch(v) => {
+                s.emit_arguments("peer_message_protocol_branch", &format_args!("{v:?}"))
+            }
+            PeerMessage::GetPredecessorHeader(v) => s.emit_arguments(
+                "peer_message_get_predecessor_header",
+                &format_args!("{v:?}"),
+            ),
+            PeerMessage::PredecessorHeader(v) => {
+                s.emit_arguments("peer_message_predecessor_header", &format_args!("{v:?}"))
             }
         }
     }

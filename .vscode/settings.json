@@ -5,9 +5,21 @@
     "**/target/debug/incremental/**": true
   },
   "cSpell.words": [
+    "fuzzcheck",
+    "merkle",
+    "preendorse",
+    "preendorsed",
+    "preendorsement",
+    "preendorsements",
+    "prequorum",
+    "reqwest",
     "Seedable",
-    "Tezedge",
     "shiplift",
-    "simplestakingcom"
+    "simplestakingcom",
+    "structopt",
+    "tenderbake",
+    "Tezedge",
+    "tezos",
+    "thiserror"
   ]
 }

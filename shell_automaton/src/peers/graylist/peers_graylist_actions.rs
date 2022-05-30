@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use tezos_messages::p2p::encoding::ack::NackMotive;
 
-use crate::peer::message::write::PeerMessageWriteError;
+use crate::peer::message::{read::PeerMessageReadError, write::PeerMessageWriteError};
 use crate::{EnablingCondition, State};
 
 #[cfg(feature = "fuzzing")]
@@ -30,7 +30,7 @@ pub enum PeerGraylistReason {
 
     HandshakeError,
 
-    MessageReadError,
+    MessageReadError(PeerMessageReadError),
     MessageWriteError(PeerMessageWriteError),
 
     RequestedBlockHeaderLevelMismatch,

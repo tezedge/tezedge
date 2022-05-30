@@ -171,6 +171,7 @@ steps:
     - cp ./target/release/light-node drone-cache/build_files
     - cp ./target/release/sandbox drone-cache/build_files
     - cp ./target/release/protocol-runner drone-cache/build_files
+    - cp ./target/release/baker drone-cache/build_files
     - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so drone-cache/build_files/ffi
     - cp ./sandbox/artifacts/tezos-client drone-cache/build_files
     # copy sapling init files
@@ -214,6 +215,9 @@ steps:
     - cp ./tezos/python-tests/tools/constants.py drone-cache/python-tests/tools/
     - cp ./tezos/python-tests/tests_012/*.py drone-cache/python-tests/tests_012/
     - cp ./tezos/python-tests/tests_013/*.py drone-cache/python-tests/tests_013/
+    # collect files related to Mitten
+    - mkdir -p drone-cache/mitten
+    - cp ./tezos/mitten/* drone-cache/mitten/
 
 - name: rebuild-artifacts-cache
   image: meltwater/drone-cache
@@ -6200,3 +6204,653 @@ depends_on:
   - corr/indexer-tzkt-tezedge-012-ithaca
   - perf/memory-allocation-bootstrap-012-ithaca
   - perf/bootstrap-time-012-ithaca
+
+---
+##############################################################################################################
+# This pipeline runs Mitten scenarios against Tezedge nodes
+##############################################################################################################
+
+kind: pipeline
+name: corr/mitten-tezedge-node-octez-baker
+
+trigger:
+  branch:
+    - master
+    - develop
+
+clone:
+  disable: true
+
+depends_on:
+  - build-tezedge-binaries
+
+volumes:
+  - name: appuser
+    temp: {}
+
+defs:
+  - &mitten-test
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+    volumes:
+      - name: appuser
+        path: /home/appuser/
+    commands:
+      - cd tezos-mitten
+      - DATA_DIR=$PWD/data/$$DRONE_STEP_NAME
+      - LOGS_DIR=$PWD/logs/$$DRONE_STEP_NAME
+      - eval $(opam env)
+      - dune exec src/mitten/scenarios/$$DRONE_STEP_NAME.exe -- --data-dir $DATA_DIR --logs-dir $LOGS_DIR --binaries-dir bins --verbose 2 --timeout 400
+
+steps:
+
+- name: create-directories
+  image: busybox
+  user: root
+  commands:
+    - mkdir drone-cache
+    - mkdir tezos-mitten
+    - chmod 777 tezos-mitten
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: build-mitten
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+  volumes:
+    - name: appuser
+      path: /home/appuser/
+  commands:
+    - git clone https://gitlab.com/nomadic-labs/tezos.git tezos-mitten -b mitten-ithaca
+    - cd tezos-mitten
+    - opam init --disable-sandboxing
+    - make build-deps
+    - eval $(opam env)
+    - make
+    - make mitten
+
+- name: copy-files
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+  commands:
+    - BINS_DIR=tezos-mitten/bins
+    - mkdir $BINS_DIR
+    # copy Octez binaries
+    - TEZOS_DIR=/home/appuser/tezos-src/tezos/
+    - |
+      for f in tezos-node tezos-client tezos-accuser-012-Psithaca tezos-baker-012-Psithaca; do
+          cp $TEZOS_DIR/$f $BINS_DIR
+      done
+      mv $BINS_DIR/tezos-node $BINS_DIR/tezos-node.octez
+      mv $BINS_DIR/tezos-baker-012-Psithaca $BINS_DIR/tezos-baker-012-Psithaca.octez
+    # copy Tezedge binaries
+    - |
+      for f in light-node protocol-runner ffi/libtezos.so; do
+          cp drone-cache/build_files/$f $BINS_DIR
+      done
+    # copy wrapper scripts
+    - cp drone-cache/mitten/* $BINS_DIR
+    # create config templates
+    - |
+      cat >$BINS_DIR/tezedge.env <<EOF
+      export HOME=$HOME
+      RUN_TEZEDGE_NODE=y
+      RUN_TEZEDGE_BAKER=
+      EOF
+    - |
+      cat >$BINS_DIR/tezedge.config <<EOF
+      --init-sapling-spend-params-file=$DRONE_WORKSPACE/drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=$DRONE_WORKSPACE/drone-cache/build_files/ffi/sapling-output.params
+      EOF
+    # create logs and data dirs
+    - mkdir tezos-mitten/data
+    - mkdir tezos-mitten/logs
+
+- name: bake_till_level10_missing_baker
+  <<: *mitten-test
+
+- name: bake_till_level20_negative
+  <<: *mitten-test
+
+- name: simple_pred_fork_negative
+  failure: ignore
+  <<: *mitten-test
+
+- name: advanced_fork_with_double_bake_and_preendorse
+  <<: *mitten-test
+
+- name: advanced_fork_with_double_bake_and_preendorse__5_nodes
+  <<: *mitten-test
+
+- name: advanced_fork_with_double_bake_risk
+  <<: *mitten-test
+
+- name: locked_no_preendorse
+  <<: *mitten-test
+
+- name: no_eqc_stuck
+  <<: *mitten-test
+
+- name: vary_endorsing_power_and_bake_till_10
+  <<: *mitten-test
+
+## failing cases
+
+# The consensus committee size must be strictly greater than 3.
+- name: bake_till_level20_round_robin
+  failure: ignore
+  <<: *mitten-test
+
+# Passes with non-empty GITLAB_CI and special version of tezos-baker
+- name: simple_pred_fork_negative_with_observed_PQC
+  failure: ignore
+  <<: *mitten-test
+
+# TODO install libfaketime to opam-builder
+- name: proposal_in_the_future
+  failure: ignore
+  <<: *mitten-test
+
+# Proposed level 4 round 0
+# TODO investigate further
+- name: baker_not_participating_round_r_because_pqc_previous_round_diff_playload
+  failure: ignore
+  <<: *mitten-test
+
+# The delay increment per round must be greater than zero
+- name: end_before_proposal
+  failure: ignore
+  <<: *mitten-test
+
+# The consensus committee size must be strictly greater than 3.
+- name: next_round
+  failure: ignore
+  <<: *mitten-test
+
+# The delay increment per round must be greater than zero
+- name: preend_before_proposal
+  failure: ignore
+  <<: *mitten-test
+
+# The consensus committee size must be strictly greater than 3.
+- name: reproposal
+  failure: ignore
+  <<: *mitten-test
+
+# Baker state is missing -- special version of tezos-baker is needed.
+- name: resume_after_network_failure
+  failure: ignore
+  <<: *mitten-test
+
+- name: save-python-test-logs
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    rebuild: true
+    backend: "sftp"
+    cache_key: 'mitten-tezedge-node-octez-baker-{{ .Build.Number }}'
+    mount:
+      - 'tezos-mitten/logs' # <- builds a cache from this directory
+      - 'tezos-mitten/data' # <- builds a cache from this directory
+  when:
+    status:
+      - success
+      - failure
+
+---
+##############################################################################################################
+# This pipeline runs Mitten scenarios against Tezedge nodes and bakers
+##############################################################################################################
+
+kind: pipeline
+name: corr/mitten-tezedge-node-external-baker
+
+trigger:
+  branch:
+    - master
+    - develop
+
+clone:
+  disable: true
+
+depends_on:
+  - build-tezedge-binaries
+
+volumes:
+  - name: appuser
+    temp: {}
+
+defs:
+  - &mitten-test
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+    volumes:
+      - name: appuser
+        path: /home/appuser/
+    commands:
+      - cd tezos-mitten
+      - DATA_DIR=$PWD/data/$$DRONE_STEP_NAME
+      - LOGS_DIR=$PWD/logs/$$DRONE_STEP_NAME
+      - eval $(opam env)
+      - dune exec src/mitten/scenarios/$$DRONE_STEP_NAME.exe -- --data-dir $DATA_DIR --logs-dir $LOGS_DIR --binaries-dir bins --verbose 2 --timeout 400
+    failure: ignore
+
+steps:
+
+- name: create-directories
+  image: busybox
+  user: root
+  commands:
+    - mkdir drone-cache
+    - mkdir tezos-mitten
+    - chmod 777 tezos-mitten
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: build-mitten
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+  volumes:
+    - name: appuser
+      path: /home/appuser/
+  commands:
+    - git clone https://gitlab.com/nomadic-labs/tezos.git tezos-mitten -b mitten-ithaca
+    - cd tezos-mitten
+    - opam init --disable-sandboxing
+    - make build-deps
+    - eval $(opam env)
+    - make
+    - make mitten
+
+- name: copy-files
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+  commands:
+    - BINS_DIR=tezos-mitten/bins
+    - mkdir $BINS_DIR
+    # copy Octez binaries
+    - TEZOS_DIR=/home/appuser/tezos-src/tezos/
+    - |
+      for f in tezos-node tezos-client tezos-accuser-012-Psithaca tezos-baker-012-Psithaca; do
+          cp $TEZOS_DIR/$f $BINS_DIR
+      done
+      mv $BINS_DIR/tezos-node $BINS_DIR/tezos-node.octez
+      mv $BINS_DIR/tezos-baker-012-Psithaca $BINS_DIR/tezos-baker-012-Psithaca.octez
+    # copy Tezedge binaries
+    - |
+      for f in light-node protocol-runner baker ffi/libtezos.so; do
+          cp drone-cache/build_files/$f $BINS_DIR
+      done
+      mv $BINS_DIR/baker $BINS_DIR/tezos-baker-012-Psithaca.tezedge
+    # copy wrapper scripts
+    - cp drone-cache/mitten/* $BINS_DIR
+    # create config templates
+    - |
+      cat >$BINS_DIR/tezedge.env <<EOF
+      export HOME=$HOME
+      RUN_TEZEDGE_NODE=y
+      RUN_TEZEDGE_BAKER=external
+      EOF
+    - |
+      cat >$BINS_DIR/tezedge.config <<EOF
+      --init-sapling-spend-params-file=$DRONE_WORKSPACE/drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=$DRONE_WORKSPACE/drone-cache/build_files/ffi/sapling-output.params
+      EOF
+    # create logs and data dirs
+    - mkdir tezos-mitten/data
+    - mkdir tezos-mitten/logs
+
+- name: bake_till_level10_missing_baker
+  <<: *mitten-test
+
+- name: bake_till_level20_negative
+  <<: *mitten-test
+
+- name: simple_pred_fork_negative
+  <<: *mitten-test
+
+- name: advanced_fork_with_double_bake_and_preendorse
+  <<: *mitten-test
+
+- name: advanced_fork_with_double_bake_and_preendorse__5_nodes
+  <<: *mitten-test
+
+- name: advanced_fork_with_double_bake_risk
+  <<: *mitten-test
+
+- name: locked_no_preendorse
+  <<: *mitten-test
+
+- name: no_eqc_stuck
+  <<: *mitten-test
+
+- name: vary_endorsing_power_and_bake_till_10
+  <<: *mitten-test
+
+## failing cases
+
+# The consensus committee size must be strictly greater than 3.
+- name: bake_till_level20_round_robin
+  failure: ignore
+  <<: *mitten-test
+
+# Passes with non-empty GITLAB_CI and special version of tezos-baker
+- name: simple_pred_fork_negative_with_observed_PQC
+  failure: ignore
+  <<: *mitten-test
+
+# TODO install libfaketime to opam-builder
+- name: proposal_in_the_future
+  failure: ignore
+  <<: *mitten-test
+
+# Proposed level 4 round 0
+# TODO investigate further
+- name: baker_not_participating_round_r_because_pqc_previous_round_diff_playload
+  failure: ignore
+  <<: *mitten-test
+
+# The delay increment per round must be greater than zero
+- name: end_before_proposal
+  failure: ignore
+  <<: *mitten-test
+
+# The consensus committee size must be strictly greater than 3.
+- name: next_round
+  failure: ignore
+  <<: *mitten-test
+
+# The delay increment per round must be greater than zero
+- name: preend_before_proposal
+  failure: ignore
+  <<: *mitten-test
+
+# The consensus committee size must be strictly greater than 3.
+- name: reproposal
+  failure: ignore
+  <<: *mitten-test
+
+# Baker state is missing -- special version of tezos-baker is needed.
+- name: resume_after_network_failure
+  failure: ignore
+  <<: *mitten-test
+
+- name: save-python-test-logs
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    rebuild: true
+    backend: "sftp"
+    cache_key: 'mitten-tezedge-node-external-baker-{{ .Build.Number }}'
+    mount:
+      - 'tezos-mitten/logs' # <- builds a cache from this directory
+      - 'tezos-mitten/data' # <- builds a cache from this directory
+  when:
+    status:
+      - success
+      - failure
+
+---
+##############################################################################################################
+# This pipeline runs Mitten scenarios against Octez nodes and Tezedge bakers
+##############################################################################################################
+
+kind: pipeline
+name: corr/mitten-octez-node-external-baker
+
+trigger:
+  branch:
+    - master
+    - develop
+
+clone:
+  disable: true
+
+depends_on:
+  - build-tezedge-binaries
+
+volumes:
+  - name: appuser
+    temp: {}
+
+defs:
+  - &mitten-test
+    image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+    volumes:
+      - name: appuser
+        path: /home/appuser/
+    commands:
+      - cd tezos-mitten
+      - DATA_DIR=$PWD/data/$$DRONE_STEP_NAME
+      - LOGS_DIR=$PWD/logs/$$DRONE_STEP_NAME
+      - eval $(opam env)
+      - dune exec src/mitten/scenarios/$$DRONE_STEP_NAME.exe -- --data-dir $DATA_DIR --logs-dir $LOGS_DIR --binaries-dir bins --verbose 2 --timeout 400
+    failure: ignore
+
+steps:
+
+- name: create-directories
+  image: busybox
+  user: root
+  commands:
+    - mkdir drone-cache
+    - mkdir tezos-mitten
+    - chmod 777 tezos-mitten
+
+- name: restore-cache
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    restore: true
+    debug: true
+    backend: "sftp"
+    cache_key: 'build-{{ .Build.Number }}'
+    mount:
+      - 'drone-cache' # <- builds a cache from this directory
+
+- name: build-mitten
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+  volumes:
+    - name: appuser
+      path: /home/appuser/
+  commands:
+    - git clone https://gitlab.com/nomadic-labs/tezos.git tezos-mitten -b mitten-ithaca
+    - cd tezos-mitten
+    - opam init --disable-sandboxing
+    - make build-deps
+    - eval $(opam env)
+    - make
+    - make mitten
+
+- name: copy-files
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+  commands:
+    - BINS_DIR=tezos-mitten/bins
+    - mkdir $BINS_DIR
+    # copy Octez binaries
+    - TEZOS_DIR=/home/appuser/tezos-src/tezos/
+    - |
+      for f in tezos-node tezos-client tezos-accuser-012-Psithaca tezos-baker-012-Psithaca; do
+          cp $TEZOS_DIR/$f $BINS_DIR
+      done
+      mv $BINS_DIR/tezos-node $BINS_DIR/tezos-node.octez
+      mv $BINS_DIR/tezos-baker-012-Psithaca $BINS_DIR/tezos-baker-012-Psithaca.octez
+    # copy Tezedge binaries
+    - |
+      for f in light-node protocol-runner baker ffi/libtezos.so; do
+          cp drone-cache/build_files/$f $BINS_DIR
+      done
+      mv $BINS_DIR/baker $BINS_DIR/tezos-baker-012-Psithaca.tezedge
+    # copy wrapper scripts
+    - cp drone-cache/mitten/* $BINS_DIR
+    # create config templates
+    - |
+      cat >$BINS_DIR/tezedge.env <<EOF
+      export HOME=$HOME
+      RUN_TEZEDGE_NODE=
+      RUN_TEZEDGE_BAKER=external
+      EOF
+    - |
+      cat >$BINS_DIR/tezedge.config <<EOF
+      --init-sapling-spend-params-file=$DRONE_WORKSPACE/drone-cache/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=$DRONE_WORKSPACE/drone-cache/build_files/ffi/sapling-output.params
+      EOF
+    # create logs and data dirs
+    - mkdir tezos-mitten/data
+    - mkdir tezos-mitten/logs
+
+- name: bake_till_level10_missing_baker
+  <<: *mitten-test
+
+- name: bake_till_level20_negative
+  <<: *mitten-test
+
+- name: simple_pred_fork_negative
+  <<: *mitten-test
+
+- name: advanced_fork_with_double_bake_and_preendorse
+  <<: *mitten-test
+
+- name: advanced_fork_with_double_bake_and_preendorse__5_nodes
+  <<: *mitten-test
+
+- name: advanced_fork_with_double_bake_risk
+  <<: *mitten-test
+
+- name: locked_no_preendorse
+  <<: *mitten-test
+
+- name: no_eqc_stuck
+  <<: *mitten-test
+
+- name: vary_endorsing_power_and_bake_till_10
+  <<: *mitten-test
+
+## failing cases
+
+# The consensus committee size must be strictly greater than 3.
+- name: bake_till_level20_round_robin
+  failure: ignore
+  <<: *mitten-test
+
+# Passes with non-empty GITLAB_CI and special version of tezos-baker
+- name: simple_pred_fork_negative_with_observed_PQC
+  failure: ignore
+  <<: *mitten-test
+
+# TODO install libfaketime to opam-builder
+- name: proposal_in_the_future
+  failure: ignore
+  <<: *mitten-test
+
+# Proposed level 4 round 0
+# TODO investigate further
+- name: baker_not_participating_round_r_because_pqc_previous_round_diff_playload
+  failure: ignore
+  <<: *mitten-test
+
+# The delay increment per round must be greater than zero
+- name: end_before_proposal
+  failure: ignore
+  <<: *mitten-test
+
+# The consensus committee size must be strictly greater than 3.
+- name: next_round
+  failure: ignore
+  <<: *mitten-test
+
+# The delay increment per round must be greater than zero
+- name: preend_before_proposal
+  failure: ignore
+  <<: *mitten-test
+
+# The consensus committee size must be strictly greater than 3.
+- name: reproposal
+  failure: ignore
+  <<: *mitten-test
+
+# Baker state is missing -- special version of tezos-baker is needed.
+- name: resume_after_network_failure
+  failure: ignore
+  <<: *mitten-test
+
+- name: save-python-test-logs
+  image: meltwater/drone-cache
+  pull: true
+  environment:
+    SFTP_USERNAME:
+      from_secret: sftp_username
+    SFTP_PASSWORD:
+      from_secret: sftp_password
+    SFTP_AUTH_METHOD: PASSWORD
+    SFTP_HOST: 65.21.119.66
+    SFTP_PORT: 22
+    SFTP_CACHE_ROOT: "/upload"
+  settings:
+    rebuild: true
+    backend: "sftp"
+    cache_key: 'mitten-octez-node-external-baker-{{ .Build.Number }}'
+    mount:
+      - 'tezos-mitten/logs' # <- builds a cache from this directory
+      - 'tezos-mitten/data' # <- builds a cache from this directory
+  when:
+    status:
+      - success
+      - failure

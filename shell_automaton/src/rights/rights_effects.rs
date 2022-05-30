@@ -340,6 +340,7 @@ where
                         store.dispatch(RightsProtocolConstantsReadyAction { key, constants });
                     }
                     Err(err) => {
+                        slog::warn!(store.state().log, "Error parsing constants value"; "value" => value);
                         store.dispatch(RightsErrorAction {
                             key,
                             error: err.into(),
