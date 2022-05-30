@@ -6414,7 +6414,7 @@ steps:
   settings:
     rebuild: true
     backend: "sftp"
-    cache_key: 'mitten-{{ .Build.Number }}'
+    cache_key: 'mitten-tezedge-node-octez-baker-{{ .Build.Number }}'
     mount:
       - 'tezos-mitten/logs' # <- builds a cache from this directory
       - 'tezos-mitten/data' # <- builds a cache from this directory
@@ -6632,7 +6632,7 @@ steps:
   settings:
     rebuild: true
     backend: "sftp"
-    cache_key: 'mitten-{{ .Build.Number }}'
+    cache_key: 'mitten-tezedge-node-external-baker-{{ .Build.Number }}'
     mount:
       - 'tezos-mitten/logs' # <- builds a cache from this directory
       - 'tezos-mitten/data' # <- builds a cache from this directory
@@ -6850,7 +6850,7 @@ steps:
   settings:
     rebuild: true
     backend: "sftp"
-    cache_key: 'mitten-{{ .Build.Number }}'
+    cache_key: 'mitten-octez-node-external-baker-{{ .Build.Number }}'
     mount:
       - 'tezos-mitten/logs' # <- builds a cache from this directory
       - 'tezos-mitten/data' # <- builds a cache from this directory
