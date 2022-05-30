@@ -35,9 +35,9 @@ At first, you need to check, which (latest) snapshot to download, please visit h
 Example:
 
 ```
-$ light-node import-snapshot \
+$ ./target/release/light-node import-snapshot \
    --from http://snapshots.tezedge.com:8880/mainnet/irmin/full/tezedge_mainnet_20220331-115305_BL42sTybrNx3WWdRNis76eHRXRQgVmh2oNcAb29xP473YrJSUVm_irmin.full \
-   --tezos-data-dir "$HOME/data-mainnet"
+   --tezos-data-dir "$HOME/data-mainnet/tezedge-data"
 ```
 
 ## Identity json file
@@ -69,8 +69,7 @@ $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
     --network "mainnet" \
     --identity-file "$HOME/data-mainnet/identity.json" \
     --identity-expected-pow 26.0 \
-    --tezos-data-dir "$HOME/data-mainnet" \
-    --bootstrap-db-path "$HOME/data-mainnet/bootstrap_db" \
+    --tezos-data-dir "$HOME/data-mainnet/tezedge-data" \
     --peer-thresh-low 30 --peer-thresh-high 45 \
     --protocol-runner "./target/release/protocol-runner" \
     --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
@@ -100,8 +99,7 @@ $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts nohup ./target/release/light-n
     --network "mainnet" \
     --identity-file "$HOME/data-mainnet/identity.json" \
     --identity-expected-pow 26.0 \
-    --tezos-data-dir "$HOME/data-mainnet" \
-    --bootstrap-db-path "$HOME/data-mainnet/bootstrap_db" \
+    --tezos-data-dir "$HOME/data-mainnet/tezedge-data" \
     --peer-thresh-low 30 --peer-thresh-high 45 \
     --protocol-runner "./target/release/protocol-runner" \
     --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
@@ -139,8 +137,17 @@ _Note: Following commands assume that tezos sources directory is added to the PA
 
 ```
 $ tezos-client bootstrapped
+Disclaimer:
+  The  Tezos  network  is  a  new  blockchain technology.
+  Users are  solely responsible  for any risks associated
+  with usage of the Tezos network.  Users should do their
+  own  research to determine  if Tezos is the appropriate
+  platform for their needs and should apply judgement and
+  care in their network interactions.
 
 Waiting for the node to be bootstrapped...
+Current head: BLRx4bAcrxNx (timestamp: 2022-05-30T12:21:29.000-00:00, validation: 2022-05-30T16:34:53.505-00:00)
+Current head: BLKjRYRUhHrz (timestamp: 2022-05-30T12:21:59.000-00:00, validation: 2022-05-30T16:34:53.940-00:00)
 ...
 Node is bootstrapped
 ```
