@@ -44,6 +44,11 @@ impl Timer {
                     timeout_duration = Some(next.unix_epoch - now);
                     scheduled_at_level = l;
                     scheduled_at_round = r;
+                } else {
+                    let _ = event_sender.send(BakerAction::TickEvent(TickEventAction {
+                        scheduled_at_level: l,
+                        scheduled_at_round: r,
+                    }));
                 }
             }
         });

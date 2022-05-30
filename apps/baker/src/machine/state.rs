@@ -662,24 +662,29 @@ impl tb::ProposerMap for SlotsInfo {
     type Id = ContractTz1Hash;
 
     fn proposer(&self, level: i32, round: i32) -> Option<(i32, Self::Id)> {
+        let c = self.committee_size as i32;
+        let m = dbg!(round) / c;
+        let round = round % c;
         self.ours
             .iter()
             .filter_map(|our| {
-                self.delegates
-                    .get(&level)?
-                    .get(our)
-                    .map(|Slots(s)| {
-                        let c = self.committee_size as i32;
-                        let m = round / c;
-                        let r = (round % c) as u16;
-                        let p = s.partition_point(|s| *s < r);
-                        if p < s.len() {
-                            s[p] as i32 + c * m
-                        } else {
-                            s[0] as i32 + c * (m + 1)
-                        }
-                    })
-                    .map(|r| (r as i32, our.clone()))
+                let Slots(slots) = self.delegates
+                    .get(&dbg!(level))?
+                    .get(our)?;
+
+                let this_loop = slots
+                    .iter()
+                    .skip_while(|c| **c < round as u16)
+                    .next()
+                    .map(|r| ((*r as i32) + m * c, our.clone()));
+
+                let next_loop = slots
+                    .iter()
+                    .take_while(|c| **c < round as u16)
+                    .next()
+                    .map(|r| ((*r as i32) + (m + 1) * c, our.clone()));
+
+                this_loop.or_else(|| next_loop)
             })
             .min_by(|(a, _), (b, _)| a.cmp(b))
     }

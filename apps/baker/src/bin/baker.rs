@@ -53,8 +53,18 @@ fn main() {
         .expect("cannot handle signals");
 
     let (srv, events) = Services::new(endpoint, &base_dir, &baker);
-    let chain_id = srv.client.get_chain_id().unwrap();
-    let _ = srv.client.wait_bootstrapped().unwrap();
+    let chain_id = loop {
+        match srv.client.get_chain_id() {
+            Ok(v) => break v,
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(200)),
+        }
+    };
+    loop {
+        match srv.client.wait_bootstrapped() {
+            Ok(_) => break,
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(200)),
+        }
+    }
     let constants = loop {
         match srv.client.get_constants() {
             Ok(v) => break v,
