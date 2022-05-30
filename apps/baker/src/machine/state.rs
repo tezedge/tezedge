@@ -663,14 +663,12 @@ impl tb::ProposerMap for SlotsInfo {
 
     fn proposer(&self, level: i32, round: i32) -> Option<(i32, Self::Id)> {
         let c = self.committee_size as i32;
-        let m = dbg!(round) / c;
+        let m = round / c;
         let round = round % c;
         self.ours
             .iter()
             .filter_map(|our| {
-                let Slots(slots) = self.delegates
-                    .get(&dbg!(level))?
-                    .get(our)?;
+                let Slots(slots) = self.delegates.get(&level)?.get(our)?;
 
                 let this_loop = slots
                     .iter()
