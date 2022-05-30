@@ -71,17 +71,17 @@ where
 /// the length of [xs] is not a power of 2, then the tree is padded with leaves
 /// containing the last element of [xs] such that a full tree is obtained.
 ///
-/// Example: given the list [1, 2, 3, 4, 5], the tree
-///
-///         /\
-///        /  \
-///       /    \
-///      /      \
-///     /\      /\
-///    /  \    /  \
-///   /\  /\  /\  /\
-///  1 2  3 4 5 5 5 5
-///
+// Example: given the list [1, 2, 3, 4, 5], the tree
+//
+//         /\
+//        /  \
+//       /    \
+//      /      \
+//     /\      /\
+//    /  \    /  \
+//   /\  /\  /\  /\
+//  1 2  3 4 5 5 5 5
+//
 //
 // TODO: optimize it,
 // this implementation will calculate the same hash [5, 5] two times.
