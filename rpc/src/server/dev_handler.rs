@@ -299,16 +299,21 @@ pub async fn dev_shell_automaton_state_raw_get(
     let state = dev_services::get_shell_automaton_state_current(&env).await?;
     let contents = state.encode()?;
 
-    Ok(Response::builder()
-        .header(hyper::header::CONTENT_TYPE, "application/octet-stream")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
-            "GET, POST, OPTIONS, PUT",
-        )
-        .body(Body::from(contents))?)
+    let contents_string = serde_json::to_value(&contents)?;
+
+    Ok((
+        Response::builder()
+            .header(hyper::header::CONTENT_TYPE, "application/octet-stream")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, POST, OPTIONS, PUT",
+            )
+            .body(Body::from(contents))?,
+        contents_string,
+    ))
 }
 
 pub async fn dev_shell_automaton_actions_raw_get(
@@ -325,17 +330,21 @@ pub async fn dev_shell_automaton_actions_raw_get(
     .await?;
 
     let contents = actions.encode()?;
+    let contents_value = serde_json::to_value(&contents)?;
 
-    Ok(Response::builder()
-        .header(hyper::header::CONTENT_TYPE, "application/octet-stream")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
-            "GET, POST, OPTIONS, PUT",
-        )
-        .body(Body::from(contents))?)
+    Ok((
+        Response::builder()
+            .header(hyper::header::CONTENT_TYPE, "application/octet-stream")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, POST, OPTIONS, PUT",
+            )
+            .body(Body::from(contents))?,
+        contents_value,
+    ))
 }
 
 pub async fn dev_shell_automaton_storage_requests_get(

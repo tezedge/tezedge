@@ -226,6 +226,7 @@ fn block_on_actors(
             websocket_address,
             max_number_of_websocket_connections,
             log.clone(),
+            rpc_server.rpc_env(),
         )
         .expect("Failed to start websocket actor");
 

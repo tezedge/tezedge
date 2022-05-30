@@ -36,9 +36,9 @@ use crate::{error_with_message, not_found, options};
 mod dev_handler;
 mod openapi_handler;
 mod protocol_handler;
-mod router;
+pub mod router;
 pub(crate) mod rpc_server;
-mod shell_handler;
+pub mod shell_handler;
 
 /// Thread safe reference to a shared RPC state
 pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
@@ -72,7 +72,7 @@ impl StreamCounter for RpcCollectedState {
 /// Server environment parameters
 #[derive(Getters)]
 pub struct RpcServiceEnvironment {
-    #[get = "pub(crate)"]
+    #[get = "pub"]
     persistent_storage: PersistentStorage,
     #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
@@ -135,7 +135,8 @@ pub type Params = Vec<(String, String)>;
 
 pub type Query = HashMap<String, Vec<String>>;
 
-pub type HResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
+pub type HResult =
+    Result<(Response<Body>, serde_json::Value), Box<dyn std::error::Error + Sync + Send>>;
 
 pub type Handler = Arc<
     dyn Fn(
@@ -149,8 +150,8 @@ pub type Handler = Arc<
 >;
 
 pub struct MethodHandler {
-    allowed_methods: Arc<HashSet<Method>>,
-    handler: Handler,
+    pub allowed_methods: Arc<HashSet<Method>>,
+    pub handler: Handler,
 }
 
 impl MethodHandler {
@@ -233,7 +234,7 @@ pub fn spawn_server(
                         };
 
                         let result = match result {
-                            Ok(v) => {
+                            Ok((v, _)) => {
                                 let remote_addr = remote_addr;
                                 let req_method = req_method.clone();
                                 let normalized_path = normalized_path.clone();
@@ -299,7 +300,7 @@ fn normalize_path(original_path: &str) -> Option<String> {
 /// Helper for parsing URI queries.
 /// Functions takes URI query in format `key1=val1&key1=val2&key2=val3`
 /// and produces map `{ key1: [val1, val2], key2: [val3] }`
-fn parse_query_string(query: &str) -> HashMap<String, Vec<String>> {
+pub fn parse_query_string(query: &str) -> HashMap<String, Vec<String>> {
     let mut ret: HashMap<String, Vec<String>> = HashMap::new();
     for (key, value) in query.split('&').map(|x| {
         let mut parts = x.split('=');

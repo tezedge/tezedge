@@ -431,7 +431,7 @@ pub const MAIN_CHAIN_ID: &str = "main";
 pub const TEST_CHAIN_ID: &str = "test";
 
 /// Parses [ChainId] from chain_id url param
-pub(crate) fn parse_chain_id(
+pub fn parse_chain_id(
     chain_id_param: &str,
     env: &RpcServiceEnvironment,
 ) -> Result<ChainId, anyhow::Error> {
@@ -526,7 +526,7 @@ fn split_block_id_param(
 /// - `<block>-<level>` - block can be: genesis/head/level/block_hash, e.g.: head-10 returns: the block which is 10 levels in the past from head)
 /// - `<block>+<level>` - block can be: genesis/head/level/block_hash, e.g.: block_hash-10 returns: the block which is 10 levels after block_hash)
 #[allow(clippy::comparison_chain)]
-pub(crate) fn parse_block_hash(
+pub fn parse_block_hash(
     chain_id: &ChainId,
     block_id_param: &str,
     env: &RpcServiceEnvironment,

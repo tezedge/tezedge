@@ -4,6 +4,7 @@
 use std::time::Duration;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
+use rpc::RpcServiceEnvironmentRef;
 use slog::{info, warn, Logger};
 use tezedge_actor_system::{actor::*, system::Timer};
 use tokio::runtime::Handle;
@@ -13,6 +14,8 @@ use warp::ws::Message;
 use crate::websocket::ws_messages::WebsocketMessageWrapper;
 use crate::websocket::ws_server::run_websocket;
 use crate::websocket::Clients;
+
+use super::RpcClients;
 
 /// How often to print stats in logs
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
@@ -41,6 +44,7 @@ impl WebsocketHandler {
         address: SocketAddr,
         max_number_of_websocket_connections: u16,
         log: Logger,
+        rpc_env: RpcServiceEnvironmentRef,
     ) -> Result<WebsocketHandlerRef, CreateError> {
         info!(log, "Starting monitoring websocket server";
                    "address" => address,
@@ -53,6 +57,7 @@ impl WebsocketHandler {
                 address,
                 max_number_of_websocket_connections,
                 log,
+                rpc_env,
             )),
         )
     }
@@ -62,27 +67,39 @@ impl WebsocketHandler {
     }
 }
 
-impl ActorFactoryArgs<(Handle, SocketAddr, u16, Logger)> for WebsocketHandler {
+impl ActorFactoryArgs<(Handle, SocketAddr, u16, Logger, RpcServiceEnvironmentRef)>
+    for WebsocketHandler
+{
     fn create_args(
-        (tokio_executor, address, max_number_of_websocket_connections, log): (
+        (tokio_executor, address, max_number_of_websocket_connections, log, rpc_env): (
             Handle,
             SocketAddr,
             u16,
             Logger,
+            RpcServiceEnvironmentRef,
         ),
     ) -> Self {
-        let clients: Clients = Arc::new(RwLock::new(HashMap::new()));
+        let monitoring_clients: Clients = Arc::new(RwLock::new(HashMap::new()));
+        let rpc_clients: RpcClients = Arc::new(RwLock::new(HashMap::new()));
 
         {
-            let clients = clients.clone();
+            let monitoring_clients = monitoring_clients.clone();
             tokio_executor.spawn(async move {
                 info!(log, "Starting websocket server"; "address" => format!("{}", &address));
-                run_websocket(address, max_number_of_websocket_connections, clients, log).await
+                run_websocket(
+                    address,
+                    max_number_of_websocket_connections,
+                    monitoring_clients,
+                    rpc_clients,
+                    rpc_env,
+                    log,
+                )
+                .await
             });
         }
 
         Self {
-            clients,
+            clients: monitoring_clients,
             tokio_executor,
             actor_received_messages_count: 0,
         }
