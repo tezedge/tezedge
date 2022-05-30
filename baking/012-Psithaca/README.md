@@ -10,6 +10,8 @@
 
 https://tezos.gitlab.io/introduction/howtouse.html#get-free-tez
 
+_Note that link to free Tez ther is outdated, use the one below._
+
 Download free faucets:
 
 https://teztnets.xyz/ithacanet-faucet
@@ -27,6 +29,16 @@ mkdir $HOME/data-dir-012-Psithaca/client
 cp faucet.json $HOME/data-dir-012-Psithaca
 ```
 
+## Import snapshot
+
+To get node bootstrapped with the rest of the network faster, you can optionally import latest irmin snapshot mentioned here: [http://snapshots.tezedge.com]. Find the topmost Ithaca archive snapshot and launch the following command:
+
+``` sh
+$ target/release/light-node import-snapshot \
+  --tezos-data-dir "$HOME/data-dir-012-Psithaca/tezedge-data" \
+  --from http://snapshots.tezedge.com:8880/testnet/tezedge/archive/tezedge_ithaca_<...>_irmin.archive \
+```
+
 ## Run TezEdge node
 
 At first you need to [build TezEdge from sources](../../README.md#build-from-source-code) and then check [how to run it](../../README.md#how-to-run).
@@ -35,13 +47,14 @@ E.g. for Ithacanet to support baking/endorsing:
 
 _Note: This cmd runs from the main git sources directory_
 
+
+
 ```
 $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
  --network "ithacanet" \
  --identity-file "$HOME/data-dir-012-Psithaca/identity.json" \
  --identity-expected-pow 26.0 \
- --tezos-data-dir "$HOME/data-dir-012-Psithaca/context_data" \
- --bootstrap-db-path "$HOME/data-dir-012-Psithaca/tezedge_data" \
+ --tezos-data-dir "$HOME/data-dir-012-Psithaca/tezedge-data" \
  --peer-thresh-low 30 --peer-thresh-high 45 \
  --protocol-runner "./target/release/protocol-runner" \
  --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
@@ -69,7 +82,7 @@ Mar 31 16:10:23.359 INFO Generating new tezos identity. This will take a while, 
 
 ## Download tezos client binaries (or build from source)
 
-Download `tezos-client`, `tezos-baker-012-Psithaca` and `tezos-accuser-012-Psithaca` from https://gitlab.com/tezos/tezos/-/releases.
+Download `tezos-client`, `tezos-baker-012-Psithaca` and `tezos-accuser-012-Psithaca` from the [Tezos project v13.0 Releases page at Gitlab.com](https://gitlab.com/tezos/tezos/-/releases). E.g. this [archive containing all x86-64 binaries for v13.0 release](https://gitlab.com/tezos/tezos/-/package_files/36986880/download).
 
 Or alternatively, build them from source. See [https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam](https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam) for instructions.
 
@@ -78,6 +91,12 @@ After successfull compilation, you should see this binaries in Tezos source dire
 tezos-accuser-012-Psithaca
 tezos-baker-012-Psithaca
 tezos-client
+```
+
+To prevent `tezos-client` from issuing a warning about testnet, you can set the variable `TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER` to `y`.
+
+``` sh
+$ export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=y
 ```
 
 ## Wait for TezEdge node to sync with network
@@ -126,21 +145,21 @@ _Note that the delegate needs to have at least ꜩ8,000 (own or delegated funds)
 
 _Also it takes several cycles to get baking/endorsing rights (2 + num of preserved cycles)_
 
-_Note. For Tezos baker executable from v12.x.x `--media-type json` (or `-m json`) paramters should be added to make it expect JSON RPC instead of new compact encoding_
+_Note. For Tezos baker executable from v12.x.x and higher `--media-type json` (or `-m json`) paramters should be added to make it expect JSON RPC instead of new compact encoding_
 
 ```
 $ tezos-baker-012-Psithaca \
    --endpoint "http://localhost:12535" \
    --media-type json \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
-   run with local node "$HOME/data-dir-012-Psithaca/context_data" my_delegate
-Waiting for protocol 012-Psithaca to start...
-Baker v12.0 (409a3f3f) for Psithaca2MLR started.
+   run with local node "$HOME/data-dir-012-Psithaca/tezedge-data" my_delegate
 Node is bootstrapped.
 Waiting for protocol 012-Psithaca to start...
-Baker v12.0 (409a3f3f) for Psithaca2MLR started.
-Mar 31 21:06:51.688 - 012-Psithaca.baker.transitions: received new head BMTdte4kfE6anmq47V4VF1KUR8PJnn83kj57WLvUjzYL76DJqiP at
-Mar 31 21:06:51.689 - 012-Psithaca.baker.transitions:   level 317084, round 0
+Baker v13.0 (cb9f439e) for Psithaca2MLR started.
+May 30 16:13:47.527 - 012-Psithaca.baker.transitions: received new head BL3vMPUdS4xCofnPjARGtbHgmLySqNtAV26WwRew46um1Qfyqa6 at
+May 30 16:13:47.527 - 012-Psithaca.baker.transitions:   level 614179, round 0
+May 30 16:14:01.447 - 012-Psithaca.baker.transitions: received new head BLvPTWvcfZ9KgUCXBogAyhe6S3Pta9LEAbT61wncfNoFLAEg7Z9 at
+May 30 16:14:01.447 - 012-Psithaca.baker.transitions:   level 614180, round 0
 ...
 ```
 
@@ -152,11 +171,9 @@ $ tezos-accuser-012-Psithaca \
    --media-type json \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
    run
-Waiting for the node to be bootstrapped...
-Current head: BLa48oxwVSsS (timestamp: 2022-03-31T18:08:00.000-00:00, validation: 2022-03-31T18:08:14.563-00:00)
 Node is bootstrapped.
-Accuser v12.0 (409a3f3f) for Psithaca2MLR started.
-Mar 31 21:08:30.944 - 012-Psithaca.delegate.denunciation: block BMUj49B7FhUdsyFAK56CwipEtt178oLmHKUwCpd3n3K6WVrndhT registered
+Accuser v13.0 (cb9f439e) for Psithaca2MLR started.
+May 30 16:15:02.443 - 012-Psithaca.delegate.denunciation: block BMMFUcQCQSYgo4yoM8VoUar5oaSg7rAEAUTLXEPJ9fQGTXtawUV registered
 ...
 ```
 
@@ -229,17 +246,8 @@ my_delegate: tzXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX (ledger sk known)
 
 ## Register new account as a delegate
 
-Now register this account in the network as a Tezos delegate:
-
-```
-$ tezos-client \
-   --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
-   register key my_delegate as delegate
-```
-
 To get baking/endorsing rights, this account needs owning some funds, at least ꜩ8,000 (one roll). One way of getting them is to receive them from a faucet account (see [Get free XTZ](#get-free-xtz)).
-
+ 
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
@@ -254,6 +262,16 @@ $ tezos-client \
    transfer 76351.572618 from faucet to my_delegate
 ...
 ```
+ 
+Now register this account in the network as a Tezos delegate:
+
+```
+$ tezos-client \
+   --endpoint "http://localhost:12535" \
+   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   register key my_delegate as delegate
+```
+
 
 ## Run baker/endorser
 
@@ -264,10 +282,12 @@ $ tezos-baker-012-Psithaca \
    --endpoint "http://localhost:12535" \
    --media-type json \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
-   run with local node "$HOME/data-dir-012-Psithaca/context_data" my_delegate
+   run with local node "$HOME/data-dir-012-Psithaca/tezedge-data" my_delegate
 Node is bootstrapped.
-...
-Baker started.
+Waiting for protocol 012-Psithaca to start...
+Baker v13.0 (cb9f439e) for Psithaca2MLR started.
+May 30 19:09:49.898 - 012-Psithaca.baker.transitions: received new head BM9C35y2Eh1L3GTuQpB5FXpm8hYedMMYy8NU3JFayWs7onThf5N at
+May 30 19:09:49.898 - 012-Psithaca.baker.transitions:   level 614596, round 0
 ...
 ```
 
@@ -317,7 +337,7 @@ Start the Tezedge node:
 To make `tezos-baker` use remote signing, corresponding remote address should be added to Tezos wallet. If the home server from above is accessible via name `home`, you can use the following command:
 
 ```
-$ tezos-signer \
+$ tezos-client \
    --endpoint "http://localhost:12535" \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
    import secret key my_delegate http://home:12536/tz1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
@@ -330,13 +350,11 @@ $ tezos-baker-012-Psithaca \
    --endpoint "http://localhost:12535" \
    --media-type json \
    --base-dir "$HOME/data-dir-012-Psithaca/client" \
-   run with local node "$HOME/data-dir-012-Psithaca/context_data" my_delegate
-Waiting for protocol 012-Psithaca to start...
-Baker v12.0 (409a3f3f) for Psithaca2MLR started.
+   run with local node "$HOME/data-dir-012-Psithaca/tezedge-data" my_delegate
 Node is bootstrapped.
 Waiting for protocol 012-Psithaca to start...
-Baker v12.0 (409a3f3f) for Psithaca2MLR started.
-Mar 31 21:06:51.688 - 012-Psithaca.baker.transitions: received new head BMTdte4kfE6anmq47V4VF1KUR8PJnn83kj57WLvUjzYL76DJqiP at
-Mar 31 21:06:51.689 - 012-Psithaca.baker.transitions:   level 317084, round 0
+Baker v13.0 (cb9f439e) for Psithaca2MLR started.
+May 30 19:12:54.408 - 012-Psithaca.baker.transitions: received new head BKonMyPBnbYk8uGiaVADdiHWqJ2XynoqafrLW27v586AFvfx1HF at
+May 30 19:12:54.408 - 012-Psithaca.baker.transitions:   level 614606, round 1
 ...
 ```
