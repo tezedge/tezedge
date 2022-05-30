@@ -14,9 +14,6 @@ use once_cell::sync::Lazy;
 use baker::{machine::*, Timestamp};
 use serde::{Deserialize, Serialize};
 
-pub static FUZZER_ARGS: Lazy<RwLock<Option<fuzzcheck::Arguments>>> =
-    Lazy::new(|| RwLock::new(None));
-
 pub static FUZZER_STATE: Lazy<RwLock<(BakerStateEjectable, Timestamp)>> = Lazy::new(|| {
     let state = serde_json::from_str::<BakerState>(include_str!("state.json")).unwrap();
     let timestamp = state.as_ref().tb_state.timestamp().unwrap();
@@ -81,6 +78,5 @@ fn test_baker() {
         .default_sensor_and_pool()
         .arguments_from_cargo_fuzzcheck();
 
-    // *FUZZER_ARGS.write().unwrap() = Some(builder.arguments.clone());
     builder.stop_after_first_test_failure(true).launch();
 }

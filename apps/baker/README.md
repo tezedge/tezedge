@@ -14,6 +14,8 @@ Use cargo:
 cargo install --git https://github.com/tezedge/tezedge --branch develop baker
 ```
 
+Also, you can use tag `--tag v2.x.x` instead of branch name `--branch develop`.
+
 The cargo will create the binary `baker` at `~/.cargo/bin`.
 
 The building from source is also trivial.
@@ -62,8 +64,35 @@ cargo +nightly-2021-12-22 fuzzcheck --test action_fuzz test_baker
 
 ### Mitten tests
 
-TODO:
+Prepare tezos with mitten.
 
-### Tezos tests
+```
+git clone https://gitlab.com/nomadic-labs/tezos.git tezos-mitten -b mitten-ithaca
+cd tezos-mitten
+opam init --disable-sandboxing
+make build-deps
+eval $(opam env)
+make
+make mitten
+```
 
-TODO:
+Rename file `tezos-mitten/tezos-baker-012-Psithaca` -> `tezos-mitten/tezos-baker-012-Psithaca.octez`
+
+Copy files `tezedge/apps/baker/tezedge.env` and `tezedge/apps/baker/tezos-baker-012-Psithaca` into `tezos-mitten` directory.
+
+Build the baker and copy the binary into `tezos-mitten`.
+
+From `tezedge` directory:
+```
+cargo build -p baker --release
+cp target/release/baker ../tezos-mitten/tezos-baker-012-Psithaca.tezedge
+```
+
+Now you can run mitten scenario:
+
+From `tezos-mitten` directory:
+```
+dune exec src/mitten/scenarios/no_eqc_stuck.exe
+```
+
+Find more scenarios in `src/mitten/scenarios`.
