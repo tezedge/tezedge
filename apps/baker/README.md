@@ -14,6 +14,8 @@ Use cargo:
 cargo install --git https://github.com/tezedge/tezedge --branch develop baker
 ```
 
+Also, you can use tag `--tag v2.x.x` instead of branch name `--branch develop`.
+
 The cargo will create the binary `baker` at `~/.cargo/bin`.
 
 The building from source is also trivial.

@@ -27,7 +27,8 @@ mod tests {
     where
         F: FnOnce(BakerState, i32, Vec<(u16, usize)>),
     {
-        let state = serde_json::from_str::<BakerState>(include_str!("test_data/state.json")).unwrap();
+        let state =
+            serde_json::from_str::<BakerState>(include_str!("test_data/state.json")).unwrap();
         let tb_state = &state.as_ref().tb_state;
         let tb_config = &state.as_ref().tb_config;
 
