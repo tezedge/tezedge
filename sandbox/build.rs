@@ -43,6 +43,7 @@ fn get_remote_libs() -> Vec<RemoteLib> {
             "19.04" | "19.10" => Some("ubuntu19"),
             "20.04" | "20.10" => Some("ubuntu20"),
             "21.04" | "21.10" => Some("ubuntu21"),
+            "22.04" => Some("ubuntu22"),
             _ => None,
         },
         OSType::Debian => match platform.version.as_str() {
