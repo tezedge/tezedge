@@ -226,6 +226,7 @@ where
                     pred_block_metadata_hash,
                     pred_ops_metadata_hash,
                     block_operations,
+                    apply_result,
                     ..
                 } => {
                     let chain_id = store.state().config.chain_id.clone();
@@ -249,6 +250,10 @@ where
                     let pred_block_metadata_hash = pred_block_metadata_hash.clone();
                     let pred_ops_metadata_hash = pred_ops_metadata_hash.clone();
                     let operations = block_operations.clone();
+                    let new_constants = apply_result
+                        .new_protocol_constants_json
+                        .as_ref()
+                        .and_then(|json| serde_json::from_str(json).ok());
                     store.dispatch(CurrentHeadUpdateAction {
                         new_head,
                         protocol,
@@ -259,6 +264,7 @@ where
                         pred_block_metadata_hash,
                         pred_ops_metadata_hash,
                         operations,
+                        new_constants,
                     });
                 }
                 _ => return,

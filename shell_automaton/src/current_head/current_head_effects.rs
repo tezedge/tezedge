@@ -73,6 +73,7 @@ where
                             .as_ref()
                             .and_then(|v| v.ops_metadata_hash().clone()),
                         operations: data.operations.clone(),
+                        constants: data.constants.clone(),
                     });
                 }
                 Err(StorageResponseError::CurrentHeadGetError(error)) => {

@@ -773,8 +773,9 @@ impl OperationState {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct QuorumState {
+    pub threshold: u16,
     pub delegates: BTreeMap<SignaturePublicKey, EndorsingPower>,
     pub total: EndorsingPower,
     pub notified: bool,
@@ -788,10 +789,13 @@ impl QuorumState {
     pub fn is_reached(&self) -> bool {
         // TODO(zura): check if it should be strictly greater or greater
         // or equal.
-        self.total > 4667
+        self.total > self.threshold
     }
 
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, new_threshold: Option<u16>) {
+        if let Some(threshold) = new_threshold {
+            self.threshold = threshold;
+        }
         self.delegates.clear();
         self.total = 0;
         self.notified = false;
@@ -805,5 +809,16 @@ impl QuorumState {
 
     pub fn set_notified(&mut self) {
         self.notified = true;
+    }
+}
+
+impl Default for QuorumState {
+    fn default() -> Self {
+        Self {
+            threshold: 4667,
+            delegates: Default::default(),
+            total: Default::default(),
+            notified: false,
+        }
     }
 }

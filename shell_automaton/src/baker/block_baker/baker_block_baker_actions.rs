@@ -9,7 +9,6 @@ use tezos_encoding::types::SizedBytes;
 use tezos_messages::base::signature_public_key::SignaturePublicKey;
 use tezos_messages::p2p::encoding::operations_for_blocks::Path;
 
-use crate::baker::MINIMAL_BLOCK_DELAY;
 use crate::protocol_runner::ProtocolRunnerToken;
 use crate::request::RequestId;
 use crate::{EnablingCondition, State};
@@ -211,14 +210,20 @@ impl EnablingCondition<State> for BakerBlockBakerBakeNextRoundAction {
                     let now = state.time_as_nanos();
                     let has_elected_block = baker.elected_block.is_some();
                     !next_level.map_or(false, |v| v.timeout <= now && has_elected_block)
-                        && next_round.map_or(false, |v| match has_elected_block {
-                            false => v.timeout <= now,
-                            true => {
-                                // add a delay when quorum has been reached.
-                                let delay = (MINIMAL_BLOCK_DELAY * 1_000_000_000) / 5;
-                                v.timeout + delay <= now
-                            }
-                        })
+                        && next_round
+                            .and_then(|slot| {
+                                Some(match has_elected_block {
+                                    false => slot.timeout <= now,
+                                    true => {
+                                        let constants = state.current_head.constants()?;
+                                        let min_block_delay = constants.min_block_delay;
+                                        // add a delay when quorum has been reached.
+                                        let delay = (min_block_delay * 1_000_000_000) / 5;
+                                        slot.timeout + delay <= now
+                                    }
+                                })
+                            })
+                            .unwrap_or(false)
                 }
                 _ => false,
             }
