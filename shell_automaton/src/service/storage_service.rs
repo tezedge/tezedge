@@ -25,6 +25,7 @@ use tezos_messages::p2p::encoding::fitness::Fitness;
 use tezos_messages::p2p::encoding::operation::Operation;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 
+use crate::current_head::ProtocolConstants;
 use crate::request::RequestId;
 use crate::storage::kv_cycle_meta::CycleKey;
 use crate::{Action, ActionId, ActionWithMeta, State};
@@ -121,6 +122,7 @@ pub struct CurrentHeadData {
     pub additional_data: BlockAdditionalData,
     pub pred_additional_data: Option<BlockAdditionalData>,
     pub operations: Vec<Vec<Operation>>,
+    pub constants: Option<ProtocolConstants>,
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
@@ -410,12 +412,16 @@ impl StorageServiceDefault {
                                         .map(|v| v.as_operations())
                                         .collect::<Vec<_>>()
                                 })?;
+                            let constants = constants_storage
+                                .get(additional_data.next_protocol_hash())?
+                                .and_then(|json| serde_json::from_str(&json).ok());
                             Ok(CurrentHeadData {
                                 head,
                                 pred,
                                 additional_data,
                                 pred_additional_data,
                                 operations,
+                                constants,
                             })
                         });
                     match result {

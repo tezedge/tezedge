@@ -7,10 +7,7 @@ use crypto::hash::{BlockPayloadHash, OperationListHash};
 use tezos_encoding::types::SizedBytes;
 use tezos_messages::p2p::encoding::block_header::BlockHeaderBuilder;
 
-use crate::baker::{
-    BakerState, ElectedBlock, CONSENSUS_COMMITTEE_SIZE, DELAY_INCREMENT_PER_ROUND,
-    MINIMAL_BLOCK_DELAY,
-};
+use crate::baker::{BakerState, ElectedBlock};
 use crate::block_applier::BlockApplierApplyState;
 use crate::mempool::{MempoolState, OperationKind};
 use crate::{Action, ActionWithMeta, State};
@@ -173,8 +170,14 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                     BakerBlockBakerState::RightsGetSuccess {
                         slots, next_slots, ..
                     } => {
+                        let constants = match state.current_head.constants() {
+                            Some(v) => v,
+                            None => return,
+                        };
                         let current_slot = match state.current_head.round() {
-                            Some(round) => (round as u32 % CONSENSUS_COMMITTEE_SIZE) as u16,
+                            Some(round) => {
+                                (round as u32 % constants.consensus_committee_size) as u16
+                            }
                             None => return,
                         };
                         let next_round = slots
@@ -182,6 +185,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             .map(|slot| *slot)
                             .find(|slot| *slot > current_slot)
                             .and_then(|slot| {
+                                let constants = state.current_head.constants()?;
                                 let pred = state.current_head.get()?;
                                 let round = pred.header.fitness().round()?;
                                 let timestamp = pred.header.timestamp().as_u64();
@@ -189,8 +193,12 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
 
                                 let rounds_left = slot.checked_sub(current_slot)? as i32;
                                 let target_round = round + rounds_left;
-                                let time_left =
-                                    calc_time_until_round(round as u64, target_round as u64);
+                                let time_left = calc_time_until_round(
+                                    round as u64,
+                                    target_round as u64,
+                                    constants.min_block_delay,
+                                    constants.delay_increment_per_round,
+                                );
                                 let timeout = timestamp + time_left;
                                 Some(BakingSlot {
                                     round: target_round as u32,
@@ -198,6 +206,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                 })
                             });
                         let next_level = next_slots.get(0).cloned().and_then(|slot| {
+                            let constants = state.current_head.constants()?;
                             let pred = baker
                                 .elected_block_header_with_hash()
                                 .or_else(|| state.current_head.get())?;
@@ -205,8 +214,17 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             let timestamp = pred.header.timestamp().as_u64();
                             let timestamp = timestamp * 1_000_000_000;
 
-                            let time_left = calc_time_until_round(round as u64, (round + 1) as u64)
-                                + calc_time_until_round(0, slot as u64);
+                            let time_left = calc_time_until_round(
+                                round as u64,
+                                (round + 1) as u64,
+                                constants.min_block_delay,
+                                constants.delay_increment_per_round,
+                            ) + calc_time_until_round(
+                                0,
+                                slot as u64,
+                                constants.min_block_delay,
+                                constants.delay_increment_per_round,
+                            );
                             let timeout = timestamp + time_left;
                             Some(BakingSlot {
                                 round: slot as u32,
@@ -317,6 +335,10 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                     Some(v) => v,
                     None => return,
                 };
+                let constants = match state.current_head.constants() {
+                    Some(v) => v,
+                    None => return,
+                };
                 let block = match &baker.block_baker {
                     BakerBlockBakerState::BakeNextLevel {
                         round,
@@ -346,8 +368,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             liquidity_baking_escape_vote: false,
                             operations: elected_block.operations.clone(),
                             predecessor_header: elected_block.header().clone(),
-                            // TODO(zura): use protocol constants.
-                            predecessor_max_operations_ttl: 120,
+                            predecessor_max_operations_ttl: constants.max_operations_ttl,
                             pred_block_metadata_hash: elected_block.block_metadata_hash.clone(),
                             pred_ops_metadata_hash: elected_block.ops_metadata_hash.clone(),
                         }
@@ -372,8 +393,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                 liquidity_baking_escape_vote: false,
                                 operations: p.operations.clone(),
                                 predecessor_header: p.pred_header.clone(),
-                                // TODO(zura): use protocol constants.
-                                predecessor_max_operations_ttl: 120,
+                                predecessor_max_operations_ttl: constants.max_operations_ttl,
                                 pred_block_metadata_hash: p.pred_block_metadata_hash.clone(),
                                 pred_ops_metadata_hash: p.pred_ops_metadata_hash.clone(),
                             })
@@ -390,8 +410,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                     liquidity_baking_escape_vote: false,
                                     operations: current_head.operations()?.clone(),
                                     predecessor_header: (*current_head.get_pred()?.header).clone(),
-                                    // TODO(zura): use protocol constants.
-                                    predecessor_max_operations_ttl: 120,
+                                    predecessor_max_operations_ttl: constants.max_operations_ttl,
                                     pred_block_metadata_hash: current_head
                                         .pred_block_metadata_hash()?
                                         .clone(),
@@ -593,16 +612,30 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
     }
 }
 
-fn calc_seconds_until_round(current_round: u64, target_round: u64) -> u64 {
-    // let current_slot = (current_round as u32 % CONSENSUS_COMMITTEE_SIZE) as u16;
+fn calc_seconds_until_round(
+    current_round: u64,
+    target_round: u64,
+    min_block_delay: u64,
+    delay_increment_per_round: u64,
+) -> u64 {
     let rounds_left = target_round.saturating_sub(current_round);
-    MINIMAL_BLOCK_DELAY * rounds_left
-        + DELAY_INCREMENT_PER_ROUND * rounds_left * (current_round + target_round).saturating_sub(1)
+    min_block_delay * rounds_left
+        + delay_increment_per_round * rounds_left * (current_round + target_round).saturating_sub(1)
             / 2
 }
 
-fn calc_time_until_round(current_round: u64, target_round: u64) -> u64 {
-    calc_seconds_until_round(current_round, target_round) * 1_000_000_000
+fn calc_time_until_round(
+    current_round: u64,
+    target_round: u64,
+    min_block_delay: u64,
+    delay_increment_per_round: u64,
+) -> u64 {
+    calc_seconds_until_round(
+        current_round,
+        target_round,
+        min_block_delay,
+        delay_increment_per_round,
+    ) * 1_000_000_000
 }
 
 #[cfg(test)]
@@ -611,25 +644,25 @@ mod tests {
 
     #[test]
     fn test_calc_seconds_until_round() {
-        assert_eq!(calc_seconds_until_round(0, 0), 0);
-        assert_eq!(calc_seconds_until_round(0, 1), 15);
-        assert_eq!(calc_seconds_until_round(0, 2), 35);
-        assert_eq!(calc_seconds_until_round(0, 3), 60);
-        assert_eq!(calc_seconds_until_round(0, 4), 90);
-        assert_eq!(calc_seconds_until_round(0, 5), 125);
+        assert_eq!(calc_seconds_until_round(0, 0, 15, 5), 0);
+        assert_eq!(calc_seconds_until_round(0, 1, 15, 5), 15);
+        assert_eq!(calc_seconds_until_round(0, 2, 15, 5), 35);
+        assert_eq!(calc_seconds_until_round(0, 3, 15, 5), 60);
+        assert_eq!(calc_seconds_until_round(0, 4, 15, 5), 90);
+        assert_eq!(calc_seconds_until_round(0, 5, 15, 5), 125);
 
-        assert_eq!(calc_seconds_until_round(1, 2), 20);
-        assert_eq!(calc_seconds_until_round(1, 3), 45);
-        assert_eq!(calc_seconds_until_round(1, 4), 75);
-        assert_eq!(calc_seconds_until_round(1, 5), 110);
+        assert_eq!(calc_seconds_until_round(1, 2, 15, 5), 20);
+        assert_eq!(calc_seconds_until_round(1, 3, 15, 5), 45);
+        assert_eq!(calc_seconds_until_round(1, 4, 15, 5), 75);
+        assert_eq!(calc_seconds_until_round(1, 5, 15, 5), 110);
 
-        assert_eq!(calc_seconds_until_round(2, 3), 25);
-        assert_eq!(calc_seconds_until_round(2, 4), 55);
-        assert_eq!(calc_seconds_until_round(2, 5), 90);
+        assert_eq!(calc_seconds_until_round(2, 3, 15, 5), 25);
+        assert_eq!(calc_seconds_until_round(2, 4, 15, 5), 55);
+        assert_eq!(calc_seconds_until_round(2, 5, 15, 5), 90);
 
-        assert_eq!(calc_seconds_until_round(3, 4), 30);
-        assert_eq!(calc_seconds_until_round(3, 5), 65);
+        assert_eq!(calc_seconds_until_round(3, 4, 15, 5), 30);
+        assert_eq!(calc_seconds_until_round(3, 5, 15, 5), 65);
 
-        assert_eq!(calc_seconds_until_round(4, 5), 35);
+        assert_eq!(calc_seconds_until_round(4, 5, 15, 5), 35);
     }
 }
