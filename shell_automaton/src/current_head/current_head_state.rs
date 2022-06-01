@@ -14,6 +14,55 @@ use tezos_messages::p2p::encoding::operation::Operation;
 use crate::request::RequestId;
 use crate::service::storage_service::StorageError;
 
+mod serde_as_str {
+    use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S, T>(value: &T, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        T: ToString,
+    {
+        value.to_string().serialize(s)
+    }
+
+    pub fn deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: std::str::FromStr,
+        <T as std::str::FromStr>::Err: std::fmt::Display,
+    {
+        String::deserialize(deserializer)?
+            .parse::<T>()
+            .map_err(|e| D::Error::custom(format!("{}", e)))
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProtocolConstants {
+    pub proof_of_work_nonce_size: u8,
+    pub nonce_length: u8,
+
+    pub blocks_per_cycle: i32,
+    pub blocks_per_commitment: i32,
+    #[serde(rename = "max_operations_time_to_live")]
+    pub max_operations_ttl: i32,
+
+    #[serde(with = "serde_as_str")]
+    pub proof_of_work_threshold: u64,
+
+    pub consensus_committee_size: u32,
+    pub quorum_min: u16,
+    pub quorum_max: u16,
+    pub consensus_threshold: u16,
+    pub min_proposal_quorum: i32,
+
+    #[serde(with = "serde_as_str", rename = "minimal_block_delay")]
+    pub min_block_delay: u64,
+    #[serde(with = "serde_as_str")]
+    pub delay_increment_per_round: u64,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum CurrentHeadState {
     Idle,
@@ -40,6 +89,8 @@ pub enum CurrentHeadState {
         pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
 
         operations: Vec<Vec<Operation>>,
+
+        constants: Option<ProtocolConstants>,
     },
 
     Rehydrated {
@@ -57,6 +108,7 @@ pub enum CurrentHeadState {
 
         operations: Vec<Vec<Operation>>,
 
+        constants: Option<ProtocolConstants>,
         /// Stores all applied blocks on last 2 levels.
         applied_blocks: BTreeMap<BlockHash, BlockHeaderWithHash>,
         ///// Live blocks size equals to `operations_max_ttl`, which at
@@ -107,6 +159,7 @@ impl CurrentHeadState {
             pred_block_metadata_hash: None,
             pred_ops_metadata_hash: None,
             operations: vec![],
+            constants: None,
             applied_blocks,
         }
     }
@@ -163,6 +216,13 @@ impl CurrentHeadState {
     pub fn set_operations(&mut self, value: Vec<Vec<Operation>>) -> &mut Self {
         if let Self::Rehydrated { operations, .. } = self {
             *operations = value;
+        }
+        self
+    }
+
+    pub fn set_constants(&mut self, value: Option<ProtocolConstants>) -> &mut Self {
+        if let Self::Rehydrated { constants, .. } = self {
+            *constants = value;
         }
         self
     }
@@ -262,6 +322,13 @@ impl CurrentHeadState {
     pub fn operations(&self) -> Option<&Vec<Vec<Operation>>> {
         match self {
             Self::Rehydrated { operations, .. } => Some(operations),
+            _ => None,
+        }
+    }
+
+    pub fn constants(&self) -> Option<&ProtocolConstants> {
+        match self {
+            Self::Rehydrated { constants, .. } => constants.as_ref(),
             _ => None,
         }
     }

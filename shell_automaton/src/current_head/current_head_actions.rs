@@ -15,7 +15,7 @@ use crate::service::storage_service::StorageError;
 use crate::storage::blocks::genesis::init::StorageBlocksGenesisInitState;
 use crate::{EnablingCondition, State};
 
-use super::CurrentHeadState;
+use super::{CurrentHeadState, ProtocolConstants};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -78,6 +78,7 @@ pub struct CurrentHeadRehydrateSuccessAction {
     pub pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
 
     pub operations: Vec<Vec<Operation>>,
+    pub constants: Option<ProtocolConstants>,
 }
 
 impl EnablingCondition<State> for CurrentHeadRehydrateSuccessAction {
@@ -114,6 +115,7 @@ pub struct CurrentHeadUpdateAction {
     pub pred_block_metadata_hash: Option<BlockMetadataHash>,
     pub pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
     pub operations: Vec<Vec<Operation>>,
+    pub new_constants: Option<ProtocolConstants>,
 }
 
 impl EnablingCondition<State> for CurrentHeadUpdateAction {

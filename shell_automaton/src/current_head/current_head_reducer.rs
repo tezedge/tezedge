@@ -35,6 +35,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 pred_block_metadata_hash: content.pred_block_metadata_hash.clone(),
                 pred_ops_metadata_hash: content.pred_ops_metadata_hash.clone(),
                 operations: content.operations.clone(),
+                constants: content.constants.clone(),
             };
         }
         Action::CurrentHeadRehydrated(_) => match &mut state.current_head {
@@ -46,6 +47,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 pred_block_metadata_hash,
                 pred_ops_metadata_hash,
                 operations,
+                constants,
                 ..
             } => {
                 let mut new_head = CurrentHeadState::rehydrated(head.clone(), head_pred.clone());
@@ -54,7 +56,8 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                     .set_ops_metadata_hash(ops_metadata_hash.clone())
                     .set_pred_block_metadata_hash(pred_block_metadata_hash.clone())
                     .set_pred_ops_metadata_hash(pred_ops_metadata_hash.clone())
-                    .set_operations(std::mem::take(operations));
+                    .set_operations(std::mem::take(operations))
+                    .set_constants(constants.clone());
                 state.current_head = new_head;
             }
             _ => {}
@@ -84,6 +87,11 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 .or_else(|| applied_blocks.get(head.header.predecessor()))
                 .cloned();
             let payload_round = head.header.payload_round();
+            let constants = content
+                .new_constants
+                .as_ref()
+                .or(state.current_head.constants())
+                .cloned();
 
             state.current_head = CurrentHeadState::Rehydrated {
                 head,
@@ -95,6 +103,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 pred_block_metadata_hash: content.pred_block_metadata_hash.clone(),
                 pred_ops_metadata_hash: content.pred_ops_metadata_hash.clone(),
                 operations: content.operations.clone(),
+                constants,
                 applied_blocks,
             };
         }
