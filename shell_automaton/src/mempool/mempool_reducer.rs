@@ -294,8 +294,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
         Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
-            // TODO: get from protocol
-            const TTL: i32 = 120;
+            let ttl = match state.current_head.constants() {
+                Some(v) => v.max_operations_ttl,
+                None => 120,
+            };
 
             let block = match state.current_head.get() {
                 Some(v) => v,
@@ -378,7 +380,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             let last_predecessor_blocks = &mut mempool_state.last_predecessor_blocks;
             last_predecessor_blocks
                 .insert(block.header.predecessor().clone(), block.header.level() - 1);
-            if last_predecessor_blocks.len() as i32 > TTL {
+            if last_predecessor_blocks.len() as i32 > ttl {
                 if let Some((oldest, _)) = last_predecessor_blocks
                     .iter()
                     .min_by(|(_, l0), (_, l1)| l0.cmp(l1))
@@ -388,7 +390,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
 
-            let level = block.header.level().saturating_sub(TTL);
+            let level = block.header.level().saturating_sub(ttl);
 
             // `drain_filter` is unstable for now
             for (_, ops) in mempool_state.level_to_operation.range(..level) {
@@ -435,8 +437,12 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             slog::debug!(state.log, "validated_operations: removed old operations"; "time" => format!("{:?}", Instant::now() - t));
 
             // reset quorum state.
-            state.mempool.prequorum.reset();
-            state.mempool.quorum.reset();
+            let threshold = match state.current_head.constants() {
+                Some(v) => v.consensus_threshold,
+                None => return,
+            };
+            state.mempool.prequorum.reset(Some(threshold));
+            state.mempool.quorum.reset(Some(threshold));
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,

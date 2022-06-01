@@ -7,7 +7,6 @@ use tezos_messages::p2p::encoding::operations_for_blocks::{
     OperationsForBlock, OperationsForBlocksMessage,
 };
 
-use crate::baker::PROOF_OF_WORK_THRESHOLD;
 use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::rights::rights_actions::RightsGetAction;
 use crate::rights::RightsKey;
@@ -213,10 +212,14 @@ where
                 },
                 None => return,
             };
+            let constants = match store.state.get().current_head.constants() {
+                Some(v) => v,
+                None => return,
+            };
             let req_id = store.service.baker().compute_proof_of_work(
                 content.baker.clone(),
                 header.clone(),
-                PROOF_OF_WORK_THRESHOLD,
+                constants.proof_of_work_threshold,
             );
 
             store.dispatch(BakerBlockBakerComputeProofOfWorkPendingAction {
