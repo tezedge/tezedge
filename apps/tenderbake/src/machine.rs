@@ -75,9 +75,10 @@ where
     // new block payload
     new_operations: Vec<Op>,
     locked: Option<(i32, PayloadHash)>,
-    inner: PreVotesState<Id, Op>,
+    prequorum_incomplete: Votes<Id, Op>,
+    prequorum: PreVotesState<Id, Op>,
     timeout_this_level: Option<Timeout<Id>>,
-    inner_: VotesState<Id, Op>,
+    quorum: VotesState<Id, Op>,
     timeout_next_level: Option<Timeout<Id>>,
     // ahead
     ahead_preendorsements: Vec<(BlockId, Validator<Id, Op>)>,
@@ -89,9 +90,7 @@ enum PreVotesState<Id, Op>
 where
     Id: Ord,
 {
-    Collecting {
-        incomplete: Votes<Id, Op>,
-    },
+    Collecting,
     Done {
         // **invariant**
         // `pred_time_headers` should contain corresponding time header
@@ -256,7 +255,7 @@ where
 
     pub fn elected_block(&self) -> Option<BlockHash> {
         let initialized = self.inner.as_ref()?.as_ref().ok()?;
-        match &initialized.inner_ {
+        match &initialized.quorum {
             VotesState::Done { hash, .. } => Some(hash.clone()),
             VotesState::Collecting { .. } => None,
         }
@@ -427,7 +426,7 @@ where
             })
         }
 
-        let inner = if let Some(pre_cer) = payload.pre_cer {
+        let prequorum = if let Some(pre_cer) = payload.pre_cer {
             log.push(LogRecord::HavePreCertificate {
                 payload_round: pre_cer.payload_round,
             });
@@ -437,9 +436,7 @@ where
                 pre_cer,
             }
         } else {
-            PreVotesState::Collecting {
-                incomplete: Votes::default(),
-            }
+            PreVotesState::Collecting
         };
 
         let timeout_this_level = pred_time_header.calculate(log, config, now, block.level);
@@ -463,9 +460,10 @@ where
             operations: payload.operations,
             new_operations: vec![],
             locked: None,
-            inner,
+            prequorum_incomplete: Votes::default(),
+            prequorum,
             timeout_this_level,
-            inner_: VotesState::Collecting {
+            quorum: VotesState::Collecting {
                 incomplete: Votes::default(),
             },
             timeout_next_level: None,
@@ -477,6 +475,24 @@ where
         actions.append(&mut a);
 
         Pair(Ok(s), actions)
+    }
+
+    // It is possible we saw no predecessor at all, but we see a prequorum
+    // for the predecessor in the current block.
+    fn derive_pred_time_header<T>(
+        timing: &T,
+        pred_round: i32,
+        this_th: &TimeHeader<false>,
+    ) -> TimeHeader<true>
+    where
+        T: Timing,
+    {
+        TimeHeader {
+            round: pred_round,
+            timestamp: this_th.timestamp
+                - timing.offset(this_th.round)
+                - timing.round_duration(pred_round),
+        }
     }
 
     fn next_round<T, P>(
@@ -501,8 +517,8 @@ where
 
         if block.pred_hash != self_.pred_hash {
             // decide wether should switch or not
-            let switch = match (&self_.inner, &payload.pre_cer) {
-                (PreVotesState::Collecting { .. }, _) => true,
+            let switch = match (&self_.prequorum, &payload.pre_cer) {
+                (PreVotesState::Collecting, _) => true,
                 (PreVotesState::Done { .. }, None) => false,
                 (PreVotesState::Done { pre_cer, .. }, Some(ref new)) => {
                     match pre_cer.payload_round.cmp(&new.payload_round) {
@@ -527,10 +543,17 @@ where
         }
 
         let pred_time_header = match self_.pred_time_headers.get(&block.pred_hash) {
-            None => {
-                log.push(LogRecord::NoPredecessor);
-                return Transition::next_level(log, config, block, now).map_left(Err);
-            }
+            None => match &payload.pre_cer {
+                Some(ref pre_cer) => Self::derive_pred_time_header(
+                    &config.timing,
+                    pre_cer.payload_round,
+                    &block.time_header,
+                ),
+                None => {
+                    log.push(LogRecord::NoPredecessor);
+                    return Transition::next_level(log, config, block, now).map_left(Err);
+                }
+            },
             Some(v) => {
                 log.push(LogRecord::Predecessor {
                     round: v.round,
@@ -560,6 +583,10 @@ where
             && (self_.this_time_header.round != new_round || payload.hash == self_.payload_hash);
         if accept_not_pre_vote || accept_and_pre_vote {
             let mut self_ = self_;
+            // in case we just derived it
+            self_
+                .pred_time_headers
+                .insert(block.pred_hash.clone(), pred_time_header.clone());
             self_.pred_hash = block.pred_hash;
             let hdr = mem::replace(&mut self_.this_time_header, block.time_header.clone());
             let hash = mem::replace(&mut self_.hash, block.hash.clone());
@@ -574,25 +601,25 @@ where
 
             let new_payload_round = payload.pre_cer.as_ref().map(|new| new.payload_round);
 
-            match (&self_.inner, payload.pre_cer) {
+            match (&self_.prequorum, payload.pre_cer) {
                 (PreVotesState::Done { ref pre_cer, .. }, Some(new))
                     if new.payload_round > pre_cer.payload_round =>
                 {
                     log.push(LogRecord::HavePreCertificate {
                         payload_round: new.payload_round,
                     });
-                    self_.inner = PreVotesState::Done {
+                    self_.prequorum = PreVotesState::Done {
                         pred_hash: self_.pred_hash.clone(),
                         operations: self_.operations.clone(),
                         pre_cer: new,
                     };
                 }
                 (PreVotesState::Done { .. }, _) => (),
-                (PreVotesState::Collecting { .. }, Some(new)) => {
+                (PreVotesState::Collecting, Some(new)) => {
                     log.push(LogRecord::HavePreCertificate {
                         payload_round: new.payload_round,
                     });
-                    self_.inner = PreVotesState::Done {
+                    self_.prequorum = PreVotesState::Done {
                         pred_hash: self_.pred_hash.clone(),
                         operations: self_.operations.clone(),
                         pre_cer: new,
@@ -600,11 +627,11 @@ where
                 }
                 _ => (),
             };
-            if let VotesState::Collecting { ref mut incomplete } = &mut self_.inner_ {
+            if let VotesState::Collecting { ref mut incomplete } = &mut self_.quorum {
                 *incomplete = Votes::default();
             }
 
-            self_.timeout_next_level = match &self_.inner_ {
+            self_.timeout_next_level = match &self_.quorum {
                 VotesState::Done { ref hash, .. } => self_
                     .this_time_headers
                     .get(hash)
@@ -648,7 +675,7 @@ where
                     },
                 })
             }
-            if let PreVotesState::Done { .. } = &self_.inner {
+            if let PreVotesState::Done { .. } = &self_.prequorum {
                 log.push(LogRecord::Endorse);
                 actions.push(Action::Endorse {
                     pred_hash: self_.pred_hash.clone(),
@@ -726,20 +753,10 @@ where
         }
 
         let mut self_ = self;
-        let votes = match &mut self_.inner {
-            PreVotesState::Collecting { ref mut incomplete } => incomplete,
-            PreVotesState::Done {
-                ref mut pre_cer, ..
-            } => {
-                pre_cer.votes += validator;
-                return Pair(self_, ArrayVec::default());
-            }
-        };
-
-        *votes += validator;
+        self_.prequorum_incomplete += validator;
 
         let mut actions = ArrayVec::default();
-        if votes.power >= config.quorum {
+        if self_.prequorum_incomplete.power >= config.quorum {
             if let Some((ref round, ref payload_hash)) = &self_.locked {
                 if block_id.round.eq(round) && block_id.payload_hash.eq(payload_hash) {
                     return Pair(self_, ArrayVec::default());
@@ -750,13 +767,13 @@ where
                 payload_round: current_round,
             });
             self_.locked = Some((block_id.round, block_id.payload_hash.clone()));
-            self_.inner = PreVotesState::Done {
+            self_.prequorum = PreVotesState::Done {
                 pred_hash: self_.pred_hash.clone(),
                 operations: self_.operations.clone(),
                 pre_cer: PreCertificate {
                     payload_hash: block_id.payload_hash.clone(),
                     payload_round: block_id.round,
-                    votes: mem::take(votes),
+                    votes: mem::take(&mut self_.prequorum_incomplete),
                 },
             };
             log.push(LogRecord::Endorse);
@@ -792,7 +809,7 @@ where
             ref payload_hash,
             ref mut cer,
             ..
-        } = &mut self.inner_
+        } = &mut self.quorum
         {
             if round.eq(&block_id.round) && payload_hash.eq(&block_id.payload_hash) {
                 cer.votes += validator;
@@ -815,7 +832,7 @@ where
             return Pair(self, ArrayVec::default());
         }
 
-        let votes = match &mut self.inner_ {
+        let votes = match &mut self.quorum {
             VotesState::Collecting { ref mut incomplete } => incomplete,
             VotesState::Done {
                 ref mut cer,
@@ -834,7 +851,7 @@ where
         let mut actions = ArrayVec::default();
         if votes.power >= config.quorum {
             log.push(LogRecord::HaveCertificate);
-            self.inner_ = VotesState::Done {
+            self.quorum = VotesState::Done {
                 hash: self.hash.clone(),
                 round: block_id.round,
                 payload_hash: block_id.payload_hash,
@@ -924,7 +941,7 @@ where
         let time_header = TimeHeader { round, timestamp };
         let new_block = if this {
             self.timeout_this_level = None;
-            match &self.inner {
+            match &self.prequorum {
                 PreVotesState::Done {
                     pred_hash,
                     operations,
@@ -936,13 +953,13 @@ where
                     time_header,
                     payload: Some(Payload {
                         hash: pre_cer.payload_hash.clone(),
-                        payload_round: self.payload_round,
+                        payload_round: pre_cer.payload_round,
                         pre_cer: Some(pre_cer.clone()),
                         cer: self.cer.clone(),
                         operations: operations.clone(),
                     }),
                 },
-                PreVotesState::Collecting { .. } => Block {
+                PreVotesState::Collecting => Block {
                     pred_hash: self.pred_hash.clone(),
                     hash: BlockHash(vec![0x55; 32]),
                     level: self.level,
@@ -958,7 +975,7 @@ where
             }
         } else {
             self.timeout_next_level = None;
-            match &self.inner_ {
+            match &self.quorum {
                 VotesState::Done { cer, hash, .. } => Block {
                     pred_hash: hash.clone(),
                     hash: BlockHash(vec![0x55; 32]),
