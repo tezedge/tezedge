@@ -334,8 +334,10 @@ defs:
       - cd tezos-mitten
       - DATA_DIR=$PWD/data/$$DRONE_STEP_NAME
       - LOGS_DIR=$PWD/logs/$$DRONE_STEP_NAME
+      - sed -i 's/~can_fail:false/~can_fail:true/g' src/mitten/lib/scenarios.ml
       - eval $(opam env)
       - dune exec src/mitten/scenarios/$$DRONE_STEP_NAME.exe -- --data-dir $DATA_DIR --logs-dir $LOGS_DIR --binaries-dir bins --verbose 2 --timeout 400
+    failure: ignore
 
 steps:
 
@@ -550,6 +552,7 @@ defs:
       - cd tezos-mitten
       - DATA_DIR=$PWD/data/$$DRONE_STEP_NAME
       - LOGS_DIR=$PWD/logs/$$DRONE_STEP_NAME
+      - sed -i 's/~can_fail:false/~can_fail:true/g' src/mitten/lib/scenarios.ml
       - eval $(opam env)
       - dune exec src/mitten/scenarios/$$DRONE_STEP_NAME.exe -- --data-dir $DATA_DIR --logs-dir $LOGS_DIR --binaries-dir bins --verbose 2 --timeout 400
     failure: ignore
@@ -767,6 +770,7 @@ defs:
       - cd tezos-mitten
       - DATA_DIR=$PWD/data/$$DRONE_STEP_NAME
       - LOGS_DIR=$PWD/logs/$$DRONE_STEP_NAME
+      - sed -i 's/~can_fail:false/~can_fail:true/g' src/mitten/lib/scenarios.ml
       - eval $(opam env)
       - dune exec src/mitten/scenarios/$$DRONE_STEP_NAME.exe -- --data-dir $DATA_DIR --logs-dir $LOGS_DIR --binaries-dir bins --verbose 2 --timeout 400
     failure: ignore
