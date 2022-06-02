@@ -127,7 +127,6 @@ impl PeerConnectionStatus {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum WebsocketMessage {
     PeersMetrics { payload: Vec<PeerMetrics> },
-    PeerStatus { payload: PeerConnectionStatus },
     IncomingTransfer { payload: IncomingTransferMetrics },
     BlockStatus { payload: Vec<BlockMetrics> },
     BlockApplicationStatus { payload: BlockApplicationMessage },
@@ -140,11 +139,11 @@ pub struct WebsocketMessageWrapper {
 }
 
 impl WebsocketMessageWrapper {
-    pub fn one(msg: WebsocketMessage) -> Self {
-        WebsocketMessageWrapper {
-            messages: vec![msg],
-        }
-    }
+    // pub fn one(msg: WebsocketMessage) -> Self {
+    //     WebsocketMessageWrapper {
+    //         messages: vec![msg],
+    //     }
+    // }
 
     pub fn multiple(messages: Vec<WebsocketMessage>) -> Self {
         WebsocketMessageWrapper { messages }

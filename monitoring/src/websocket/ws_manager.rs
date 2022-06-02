@@ -5,15 +5,13 @@ use std::time::Duration;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use rpc::RpcServiceEnvironmentRef;
-use slog::{info, warn, Logger};
+use slog::{info, Logger};
 use tezedge_actor_system::{actor::*, system::Timer};
 use tokio::runtime::Handle;
 use tokio::sync::RwLock;
-use warp::ws::Message;
 
-use crate::websocket::ws_messages::WebsocketMessageWrapper;
+use crate::monitor::MonitorRef;
 use crate::websocket::ws_server::run_websocket;
-use crate::websocket::Clients;
 
 use super::RpcClients;
 
@@ -23,9 +21,9 @@ const LOG_INTERVAL: Duration = Duration::from_secs(60);
 #[derive(Clone, Debug)]
 pub struct LogStats;
 
-#[actor(WebsocketMessageWrapper, LogStats)]
+#[actor(LogStats)]
 pub struct WebsocketHandler {
-    clients: Clients,
+    clients: RpcClients,
     tokio_executor: Handle,
     /// Count of received messages from the last log
     actor_received_messages_count: usize,
@@ -44,6 +42,7 @@ impl WebsocketHandler {
         address: SocketAddr,
         max_number_of_websocket_connections: u16,
         log: Logger,
+        monitor_ref: MonitorRef,
         rpc_env: RpcServiceEnvironmentRef,
     ) -> Result<WebsocketHandlerRef, CreateError> {
         info!(log, "Starting monitoring websocket server";
@@ -58,6 +57,7 @@ impl WebsocketHandler {
                 max_number_of_websocket_connections,
                 log,
                 rpc_env,
+                monitor_ref,
             )),
         )
     }
@@ -67,31 +67,31 @@ impl WebsocketHandler {
     }
 }
 
-impl ActorFactoryArgs<(Handle, SocketAddr, u16, Logger, RpcServiceEnvironmentRef)>
+impl ActorFactoryArgs<(Handle, SocketAddr, u16, Logger, RpcServiceEnvironmentRef, MonitorRef)>
     for WebsocketHandler
 {
     fn create_args(
-        (tokio_executor, address, max_number_of_websocket_connections, log, rpc_env): (
+        (tokio_executor, address, max_number_of_websocket_connections, log, rpc_env, monitor_ref): (
             Handle,
             SocketAddr,
             u16,
             Logger,
             RpcServiceEnvironmentRef,
+            MonitorRef,
         ),
     ) -> Self {
-        let monitoring_clients: Clients = Arc::new(RwLock::new(HashMap::new()));
         let rpc_clients: RpcClients = Arc::new(RwLock::new(HashMap::new()));
 
         {
-            let monitoring_clients = monitoring_clients.clone();
+            let t_rpc_clients = rpc_clients.clone();
             tokio_executor.spawn(async move {
                 info!(log, "Starting websocket server"; "address" => format!("{}", &address));
                 run_websocket(
                     address,
                     max_number_of_websocket_connections,
-                    monitoring_clients,
-                    rpc_clients,
+                    t_rpc_clients,
                     rpc_env,
+                    monitor_ref,
                     log,
                 )
                 .await
@@ -99,7 +99,7 @@ impl ActorFactoryArgs<(Handle, SocketAddr, u16, Logger, RpcServiceEnvironmentRef
         }
 
         Self {
-            clients: monitoring_clients,
+            clients: rpc_clients,
             tokio_executor,
             actor_received_messages_count: 0,
         }
@@ -126,33 +126,6 @@ impl Actor for WebsocketHandler {
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
         self.actor_received_messages_count += 1;
         self.receive(ctx, msg, sender);
-    }
-}
-
-impl Receive<WebsocketMessageWrapper> for WebsocketHandler {
-    type Msg = WebsocketHandlerMsg;
-
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: WebsocketMessageWrapper, _sender: Sender) {
-        let clients = self.clients.clone();
-        let log = ctx.system.log();
-
-        self.tokio_executor.spawn(async move {
-            let clients = clients.read().await;
-            if !clients.is_empty() {
-                match serde_json::to_string(&msg.messages) {
-                    Ok(serialized) => {
-                        clients.iter().for_each(|(_, client_sender)| {
-                            if let Some(sender) = &client_sender {
-                                let _ = sender.send(Ok(Message::text(serialized.clone())));
-                            }
-                        });
-                    }
-                    Err(err) => {
-                        warn!(log, "Failed to serialize message"; "message" => msg, "reason" => format!("{:?}", err))
-                    }
-                }
-            }
-        });
     }
 }
 

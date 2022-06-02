@@ -59,7 +59,7 @@ pub async fn handle_request(
 
         match Pin::from(fut).await {
             Ok((_, resp)) => json_rpc_types::Response::result(req.jsonrpc, resp, req.id.clone()),
-            Err(e) => {
+            Err(_) => {
                 let error =
                     json_rpc_types::Error::from_code(json_rpc_types::ErrorCode::InternalError);
                 json_rpc_types::Response::error(req.jsonrpc, error, req.id.clone())

@@ -15,9 +15,11 @@ use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage};
 
+use crate::websocket::RpcClient;
+use crate::websocket::ws_json_rpc::JsonRpcResponse;
 use crate::websocket::ws_messages::{WebsocketMessage, WebsocketMessageWrapper};
 use crate::{
-    monitors::*, websocket::ws_messages::PeerConnectionStatus, websocket::WebsocketHandlerMsg,
+    monitors::*, websocket::ws_messages::PeerConnectionStatus,
 };
 use tezos_messages::Head;
 
@@ -29,6 +31,7 @@ pub enum BroadcastSignal {
     PublishPeerStatistics,
     PublishBlocksStatistics,
     PeerUpdate(PeerConnectionStatus),
+    PublishAll((RpcClient, Option<json_rpc_types::Id>)),
 }
 
 #[derive(Clone, Debug)]
@@ -41,7 +44,6 @@ pub struct Monitor {
     persistent_storage: PersistentStorage,
     main_chain_id: ChainId,
     network_channel: NetworkChannelRef,
-    websocket_ref: ActorRef<WebsocketHandlerMsg>,
     /// Monitors
     peer_monitors: HashMap<SocketAddr, PeerMonitor>,
     bootstrap_monitor: BootstrapMonitor,
@@ -61,7 +63,6 @@ impl Monitor {
     pub fn actor(
         sys: &impl ActorRefFactory,
         event_channel: NetworkChannelRef,
-        websocket_ref: ActorRef<WebsocketHandlerMsg>,
         persistent_storage: PersistentStorage,
         main_chain_id: ChainId,
     ) -> Result<MonitorRef, CreateError> {
@@ -69,7 +70,6 @@ impl Monitor {
             Self::name(),
             Props::new_args((
                 event_channel,
-                websocket_ref,
                 persistent_storage,
                 main_chain_id,
             )),
@@ -109,15 +109,13 @@ impl Monitor {
 impl
     ActorFactoryArgs<(
         NetworkChannelRef,
-        ActorRef<WebsocketHandlerMsg>,
         PersistentStorage,
         ChainId,
     )> for Monitor
 {
     fn create_args(
-        (event_channel, websocket_ref, persistent_storage, main_chain_id): (
+        (event_channel, persistent_storage, main_chain_id): (
             NetworkChannelRef,
-            ActorRef<WebsocketHandlerMsg>,
             PersistentStorage,
             ChainId,
         ),
@@ -131,7 +129,6 @@ impl
             persistent_storage,
             main_chain_id,
             network_channel: event_channel,
-            websocket_ref,
             peer_monitors: HashMap::new(),
             bootstrap_monitor,
             blocks_monitor,
@@ -154,20 +151,6 @@ impl Actor for Monitor {
             ctx.myself(),
             None,
             LogStats.into(),
-        );
-        ctx.schedule(
-            Duration::from_secs_f32(1.5),
-            Duration::from_secs_f32(1.5),
-            ctx.myself(),
-            None,
-            BroadcastSignal::PublishPeerStatistics,
-        );
-        ctx.schedule(
-            Duration::from_secs(1),
-            Duration::from_secs(1),
-            ctx.myself(),
-            None,
-            BroadcastSignal::PublishBlocksStatistics,
         );
 
         // recalculate stats from storage, before start processing any new message
@@ -192,42 +175,41 @@ impl Receive<BroadcastSignal> for Monitor {
     type Msg = MonitorMsg;
 
     fn receive(&mut self, _: &Context<Self::Msg>, msg: BroadcastSignal, _sender: Sender) {
-        match msg {
-            BroadcastSignal::PublishPeerStatistics => {
-                self.websocket_ref.tell(
-                    WebsocketMessageWrapper::one(WebsocketMessage::PeersMetrics {
-                        payload: self
-                            .peer_monitors
-                            .values_mut()
-                            .map(|monitor| monitor.snapshot())
-                            .collect(),
-                    }),
-                    None,
-                );
+        if let BroadcastSignal::PublishAll((client, id)) = msg {
+            let msg = WebsocketMessageWrapper::multiple(vec![
+                WebsocketMessage::IncomingTransfer {
+                    payload: self.bootstrap_monitor.snapshot(),
+                },
+                WebsocketMessage::BlockStatus {
+                    payload: self.blocks_monitor.snapshot(),
+                },
+                WebsocketMessage::BlockApplicationStatus {
+                    payload: self.block_application_monitor.snapshot(),
+                },
+                WebsocketMessage::ChainStatus {
+                    payload: self.chain_monitor.snapshot(),
+                },
+                WebsocketMessage::PeersMetrics {
+                    payload: self
+                        .peer_monitors
+                        .values_mut()
+                        .map(|monitor| monitor.snapshot())
+                        .collect(),
+                },
+            ]);
+
+            if let Some(client) = client {
+                let res = match serde_json::to_value(msg) {
+                    Ok(serialized) => {
+                        JsonRpcResponse::result(json_rpc_types::Version::V2, serialized, id)
+                    }
+                    Err(_) => {
+                        let error = json_rpc_types::Error::from_code(json_rpc_types::ErrorCode::InternalError);
+                        JsonRpcResponse::error(json_rpc_types::Version::V2, error, id)
+                    }
+                };
+                let _ = client.send(res);
             }
-            BroadcastSignal::PublishBlocksStatistics => {
-                self.websocket_ref.tell(
-                    WebsocketMessageWrapper::multiple(vec![
-                        WebsocketMessage::IncomingTransfer {
-                            payload: self.bootstrap_monitor.snapshot(),
-                        },
-                        WebsocketMessage::BlockStatus {
-                            payload: self.blocks_monitor.snapshot(),
-                        },
-                        WebsocketMessage::BlockApplicationStatus {
-                            payload: self.block_application_monitor.snapshot(),
-                        },
-                        WebsocketMessage::ChainStatus {
-                            payload: self.chain_monitor.snapshot(),
-                        },
-                    ]),
-                    None,
-                );
-            }
-            BroadcastSignal::PeerUpdate(msg) => self.websocket_ref.tell(
-                WebsocketMessageWrapper::one(WebsocketMessage::PeerStatus { payload: msg }),
-                None,
-            ),
         }
     }
 }
