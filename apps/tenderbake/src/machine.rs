@@ -549,9 +549,16 @@ where
                     pre_cer.payload_round,
                     &block.time_header,
                 ),
-                None => {
-                    log.push(LogRecord::NoPredecessor);
-                    return Transition::next_level(log, config, block, now).map_left(Err);
+                None => match &payload.cer {
+                    Some(_) => Self::derive_pred_time_header(
+                        &config.timing,
+                        0,
+                        &block.time_header,
+                    ),
+                    None => {
+                        log.push(LogRecord::NoPredecessor);
+                        return Transition::next_level(log, config, block, now).map_left(Err);
+                    }
                 }
             },
             Some(v) => {
