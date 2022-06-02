@@ -608,6 +608,7 @@ where
 
             let new_payload_round = payload.pre_cer.as_ref().map(|new| new.payload_round);
 
+            self_.prequorum_incomplete = Votes::default();
             match (&self_.prequorum, payload.pre_cer) {
                 (PreVotesState::Done { ref pre_cer, .. }, Some(new))
                     if new.payload_round > pre_cer.payload_round =>
