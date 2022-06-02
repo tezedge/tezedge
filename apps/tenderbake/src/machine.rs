@@ -149,7 +149,16 @@ where
                     timestamp: block.time_header.timestamp,
                 });
                 let new = match inner {
-                    None => Transition::next_level(&mut log, config, *block, now).map_left(Err),
+                    None => if block.payload.is_none() {
+                        Transition::next_level(&mut log, config, *block, now).map_left(Err)
+                    } else {
+                        Initialized::next_level(
+                            BTreeMap::new(),
+                            vec![],
+                            vec![],
+                            &mut log, config, *block, now,
+                        )
+                    },
                     Some(Err(self_)) => {
                         if block.level == self_.level + 1 {
                             log.push(LogRecord::AcceptAtTransitionState { next_level: true });
@@ -347,7 +356,7 @@ where
     Op: Clone,
 {
     fn next_level<T, P>(
-        pred_time_headers: BTreeMap<BlockHash, TimeHeader<true>>,
+        mut pred_time_headers: BTreeMap<BlockHash, TimeHeader<true>>,
         ahead_preendorsements: Vec<(BlockId, Validator<Id, Op>)>,
         ahead_endorsements: Vec<(BlockId, Validator<Id, Op>)>,
         log: &mut ArrayVec<LogRecord>,
@@ -361,8 +370,13 @@ where
     {
         let pred_time_header = match pred_time_headers.get(&block.pred_hash) {
             None => {
-                log.push(LogRecord::NoPredecessor);
-                return Transition::next_level(log, config, block, now).map_left(Err);
+                let th = Self::derive_pred_time_header(
+                    &config.timing,
+                    0,
+                    &block.time_header,
+                );
+                pred_time_headers.insert(block.pred_hash.clone(), th.clone());
+                th
             }
             Some(v) => {
                 log.push(LogRecord::Predecessor {

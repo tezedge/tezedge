@@ -42,6 +42,7 @@ pub struct SlotsInfo {
 
 #[derive(Serialize, Deserialize)]
 pub enum Gathering {
+    GetCornerSlots(Request<i32, BTreeMap<ContractTz1Hash, Slots>, String>),
     // for some `level: i32` we request a collection of public key hash
     // and corresponding slots
     GetSlots(Request<i32, BTreeMap<ContractTz1Hash, Slots>, String>),
@@ -54,6 +55,7 @@ pub enum Gathering {
 impl fmt::Display for Gathering {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Gathering::GetCornerSlots(r) => write!(f, "corner slots {r}"),
             Gathering::GetSlots(r) => write!(f, "slots {r}"),
             Gathering::GetOperations(r) => write!(f, "operations {r}"),
             Gathering::GetLiveBlocks(r) => write!(f, "live blocks {r}"),
@@ -221,6 +223,14 @@ impl BakerState {
                 match self {
                     BakerState::Gathering {
                         state,
+                        gathering: Gathering::GetCornerSlots(Request {
+                            id: _,
+                            state: RequestState::Error(error),
+                        }),
+                        current_block: _,
+                    } => BakerState::Invalid { state, error: error.to_string() },
+                    BakerState::Gathering {
+                        state,
                         gathering: Gathering::GetSlots(Request {
                             id: _,
                             state: RequestState::Error(error),
@@ -243,6 +253,24 @@ impl BakerState {
                         }),
                         current_block: _,
                     } => BakerState::Invalid { state, error: error.to_string() },
+                    BakerState::Gathering {
+                        mut state,
+                        gathering: Gathering::GetCornerSlots(Request {
+                            id: level,
+                            state: RequestState::Success(delegates),
+                        }),
+                        current_block,
+                    } => {
+                        state.tb_config.map.delegates.insert(level, delegates);
+                        state.actions.push(BakerAction::GetSlots(GetSlotsAction {
+                            level: level + 1,
+                        }));
+                        BakerState::Gathering {
+                            state,
+                            gathering: Gathering::GetSlots(Request::new(level + 1)),
+                            current_block,
+                        }
+                    }
                     BakerState::Gathering {
                         mut state,
                         gathering: Gathering::GetSlots(Request {
@@ -325,10 +353,17 @@ impl BakerState {
                 }
                 let gathering = if block.level > state.tb_config.map.level {
                     // a new level
-                    state.actions.push(BakerAction::GetSlots(GetSlotsAction {
-                        level: block.level + 1,
-                    }));
-                    Gathering::GetSlots(Request::new(block.level + 1))
+                    if !state.tb_config.map.delegates.contains_key(&block.level) {
+                        state.actions.push(BakerAction::GetSlots(GetSlotsAction {
+                            level: block.level,
+                        }));
+                        Gathering::GetCornerSlots(Request::new(block.level))
+                    } else {
+                        state.actions.push(BakerAction::GetSlots(GetSlotsAction {
+                            level: block.level + 1,
+                        }));
+                        Gathering::GetSlots(Request::new(block.level + 1))
+                    }
                 } else {
                     // the same level
                     state.actions.push(BakerAction::GetOperationsForBlock(GetOperationsForBlockAction {
@@ -355,6 +390,18 @@ impl BakerState {
                 }
             }
             BakerAction::SlotsEvent(SlotsEventAction { level, delegates }) => match self {
+                BakerState::Gathering {
+                    mut state,
+                    gathering: Gathering::GetCornerSlots(r),
+                    current_block,
+                } if r.is_pending() && level == r.id => {
+                    state.actions.push(BakerAction::Idle(IdleAction {}));
+                    BakerState::Gathering {
+                        state,
+                        gathering: Gathering::GetCornerSlots(r.done_ok(delegates)),
+                        current_block,
+                    }
+                }
                 BakerState::Gathering {
                     mut state,
                     current_block,

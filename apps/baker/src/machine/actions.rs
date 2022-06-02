@@ -74,7 +74,8 @@ where
     fn is_enabled(&self, state: &S) -> bool {
         matches!(
             state.as_ref(),
-            Some(BakerState::Gathering { gathering: Gathering::GetSlots(r), .. }) if r.is_pending(),
+            Some(BakerState::Gathering { gathering: Gathering::GetSlots(r), .. }) |
+            Some(BakerState::Gathering { gathering: Gathering::GetCornerSlots(r), .. }) if r.is_pending(),
         )
     }
 }
