@@ -4,6 +4,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use hyper::body::Buf;
 use hyper::{Body, Method, Request};
 
 use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
@@ -308,10 +309,8 @@ pub async fn inject_operation(
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    let operation_data_raw = hyper::body::to_bytes(req.into_body()).await?;
-    let operation_data: String = String::from_utf8(operation_data_raw.to_vec())?
-        .trim_matches('"')
-        .to_string();
+    let operation_data_raw = hyper::body::aggregate(req).await?;
+    let operation_data: String = serde_json::from_reader(&mut operation_data_raw.reader())?;
 
     let chain_id_query = query.get_str("chain_id").unwrap_or(MAIN_CHAIN_ID);
     let chain_id = parse_chain_id(chain_id_query, &env)?;

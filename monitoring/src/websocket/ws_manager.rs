@@ -67,8 +67,15 @@ impl WebsocketHandler {
     }
 }
 
-impl ActorFactoryArgs<(Handle, SocketAddr, u16, Logger, RpcServiceEnvironmentRef, MonitorRef)>
-    for WebsocketHandler
+impl
+    ActorFactoryArgs<(
+        Handle,
+        SocketAddr,
+        u16,
+        Logger,
+        RpcServiceEnvironmentRef,
+        MonitorRef,
+    )> for WebsocketHandler
 {
     fn create_args(
         (tokio_executor, address, max_number_of_websocket_connections, log, rpc_env, monitor_ref): (

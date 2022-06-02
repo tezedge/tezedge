@@ -18,7 +18,7 @@ use warp::ws::{Message, WebSocket};
 use warp::Filter;
 use warp::{reject, Rejection, Reply};
 
-use crate::monitor::{MonitorRef, BroadcastSignal};
+use crate::monitor::{BroadcastSignal, MonitorRef};
 use crate::websocket::ws_json_rpc::{handle_request, JsonRpcError, JsonRpcResponse, Params};
 
 use super::RpcClients;
@@ -31,7 +31,6 @@ pub async fn run_websocket(
     monitor_ref: MonitorRef,
     log: Logger,
 ) {
-
     let ws_log = log.clone();
     let json_rpc_route = warp::path::path("rpc")
         .and(warp::path::end())
@@ -183,13 +182,16 @@ pub async fn client_connection_rpc(
                         Ok(request) => {
                             if request.method == "getMonitorStats" {
                                 monitor_ref.tell(
-                                    BroadcastSignal::PublishAll((Some(client_sender.clone()), request.id)),
-                                    None
+                                    BroadcastSignal::PublishAll((
+                                        Some(client_sender.clone()),
+                                        request.id,
+                                    )),
+                                    None,
                                 );
                                 continue;
                             }
                             handle_request(&request, &env).await
-                        },
+                        }
                         Err(_) => {
                             let error =
                                 JsonRpcError::from_code(json_rpc_types::ErrorCode::ParseError);

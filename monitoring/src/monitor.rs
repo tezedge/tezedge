@@ -15,12 +15,10 @@ use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage};
 
-use crate::websocket::RpcClient;
 use crate::websocket::ws_json_rpc::JsonRpcResponse;
 use crate::websocket::ws_messages::{WebsocketMessage, WebsocketMessageWrapper};
-use crate::{
-    monitors::*, websocket::ws_messages::PeerConnectionStatus,
-};
+use crate::websocket::RpcClient;
+use crate::{monitors::*, websocket::ws_messages::PeerConnectionStatus};
 use tezos_messages::Head;
 
 /// How often to print stats in logs
@@ -68,11 +66,7 @@ impl Monitor {
     ) -> Result<MonitorRef, CreateError> {
         sys.actor_of_props::<Monitor>(
             Self::name(),
-            Props::new_args((
-                event_channel,
-                persistent_storage,
-                main_chain_id,
-            )),
+            Props::new_args((event_channel, persistent_storage, main_chain_id)),
         )
     }
 
@@ -106,13 +100,7 @@ impl Monitor {
     }
 }
 
-impl
-    ActorFactoryArgs<(
-        NetworkChannelRef,
-        PersistentStorage,
-        ChainId,
-    )> for Monitor
-{
+impl ActorFactoryArgs<(NetworkChannelRef, PersistentStorage, ChainId)> for Monitor {
     fn create_args(
         (event_channel, persistent_storage, main_chain_id): (
             NetworkChannelRef,
@@ -204,7 +192,9 @@ impl Receive<BroadcastSignal> for Monitor {
                         JsonRpcResponse::result(json_rpc_types::Version::V2, serialized, id)
                     }
                     Err(_) => {
-                        let error = json_rpc_types::Error::from_code(json_rpc_types::ErrorCode::InternalError);
+                        let error = json_rpc_types::Error::from_code(
+                            json_rpc_types::ErrorCode::InternalError,
+                        );
                         JsonRpcResponse::error(json_rpc_types::Version::V2, error, id)
                     }
                 };

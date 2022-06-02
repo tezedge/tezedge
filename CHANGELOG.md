@@ -8,10 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 
 - Added RPC for baker rewards distribution.
+- Added support for tezedge RPCs through websocket using JSON-RPC 2.0.
 
 ### Changed
 
-- Nothing.
+- Changed the monitoring websocket communication from a push based architecture to a request/response architecture.
 
 ### Deprecated
 
