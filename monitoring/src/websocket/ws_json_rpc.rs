@@ -2,7 +2,7 @@ use std::{collections::HashMap, pin::Pin};
 
 use rpc::{
     server::{parse_query_string, MethodHandler},
-    RpcServiceEnvironmentRef,
+    RpcServiceEnvironmentRef, ServiceResultBody,
 };
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
@@ -19,7 +19,7 @@ pub struct PostRequestParams {
     pub body: Value,
 }
 
-pub type JsonRpcResponse = json_rpc_types::Response<serde_json::Value, ()>;
+pub type JsonRpcResponse = json_rpc_types::Response<ServiceResultBody, ()>;
 pub type JsonRpcError = json_rpc_types::Error<()>;
 
 /// Handles the json-rpc 2.0 requests and propagates it to the RPC handlers

@@ -15,9 +15,49 @@ pub mod server;
 pub use server::rpc_server::{handle_notify_rpc_server_msg, RpcServer};
 pub use server::{RpcServiceEnvironment, RpcServiceEnvironmentRef};
 
+pub enum ServiceResultBody {
+    RawBytes(&'static [u8]),
+    RawString(String),
+    Json(serde_json::Value),
+}
+
+impl Default for ServiceResultBody {
+    fn default() -> Self {
+        Self::Json(Default::default())
+    }
+}
+
+impl From<serde_json::Value> for ServiceResultBody {
+    fn from(json: serde_json::Value) -> Self {
+        Self::Json(json)
+    }
+}
+
+impl From<String> for ServiceResultBody {
+    fn from(s: String) -> Self {
+        Self::RawString(s)
+    }
+}
+
+impl From<&'static [u8]> for ServiceResultBody {
+    fn from(raw: &'static [u8]) -> Self {
+        Self::RawBytes(raw)
+    }
+}
+
+impl ServiceResultBody {
+    pub fn try_to_string(self) -> serde_json::Result<String> {
+        match self {
+            ServiceResultBody::RawBytes(raw) => Ok(String::from_utf8_lossy(raw).to_string()),
+            ServiceResultBody::RawString(s) => Ok(s),
+            ServiceResultBody::Json(json) => serde_json::to_string(&json),
+        }
+    }
+}
+
 /// Crate level custom result
 pub type ServiceResult =
-    Result<(Response<Body>, serde_json::Value), Box<dyn std::error::Error + Sync + Send>>;
+    Result<(Response<Body>, ServiceResultBody), Box<dyn std::error::Error + Sync + Send>>;
 
 /// Generate options response with supported methods, headers
 pub(crate) fn options() -> ServiceResult {
@@ -42,7 +82,7 @@ pub(crate) fn options() -> ServiceResult {
 
 /// Function to generate JSON response from serializable object
 pub fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceResult {
-    let value = serde_json::to_value(content)?;
+    let value = ServiceResultBody::Json(serde_json::to_value(content)?);
     Ok((
         Response::builder()
             .header(hyper::header::CONTENT_TYPE, "application/json")
@@ -64,7 +104,6 @@ pub fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceResult {
 }
 
 pub fn make_raw_response(raw: &'static [u8]) -> ServiceResult {
-    let value = serde_json::to_value(raw)?;
     Ok((
         Response::builder()
             .header(hyper::header::CONTENT_TYPE, "application/json")
@@ -81,13 +120,13 @@ pub fn make_raw_response(raw: &'static [u8]) -> ServiceResult {
                 "GET, POST, OPTIONS, PUT",
             )
             .body(Body::from(raw))?,
-        value,
+        raw.into(),
     ))
 }
 
 /// Produces a JSON response from an FFI RPC response
 pub fn make_response_with_status_and_json_string(status_code: u16, body: &str) -> ServiceResult {
-    let value = serde_json::from_str(body)?;
+    let value = body.to_string().into();
     Ok((
         Response::builder()
             .header(hyper::header::CONTENT_TYPE, "application/json")
@@ -234,7 +273,7 @@ pub(crate) fn handle_rpc_service_error(error: RpcServiceError) -> ServiceResult 
 
 /// Generate 500 error with message as body
 pub(crate) fn error_with_message(error_msg: String) -> ServiceResult {
-    let value = serde_json::to_value(error_msg.clone())?;
+    let value = error_msg.clone().into();
     Ok((
         Response::builder()
             .status(StatusCode::from_u16(500)?)

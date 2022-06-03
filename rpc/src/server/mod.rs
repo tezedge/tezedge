@@ -31,7 +31,7 @@ use tezos_context_ipc_client::TezedgeContextClient;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use url::Url;
 
-use crate::{error_with_message, not_found, options};
+use crate::{error_with_message, not_found, options, ServiceResultBody};
 
 mod dev_handler;
 mod openapi_handler;
@@ -136,7 +136,7 @@ pub type Params = Vec<(String, String)>;
 pub type Query = HashMap<String, Vec<String>>;
 
 pub type HResult =
-    Result<(Response<Body>, serde_json::Value), Box<dyn std::error::Error + Sync + Send>>;
+    Result<(Response<Body>, ServiceResultBody), Box<dyn std::error::Error + Sync + Send>>;
 
 pub type Handler = Arc<
     dyn Fn(

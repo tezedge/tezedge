@@ -312,7 +312,7 @@ pub async fn dev_shell_automaton_state_raw_get(
                 "GET, POST, OPTIONS, PUT",
             )
             .body(Body::from(contents))?,
-        contents_string,
+        contents_string.into(),
     ))
 }
 
@@ -343,7 +343,7 @@ pub async fn dev_shell_automaton_actions_raw_get(
                 "GET, POST, OPTIONS, PUT",
             )
             .body(Body::from(contents))?,
-        contents_value,
+        contents_value.into(),
     ))
 }
 
