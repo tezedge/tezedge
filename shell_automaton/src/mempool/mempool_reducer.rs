@@ -49,6 +49,28 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             match &content.result {
                 MempoolValidatorValidateResult::Applied(v) => {
+                    let ops = &mempool_state.validated_operations;
+                    let existing_status = if ops.refused.iter().any(|o| o.hash == v.hash) {
+                        Some("Refused")
+                    } else if ops.branch_refused.iter().any(|o| o.hash == v.hash) {
+                        Some("BranchRefused")
+                    } else if ops.branch_delayed.iter().any(|o| o.hash == v.hash) {
+                        Some("BranchDelayed")
+                    } else if ops.outdated.iter().any(|o| o.hash == v.hash) {
+                        Some("Outdated")
+                    } else {
+                        None
+                    };
+
+                    if let Some(existing_status) = existing_status {
+                        slog::warn!(&state.log, "Mempool Validation(Prevalidator) Result Mismatch";
+                            "current_head" => format!("{:?}", state.current_head.get()),
+                            "existing" => existing_status,
+                            "prevalidator_result" => format!("{:?}", content.result),
+                            "operation_hash" => v.hash.to_base58_check(),
+                            "operation" => format!("{:?}", mempool_state.pending_operations.get(&v.hash)));
+                    }
+
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
                         mempool_state
                             .validated_operations
@@ -496,6 +518,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     mempool_state
                         .prechecking_operations
                         .insert(hash.clone(), proto);
+                    mempool_state
+                        .pending_operations
+                        .insert(hash.clone(), operation.clone());
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
                         if let MempoolOperation {
                             state: OperationState::ReceivedHash,
@@ -543,6 +568,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         operation_hash.clone(),
                         MempoolOperation::injected(level, *injected_timestamp, action),
                     );
+                    mempool_state
+                        .pending_operations
+                        .insert(operation_hash.clone(), operation.clone());
                 } else {
                     mempool_state
                         .pending_operations
@@ -719,6 +747,23 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         state2,
                     );
             };
+
+            if mempool_state
+                .validated_operations
+                .applied
+                .iter()
+                .any(|o| &o.hash == hash)
+                && !matches!(
+                    result.kind(),
+                    crate::prechecker::PrecheckerResultKind::Applied
+                )
+            {
+                slog::warn!(&state.log, "Mempool Validation(Prechecker) Result Mismatch";
+                    "current_head" => format!("{:?}", state.current_head.get()),
+                    "existing" => "Applied",
+                    "prechecker_result" => format!("{:?}", result),
+                    "operation_hash" => hash.to_base58_check());
+            }
 
             match result.kind() {
                 crate::prechecker::PrecheckerResultKind::Applied => {
