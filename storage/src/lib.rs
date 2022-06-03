@@ -66,6 +66,7 @@ pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
+pub mod reward_storage;
 mod shell_automaton;
 pub mod system_storage;
 
@@ -681,6 +682,7 @@ pub mod initializer {
                 crate::ShellAutomatonStateStorage::descriptor(cache),
                 crate::ShellAutomatonActionStorage::descriptor(cache),
                 crate::ShellAutomatonActionMetaStorage::descriptor(cache),
+                crate::reward_storage::RewardStorage::descriptor(cache),
             ]
         }
     }
@@ -873,6 +875,7 @@ pub mod tests_common {
     use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
     use crate::persistent::sequence::Sequences;
     use crate::persistent::{open_cl, CommitLogSchema, DbConfiguration};
+    use crate::reward_storage::RewardStorage;
 
     use super::*;
     use crate::database::tezedge_database::TezedgeDatabaseBackendOptions;
@@ -934,6 +937,7 @@ pub mod tests_common {
                         ShellAutomatonStateStorage::descriptor(&db_cache),
                         ShellAutomatonActionStorage::descriptor(&db_cache),
                         ShellAutomatonActionMetaStorage::descriptor(&db_cache),
+                        RewardStorage::descriptor(&db_cache),
                     ],
                     &cfg,
                 )?);
@@ -966,6 +970,7 @@ pub mod tests_common {
                         ShellAutomatonStateStorage::name(),
                         ShellAutomatonActionStorage::name(),
                         ShellAutomatonActionMetaStorage::name(),
+                        RewardStorage::name(),
                     ],
                 )?)
             } else {
@@ -990,6 +995,7 @@ pub mod tests_common {
                         ShellAutomatonStateStorage::descriptor(&db_cache),
                         ShellAutomatonActionStorage::descriptor(&db_cache),
                         ShellAutomatonActionMetaStorage::descriptor(&db_cache),
+                        RewardStorage::descriptor(&db_cache),
                     ],
                     &cfg,
                 )?);

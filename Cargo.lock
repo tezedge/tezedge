@@ -2812,6 +2812,7 @@ dependencies = [
  "autocfg",
  "num-integer",
  "num-traits",
+ "serde 1.0.137",
 ]
 
 [[package]]
@@ -2821,6 +2822,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fbc387afefefd5e9e39493299f3069e14a140dd34dc19b4c1c1a8fddb6a790"
 dependencies = [
  "num-traits",
+ "serde 1.0.137",
 ]
 
 [[package]]
@@ -2854,6 +2856,7 @@ dependencies = [
  "num-bigint 0.4.3",
  "num-integer",
  "num-traits",
+ "serde 1.0.137",
 ]
 
 [[package]]
@@ -3650,6 +3653,7 @@ dependencies = [
  "getset",
  "hex",
  "hyper",
+ "hyper-tls",
  "itertools",
  "lazy_static",
  "networking",
@@ -4333,6 +4337,7 @@ dependencies = [
  "hex",
  "itertools",
  "lazy_static",
+ "num",
  "num_cpus",
  "rand 0.7.3",
  "rocksdb",
