@@ -121,8 +121,7 @@ mod tests {
 
         // simulate one cycle
         for level in (c * l)..((c + 1) * l) {
-            let reveal = state.reveal_nonce(level).collect::<Vec<_>>();
-            assert!(reveal.is_empty());
+            assert!(state.reveal_nonce(level).next().is_none());
 
             // 1/8 chance
             if rand::random::<u8>() < (256 / 8) as u8 {
