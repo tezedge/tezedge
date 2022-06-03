@@ -659,7 +659,7 @@ pub(crate) async fn call_protocol_rpc_with_cache(
     }
 }
 
-pub(crate) async fn call_protocol_rpc(
+pub async fn call_protocol_rpc(
     chain_param: &str,
     chain_id: ChainId,
     block_hash: BlockHash,
@@ -725,7 +725,7 @@ pub(crate) async fn call_protocol_rpc(
     }
 }
 
-pub(crate) async fn preapply_operations(
+pub async fn preapply_operations(
     chain_param: &str,
     chain_id: ChainId,
     block_hash: BlockHash,

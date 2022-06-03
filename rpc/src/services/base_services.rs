@@ -164,7 +164,7 @@ async fn convert_block_metadata(
     convert = "{(chain_id.clone(), block_hash.clone())}",
     result = true
 )]
-pub(crate) async fn get_block_header(
+pub async fn get_block_header(
     chain_id: ChainId,
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
@@ -558,7 +558,7 @@ pub(crate) fn get_node_version(network_version: &NetworkVersion) -> NodeVersion 
     convert = "{(chain_id.clone(), block_hash.clone())}",
     result = true
 )]
-pub(crate) async fn get_block(
+pub async fn get_block(
     chain_id: &ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,

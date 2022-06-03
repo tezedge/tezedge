@@ -2188,6 +2188,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "json-rpc-types"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3890d4363efba3cd8a2fa2871ea3cd975cbaab25fca51344645950f950c4d7b"
+dependencies = [
+ "serde 1.0.137",
+ "str-buf",
+]
+
+[[package]]
 name = "kv-log-macro"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2625,8 +2635,11 @@ dependencies = [
  "crypto",
  "erased-serde",
  "futures",
+ "http",
+ "json-rpc-types",
  "networking",
  "rand 0.7.3",
+ "rpc",
  "serde 1.0.137",
  "serde_json",
  "shell",
@@ -2634,6 +2647,7 @@ dependencies = [
  "slog_derive",
  "storage",
  "tezedge-actor-system",
+ "tezos_api",
  "tezos_messages",
  "tokio",
  "tokio-stream",
@@ -4354,6 +4368,15 @@ dependencies = [
  "tezos_messages",
  "thiserror",
  "zstd",
+]
+
+[[package]]
+name = "str-buf"
+version = "2.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0873cb29201126440dcc78d0b1f5a13d917e78831778429a7920ca9c7f3dae1e"
+dependencies = [
+ "serde 1.0.137",
 ]
 
 [[package]]
