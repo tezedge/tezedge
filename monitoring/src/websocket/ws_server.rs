@@ -157,7 +157,9 @@ pub async fn client_connection_rpc(
         let t_log = log.clone();
         tokio::task::spawn(async move {
             while let Some(message) = rx.next().await {
-                let message = message.try_to_string().unwrap();
+                // let message = message.try_to_string().unwrap();
+                // let message = serde_json::to_string(&message).unwrap();
+                let message = serde_json::to_string(&message).unwrap();
                 if let Err(e) = user_ws_tx.send(Message::text(message)).await {
                     slog::error!(t_log, "Websocket error: {}", e);
                 }

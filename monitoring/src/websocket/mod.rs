@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use rpc::ServiceResultBody;
+use serde_json::value::RawValue;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
@@ -14,4 +15,4 @@ mod ws_server;
 pub use ws_manager::{WebsocketHandler, WebsocketHandlerMsg};
 
 type RpcClients = Arc<RwLock<HashMap<String, RpcClient>>>;
-pub type RpcClient = Option<mpsc::UnboundedSender<json_rpc_types::Response<ServiceResultBody, ()>>>;
+pub type RpcClient = Option<mpsc::UnboundedSender<json_rpc_types::Response<Box<RawValue>, ()>>>;

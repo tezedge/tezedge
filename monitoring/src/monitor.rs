@@ -187,7 +187,7 @@ impl Receive<BroadcastSignal> for Monitor {
             ]);
 
             if let Some(client) = client {
-                let res = match serde_json::to_value(msg) {
+                let res = match serde_json::value::to_raw_value(&msg) {
                     Ok(serialized) => {
                         JsonRpcResponse::result(json_rpc_types::Version::V2, serialized, id)
                     }

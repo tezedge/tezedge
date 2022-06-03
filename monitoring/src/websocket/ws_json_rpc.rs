@@ -5,7 +5,7 @@ use rpc::{
     RpcServiceEnvironmentRef, ServiceResultBody,
 };
 use serde::{de::DeserializeOwned, Deserialize};
-use serde_json::Value;
+use serde_json::{Value, value::RawValue};
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
@@ -19,7 +19,7 @@ pub struct PostRequestParams {
     pub body: Value,
 }
 
-pub type JsonRpcResponse = json_rpc_types::Response<ServiceResultBody, ()>;
+pub type JsonRpcResponse = json_rpc_types::Response<Box<RawValue>, ()>;
 pub type JsonRpcError = json_rpc_types::Error<()>;
 
 /// Handles the json-rpc 2.0 requests and propagates it to the RPC handlers
@@ -58,7 +58,11 @@ pub async fn handle_request(
         );
 
         match Pin::from(fut).await {
-            Ok((_, resp)) => json_rpc_types::Response::result(req.jsonrpc, resp, req.id.clone()),
+            Ok((_, resp)) => {
+                let resp = resp.try_to_string().unwrap();
+                let resp = RawValue::from_string(resp).unwrap();
+                json_rpc_types::Response::result(req.jsonrpc, resp, req.id.clone())
+            },
             Err(_) => {
                 let error =
                     json_rpc_types::Error::from_code(json_rpc_types::ErrorCode::InternalError);
