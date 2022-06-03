@@ -25,7 +25,7 @@ pub fn guess_proof_of_work(header: &FullHeader, proof_of_work_threshold: u64) ->
 }
 
 fn check_proof_of_work(header_bytes: &[u8], proof_of_work_threshold: u64) -> bool {
-    let hash = blake2b::digest_256(&header_bytes).unwrap();
+    let hash = blake2b::digest_256(header_bytes).unwrap();
     let stamp = u64::from_be_bytes(hash[0..8].try_into().unwrap());
     stamp < proof_of_work_threshold
 }

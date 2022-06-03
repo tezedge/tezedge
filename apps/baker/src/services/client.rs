@@ -32,7 +32,7 @@ use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
 use super::event::{Block, OperationSimple, Slots};
 use crate::machine::{BakerAction, OperationsEventAction, ProposalEventAction, RpcErrorAction};
 
-pub const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
+pub const PROTOCOL: &str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
 #[derive(Clone)]
 pub struct RpcClient {
@@ -415,8 +415,8 @@ impl RpcClient {
             serde_json::Value::String(PROTOCOL.to_string()),
         );
 
-        for i in 0..4 {
-            for op in &mut operations[i] {
+        for ops_list in &mut operations {
+            for op in ops_list {
                 op.hash = None;
                 for content in &mut op.contents {
                     if let Some(content_obj) = content.as_object_mut() {
@@ -550,14 +550,15 @@ impl RpcClient {
             if status.is_success() {
                 let mut deserializer =
                     serde_json::Deserializer::from_reader(response).into_iter::<T>();
-                while let Some(v) = deserializer.next() {
+                let wrapper = &wrapper;
+                for v in deserializer.by_ref() {
                     let url = url.clone();
                     let v = v
                         .map_err(|err| RpcError::WithContext {
                             url,
                             inner: err.into(),
                         })
-                        .and_then(|v| wrapper(v));
+                        .and_then(wrapper);
                     let action = match v {
                         Ok(v) => v,
                         Err(err) => BakerAction::RpcError(RpcErrorAction {

@@ -41,6 +41,7 @@ pub struct SlotsInfo {
 }
 
 #[derive(Serialize, Deserialize)]
+#[allow(clippy::enum_variant_names)]
 pub enum Gathering {
     GetCornerSlots(Request<i32, BTreeMap<ContractTz1Hash, Slots>, String>),
     // for some `level: i32` we request a collection of public key hash
@@ -215,9 +216,9 @@ impl BakerState {
 
         match action {
             BakerAction::RpcError(RpcErrorAction { error }) => {
-                self.as_mut().actions.push(BakerAction::LogError(LogErrorAction { description: format!("{error}") }));
+                self.as_mut().actions.push(BakerAction::LogError(LogErrorAction { description: error.clone() }));
                 let state = self.into_inner();
-                BakerState::Invalid { state, error: error.to_string() }
+                BakerState::Invalid { state, error }
             }
             BakerAction::IdleEvent(IdleEventAction {}) => {
                 match self {
@@ -228,7 +229,7 @@ impl BakerState {
                             state: RequestState::Error(error),
                         }),
                         current_block: _,
-                    } => BakerState::Invalid { state, error: error.to_string() },
+                    } => BakerState::Invalid { state, error },
                     BakerState::Gathering {
                         state,
                         gathering: Gathering::GetSlots(Request {
@@ -236,7 +237,7 @@ impl BakerState {
                             state: RequestState::Error(error),
                         }),
                         current_block: _,
-                    } => BakerState::Invalid { state, error: error.to_string() },
+                    } => BakerState::Invalid { state, error },
                     BakerState::Gathering {
                         state,
                         gathering: Gathering::GetOperations(Request {
@@ -244,7 +245,7 @@ impl BakerState {
                             state: RequestState::Error(error),
                         }),
                         current_block: _,
-                    } => BakerState::Invalid { state, error: error.to_string() },
+                    } => BakerState::Invalid { state, error },
                     BakerState::Gathering {
                         state,
                         gathering: Gathering::GetLiveBlocks(Request {
@@ -252,7 +253,7 @@ impl BakerState {
                             state: RequestState::Error(error),
                         }),
                         current_block: _,
-                    } => BakerState::Invalid { state, error: error.to_string() },
+                    } => BakerState::Invalid { state, error },
                     BakerState::Gathering {
                         mut state,
                         gathering: Gathering::GetCornerSlots(Request {
@@ -719,8 +720,7 @@ impl tb::ProposerMap for SlotsInfo {
 
                 let this_loop = slots
                     .iter()
-                    .skip_while(|c| **c < round as u16)
-                    .next()
+                    .find(|c| **c >= round as u16)
                     .map(|r| ((*r as i32) + m * c, our.clone()));
 
                 let next_loop = slots
@@ -729,7 +729,7 @@ impl tb::ProposerMap for SlotsInfo {
                     .next()
                     .map(|r| ((*r as i32) + (m + 1) * c, our.clone()));
 
-                this_loop.or_else(|| next_loop)
+                this_loop.or(next_loop)
             })
             .min_by(|(a, _), (b, _)| a.cmp(b))
     }
@@ -802,19 +802,17 @@ fn proposal(
                             },
                         })
                     }),
-                    cer: operations.first().and_then(|ops| {
-                        Some(tb::Certificate {
-                            votes: {
-                                ops.iter()
-                                    .filter_map(|op| match op.kind()? {
-                                        OperationKind::Endorsement(v) => {
-                                            tb_config.map.validator(v.level, v.slot, op.clone())
-                                        }
-                                        _ => None,
-                                    })
-                                    .collect()
-                            },
-                        })
+                    cer: operations.first().map(|ops| tb::Certificate {
+                        votes: {
+                            ops.iter()
+                                .filter_map(|op| match op.kind()? {
+                                    OperationKind::Endorsement(v) => {
+                                        tb_config.map.validator(v.level, v.slot, op.clone())
+                                    }
+                                    _ => None,
+                                })
+                                .collect()
+                        },
                     }),
                     operations: operations.into_iter().skip(1).flatten().collect(),
                 })
@@ -842,19 +840,15 @@ mod tests {
         let operations = serde_json::from_str::<Vec<Vec<OperationSimple>>>(ops_str).unwrap();
         let map = serde_json::from_str::<SlotsInfo>(map_str).unwrap();
 
-        let cer = operations.first().and_then(|ops| {
-            Some(tb::Certificate {
-                votes: {
-                    ops.iter()
-                        .filter_map(|op| match op.kind()? {
-                            OperationKind::Endorsement(v) => {
-                                map.validator(v.level, v.slot, op.clone())
-                            }
-                            _ => None,
-                        })
-                        .collect()
-                },
-            })
+        let cer = operations.first().map(|ops| tb::Certificate {
+            votes: {
+                ops.iter()
+                    .filter_map(|op| match op.kind()? {
+                        OperationKind::Endorsement(v) => map.validator(v.level, v.slot, op.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            },
         });
 
         println!("{}", serde_json::to_string(&cer.unwrap()).unwrap());
