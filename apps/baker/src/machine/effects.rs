@@ -1,14 +1,21 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{convert::TryInto, time::Duration};
+use std::{convert::TryFrom, time::Duration};
 
 use redux_rs::{ActionWithMeta, Store, TimeService};
 
+use crypto::hash::{BlockPayloadHash, OperationListHash};
 use tenderbake as tb;
 use tezos_encoding::{enc::BinWriter, types::SizedBytes};
-use tezos_messages::protocol::{
-    proto_005::operation::SeedNonceRevelationOperation, proto_012::operation::Contents,
+use tezos_messages::{
+    p2p::{
+        binary_message::MessageHash,
+        encoding::operation::{DecodedOperation, Operation},
+    },
+    protocol::{
+        proto_005::operation::SeedNonceRevelationOperation, proto_012::operation::Contents,
+    },
 };
 
 use crate::{proof_of_work::guess_proof_of_work, services::BakerService};
@@ -192,6 +199,11 @@ where
             let mut protocol_header = protocol_header.clone();
             protocol_header.signature = signature;
 
+            let sum_before = operations[1..]
+                .iter()
+                .map(|ops_list| ops_list.len())
+                .sum::<usize>();
+
             let (mut header, ops) = match store.service.client().preapply_block(
                 protocol_header,
                 predecessor_hash.clone(),
@@ -205,6 +217,45 @@ where
                 }
             };
 
+            let valid_operations = ops
+                .iter()
+                .filter_map(|v| {
+                    let applied = v.as_object()?.get("applied")?.clone();
+                    serde_json::from_value(applied).ok()
+                })
+                .collect::<Vec<Vec<DecodedOperation>>>();
+            let sum = valid_operations[1..]
+                .iter()
+                .map(|ops_list| ops_list.len())
+                .sum::<usize>();
+            if sum != sum_before {
+                let hashes = valid_operations[1..]
+                    .as_ref()
+                    .iter()
+                    .flatten()
+                    .filter_map(|op| match Operation::try_from(op.clone()) {
+                        Ok(op) => match op.message_typed_hash() {
+                            Ok(v) => Some(v),
+                            Err(err) => {
+                                slog::error!(store.service.log(), "calculate hash: {err}");
+                                None
+                            }
+                        },
+                        Err(err) => {
+                            slog::error!(store.service.log(), "decoded operation: {err}");
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
+                header.payload_hash = BlockPayloadHash::calculate(
+                    &predecessor_hash,
+                    header.payload_round as u32,
+                    &operation_list_hash,
+                )
+                .unwrap();
+            }
+
             header.signature.0 = vec![0x00; 64];
             let p = guess_proof_of_work(&header, st.proof_of_work_threshold);
             header.proof_of_work_nonce = SizedBytes(p);
@@ -214,14 +265,6 @@ where
                 .crypto()
                 .sign(0x11, &st.chain_id, &header)
                 .unwrap();
-
-            let valid_operations = ops
-                .iter()
-                .filter_map(|v| {
-                    let applied = v.as_object()?.get("applied")?.clone();
-                    serde_json::from_value(applied).ok()
-                })
-                .collect();
 
             match store
                 .service
