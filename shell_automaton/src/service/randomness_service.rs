@@ -6,6 +6,10 @@ use std::{fmt::Debug, net::SocketAddr};
 use crypto::nonce::{Nonce, NONCE_SIZE};
 use rand::seq::SliceRandom;
 use rand::Rng;
+use tezos_messages::p2p::encoding::block_header::Level;
+
+use crate::baker::seed_nonce::{SeedNonce, SeedNonceHash};
+use crypto::blake2b;
 
 pub type RandomnessServiceDefault = rand::prelude::StdRng;
 
@@ -18,6 +22,8 @@ pub trait RandomnessService {
     fn choose_potential_peers_for_advertise(&mut self, list: &[SocketAddr]) -> Vec<SocketAddr>;
 
     fn choose_potential_peers_for_nack(&mut self, list: &[SocketAddr]) -> Vec<SocketAddr>;
+
+    fn get_seed_nonce(&mut self, level: Level) -> (SeedNonceHash, SeedNonce);
 }
 
 impl<R> RandomnessService for R
@@ -45,5 +51,13 @@ where
 
     fn choose_potential_peers_for_nack(&mut self, list: &[SocketAddr]) -> Vec<SocketAddr> {
         self.choose_potential_peers_for_advertise(list)
+    }
+
+    fn get_seed_nonce(&mut self, _level: Level) -> (SeedNonceHash, SeedNonce) {
+        let mut nonce_bytes = [0; 32];
+        self.fill(&mut nonce_bytes);
+        let hash_bytes = blake2b::digest_256(&nonce_bytes).unwrap();
+        let hash = SeedNonceHash::try_from(hash_bytes).unwrap();
+        (hash, nonce_bytes.into())
     }
 }

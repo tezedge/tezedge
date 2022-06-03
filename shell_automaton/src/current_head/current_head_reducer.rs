@@ -34,6 +34,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 ops_metadata_hash: content.ops_metadata_hash.clone(),
                 pred_block_metadata_hash: content.pred_block_metadata_hash.clone(),
                 pred_ops_metadata_hash: content.pred_ops_metadata_hash.clone(),
+                cycle: content.cycle.clone(),
                 operations: content.operations.clone(),
                 constants: content.constants.clone(),
             };
@@ -46,6 +47,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 ops_metadata_hash,
                 pred_block_metadata_hash,
                 pred_ops_metadata_hash,
+                cycle,
                 operations,
                 constants,
                 ..
@@ -56,6 +58,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                     .set_ops_metadata_hash(ops_metadata_hash.clone())
                     .set_pred_block_metadata_hash(pred_block_metadata_hash.clone())
                     .set_pred_ops_metadata_hash(pred_ops_metadata_hash.clone())
+                    .set_cycle(cycle.clone())
                     .set_operations(std::mem::take(operations))
                     .set_constants(constants.clone());
                 state.current_head = new_head;
@@ -102,6 +105,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 ops_metadata_hash: content.ops_metadata_hash.clone(),
                 pred_block_metadata_hash: content.pred_block_metadata_hash.clone(),
                 pred_ops_metadata_hash: content.pred_ops_metadata_hash.clone(),
+                cycle: content.cycle.clone(),
                 operations: content.operations.clone(),
                 constants,
                 applied_blocks,

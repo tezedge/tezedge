@@ -3,6 +3,7 @@
 
 pub mod block_baker;
 pub mod block_endorser;
+pub mod seed_nonce;
 
 mod baker_state;
 pub use baker_state::*;
