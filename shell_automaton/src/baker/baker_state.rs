@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{
@@ -12,6 +14,7 @@ use tezos_messages::p2p::encoding::operation::Operation;
 
 use super::block_baker::BakerBlockBakerState;
 use super::block_endorser::BakerBlockEndorserState;
+use super::seed_nonce::BakerSeedNonceState;
 
 /// Locked payload by endorser.
 ///
@@ -88,7 +91,7 @@ impl ElectedBlock {
 pub struct BakerState {
     pub block_endorser: BakerBlockEndorserState,
     pub block_baker: BakerBlockBakerState,
-
+    pub seed_nonces: BTreeMap<Level, BakerSeedNonceState>,
     pub locked_payload: Option<LockedPayload>,
     pub elected_block: Option<ElectedBlock>,
 }
@@ -98,7 +101,7 @@ impl BakerState {
         Self {
             block_endorser: BakerBlockEndorserState::Idle { time: 0 },
             block_baker: BakerBlockBakerState::Idle { time: 0 },
-
+            seed_nonces: Default::default(),
             locked_payload: None,
             elected_block: None,
         }

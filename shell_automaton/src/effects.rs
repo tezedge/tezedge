@@ -83,6 +83,7 @@ use crate::baker::block_baker::{
     BakerBlockBakerBakeNextRoundAction, BakerBlockBakerNextLevelTimeoutSuccessQuorumPendingAction,
 };
 use crate::baker::block_endorser::baker_block_endorser_effects;
+use crate::baker::seed_nonce::baker_seed_nonce_effects;
 
 fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     if let Some(stats) = store.service.statistics() {
@@ -221,6 +222,7 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     baker_effects(store, action);
     baker_block_endorser_effects(store, action);
     baker_block_baker_effects(store, action);
+    baker_seed_nonce_effects(store, action);
 
     shutdown_effects(store, action);
 }

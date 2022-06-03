@@ -72,6 +72,15 @@ impl CycleErasStorage {
         self.kv.get(key).map_err(StorageError::from)
     }
 
+    pub fn get_for_level(&self, level: i32) -> Result<Option<CycleEra>, StorageError> {
+        Ok(self
+            .iterator()?
+            .into_iter()
+            .flat_map(|(_, eras)| eras)
+            .filter(|era| *era.first_level() <= level)
+            .max_by_key(|era| *era.first_level()))
+    }
+
     pub fn iterator(&self) -> Result<Vec<(CycleErasKey, CycleErasData)>, StorageError> {
         self.kv
             .find(IteratorMode::Start)?

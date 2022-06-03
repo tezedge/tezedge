@@ -75,6 +75,7 @@ use crate::storage::{
 
 use crate::baker::block_baker::baker_block_baker_reducer;
 use crate::baker::block_endorser::baker_block_endorser_reducer;
+use crate::baker::seed_nonce::baker_seed_nonce_reducer;
 
 pub fn last_action_reducer(state: &mut State, action: &ActionWithMeta) {
     state.set_last_action(action);
@@ -155,6 +156,7 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         shutdown_reducer,
         baker_block_endorser_reducer,
         baker_block_baker_reducer,
+        baker_seed_nonce_reducer,
         // needs to be last!
         applied_actions_count_reducer,
         last_action_reducer

@@ -11,7 +11,7 @@ use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::request::RequestId;
-use crate::service::storage_service::StorageError;
+use crate::service::storage_service::{BlockCycleInfo, StorageError};
 use crate::storage::blocks::genesis::init::StorageBlocksGenesisInitState;
 use crate::{EnablingCondition, State};
 
@@ -77,6 +77,8 @@ pub struct CurrentHeadRehydrateSuccessAction {
     pub pred_block_metadata_hash: Option<BlockMetadataHash>,
     pub pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
 
+    pub cycle: Option<BlockCycleInfo>,
+
     pub operations: Vec<Vec<Operation>>,
     pub constants: Option<ProtocolConstants>,
 }
@@ -114,6 +116,7 @@ pub struct CurrentHeadUpdateAction {
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
     pub pred_block_metadata_hash: Option<BlockMetadataHash>,
     pub pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
+    pub cycle: Option<BlockCycleInfo>,
     pub operations: Vec<Vec<Operation>>,
     pub new_constants: Option<ProtocolConstants>,
 }

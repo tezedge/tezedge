@@ -160,6 +160,7 @@ use crate::storage::{
 
 use crate::baker::block_baker::*;
 use crate::baker::block_endorser::*;
+use crate::baker::seed_nonce::*;
 
 use crate::shutdown::{ShutdownInitAction, ShutdownPendingAction, ShutdownSuccessAction};
 
@@ -775,6 +776,16 @@ pub enum Action {
     BakerBlockBakerInjectInit(BakerBlockBakerInjectInitAction),
     BakerBlockBakerInjectPending(BakerBlockBakerInjectPendingAction),
     BakerBlockBakerInjectSuccess(BakerBlockBakerInjectSuccessAction),
+
+    BakerSeedNonceGenerated(BakerSeedNonceGeneratedAction),
+    BakerSeedNonceCommitted(BakerSeedNonceCommittedAction),
+    BakerSeedNonceCycleNextWait(BakerSeedNonceCycleNextWaitAction),
+    BakerSeedNonceRevealInit(BakerSeedNonceRevealInitAction),
+    BakerSeedNonceRevealPending(BakerSeedNonceRevealPendingAction),
+    BakerSeedNonceRevealMempoolInject(BakerSeedNonceRevealMempoolInjectAction),
+    BakerSeedNonceRevealIncluded(BakerSeedNonceRevealIncludedAction),
+    BakerSeedNonceRevealSuccess(BakerSeedNonceRevealSuccessAction),
+    BakerSeedNonceFinish(BakerSeedNonceFinishAction),
 
     ShutdownInit(ShutdownInitAction),
     ShutdownPending(ShutdownPendingAction),

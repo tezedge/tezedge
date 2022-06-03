@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::current_head::CurrentHeadUpdateAction;
 use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::service::storage_service::{
-    StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
+    BlockCycleInfo, StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
 use crate::service::{ActorsService, ProtocolRunnerService, RpcService};
 use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
@@ -249,6 +249,10 @@ where
                     let ops_metadata_hash = block_additional_data.ops_metadata_hash().clone();
                     let pred_block_metadata_hash = pred_block_metadata_hash.clone();
                     let pred_ops_metadata_hash = pred_ops_metadata_hash.clone();
+                    let cycle = apply_result
+                        .cycle
+                        .and_then(|cycle| apply_result.cycle_position.map(|pos| (cycle, pos)))
+                        .map(|(cycle, position)| BlockCycleInfo { cycle, position });
                     let operations = block_operations.clone();
                     let new_constants = apply_result
                         .new_protocol_constants_json
@@ -263,6 +267,7 @@ where
                         ops_metadata_hash,
                         pred_block_metadata_hash,
                         pred_ops_metadata_hash,
+                        cycle,
                         operations,
                         new_constants,
                     });
