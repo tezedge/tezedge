@@ -6,7 +6,6 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, ParseError, Utc};
 use derive_more::From;
 use reqwest::{
     blocking::{Client, ClientBuilder},
@@ -14,6 +13,7 @@ use reqwest::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crypto::hash::{
     BlockHash, BlockPayloadHash, ChainId, ContextHash, ContractTz1Hash, NonceHash, OperationHash,
@@ -71,8 +71,8 @@ pub enum RpcErrorInner {
     Utf8(str::Utf8Error),
     #[error("parse: {_0}, {_1}")]
     IntParse(ParseIntError, String),
-    #[error("chrono: {_0}")]
-    Chrono(ParseError),
+    #[error("time parse error: {_0}")]
+    Chrono(time::error::Parse),
     #[error("node: {_0}")]
     NodeError(String, StatusCode),
     #[error("invalid fitness")]
@@ -457,14 +457,13 @@ impl RpcClient {
             fitness,
             context,
         } = shell_header;
-        let timestamp = timestamp
-            .parse::<DateTime<Utc>>()
+        let timestamp = OffsetDateTime::parse(&timestamp, &Rfc3339)
             .map_err(Into::into)
             .map_err(|inner| RpcError::WithContext {
                 url: url.clone(),
                 inner,
             })?
-            .timestamp()
+            .unix_timestamp()
             .into();
         let ProtocolBlockHeader {
             payload_hash,
@@ -630,7 +629,7 @@ impl RpcClient {
             let status = response.status();
             read_error(&mut response, status).map_err(|err| RpcError::WithContext {
                 url: url.clone(),
-                inner: err.into(),
+                inner: err,
             })?;
             unreachable!()
         }
@@ -648,9 +647,9 @@ fn read_error(response: &mut impl io::Read, status: StatusCode) -> Result<(), Rp
 }
 
 fn convert_timestamp(v: &str) -> Result<u64, RpcErrorInner> {
-    v.parse::<DateTime<Utc>>()
+    OffsetDateTime::parse(v, &Rfc3339)
         .map_err(Into::into)
-        .map(|v| v.timestamp() as u64)
+        .map(|v| v.unix_timestamp() as u64)
 }
 
 fn convert_fitness(f: &[String]) -> Result<i32, RpcErrorInner> {

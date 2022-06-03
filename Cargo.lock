@@ -300,7 +300,6 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 name = "baker"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "crypto",
  "derive_more",
  "env_logger 0.9.0",
@@ -325,6 +324,7 @@ dependencies = [
  "tezos_encoding_derive",
  "tezos_messages",
  "thiserror",
+ "time",
  "url",
 ]
 
@@ -588,19 +588,6 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
-
-[[package]]
-name = "chrono"
-version = "0.4.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
-dependencies = [
- "libc",
- "num-integer",
- "num-traits",
- "time 0.1.44",
- "winapi",
-]
 
 [[package]]
 name = "chunked_transfer"
@@ -1234,7 +1221,7 @@ dependencies = [
  "serde 1.0.137",
  "serial_test",
  "thiserror",
- "time 0.3.9",
+ "time",
 ]
 
 [[package]]
@@ -2452,7 +2439,7 @@ dependencies = [
  "slog-json",
  "slog-term",
  "tempfile",
- "time 0.3.9",
+ "time",
 ]
 
 [[package]]
@@ -3675,7 +3662,7 @@ dependencies = [
  "tezos_protocol_ipc_client",
  "tezos_timing",
  "thiserror",
- "time 0.3.9",
+ "time",
  "tokio",
  "tokio-stream",
  "url",
@@ -4020,7 +4007,7 @@ dependencies = [
  "tezos_messages",
  "tezos_protocol_ipc_client",
  "thiserror",
- "time 0.3.9",
+ "time",
  "tokio",
  "zip",
 ]
@@ -4217,7 +4204,7 @@ dependencies = [
  "serde 1.0.137",
  "serde_json",
  "slog",
- "time 0.3.9",
+ "time",
 ]
 
 [[package]]
@@ -4252,7 +4239,7 @@ dependencies = [
  "slog",
  "term",
  "thread_local",
- "time 0.3.9",
+ "time",
 ]
 
 [[package]]
@@ -4614,7 +4601,7 @@ dependencies = [
  "tezos_encoding",
  "tezos_messages",
  "thiserror",
- "time 0.3.9",
+ "time",
  "url",
 ]
 
@@ -4671,7 +4658,7 @@ dependencies = [
  "strum_macros",
  "tezos_encoding",
  "tezos_messages",
- "time 0.3.9",
+ "time",
 ]
 
 [[package]]
@@ -4812,7 +4799,7 @@ dependencies = [
  "tezos_encoding_derive",
  "tezos_identity",
  "thiserror",
- "time 0.3.9",
+ "time",
 ]
 
 [[package]]
@@ -4925,17 +4912,6 @@ checksum = "a5b7bcecfafe4998587d636f9ae9d55eb9d0499877b88757767c346875067098"
 dependencies = [
  "libc",
  "tikv-jemalloc-sys",
-]
-
-[[package]]
-name = "time"
-version = "0.1.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6db9e6914ab8b1ae1c260a4ae7a49b6c5611b40328a735b21862567685e73255"
-dependencies = [
- "libc",
- "wasi 0.10.0+wasi-snapshot-preview1",
- "winapi",
 ]
 
 [[package]]
@@ -5357,7 +5333,7 @@ dependencies = [
  "rustversion",
  "sysinfo",
  "thiserror",
- "time 0.3.9",
+ "time",
 ]
 
 [[package]]
@@ -5672,7 +5648,7 @@ dependencies = [
  "hmac 0.12.1",
  "pbkdf2",
  "sha1",
- "time 0.3.9",
+ "time",
  "zstd",
 ]
 

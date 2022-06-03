@@ -44,6 +44,8 @@ mod tests {
 
     #[test]
     fn pow_test() {
+        use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+
         let proof_of_work_threshold = 70368744177663_u64;
         let header = FullHeader {
             level: 232680,
@@ -52,9 +54,9 @@ mod tests {
                 "BLu68WtjmwxgPoogFbMXCY1P8gkebaXdBDd1TFAsYjz3vZNyyLv",
             )
             .unwrap(),
-            timestamp: chrono::DateTime::parse_from_rfc3339("2022-03-14T10:02:35Z")
+            timestamp: OffsetDateTime::parse("2022-03-14T10:02:35Z", &Rfc3339)
                 .unwrap()
-                .timestamp()
+                .unix_timestamp()
                 .into(),
             validation_pass: 4,
             operations_hash: OperationListListHash::from_base58_check(

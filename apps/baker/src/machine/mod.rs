@@ -333,12 +333,10 @@ mod tests {
                 });
                 total_power += power;
 
-                if total_power >= quorum_size {
-                    // still we have no quorum, because got outdated preendorsement
-                    assert!(state.as_ref().actions.is_empty());
-                } else {
-                    assert!(state.as_ref().actions.is_empty());
-                }
+                // no matter `total_power >= quorum_size`
+                let _ = total_power >= quorum_size;
+                // still we have no quorum, because got outdated preendorsement
+                assert!(state.as_ref().actions.is_empty());
             }
         }
     }

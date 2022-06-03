@@ -78,7 +78,7 @@ pub trait Timing {
         let mut round = 0;
         let mut t = start_level;
         loop {
-            t = t + self.round_duration(round);
+            t += self.round_duration(round);
             if t > now {
                 break round;
             }

@@ -124,7 +124,7 @@ fn main() {
             }
         }
 
-        store.dispatch::<BakerAction>(event.clone().action.into());
+        store.dispatch(event.clone().action);
         let state = store.state.get().as_ref().as_ref().unwrap();
         let st = state.as_ref();
 

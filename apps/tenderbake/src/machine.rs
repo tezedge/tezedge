@@ -149,16 +149,21 @@ where
                     timestamp: block.time_header.timestamp,
                 });
                 let new = match inner {
-                    None => if block.payload.is_none() {
-                        Transition::next_level(&mut log, config, *block, now).map_left(Err)
-                    } else {
-                        Initialized::next_level(
-                            BTreeMap::new(),
-                            vec![],
-                            vec![],
-                            &mut log, config, *block, now,
-                        )
-                    },
+                    None => {
+                        if block.payload.is_none() {
+                            Transition::next_level(&mut log, config, *block, now).map_left(Err)
+                        } else {
+                            Initialized::next_level(
+                                BTreeMap::new(),
+                                vec![],
+                                vec![],
+                                &mut log,
+                                config,
+                                *block,
+                                now,
+                            )
+                        }
+                    }
                     Some(Err(self_)) => {
                         if block.level == self_.level + 1 {
                             log.push(LogRecord::AcceptAtTransitionState { next_level: true });
@@ -370,11 +375,7 @@ where
     {
         let pred_time_header = match pred_time_headers.get(&block.pred_hash) {
             None => {
-                let th = Self::derive_pred_time_header(
-                    &config.timing,
-                    0,
-                    &block.time_header,
-                );
+                let th = Self::derive_pred_time_header(&config.timing, 0, &block.time_header);
                 pred_time_headers.insert(block.pred_hash.clone(), th.clone());
                 th
             }
@@ -564,16 +565,12 @@ where
                     &block.time_header,
                 ),
                 None => match &payload.cer {
-                    Some(_) => Self::derive_pred_time_header(
-                        &config.timing,
-                        0,
-                        &block.time_header,
-                    ),
+                    Some(_) => Self::derive_pred_time_header(&config.timing, 0, &block.time_header),
                     None => {
                         log.push(LogRecord::NoPredecessor);
                         return Transition::next_level(log, config, block, now).map_left(Err);
                     }
-                }
+                },
             },
             Some(v) => {
                 log.push(LogRecord::Predecessor {
