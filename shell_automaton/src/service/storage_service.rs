@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, ProtocolHash};
 use storage::block_meta_storage::Meta;
-use storage::cycle_eras_storage::CycleErasData;
+use storage::cycle_eras_storage::{CycleEra, CycleErasData};
 use storage::cycle_storage::CycleData;
 use storage::{
     BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader,
@@ -121,8 +121,24 @@ pub struct CurrentHeadData {
     pub pred: Option<BlockHeaderWithHash>,
     pub additional_data: BlockAdditionalData,
     pub pred_additional_data: Option<BlockAdditionalData>,
+    pub cycle: Option<BlockCycleInfo>,
     pub operations: Vec<Vec<Operation>>,
     pub constants: Option<ProtocolConstants>,
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BlockCycleInfo {
+    pub cycle: i32,
+    pub position: i32,
+}
+
+impl BlockCycleInfo {
+    pub fn calculate(level: Level, era: &CycleEra) -> Self {
+        let cycle = (&level - era.first_level()) / era.blocks_per_cycle() + era.first_cycle();
+        let position = (&level - era.first_level()) % era.blocks_per_cycle();
+        Self { cycle, position }
+    }
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
@@ -406,6 +422,10 @@ impl StorageServiceDefault {
                                 .map(|pred| block_meta_storage.get_additional_data(&pred.hash))
                                 .transpose()?
                                 .flatten();
+                            let head_level = head.header.level();
+                            let cycle_info = cycle_eras_storage
+                                .get_for_level(head_level)?
+                                .map(|eras| BlockCycleInfo::calculate(head_level, &eras));
                             let operations =
                                 operations_storage.get_operations(&head.hash).map(|ops| {
                                     ops.into_iter()
@@ -420,6 +440,7 @@ impl StorageServiceDefault {
                                 pred,
                                 additional_data,
                                 pred_additional_data,
+                                cycle: cycle_info,
                                 operations,
                                 constants,
                             })

@@ -7,12 +7,13 @@ use tezos_messages::p2p::encoding::operations_for_blocks::{
     OperationsForBlock, OperationsForBlocksMessage,
 };
 
+use crate::baker::seed_nonce::{BakerSeedNonceCommittedAction, BakerSeedNonceGeneratedAction};
 use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::rights::rights_actions::RightsGetAction;
 use crate::rights::RightsKey;
 use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::service::storage_service::StorageRequestPayload;
-use crate::service::{BakerService, ProtocolRunnerService};
+use crate::service::{BakerService, ProtocolRunnerService, RandomnessService};
 use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
@@ -147,10 +148,37 @@ where
             });
         }
         Action::BakerBlockBakerBuildBlockInit(content) => {
+            let head_level = match store.state().current_head.level() {
+                Some(v) => v,
+                None => return,
+            };
+            let blocks_per_commitment = match store.state().current_head.constants() {
+                Some(v) => v.blocks_per_commitment,
+                None => return,
+            };
+            let level = match store.state().bakers.get(&content.baker) {
+                Some(baker) => match &baker.block_baker {
+                    BakerBlockBakerState::BakeNextRound { .. } => head_level,
+                    BakerBlockBakerState::BakeNextLevel { .. } => head_level + 1,
+                    _ => return,
+                },
+                None => return,
+            };
+            let seed_nonce_hash = if level % blocks_per_commitment == 0 {
+                let (nonce_hash, nonce) = store.service.randomness().get_seed_nonce(level);
+                store.dispatch(BakerSeedNonceGeneratedAction {
+                    baker: content.baker.clone(),
+                    level,
+                    nonce,
+                    nonce_hash: nonce_hash.clone(),
+                });
+                Some(nonce_hash)
+            } else {
+                None
+            };
             store.dispatch(BakerBlockBakerBuildBlockSuccessAction {
                 baker: content.baker.clone(),
-                // TODO
-                seed_nonce_hash: None,
+                seed_nonce_hash,
             });
         }
         Action::BakerBlockBakerBuildBlockSuccess(content) => {
@@ -317,6 +345,11 @@ where
                 } => (block.clone(), operations.clone(), operations_paths.clone()),
                 _ => return,
             };
+            store.dispatch(BakerSeedNonceCommittedAction {
+                baker: content.baker.clone(),
+                level: block.header.level(),
+                block_hash: block.hash.clone(),
+            });
             let block_hash = block.hash.clone();
             let chain_id = store.state().config.chain_id.clone();
             store.dispatch(StorageRequestCreateAction {

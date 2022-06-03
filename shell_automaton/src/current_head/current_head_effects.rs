@@ -72,6 +72,7 @@ where
                             .pred_additional_data
                             .as_ref()
                             .and_then(|v| v.ops_metadata_hash().clone()),
+                        cycle: data.cycle.clone(),
                         operations: data.operations.clone(),
                         constants: data.constants.clone(),
                     });

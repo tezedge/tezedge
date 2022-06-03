@@ -12,7 +12,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::request::RequestId;
-use crate::service::storage_service::StorageError;
+use crate::service::storage_service::{BlockCycleInfo, StorageError};
 
 mod serde_as_str {
     use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
@@ -88,6 +88,8 @@ pub enum CurrentHeadState {
         pred_block_metadata_hash: Option<BlockMetadataHash>,
         pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
 
+        cycle: Option<BlockCycleInfo>,
+
         operations: Vec<Vec<Operation>>,
 
         constants: Option<ProtocolConstants>,
@@ -105,6 +107,8 @@ pub enum CurrentHeadState {
         ops_metadata_hash: Option<OperationMetadataListListHash>,
         pred_block_metadata_hash: Option<BlockMetadataHash>,
         pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
+
+        cycle: Option<BlockCycleInfo>,
 
         operations: Vec<Vec<Operation>>,
 
@@ -158,6 +162,7 @@ impl CurrentHeadState {
             ops_metadata_hash: None,
             pred_block_metadata_hash: None,
             pred_ops_metadata_hash: None,
+            cycle: None,
             operations: vec![],
             constants: None,
             applied_blocks,
@@ -213,6 +218,13 @@ impl CurrentHeadState {
         self
     }
 
+    pub fn set_cycle(&mut self, value: Option<BlockCycleInfo>) -> &mut Self {
+        if let Self::Rehydrated { cycle, .. } = self {
+            *cycle = value;
+        }
+        self
+    }
+
     pub fn set_operations(&mut self, value: Vec<Vec<Operation>>) -> &mut Self {
         if let Self::Rehydrated { operations, .. } = self {
             *operations = value;
@@ -253,6 +265,14 @@ impl CurrentHeadState {
 
     pub fn hash(&self) -> Option<&BlockHash> {
         self.get().map(|v| &v.hash)
+    }
+
+    pub fn pred_hash(&self) -> Option<&BlockHash> {
+        self.get().map(|v| v.header.predecessor())
+    }
+
+    pub fn cemented_block_hash(&self) -> Option<&BlockHash> {
+        self.get_pred().map(|v| v.header.predecessor())
     }
 
     pub fn level(&self) -> Option<Level> {
@@ -315,6 +335,31 @@ impl CurrentHeadState {
                 pred_ops_metadata_hash,
                 ..
             } => pred_ops_metadata_hash.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn cycle_info(&self) -> Option<BlockCycleInfo> {
+        match self {
+            Self::Rehydrated { cycle, .. } => cycle.clone(),
+            _ => None,
+        }
+    }
+
+    pub fn next_block_cycle(&self) -> Option<BlockCycleInfo> {
+        match self {
+            Self::Rehydrated {
+                constants, cycle, ..
+            } => {
+                let mut cycle = cycle.clone()?;
+                if cycle.position + 1 == constants.as_ref()?.blocks_per_cycle {
+                    cycle.position = 0;
+                    cycle.cycle += 1;
+                    Some(cycle)
+                } else {
+                    Some(cycle)
+                }
+            }
             _ => None,
         }
     }
