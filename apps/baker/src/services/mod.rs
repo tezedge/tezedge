@@ -10,7 +10,7 @@ pub mod timer;
 #[cfg(feature = "fuzzing")]
 mod operation_mutator;
 
-use std::{path::PathBuf, sync::mpsc, time::SystemTime};
+use std::{path::Path, sync::mpsc, time::SystemTime};
 
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -36,7 +36,7 @@ pub struct EventWithTime {
 impl Services {
     pub fn new(
         endpoint: Url,
-        base_dir: &PathBuf,
+        base_dir: &Path,
         baker: &str,
     ) -> (Self, impl Iterator<Item = EventWithTime>) {
         let (tx, rx) = mpsc::channel();

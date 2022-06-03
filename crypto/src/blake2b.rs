@@ -101,12 +101,10 @@ where
         fn index(&self, index: usize) -> &Self::Output {
             if self.0.is_empty() {
                 panic!();
+            } else if index < self.0.len() {
+                self.0.index(index)
             } else {
-                if index < self.0.len() {
-                    self.0.index(index)
-                } else {
-                    self.0.last().unwrap()
-                }
+                self.0.last().unwrap()
             }
         }
     }
@@ -117,12 +115,10 @@ where
         fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
             if self.0.is_empty() {
                 panic!();
+            } else if index.start < self.0.len() {
+                &self.0[index]
             } else {
-                if index.start < self.0.len() {
-                    &self.0[index]
-                } else {
-                    &self.0[(self.0.len() - 1)..]
-                }
+                &self.0[(self.0.len() - 1)..]
             }
         }
     }
@@ -133,12 +129,10 @@ where
         fn index(&self, index: RangeTo<usize>) -> &Self::Output {
             if self.0.is_empty() {
                 panic!();
+            } else if index.end <= self.0.len() {
+                &self.0[index]
             } else {
-                if index.end <= self.0.len() {
-                    &self.0[index]
-                } else {
-                    &self.0[..self.0.len()]
-                }
+                &self.0[..self.0.len()]
             }
         }
     }
@@ -151,7 +145,7 @@ where
         Leaf: AsRef<Vec<u8>>,
     {
         match degree {
-            0 => digest_256(&list[0].as_ref()),
+            0 => digest_256(list[0].as_ref()),
             d => {
                 let middle = 1 << (d - 1);
                 digest_all(

@@ -6,7 +6,6 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, ParseError, Utc};
 use derive_more::From;
 use reqwest::{
     blocking::{Client, ClientBuilder},
@@ -14,6 +13,7 @@ use reqwest::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crypto::hash::{
     BlockHash, BlockPayloadHash, ChainId, ContextHash, ContractTz1Hash, NonceHash, OperationHash,
@@ -32,7 +32,7 @@ use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
 use super::event::{Block, OperationSimple, Slots};
 use crate::machine::{BakerAction, OperationsEventAction, ProposalEventAction, RpcErrorAction};
 
-pub const PROTOCOL: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
+pub const PROTOCOL: &str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
 
 #[derive(Clone)]
 pub struct RpcClient {
@@ -71,8 +71,8 @@ pub enum RpcErrorInner {
     Utf8(str::Utf8Error),
     #[error("parse: {_0}, {_1}")]
     IntParse(ParseIntError, String),
-    #[error("chrono: {_0}")]
-    Chrono(ParseError),
+    #[error("time parse error: {_0}")]
+    Chrono(time::error::Parse),
     #[error("node: {_0}")]
     NodeError(String, StatusCode),
     #[error("invalid fitness")]
@@ -415,8 +415,8 @@ impl RpcClient {
             serde_json::Value::String(PROTOCOL.to_string()),
         );
 
-        for i in 0..4 {
-            for op in &mut operations[i] {
+        for ops_list in &mut operations {
+            for op in ops_list {
                 op.hash = None;
                 for content in &mut op.contents {
                     if let Some(content_obj) = content.as_object_mut() {
@@ -457,14 +457,13 @@ impl RpcClient {
             fitness,
             context,
         } = shell_header;
-        let timestamp = timestamp
-            .parse::<DateTime<Utc>>()
+        let timestamp = OffsetDateTime::parse(&timestamp, &Rfc3339)
             .map_err(Into::into)
             .map_err(|inner| RpcError::WithContext {
                 url: url.clone(),
                 inner,
             })?
-            .timestamp()
+            .unix_timestamp()
             .into();
         let ProtocolBlockHeader {
             payload_hash,
@@ -551,14 +550,15 @@ impl RpcClient {
             if status.is_success() {
                 let mut deserializer =
                     serde_json::Deserializer::from_reader(response).into_iter::<T>();
-                while let Some(v) = deserializer.next() {
+                let wrapper = &wrapper;
+                for v in deserializer.by_ref() {
                     let url = url.clone();
                     let v = v
                         .map_err(|err| RpcError::WithContext {
                             url,
                             inner: err.into(),
                         })
-                        .and_then(|v| wrapper(v));
+                        .and_then(wrapper);
                     let action = match v {
                         Ok(v) => v,
                         Err(err) => BakerAction::RpcError(RpcErrorAction {
@@ -630,7 +630,7 @@ impl RpcClient {
             let status = response.status();
             read_error(&mut response, status).map_err(|err| RpcError::WithContext {
                 url: url.clone(),
-                inner: err.into(),
+                inner: err,
             })?;
             unreachable!()
         }
@@ -648,9 +648,9 @@ fn read_error(response: &mut impl io::Read, status: StatusCode) -> Result<(), Rp
 }
 
 fn convert_timestamp(v: &str) -> Result<u64, RpcErrorInner> {
-    v.parse::<DateTime<Utc>>()
+    OffsetDateTime::parse(v, &Rfc3339)
         .map_err(Into::into)
-        .map(|v| v.timestamp() as u64)
+        .map(|v| v.unix_timestamp() as u64)
 }
 
 fn convert_fitness(f: &[String]) -> Result<i32, RpcErrorInner> {

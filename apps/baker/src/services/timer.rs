@@ -115,8 +115,8 @@ mod tests {
     fn timer_basic() {
         let (timer, timestamp, collector) = new_timer_and_collector();
 
-        timer.schedule(timestamp + Duration::from_millis(200), 0, 0);
-        thread::sleep(Duration::from_millis(210));
+        timer.schedule(timestamp + Duration::from_millis(1000), 0, 0);
+        thread::sleep(Duration::from_millis(2500));
         drop(timer);
 
         let actions = collector.join().unwrap();
@@ -128,9 +128,9 @@ mod tests {
     fn timer_eclipse() {
         let (timer, timestamp, collector) = new_timer_and_collector();
 
-        timer.schedule(timestamp + Duration::from_millis(200), 0, 0);
-        timer.schedule(timestamp + Duration::from_millis(100), 0, 0);
-        thread::sleep(Duration::from_millis(210));
+        timer.schedule(timestamp + Duration::from_millis(1500), 0, 0);
+        timer.schedule(timestamp + Duration::from_millis(1000), 0, 0);
+        thread::sleep(Duration::from_millis(2500));
         drop(timer);
 
         let actions = collector.join().unwrap();
@@ -142,8 +142,9 @@ mod tests {
     fn timer_late() {
         let (timer, timestamp, collector) = new_timer_and_collector();
 
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(1000));
         timer.schedule(timestamp, 0, 0);
+        thread::sleep(Duration::from_millis(1000));
         drop(timer);
 
         let actions = collector.join().unwrap();

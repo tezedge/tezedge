@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{convert::TryFrom, fs::File, io, path::PathBuf, str::FromStr};
+use std::{convert::TryFrom, fs::File, io, path::Path, str::FromStr};
 
 use derive_more::From;
 use reqwest::{blocking::Client, Url};
@@ -49,7 +49,7 @@ pub struct CryptoService(Signer);
 impl CryptoService {
     pub fn read_key(
         log: &slog::Logger,
-        base_dir: &PathBuf,
+        base_dir: &Path,
         baker: &str,
     ) -> Result<Self, ReadKeyError> {
         #[derive(Deserialize)]
@@ -165,7 +165,7 @@ impl FromStr for Signer {
 
                 Ok(Signer {
                     backend: SignerBackend::LiteralSecretKey(secret_key),
-                    pkh: ContractTz1Hash::try_from(public_key.clone())?,
+                    pkh: ContractTz1Hash::try_from(public_key)?,
                 })
             }
             "http" | "https" => {

@@ -174,13 +174,12 @@
                     "operations": [],
                     "new_operations": [],
                     "locked": null,
-                    "inner": {
-                        "Collecting": {
-                            "incomplete": {
-                                "ids": {},
-                                "power": 0
-                            }
-                        }
+                    "prequorum_incomplete": {
+                        "ids": {},
+                        "power": 0
+                    },
+                    "prequorum": {
+                        "Collecting": null
                     },
                     "timeout_this_level": {
                         "proposer": "tz1faswCTDciRzE4oJ9jn2Vm2dvjeyA9fUzU",
@@ -192,7 +191,7 @@
                             }
                         }
                     },
-                    "inner_": {
+                    "quorum": {
                         "Collecting": {
                             "incomplete": {
                                 "ids": {},
