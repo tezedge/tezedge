@@ -4,7 +4,9 @@
 use std::net::SocketAddr;
 
 use crypto::nonce::{Nonce, NONCE_SIZE};
+use shell_automaton::baker::seed_nonce::{SeedNonce, SeedNonceHash};
 use shell_automaton::service::RandomnessService;
+use tezos_messages::p2p::encoding::block_header::Level;
 
 #[derive(Debug, Clone)]
 pub enum RandomnessServiceMocked {
@@ -32,5 +34,11 @@ impl RandomnessService for RandomnessServiceMocked {
 
     fn choose_potential_peers_for_nack(&mut self, list: &[SocketAddr]) -> Vec<SocketAddr> {
         self.choose_potential_peers_for_advertise(list)
+    }
+
+    fn get_seed_nonce(&mut self, _level: Level) -> (SeedNonceHash, SeedNonce) {
+        match self {
+            Self::Dummy => todo!(),
+        }
     }
 }

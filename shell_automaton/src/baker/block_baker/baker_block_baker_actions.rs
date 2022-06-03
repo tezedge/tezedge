@@ -262,11 +262,22 @@ impl EnablingCondition<State> for BakerBlockBakerBuildBlockSuccessAction {
         state
             .bakers
             .get(&self.baker)
-            .map_or(false, |baker| match &baker.block_baker {
-                BakerBlockBakerState::BakeNextLevel { .. }
-                | BakerBlockBakerState::BakeNextRound { .. } => true,
-                _ => false,
+            .and_then(|baker| {
+                let level = state.current_head.level()?;
+                let blocks_per_commitment = state.current_head.constants()?.blocks_per_commitment;
+
+                let should_have_commitment = match &baker.block_baker {
+                    BakerBlockBakerState::BakeNextLevel { .. } => {
+                        (level + 1) % blocks_per_commitment == 0
+                    }
+                    BakerBlockBakerState::BakeNextRound { .. } => {
+                        level % blocks_per_commitment == 0
+                    }
+                    _ => return None,
+                };
+                Some(!should_have_commitment || self.seed_nonce_hash.is_some())
             })
+            .unwrap_or(false)
     }
 }
 
