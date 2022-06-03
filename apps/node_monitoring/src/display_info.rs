@@ -33,6 +33,10 @@ pub struct NodeInfo {
     #[get = "pub(crate)"]
     level: u64,
 
+    #[get = "pub(crate)"]
+    payload_round: u64,
+
+    #[get = "pub(crate)"]
     block_hash: String,
 
     #[get = "pub(crate)"]
@@ -54,6 +58,7 @@ pub struct NodeInfo {
 impl NodeInfo {
     pub fn new(
         level: u64,
+        payload_round: u64,
         block_hash: String,
         timestamp: String,
         protocol: u64,
@@ -63,6 +68,7 @@ impl NodeInfo {
     ) -> Self {
         Self {
             level,
+            payload_round,
             block_hash,
             timestamp,
             protocol,
@@ -77,8 +83,8 @@ impl fmt::Display for NodeInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "\n\tLevel: {}\n\tCycle position: {}\n\tProtocol: {}\n\tVoting period: {}\n\tVoting period position: {}\n\tTimestamp: {}",
-            self.level, self.cycle_position, self.protocol, self.voting_period, self.voting_period_position, self.timestamp
+            "\n\tLevel: {}\n\tPaylaod round: {}\n\tCycle position: {}\n\tProtocol: {}\n\tVoting period: {}\n\tVoting period position: {}\n\tTimestamp: {}",
+            self.level, self.payload_round, self.cycle_position, self.protocol, self.voting_period, self.voting_period_position, self.timestamp
         )
     }
 }

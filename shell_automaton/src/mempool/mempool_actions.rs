@@ -57,6 +57,7 @@ impl EnablingCondition<State> for MempoolGetOperationsAction {
 pub struct MempoolMarkOperationsAsPendingAction {
     #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
     pub address: SocketAddr,
+    pub timestamp: u64,
 }
 
 impl EnablingCondition<State> for MempoolMarkOperationsAsPendingAction {
@@ -150,7 +151,6 @@ pub struct MempoolSendAction {
     pub address: SocketAddr,
     pub send_operations: bool,
     pub requested_explicitly: bool,
-    pub prechecked_head: Option<BlockHash>,
 }
 
 impl EnablingCondition<State> for MempoolSendAction {
@@ -193,7 +193,6 @@ impl EnablingCondition<State> for MempoolAskCurrentHeadAction {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MempoolBroadcastAction {
     pub send_operations: bool,
-    pub prechecked_head: Option<BlockHash>,
 }
 
 impl EnablingCondition<State> for MempoolBroadcastAction {
@@ -364,5 +363,51 @@ pub struct MempoolOperationValidateNextAction {}
 impl EnablingCondition<State> for MempoolOperationValidateNextAction {
     fn is_enabled(&self, state: &State) -> bool {
         !state.mempool.pending_operations.is_empty() && state.mempool.validator.is_ready()
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct MempoolGetOperationTimeoutAction {
+    pub timestamp: u64,
+}
+
+impl EnablingCondition<State> for MempoolGetOperationTimeoutAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let timeout_timestamp =
+            if let Ok(v) = u64::try_from(state.config.mempool_get_operation_timeout.as_nanos()) {
+                self.timestamp.saturating_sub(v)
+            } else {
+                return false;
+            };
+        state
+            .mempool
+            .pending_full_content
+            .earliest_timestamp()
+            .map_or(false, |t| t >= timeout_timestamp)
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct MempoolRequestFullContentAction {
+    #[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))]
+    pub address: SocketAddr,
+    pub operations: Vec<OperationHash>,
+}
+
+impl EnablingCondition<State> for MempoolRequestFullContentAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        !self.operations.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct MempoolTimeoutsInitAction {}
+
+impl EnablingCondition<State> for MempoolTimeoutsInitAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
     }
 }

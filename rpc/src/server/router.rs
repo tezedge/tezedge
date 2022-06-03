@@ -17,7 +17,7 @@ macro_rules! hash_set {
     };
 }
 
-pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler> {
+pub fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler> {
     let mut routes = PathTree::<MethodHandler>::new();
 
     // Shell rpc - implemented
@@ -385,6 +385,11 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         hash_set![Method::GET],
         "/dev/peers/best_remote_level",
         dev_handler::best_remote_level,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/rewards/cycle/:cycle_num",
+        dev_handler::dev_cycle_rewards,
     );
 
     routes.handle(

@@ -356,6 +356,18 @@ where
                         message: msg.clone(),
                     });
                 }
+                PeerMessage::GetProtocolBranch(msg) => {
+                    slog::warn!(
+                        store.state().log,
+                        "Received GetProtocolBranch message: {msg:?}, ignoring it"
+                    );
+                }
+                PeerMessage::GetPredecessorHeader(msg) => {
+                    slog::warn!(
+                        store.state().log,
+                        "Received GetPredecessorHeader message: {msg:?}, ignoring it"
+                    );
+                }
                 _ => {}
             }
 
@@ -375,7 +387,7 @@ where
         Action::PeerMessageReadError(content) => {
             store.dispatch(PeersGraylistAddressAction {
                 address: content.address,
-                reason: PeerGraylistReason::MessageReadError,
+                reason: PeerGraylistReason::MessageReadError(content.error.clone()),
             });
         }
         _ => {}

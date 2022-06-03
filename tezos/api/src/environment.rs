@@ -54,6 +54,7 @@ pub enum TezosEnvironment {
     Granadanet,
     Hangzhounet,
     Ithacanet,
+    Jakartanet,
 }
 
 impl TezosEnvironment {
@@ -81,6 +82,7 @@ impl TezosEnvironment {
             TezosEnvironment::Granadanet => vec!["granadanet", "granada"],
             TezosEnvironment::Hangzhounet => vec!["hangzhounet", "hangzhou"],
             TezosEnvironment::Ithacanet => vec!["ithacanet", "ithaca"],
+            TezosEnvironment::Jakartanet => vec!["jakartanet", "jakarta"],
         }
     }
 
@@ -116,6 +118,7 @@ impl TezosEnvironment {
             TezosEnvironment::Granadanet => None,
             TezosEnvironment::Hangzhounet => None,
             TezosEnvironment::Ithacanet => None,
+            TezosEnvironment::Jakartanet => None,
         }
     }
 
@@ -535,6 +538,35 @@ pub fn default_networks() -> HashMap<TezosEnvironment, TezosEnvironmentConfigura
                 (
                     8191_i32,
                     "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A".to_string(),
+                ),
+            ],
+            user_activated_protocol_overrides: vec![],
+        },
+        enable_testchain: true,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkuYLienS3Xdt5c1vfRX1ibMxQuvfM67ByhJ9nmRYYKGAAoTq1UC" }"#.to_string(),
+        }),
+    });
+
+    env.insert(TezosEnvironment::Jakartanet, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2022-04-27T15:00:00Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesisbd16dciJxo9".to_string(),
+            protocol: "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P".to_string(),
+        },
+        bootstrap_lookup_addresses: vec![
+            "jakartanet.teztnets.xyz".to_string(),
+            "jakartanet.boot.ecadinfra.com".to_string(),
+            "jakartanet.kaml.fr".to_string(),
+            "jakartanet.visualtez.com".to_string(),
+        ],
+        version: "TEZOS_JAKARTANET_2022-04-27T15:00:00Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            user_activated_upgrades: vec![
+                (
+                    8192_i32,
+                    "PtJakart2xVj7pYXJBXrqHgd82rdkLey5ZeeGwDgPp9rhQUbSqY".to_string(),
                 ),
             ],
             user_activated_protocol_overrides: vec![],

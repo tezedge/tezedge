@@ -3,12 +3,14 @@
 
 use std::path::PathBuf;
 
+use crypto::hash::ChainId;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{
-    ApplyBlockRequest, BeginConstructionRequest, TezosRuntimeConfiguration,
+    ApplyBlockRequest, BeginConstructionRequest, ProtocolRpcRequest, TezosRuntimeConfiguration,
     ValidateOperationRequest,
 };
 use tezos_context_api::{PatchContext, TezosContextStorageConfiguration};
+use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_protocol_ipc_client::ProtocolServiceError;
 use tezos_protocol_ipc_messages::GenesisResultDataParams;
 
@@ -81,31 +83,32 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDummy {
 
     fn apply_block(&mut self, _: ApplyBlockRequest) {}
 
-    fn begin_construction_for_prevalidation(
+    fn begin_construction(&mut self, _: BeginConstructionRequest) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
+    fn validate_operation(&mut self, _: ValidateOperationRequest) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
+    fn get_context_raw_bytes(&mut self, _: ProtocolRpcRequest) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
+    fn get_endorsing_rights(&mut self, _: ProtocolRpcRequest) -> ProtocolRunnerToken {
+        self.new_token()
+    }
+
+    fn get_validators(
         &mut self,
-        _: BeginConstructionRequest,
+        _chain_id: ChainId,
+        _block_header: BlockHeader,
+        _level: Level,
     ) -> ProtocolRunnerToken {
         self.new_token()
     }
 
-    fn validate_operation_for_prevalidation(
-        &mut self,
-        _: ValidateOperationRequest,
-    ) -> ProtocolRunnerToken {
-        self.new_token()
-    }
-
-    fn begin_construction_for_mempool(
-        &mut self,
-        _: BeginConstructionRequest,
-    ) -> ProtocolRunnerToken {
-        self.new_token()
-    }
-
-    fn validate_operation_for_mempool(
-        &mut self,
-        _: ValidateOperationRequest,
-    ) -> ProtocolRunnerToken {
+    fn get_cycle_delegates(&mut self, _: ProtocolRpcRequest) -> ProtocolRunnerToken {
         self.new_token()
     }
 

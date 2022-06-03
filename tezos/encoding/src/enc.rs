@@ -489,6 +489,37 @@ mod test {
     }
 
     #[test]
+    fn mutez() {
+        let data = [
+            ("0", "00"),
+            ("1", "01"),
+            ("7f", "7f"),
+            ("80", "8001"),
+            ("81", "8101"),
+            ("ff", "ff01"),
+            ("100", "8002"),
+            ("101", "8102"),
+            ("7fff", "ffff01"),
+            ("8000", "808002"),
+            ("8001", "818002"),
+            ("ffff", "ffff03"),
+            ("10000", "808004"),
+            ("10001", "818004"),
+        ];
+
+        use super::{BinWriter, Mutez};
+        use num_traits::FromPrimitive;
+
+        for (hex, enc) in data {
+            let num = num_bigint::BigInt::from_u64(u64::from_str_radix(hex, 16).unwrap()).unwrap();
+            let num = Mutez(num);
+            let mut bytes = vec![];
+            num.bin_write(&mut bytes).unwrap();
+            assert_eq!(enc, hex::encode(bytes));
+        }
+    }
+
+    #[test]
     fn sized() {
         let mut out = Vec::new();
         super::sized(3, super::bytes)(&[1, 2, 3], &mut out).expect("Should not fail");

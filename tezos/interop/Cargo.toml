@@ -50,3 +50,6 @@ harness = false
 [[bench]]
 name = "bench_apply_first_three_blocks"
 harness = false
+
+[features]
+fuzzing = []

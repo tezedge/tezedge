@@ -13,7 +13,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
-const LIBTEZOS_BUILD_NAME: &str = "libtezos-ffi.so";
+const LIBTEZOS_BUILD_NAME: &str = "libtezos.so";
 const ARTIFACTS_DIR: &str = "lib_tezos/artifacts";
 
 // zcash params files for sapling - these files are fixed and never ever changes
@@ -53,6 +53,7 @@ fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
             "19.04" | "19.10" => Some("libtezos-ffi-ubuntu19.so.gz"),
             "20.04" | "20.10" => Some("libtezos-ffi-ubuntu20.so.gz"),
             "21.04" | "21.10" => Some("libtezos-ffi-ubuntu21.so.gz"),
+            "22.04" => Some("libtezos-ffi-ubuntu22.so.gz"),
             _ => None,
         },
         OSType::Debian => match platform.version.as_str() {

@@ -810,6 +810,14 @@ impl BlockAdditionalData {
             ops_metadata_hashes,
         }
     }
+
+    pub fn is_protocol_switch(&self) -> Option<ProtocolHash> {
+        if self.protocol_hash != self.next_protocol_hash {
+            Some(self.next_protocol_hash.clone())
+        } else {
+            None
+        }
+    }
 }
 
 impl From<BlockAdditionalData>

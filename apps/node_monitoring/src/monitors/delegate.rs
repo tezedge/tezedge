@@ -3,13 +3,18 @@
 
 //! Monitors delegate related activities (baking/endorsing) on a particular node
 
-use std::{collections::HashMap, net::SocketAddr, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    net::SocketAddr,
+    time::Duration,
+};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crypto::hash::BlockHash;
+use itertools::Itertools;
 use reqwest::Response;
 use serde::{de::DeserializeOwned, Deserialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use slog::Logger;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tokio::{
@@ -19,6 +24,8 @@ use tokio::{
 
 use crate::slack::SlackServer;
 
+use super::statistics::{FinalEndorsementSummary, LockedBTreeMap};
+
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
 struct BakingRights {
@@ -27,19 +34,38 @@ struct BakingRights {
     round: u16,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
-struct DelegateEndorsingRights {
-    delegate: String,
-    first_slot: u16,
-    endorsing_power: u16,
+pub struct DelegateEndorsingRights {
+    pub delegate: String,
+    pub first_slot: u16,
+    pub endorsing_power: u16,
 }
 
-#[derive(Debug, Deserialize)]
+impl DelegateEndorsingRights {
+    pub fn get_first_slot(&self) -> u16 {
+        self.first_slot
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
-struct EndorsingRights {
-    level: i32,
-    delegates: Vec<DelegateEndorsingRights>,
+pub struct EndorsingRights {
+    pub level: i32,
+    pub delegates: Vec<DelegateEndorsingRights>,
+}
+
+impl EndorsingRights {
+    // pub fn get_delegate(&self, delegate: &str) -> Option<DelegateEndorsingRights> {
+    //     self.delegates.into_iter().filter(|delegate_rights| delegate_rights.delegate.eq(delegate)).collect::<Vec<DelegateEndorsingRights>>().last().cloned()
+    // }
+
+    pub fn endorsement_powers(&self) -> BTreeMap<u16, u16> {
+        self.delegates
+            .iter()
+            .map(|delegate| (delegate.first_slot, delegate.endorsing_power))
+            .collect()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,7 +77,9 @@ pub struct Head {
 
 pub struct DelegatesMonitor {
     node_addr: SocketAddr,
+    explorer_url: Option<String>,
     delegates: Vec<String>,
+    endorsmenet_summary_storage: LockedBTreeMap<i32, FinalEndorsementSummary>,
     slack: Option<SlackServer>,
     each_failure: bool,
     stats_dir: Option<String>,
@@ -61,7 +89,9 @@ pub struct DelegatesMonitor {
 impl DelegatesMonitor {
     pub fn new(
         node_addr: SocketAddr,
+        explorer_url: Option<String>,
         delegates: Vec<String>,
+        endorsmenet_summary_storage: LockedBTreeMap<i32, FinalEndorsementSummary>,
         slack: Option<SlackServer>,
         each_failure: bool,
         stats_dir: Option<String>,
@@ -69,7 +99,9 @@ impl DelegatesMonitor {
     ) -> Self {
         Self {
             node_addr,
+            explorer_url,
             delegates,
+            endorsmenet_summary_storage,
             slack,
             each_failure,
             stats_dir,
@@ -188,7 +220,7 @@ impl DelegatesMonitor {
                     endorsing_failures.remove(delegate);
                 } else {
                     *endorsing_failures.entry(delegate).or_insert(0) += 1;
-                    self.on_missed_endorsement(level).await?;
+                    self.on_missed_endorsement(level, hash).await?;
                 }
             }
         }
@@ -324,14 +356,70 @@ impl DelegatesMonitor {
                         self.report_recover(format!(
                             "`{delegate}` endorsed block on level `{level}` after `{prev_failures}` failure(s)"
                         ));
+                        if let Some(summary) = self.endorsmenet_summary_storage.get(level)? {
+                            self.report_recover(format!(
+                                "`{delegate}` endorsed block on level `{level}` after `{prev_failures}` failure(s)\nSummary:\n {summary}"
+                            ));
+                        } else {
+                            self.report_recover(format!(
+                                "`{delegate}` endorsed block on level `{level}` after `{prev_failures}` failure(s)\nSummary: Not found"
+                            ));
+                        }
                     }
                     return Ok(true);
                 }
             }
         }
         if each_failure || prev_failures.is_none() {
+            let levels = ((level - 2)..(level + 2)).join(",");
+            let path = format!(
+                "/dev/shell/automaton/actions_stats_for_blocks?level={}",
+                levels
+            );
+            let summary = self.endorsmenet_summary_storage.get(level)?;
+            let mut action_stats = node_get::<Value, _>(self.node_addr, path).await?;
+
+            let summary = format!(
+                "*Summary*: {}",
+                summary.map_or("`Error(Not Found)`".to_owned(), |s| s.to_string())
+            );
+            let action_stats_body = action_stats
+                .as_array_mut()
+                .map(|v| std::mem::take(v))
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|b| {
+                    let missed_endorsement_level = level;
+                    let level = b.get("block_level")?.as_i64()?;
+                    let round = b.get("block_round")?.as_i64()?;
+                    let cpu_idle = b.get("cpu_idle")?.as_u64()?;
+                    let cpu_busy = b.get("cpu_busy")?.as_u64()?;
+                    let bold = match level == missed_endorsement_level as i64 {
+                        true => "*",
+                        false => "",
+                    };
+                    Some(format!(
+                        "{}level: {} round: {} - cpu_idle: {:.3}s, cpu_busy: {:.3}s{}",
+                        bold,
+                        level,
+                        round,
+                        (cpu_idle as f64) / 1_000_000_000.0,
+                        (cpu_busy as f64) / 1_000_000_000.0,
+                        bold,
+                    ))
+                })
+                .join("\n");
+            let action_stats_explorer_link = self
+                .explorer_url
+                .as_ref()
+                .map_or("`Error(Missing Explorer Url)`".to_owned(), |explorer_url| {
+                    format!("{}/#/resources/state/{}", explorer_url, level)
+                });
+            let action_stats_header = format!("*Action Stats:* {action_stats_explorer_link}");
+            let action_stats = format!("{action_stats_header}\n{action_stats_body}");
+
             self.report_error(format!(
-                "Missed `{delegate}`'s endorsement for level `{level}`",
+                "Missed `{delegate}`'s endorsement for level `{level}`\n\n{summary}\n\n{action_stats}",
             ));
         }
 
@@ -371,7 +459,7 @@ impl DelegatesMonitor {
         }
     }
 
-    async fn on_missed_endorsement(&self, level: i32) -> anyhow::Result<()> {
+    async fn on_missed_endorsement(&self, level: i32, head: &BlockHash) -> anyhow::Result<()> {
         let stats_dir = if let Some(p) = &self.stats_dir {
             p
         } else {
@@ -410,20 +498,9 @@ impl DelegatesMonitor {
             let path = format!("/dev/shell/automaton/preendorsements_status?level={level}&round={round}&base_time={base_time}",);
             slog::debug!(self.log, "fetching preendorsements using {path}");
             let preendorsements = node_get::<Value, _>(self.node_addr, path).await?;
-            let hashes = if let Some(e) = endorsements.as_object() {
-                e.keys().cloned().collect::<Vec<_>>()
-            } else {
-                continue;
-            };
-            let operation_stats = if !hashes.is_empty() {
-                let path = format!(
-                    "/dev/shell/automaton/mempool/operation_stats?hash={hashes}",
-                    hashes = hashes.join(",")
-                );
-                node_get::<Value, _>(self.node_addr, path).await?
-            } else {
-                json!([])
-            };
+            let path = format!("/dev/shell/automaton/mempool/operation_stats?head={head}");
+            slog::debug!(self.log, "fetching operation stats using {path}");
+            let operation_stats = node_get::<Value, _>(self.node_addr, path).await?;
 
             for (name, json) in [
                 ("application", block),
@@ -438,6 +515,12 @@ impl DelegatesMonitor {
             }
         }
 
+        let path = format!("/dev/shell/automaton/actions_stats_for_blocks");
+        let action_stats = node_get::<Value, _>(self.node_addr, path).await?;
+
+        let mut file = tokio::fs::File::create(&format!("{level}-action_stats.json")).await?;
+        file.write_all(action_stats.to_string().as_bytes()).await?;
+
         Ok(())
     }
 }
@@ -445,24 +528,29 @@ impl DelegatesMonitor {
 pub async fn node_get<T, S>(address: SocketAddr, path: S) -> anyhow::Result<T>
 where
     T: DeserializeOwned,
-    S: AsRef<str>,
+    S: AsRef<str> + std::fmt::Display,
 {
-    let json = node_get_raw(address, path).await?.json().await?;
-    //eprintln!("<<< {json}");
-    let value = serde_json::from_value(json)?;
+    let json = node_get_raw(address, &path)
+        .await?
+        .json()
+        .await
+        .context(format!("JSONifying `{path}`"))?;
+    let value = serde_json::from_value(json)
+        .context(format!("deserializing `{path}` response from JSON"))?;
     Ok(value)
 }
 
 pub async fn node_get_raw<S>(address: SocketAddr, path: S) -> anyhow::Result<Response>
 where
-    S: AsRef<str>,
+    S: AsRef<str> + std::fmt::Display,
 {
     let response = reqwest::get(format!(
         "http://{address}{path}",
         address = address.to_string(),
         path = path.as_ref()
     ))
-    .await?;
+    .await
+    .context(format!("error while fetching `{path}`"))?;
     Ok(response)
 }
 
@@ -473,7 +561,7 @@ pub async fn node_monitor<T, S>(
 ) -> anyhow::Result<()>
 where
     T: 'static + DeserializeOwned + std::fmt::Debug + Send + Sync,
-    S: AsRef<str>,
+    S: AsRef<str> + std::fmt::Display,
 {
     let mut res = node_get_raw(address, path).await?;
     while let Some(chunk) = res.chunk().await? {
@@ -497,4 +585,46 @@ where
     .await?;
     while res.chunk().await?.is_some() {}
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::ToSocketAddrs;
+
+    use super::*;
+    #[tokio::test]
+    #[ignore = "Test for specific failure, might be used later with different parameters"]
+    async fn test() {
+        let log = crate::create_logger(slog::Level::Debug);
+        let monitor = DelegatesMonitor::new(
+            "mempool.tezedge.com:28732"
+                .to_socket_addrs()
+                .unwrap()
+                .next()
+                .unwrap(),
+            None,
+            vec!["tz1Qm727PrLHPme6gcz2Gg8YAXqUrq8oDhio".to_string()],
+            LockedBTreeMap::new(),
+            None,
+            false,
+            None,
+            log,
+        );
+
+        let block_hash =
+            BlockHash::from_base58_check("BMG2JyPzyHRj75Mn3p7tdZF8Myz2tURP32vvvDqB4gEFFHBjVGy")
+                .unwrap();
+        let level = 451_738;
+
+        monitor
+            .check_block(
+                &block_hash,
+                level,
+                false,
+                &mut HashMap::new(),
+                &mut HashMap::new(),
+            )
+            .await
+            .unwrap();
+    }
 }

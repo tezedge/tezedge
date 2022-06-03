@@ -220,23 +220,24 @@ fn block_on_actors(
 
     // Only start Monitoring when websocket is set
     if let Some((websocket_address, max_number_of_websocket_connections)) = env.rpc.websocket_cfg {
-        let websocket_handler = WebsocketHandler::actor(
+        let monitor_handler = Monitor::actor(
+            actor_system.as_ref(),
+            network_channel,
+            persistent_storage.clone(),
+            init_storage_data.chain_id.clone(),
+        )
+        .expect("Failed to create monitor actor");
+
+        let _ = WebsocketHandler::actor(
             actor_system.as_ref(),
             tokio_runtime.handle().clone(),
             websocket_address,
             max_number_of_websocket_connections,
             log.clone(),
+            monitor_handler,
+            rpc_server.rpc_env(),
         )
         .expect("Failed to start websocket actor");
-
-        let _ = Monitor::actor(
-            actor_system.as_ref(),
-            network_channel,
-            websocket_handler,
-            persistent_storage.clone(),
-            init_storage_data.chain_id.clone(),
-        )
-        .expect("Failed to create monitor actor");
     }
 
     if let Some(blocks) = blocks_replay.take() {
@@ -476,7 +477,7 @@ fn set_gcov_handler() {
 
     extern "C" {
         fn __gcov_dump();
-        fn __gcov_reset();
+        //fn __gcov_reset();
     }
 
     std::thread::spawn(move || {
@@ -484,7 +485,7 @@ fn set_gcov_handler() {
             eprintln!("!!! SIGUSR2: saving coverage info...");
             unsafe {
                 __gcov_dump();
-                __gcov_reset();
+                //__gcov_reset();
             }
         }
     });

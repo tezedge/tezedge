@@ -59,28 +59,23 @@ fn convert_errored<'a>(
                 Some(b) => b,
                 None => return None,
             };
-            let mut m: HashMap<String, Value> = if v
-                .protocol_data_json_with_error_json
-                .protocol_data_json
-                .is_empty()
-            {
+            let mut m: HashMap<String, Value> = if v.protocol_data_json.is_empty() {
                 HashMap::new()
             } else {
-                serde_json::from_str(&v.protocol_data_json_with_error_json.protocol_data_json)
-                    .unwrap_or_else(|err| {
-                        let mut m = HashMap::new();
-                        m.insert(
-                            "protocol_data_parse_error".to_string(),
-                            Value::String(err.to_string()),
-                        );
-                        m
-                    })
+                serde_json::from_str(&v.protocol_data_json).unwrap_or_else(|err| {
+                    let mut m = HashMap::new();
+                    m.insert(
+                        "protocol_data_parse_error".to_string(),
+                        Value::String(err.to_string()),
+                    );
+                    m
+                })
             };
 
-            let error = if v.protocol_data_json_with_error_json.error_json.is_empty() {
+            let error = if v.error_json.is_empty() {
                 Value::Null
             } else {
-                serde_json::from_str(&v.protocol_data_json_with_error_json.error_json)
+                serde_json::from_str(&v.error_json)
                     .unwrap_or_else(|err| Value::String(err.to_string()))
             };
 
@@ -125,10 +120,11 @@ impl MempoolOperations {
 pub struct MonitoredOperation<'a> {
     branch: String,
     #[serde(flatten)]
-    protocol_data: HashMap<String, Value>,
+    protocol_data: Value,
     protocol: &'a str,
     hash: String,
-    error: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     protocol_data_parse_error: Option<String>,
 }
@@ -136,10 +132,10 @@ pub struct MonitoredOperation<'a> {
 impl<'a> MonitoredOperation<'a> {
     pub fn new(
         branch: &BlockHash,
-        protocol_data: HashMap<String, Value>,
+        protocol_data: Value,
         protocol: &'a str,
         hash: &OperationHash,
-        error: Vec<String>,
+        error: Option<String>,
         protocol_data_parse_error: Option<String>,
     ) -> MonitoredOperation<'a> {
         MonitoredOperation {
@@ -162,14 +158,14 @@ impl<'a> MonitoredOperation<'a> {
             let operation = operations.get(&applied_op.hash)?;
             let (protocol_data, err) = match serde_json::from_str(&applied_op.protocol_data_json) {
                 Ok(protocol_data) => (protocol_data, None),
-                Err(err) => (HashMap::default(), Some(err.to_string())),
+                Err(err) => (serde_json::Value::Null, Some(err.to_string())),
             };
             Some(MonitoredOperation {
                 branch: operation.branch().to_base58_check(),
                 protocol: protocol_hash,
                 hash: op_hash,
                 protocol_data,
-                error: vec![],
+                error: None,
                 protocol_data_parse_error: err,
             })
         })
@@ -183,20 +179,18 @@ impl<'a> MonitoredOperation<'a> {
         errored.into_iter().filter_map(move |errored_op| {
             let op_hash = errored_op.hash.to_base58_check();
             let operation = operations.get(&errored_op.hash)?;
-            let json = &errored_op
-                .protocol_data_json_with_error_json
-                .protocol_data_json;
+            let json = &errored_op.protocol_data_json;
             let (protocol_data, err) = match serde_json::from_str(json) {
                 Ok(protocol_data) => (protocol_data, None),
-                Err(err) => (HashMap::default(), Some(err.to_string())),
+                Err(err) => (serde_json::Value::Null, Some(err.to_string())),
             };
-            let ocaml_err = &errored_op.protocol_data_json_with_error_json.error_json;
+            let ocaml_err = &errored_op.error_json;
             Some(MonitoredOperation {
                 branch: operation.branch().to_base58_check(),
                 protocol: protocol_hash,
                 hash: op_hash,
                 protocol_data,
-                error: vec![ocaml_err.clone()],
+                error: Some(ocaml_err.clone()),
                 protocol_data_parse_error: err,
             })
         })
@@ -211,7 +205,7 @@ mod tests {
     use assert_json_diff::assert_json_eq;
     use serde_json::json;
 
-    use tezos_api::ffi::{Applied, Errored, OperationProtocolDataJsonWithErrorListJson};
+    use tezos_api::ffi::{Applied, Errored};
     use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::operation::Operation;
 
@@ -254,11 +248,9 @@ mod tests {
         let data = vec![
             Errored {
                 hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into().unwrap(),
-                is_endorsement: None,
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
+                is_endorsement: false,
+                protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
+                error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
             }
         ];
 
@@ -297,11 +289,9 @@ mod tests {
         let data = vec![
             Errored {
                 hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into().unwrap(),
-                is_endorsement: Some(true),
-                protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
-                    protocol_data_json: "".to_string(),
-                    error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
-                },
+                is_endorsement: true,
+                protocol_data_json: "".to_string(),
+                error_json: "[ { \"kind\": \"temporary\",\n    \"id\": \"proto.005-PsBabyM1.operation.wrong_endorsement_predecessor\",\n    \"expected\": \"BMDb9PfcJmiibDDEbd6bEEDj4XNG4C7QACG6TWqz29c9FxNgDLL\",\n    \"provided\": \"BLd8dLs4X5Ve6a8B37kUu7iJkRycWzfSF5MrskY4z8YaideQAp4\" } ]".to_string(),
             }
         ];
 

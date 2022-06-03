@@ -5,18 +5,22 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ProtocolHash};
-use storage::{cycle_eras_storage::CycleErasData, cycle_storage::CycleData};
+use crypto::hash::ProtocolHash;
+use storage::cycle_storage::CycleData;
 use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::protocol::SupportedProtocol;
 
+use crate::protocol_runner::ProtocolRunnerToken;
 use crate::service::rpc_service::RpcId;
-use crate::storage::kv_block_header;
 use crate::{EnablingCondition, State};
 
-use super::{utils::Position, Cycle, EndorsingRights, ProtocolConstants, RightsError, RightsKey};
-use super::{BakingRights, RightsRpcError, Slots};
+use super::cycle_delegates::Delegates;
+use super::cycle_eras::CycleEras;
+use super::{
+    utils::Position, Cycle, EndorsingRightsOld, ProtocolConstants, RightsError, RightsKey,
+};
+use super::{BakingRightsOld, RightsRpcError, Slots};
 
 // Entry actions
 
@@ -47,12 +51,12 @@ impl EnablingCondition<State> for RightsInitAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RightsEndorsingReadyAction {
+pub struct RightsEndorsingOldReadyAction {
     pub key: RightsKey,
-    pub endorsing_rights: EndorsingRights,
+    pub endorsing_rights: EndorsingRightsOld,
 }
 
-impl EnablingCondition<State> for RightsEndorsingReadyAction {
+impl EnablingCondition<State> for RightsEndorsingOldReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -61,12 +65,12 @@ impl EnablingCondition<State> for RightsEndorsingReadyAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RightsBakingReadyAction {
+pub struct RightsBakingOldReadyAction {
     pub key: RightsKey,
-    pub baking_rights: BakingRights,
+    pub baking_rights: BakingRightsOld,
 }
 
-impl EnablingCondition<State> for RightsBakingReadyAction {
+impl EnablingCondition<State> for RightsBakingOldReadyAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
         true
@@ -202,34 +206,6 @@ impl EnablingCondition<State> for RightsGetProtocolHashAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsProtocolHashStorageReadyAction {
-    pub key: BlockHash,
-    pub proto_hash: ProtocolHash,
-}
-
-impl EnablingCondition<State> for RightsProtocolHashStorageReadyAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RightsProtocolHashStorageErrorAction {
-    pub key: BlockHash,
-    pub error: kv_block_header::Error,
-}
-
-impl EnablingCondition<State> for RightsProtocolHashStorageErrorAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let _ = state;
-        true
-    }
-}
-
-#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsProtocolHashReadyAction {
     pub key: RightsKey,
     pub proto_hash: ProtocolHash,
@@ -287,7 +263,7 @@ impl EnablingCondition<State> for RightsGetCycleErasAction {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsCycleErasReadyAction {
     pub key: RightsKey,
-    pub cycle_eras: CycleErasData,
+    pub cycle_eras: CycleEras,
 }
 
 impl EnablingCondition<State> for RightsCycleErasReadyAction {
@@ -361,6 +337,106 @@ pub struct RightsCalculateAction {
 impl EnablingCondition<State> for RightsCalculateAction {
     fn is_enabled(&self, state: &State) -> bool {
         let _ = state;
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct RightsGetCycleDelegatesAction {
+    pub key: RightsKey,
+}
+
+impl EnablingCondition<State> for RightsGetCycleDelegatesAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct RightsCycleDelegatesReadyAction {
+    pub key: RightsKey,
+    pub delegates: Delegates,
+}
+
+impl EnablingCondition<State> for RightsCycleDelegatesReadyAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct RightsCalculateIthacaAction {
+    pub key: RightsKey,
+}
+
+impl EnablingCondition<State> for RightsCalculateIthacaAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct RightsContextRequestedAction {
+    pub key: RightsKey,
+    pub token: ProtocolRunnerToken,
+}
+
+impl EnablingCondition<State> for RightsContextRequestedAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct RightsIthacaContextSuccessAction {
+    pub key: RightsKey,
+    pub endorsing_rights: crate::service::protocol_runner_service::EndorsingRights,
+}
+
+impl EnablingCondition<State> for RightsIthacaContextSuccessAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct RightsIthacaContextValidatorsSuccessAction {
+    pub key: RightsKey,
+    pub validators: crate::service::protocol_runner_service::Validators,
+}
+
+impl EnablingCondition<State> for RightsIthacaContextValidatorsSuccessAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct RightsEndorsingReadyAction {
+    pub key: RightsKey,
+}
+
+impl EnablingCondition<State> for RightsEndorsingReadyAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct RightsValidatorsReadyAction {
+    pub key: RightsKey,
+}
+
+impl EnablingCondition<State> for RightsValidatorsReadyAction {
+    fn is_enabled(&self, _state: &State) -> bool {
         true
     }
 }

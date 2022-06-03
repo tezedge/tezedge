@@ -215,6 +215,9 @@ impl ShellAutomatonManager {
             },
             disable_block_precheck: p2p_config.disable_block_precheck,
             disable_endorsements_precheck: p2p_config.disable_endorsements_precheck,
+            mempool_get_operation_timeout: Duration::from_millis(
+                env_variable("MEMPOOL_GET_OPERATIONS_TIMEOUT_SECS").unwrap_or(1),
+            ),
         });
 
         initial_state.set_logger(log.clone());

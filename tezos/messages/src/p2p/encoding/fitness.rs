@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, str::FromStr};
 
 use tezos_encoding::{
     enc::BinWriter,
@@ -185,6 +185,22 @@ impl std::fmt::Display for Fitness {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("error parsing fitness")]
+pub struct FitnessFromStrError;
+
+impl FromStr for Fitness {
+    type Err = FitnessFromStrError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.split("::")
+            .map(hex::decode)
+            .collect::<Result<_, _>>()
+            .map(Self)
+            .map_err(|_| FitnessFromStrError)
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -220,5 +236,19 @@ mod tests {
             fitness!([0], [0, 1]).cmp(&fitness!([0], [0, 0, 2])),
             Ordering::Less
         );
+    }
+
+    #[test]
+    fn fitness_parse() {
+        assert_eq!(
+            Fitness::from_str("02::000631a5::::ffffffff::00000000").unwrap(),
+            fitness!(
+                [0x02],
+                [0x00, 0x06, 0x31, 0xa5],
+                [],
+                [0xff, 0xff, 0xff, 0xff],
+                [0x00, 0x00, 0x00, 0x00]
+            )
+        )
     }
 }

@@ -63,7 +63,7 @@ impl CurrentHeadState {
                 .as_ref()
                 .map(|pred| (pred.hash.clone(), pred.clone())),
         ])
-        .filter_map(|v| v)
+        .flatten()
         .filter(|(_, b)| b.header.level() + 1 >= head.header.level())
         .collect();
 

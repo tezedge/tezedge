@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    cmp,
     collections::{BTreeMap, BTreeSet, VecDeque},
     net::SocketAddr,
 };
@@ -196,7 +197,7 @@ pub fn bootstrap_reducer(state: &mut State, action: &ActionWithMeta) {
                 peer_intervals,
                 ..
             } => {
-                let level = content.current_head.header.level();
+                let level = cmp::max(0, content.current_head.header.level());
                 let hash = &content.current_head.hash;
                 let is_same_chain = if *main_chain_last_level >= level {
                     let index = *main_chain_last_level - level;

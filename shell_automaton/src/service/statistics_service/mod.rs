@@ -274,10 +274,6 @@ impl Default for StatisticsService {
 }
 
 impl StatisticsService {
-    pub(crate) fn get_mut(&mut self, hash: &BlockHash) -> Option<&mut BlockApplyStats> {
-        self.blocks_apply.get_mut(hash)
-    }
-
     pub fn action_new(&mut self, action: &ActionWithMeta) {
         let pred_action_id = self.last_action_id.replace(action.id).unwrap_or(action.id);
         let pred_action_kind = self.last_action_kind.replace(action.action.kind());
@@ -523,7 +519,17 @@ impl StatisticsService {
     ) {
         if let Some(v) = self.blocks_apply.get_mut(block_hash) {
             v.apply_block_stats = Some((&result.execution_timestamps).into());
-            v.apply_block_end = Some(time)
+            v.apply_block_end = Some(time);
+        }
+    }
+
+    pub fn block_payload_hash(
+        &mut self,
+        block_hash: &BlockHash,
+        payload_hash: Option<&BlockPayloadHash>,
+    ) {
+        if let Some(v) = self.blocks_apply.get_mut(block_hash) {
+            v.payload_hash = payload_hash.cloned();
         }
     }
 

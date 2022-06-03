@@ -8,7 +8,7 @@ use std::{
 
 use crypto::hash::{ProtocolHash, TryFromPKError};
 use redux_rs::ActionId;
-use storage::{cycle_eras_storage::CycleErasData, cycle_storage::CycleData};
+use storage::cycle_storage::CycleData;
 use tezos_messages::{
     base::signature_public_key::SignaturePublicKey,
     p2p::encoding::block_header::{BlockHeader, Level},
@@ -16,13 +16,14 @@ use tezos_messages::{
 };
 
 use crate::{
+    protocol_runner::ProtocolRunnerToken,
     service::{rpc_service::RpcId, storage_service::StorageError},
-    storage::{
-        kv_block_additional_data, kv_block_header, kv_constants, kv_cycle_eras, kv_cycle_meta,
-    },
+    storage::{kv_block_additional_data, kv_block_header, kv_constants, kv_cycle_meta},
 };
 
 use super::{
+    cycle_delegates::{CycleDelegatesState, Delegates, DelegatesError},
+    cycle_eras::{CycleEras, CycleErasError, CycleErasState},
     rights_effects::RightsCalculationError,
     utils::{CycleError, Position},
     Cycle, RightsInput, RightsKey,
@@ -34,19 +35,25 @@ pub struct RightsState {
     pub rpc_requests: HashMap<RightsKey, Vec<RpcId>>,
     pub cache: RightsCache,
     pub errors: Vec<(RightsInput, RightsRequest, RightsError)>,
+    pub cycle_eras: CycleErasState,
+    pub cycle_delegates: CycleDelegatesState,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, derive_more::From)]
-pub enum RightsResult {
-    Baking(BakingRights),
-    Endorsing(EndorsingRights),
+impl RightsState {
+    pub(crate) fn tenderbake_validators(&self, level: Level) -> Option<&Validators> {
+        self.cache
+            .validators
+            .get(&level)
+            .map(|(_, validators)| validators)
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RightsCache {
     pub time: Duration,
-    pub baking: BTreeMap<Level, (ActionId, BakingRights)>,
-    pub endorsing: BTreeMap<Level, (ActionId, EndorsingRights)>,
+    pub baking: BTreeMap<Level, (ActionId, BakingRightsOld)>,
+    pub endorsing_old: BTreeMap<Level, (ActionId, EndorsingRightsOld)>,
+    pub validators: BTreeMap<Level, (ActionId, Validators)>,
 }
 
 impl Default for RightsCache {
@@ -54,7 +61,8 @@ impl Default for RightsCache {
         Self {
             time: Duration::from_secs(600),
             baking: Default::default(),
-            endorsing: Default::default(),
+            endorsing_old: Default::default(),
+            validators: Default::default(),
         }
     }
 }
@@ -62,10 +70,22 @@ impl Default for RightsCache {
 pub type Delegate = SignaturePublicKey;
 pub type Slot = u16;
 pub type Slots = Vec<Slot>;
+pub type EndorsingPower = u16;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct Validators {
+    pub level: Level,
+    pub validators: ValidatorsTable,
+    pub slots: ValidatorSlots,
+}
+
+pub type ValidatorsTable = Vec<SignaturePublicKey>;
+pub type ValidatorSlots = BTreeMap<SignaturePublicKey, Vec<Slot>>;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct EndorsingRights {
+pub struct EndorsingRightsOld {
     pub level: Level,
     pub slot_to_delegate: Vec<Delegate>,
     pub delegate_to_slots: BTreeMap<Delegate, Vec<Slot>>,
@@ -73,7 +93,15 @@ pub struct EndorsingRights {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct BakingRights {
+pub struct EndorsingRights {
+    pub level: Level,
+    pub slots: BTreeMap<Slot, (Delegate, EndorsingPower)>,
+    pub delegates: BTreeMap<Delegate, (Slot, EndorsingPower)>,
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BakingRightsOld {
     pub level: Level,
     pub priorities: Vec<Delegate>,
 }
@@ -121,28 +149,38 @@ pub enum RightsRequest {
         protocol: SupportedProtocol,
         protocol_constants: ProtocolConstants,
     },
+    PendingCycleErasFromContext {
+        start: ActionId,
+        block_header: BlockHeader,
+        proto_hash: ProtocolHash,
+        protocol: SupportedProtocol,
+        protocol_constants: ProtocolConstants,
+    },
     CycleErasReady {
         start: ActionId,
         block_header: BlockHeader,
         protocol: SupportedProtocol,
         protocol_constants: ProtocolConstants,
-        cycle_eras: CycleErasData,
+        cycle_eras: CycleEras,
     },
     PendingCycle {
         start: ActionId,
-        protocol: SupportedProtocol,
         block_header: BlockHeader,
+        protocol: SupportedProtocol,
         protocol_constants: ProtocolConstants,
-        cycle_eras: CycleErasData,
+        cycle_eras: CycleEras,
     },
     CycleReady {
         start: ActionId,
+        block_header: BlockHeader,
         protocol: SupportedProtocol,
         protocol_constants: ProtocolConstants,
         level: Level,
         cycle: Cycle,
         position: Position,
     },
+
+    // pre-Ithaca
     PendingCycleData {
         start: ActionId,
         protocol: SupportedProtocol,
@@ -167,8 +205,36 @@ pub enum RightsRequest {
         position: Position,
         cycle_data: CycleData,
     },
-    Ready(EndorsingRights),
-    BakingRightsReady(BakingRights),
+
+    PendingCycleDelegates {
+        start: ActionId,
+        block_header: BlockHeader,
+        level: Level,
+        cycle: Cycle,
+    },
+    CycleDelegatesReady {
+        start: ActionId,
+        block_header: BlockHeader,
+        level: Level,
+        delegates: Delegates,
+    },
+    PendingRightsCalculationIthaca {
+        start: ActionId,
+        block_header: BlockHeader,
+        level: Level,
+        delegates: Delegates,
+    },
+    PendingRightsFromContextIthaca {
+        start: ActionId,
+        level: Level,
+        delegates: Delegates,
+        token: ProtocolRunnerToken,
+    },
+
+    EndorsingOldReady(EndorsingRightsOld),
+    BakingOldReady(BakingRightsOld),
+    EndorsingReady(EndorsingRights),
+    ValidatorsReady(Validators),
     Error(RightsError),
 }
 
@@ -185,12 +251,18 @@ pub enum RightsError {
     MissingProtocolConstants,
     #[error("Error parsing protocol constants: {0}")]
     ParseProtocolConstants(String),
-    #[error("Missing cycle eras")]
-    MissingCycleEras,
+    #[error("Missing cycle eras: {0}")]
+    MissingCycleEras(#[from] CycleErasError),
     #[error("Error calculating cycle: {0}")]
     Cycle(#[from] CycleError),
     #[error("Missing cycle meta data")]
     MissingCycleData,
+    #[error("Error querying cycle delegates: {0}")]
+    CycleDelegates(#[from] DelegatesError),
+    #[error("Error fetching endorsing rights form context: {0}")]
+    ContextRights(#[from] crate::service::protocol_runner_service::EndorsingRightsError),
+    #[error("Error fetching validators form context: {0}")]
+    ContextValidators(#[from] crate::service::protocol_runner_service::ValidatorsError),
     #[error("Error calculating endorsing rights: {0}")]
     Calculation(#[from] RightsCalculationError),
     #[error("Unsupported protocol: {0}")]
@@ -235,15 +307,6 @@ impl From<kv_constants::Error> for RightsError {
     }
 }
 
-impl From<kv_cycle_eras::Error> for RightsError {
-    fn from(error: kv_cycle_eras::Error) -> Self {
-        match error {
-            kv_cycle_eras::Error::Storage(error) => Self::Storage(error),
-            kv_cycle_eras::Error::NotFound => Self::MissingCycleEras,
-        }
-    }
-}
-
 impl From<kv_cycle_meta::Error> for RightsError {
     fn from(error: kv_cycle_meta::Error) -> Self {
         match error {
@@ -264,8 +327,9 @@ impl From<serde_json::Error> for RightsError {
 pub struct ProtocolConstants {
     pub blocks_per_cycle: i32,
     pub preserved_cycles: u8,
-    pub endorsers_per_block: u16,
     pub nonce_length: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endorsers_per_block: Option<u16>,
 }
 
 impl ProtocolConstants {
@@ -276,7 +340,7 @@ impl ProtocolConstants {
         Some(self.preserved_cycles)
     }
     pub fn endorsers_per_block(&self) -> Option<u16> {
-        Some(self.endorsers_per_block)
+        self.endorsers_per_block
     }
     pub fn nonce_length(&self) -> Option<u8> {
         Some(self.nonce_length)

@@ -757,6 +757,7 @@ pub struct OperationStats {
     validations: Vec<OperationValidationStats>,
     nodes: HashMap<String, OperationNodeStats>,
     injected_timestamp: Option<u64>,
+    current_heads: BTreeSet<BlockHash>,
 }
 
 #[derive(Serialize)]
@@ -791,7 +792,7 @@ pub struct OperationValidationStats {
 
 pub(crate) async fn get_shell_automaton_mempool_operation_stats(
     env: &RpcServiceEnvironment,
-    hash_filter: Option<BTreeSet<OperationHash>>,
+    filter: shell_automaton::service::rpc_service::MempoolOperationStatsFilter,
 ) -> Result<OperationsStats, tokio::sync::oneshot::error::RecvError> {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
@@ -799,7 +800,7 @@ pub(crate) async fn get_shell_automaton_mempool_operation_stats(
         .shell_automaton_sender()
         .send(RpcShellAutomatonMsg::GetMempoolOperationStats {
             channel: tx,
-            hash_filter,
+            filter,
         })
         .await;
 
@@ -915,7 +916,7 @@ pub(crate) async fn get_shell_automaton_endorsing_rights(
 fn adjust_times(base_time: u64, value: &mut serde_json::Value) -> anyhow::Result<()> {
     let obj = value
         .as_object_mut()
-        .ok_or(anyhow::format_err!("object expected"))?;
+        .ok_or_else(|| anyhow::format_err!("object expected"))?;
     obj.iter_mut().for_each(|(_, v)| {
         if let Some(v) = v.as_object_mut() {
             v.iter_mut().for_each(|(k, v)| {
@@ -1129,6 +1130,7 @@ fn map_operations_stats(
                         )
                     })
                     .collect(),
+                current_heads: op_stats.current_heads,
             };
 
             (op_hash.to_base58_check(), op_stats)

@@ -548,6 +548,16 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
+    fn tezedge_context_get_index(
+        rt,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
+    ) -> OCaml<DynBox<TezedgeIndexFFI>> {
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let result = TezedgeIndexFFI::new(context.0.borrow().index.clone());
+        result.to_ocaml(rt)
+    }
+
     // Tree API
 
     // OCaml = val hash : tree -> Context_hash.t
@@ -805,6 +815,24 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
+    // OCaml = val length : tree -> key -> int Lwt.t
+    fn tezedge_tree_length(
+        rt,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<OCamlInt, String>> {
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
+        let key = make_key(rt, key);
+
+        let result = tree
+            .length(&key)
+            .map_err(|err| format!("{:?}", err))
+            .map(|length| length as i64);
+
+        result.to_ocaml(rt)
+    }
+
     // OCaml =
     //  val fold :
     //    ?depth:[`Eq of int | `Le of int | `Lt of int | `Ge of int | `Gt of int] ->
@@ -1009,6 +1037,7 @@ pub fn initialize_callbacks() {
             tezedge_context_list,
             tezedge_context_get_tree,
             tezedge_context_set_tree,
+            tezedge_context_get_index,
             tezedge_context_empty,
             tezedge_context_dump,
             tezedge_context_restore,
@@ -1023,6 +1052,7 @@ pub fn initialize_callbacks() {
             tezedge_tree_mem_tree,
             tezedge_tree_mem,
             tezedge_tree_list,
+            tezedge_tree_length,
             tezedge_tree_walker_make,
             tezedge_tree_walker_next,
             tezedge_tree_empty,

@@ -6,7 +6,11 @@ use std::collections::hash_map::Entry;
 use crate::{Action, State};
 use redux_rs::ActionWithMeta;
 
-use super::{rights_actions::*, RightsRequest};
+use super::{
+    cycle_delegates::{CycleDelegatesQuery, CycleDelegatesQueryState},
+    rights_actions::*,
+    RightsRequest, Validators,
+};
 
 pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
     let requests = &mut state.rights.requests;
@@ -129,13 +133,24 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     protocol_constants,
                 } = request
                 {
-                    *request = RightsRequest::PendingCycleEras {
-                        start: *start,
-                        block_header: block_header.clone(),
-                        proto_hash: proto_hash.clone(),
-                        protocol: protocol.clone(),
-                        protocol_constants: protocol_constants.clone(),
-                    };
+                    *request =
+                        if let Some(cycle_eras) = state.rights.cycle_eras.get_result(proto_hash) {
+                            RightsRequest::CycleErasReady {
+                                start: *start,
+                                block_header: block_header.clone(),
+                                protocol: protocol.clone(),
+                                protocol_constants: protocol_constants.clone(),
+                                cycle_eras: cycle_eras.clone(),
+                            }
+                        } else {
+                            RightsRequest::PendingCycleEras {
+                                start: *start,
+                                block_header: block_header.clone(),
+                                proto_hash: proto_hash.clone(),
+                                protocol: protocol.clone(),
+                                protocol_constants: protocol_constants.clone(),
+                            }
+                        };
                 }
             }
         }
@@ -195,6 +210,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 {
                     *request = RightsRequest::CycleReady {
                         start: *start,
+                        block_header: block_header.clone(),
                         protocol: protocol.clone(),
                         protocol_constants: protocol_constants.clone(),
                         level: key.level().unwrap_or_else(|| block_header.level()),
@@ -209,6 +225,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
             if let Some(request) = requests.get_mut(key) {
                 if let RightsRequest::CycleReady {
                     start,
+                    block_header: _,
                     protocol,
                     protocol_constants,
                     level,
@@ -271,7 +288,130 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 }
             }
         }
-        Action::RightsBakingReady(RightsBakingReadyAction { key, baking_rights }) => {
+
+        Action::RightsGetCycleDelegates(RightsGetCycleDelegatesAction { key }) => {
+            if let Some(request) = requests.get_mut(key) {
+                if let RightsRequest::CycleReady {
+                    start,
+                    block_header,
+                    level,
+                    cycle,
+                    ..
+                } = request
+                {
+                    let req = state.rights.cycle_delegates.get(cycle);
+                    *request = if let Some(CycleDelegatesQuery {
+                        state: CycleDelegatesQueryState::Success(delegates),
+                    }) = req
+                    {
+                        RightsRequest::CycleDelegatesReady {
+                            start: *start,
+                            block_header: block_header.clone(),
+                            level: *level,
+                            delegates: delegates.clone(),
+                        }
+                    } else {
+                        RightsRequest::PendingCycleDelegates {
+                            start: *start,
+                            block_header: block_header.clone(),
+                            level: *level,
+                            cycle: *cycle,
+                        }
+                    };
+                }
+            }
+        }
+        Action::RightsCycleDelegatesReady(RightsCycleDelegatesReadyAction { key, delegates }) => {
+            if let Some(request) = requests.get_mut(key) {
+                if let RightsRequest::PendingCycleDelegates {
+                    start,
+                    block_header,
+                    level,
+                    cycle: _,
+                } = request
+                {
+                    *request = RightsRequest::CycleDelegatesReady {
+                        start: *start,
+                        block_header: block_header.clone(),
+                        level: *level,
+                        delegates: delegates.clone(),
+                    };
+                }
+            }
+        }
+
+        Action::RightsCalculateIthaca(RightsCalculateIthacaAction { key }) => {
+            if let Some(request) = requests.get_mut(key) {
+                if let RightsRequest::CycleDelegatesReady {
+                    start,
+                    block_header,
+                    level,
+                    delegates,
+                } = request
+                {
+                    *request = RightsRequest::PendingRightsCalculationIthaca {
+                        start: *start,
+                        block_header: block_header.clone(),
+                        level: *level,
+                        delegates: delegates.clone(),
+                    };
+                }
+            }
+        }
+        Action::RightsContextRequested(RightsContextRequestedAction { key, token }) => {
+            if let Some(request) = requests.get_mut(key) {
+                if let RightsRequest::PendingRightsCalculationIthaca {
+                    start,
+                    block_header: _,
+                    level,
+                    delegates,
+                } = request
+                {
+                    *request = RightsRequest::PendingRightsFromContextIthaca {
+                        start: *start,
+                        level: *level,
+                        delegates: delegates.clone(),
+                        token: *token,
+                    };
+                }
+            }
+        }
+        Action::RightsIthacaContextValidatorsSuccess(
+            RightsIthacaContextValidatorsSuccessAction {
+                key,
+                validators: context_validators,
+            },
+        ) => {
+            if let Some(request) = requests.get_mut(key) {
+                if let RightsRequest::PendingRightsFromContextIthaca {
+                    start: _,
+                    level,
+                    delegates,
+                    ..
+                } = request
+                {
+                    let validators = context_validators
+                        .validators
+                        .iter()
+                        .filter_map(|pkh| delegates.get(pkh).cloned())
+                        .collect();
+                    let slots = context_validators
+                        .slots
+                        .iter()
+                        .filter_map(|(pkh, rights)| {
+                            delegates.get(pkh).cloned().map(|pk| (pk, rights.clone()))
+                        })
+                        .collect();
+                    *request = RightsRequest::ValidatorsReady(Validators {
+                        level: *level,
+                        validators,
+                        slots,
+                    });
+                }
+            }
+        }
+
+        Action::RightsBakingOldReady(RightsBakingOldReadyAction { key, baking_rights }) => {
             if let Some(RightsRequest::PendingRightsCalculation { .. }) = requests.remove(key) {
                 let cache = &mut state.rights.cache.baking;
                 let duration = state.rights.cache.time;
@@ -280,7 +420,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 cache.insert(baking_rights.level, (action.id, baking_rights.clone()));
             }
         }
-        Action::RightsEndorsingReady(RightsEndorsingReadyAction {
+        Action::RightsEndorsingOldReady(RightsEndorsingOldReadyAction {
             key,
             endorsing_rights,
         }) => {
@@ -288,7 +428,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 if let RightsRequest::PendingRightsCalculation { .. } = entry.get() {
                     entry.remove();
                 }
-                let cache = &mut state.rights.cache.endorsing;
+                let cache = &mut state.rights.cache.endorsing_old;
                 let duration = state.rights.cache.time;
                 cache.retain(|_, (timestamp, _)| action.id.duration_since(*timestamp) < duration);
                 slog::trace!(&state.log, "cached endorsing rights"; "level" => endorsing_rights.level);
@@ -296,6 +436,21 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     endorsing_rights.level,
                     (action.id, endorsing_rights.clone()),
                 );
+            }
+        }
+        Action::RightsValidatorsReady(RightsValidatorsReadyAction { key }) => {
+            if let Entry::Occupied(entry) = requests.entry(key.clone()) {
+                if let RightsRequest::ValidatorsReady(validators) = entry.get() {
+                    let validators = validators.clone();
+                    entry.remove();
+                    let cache = &mut state.rights.cache.validators;
+                    let duration = state.rights.cache.time;
+                    cache.retain(|_, (timestamp, _)| {
+                        action.id.duration_since(*timestamp) < duration
+                    });
+                    slog::trace!(&state.log, "cached endorsing rights"; "level" => validators.level);
+                    cache.insert(validators.level, (action.id, validators));
+                }
             }
         }
         Action::RightsError(RightsErrorAction { key, error }) => {

@@ -8,6 +8,7 @@ pub mod context;
 pub mod dev_services;
 pub mod mempool_services;
 pub mod protocol;
+pub mod rewards_services;
 // pub mod stats_services;
 pub mod stream_services;
 

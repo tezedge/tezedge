@@ -4,41 +4,57 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
 
-use futures::{FutureExt, StreamExt};
+use futures::SinkExt;
+use futures::StreamExt;
+use rpc::RpcServiceEnvironmentRef;
 use slog::{info, warn, Logger};
+use tezedge_actor_system::actors::Tell;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 use warp::filters::BoxedFilter;
 use warp::http::StatusCode;
-use warp::ws::WebSocket;
+use warp::ws::{Message, WebSocket};
 use warp::Filter;
 use warp::{reject, Rejection, Reply};
 
-use crate::websocket::Clients;
+use crate::monitor::{BroadcastSignal, MonitorRef};
+use crate::websocket::ws_json_rpc::{handle_request, JsonRpcError, JsonRpcResponse, Params};
+
+use super::RpcClients;
 
 pub async fn run_websocket(
     address: SocketAddr,
     max_number_of_websocket_connections: u16,
-    clients: Clients,
+    rpc_clients: RpcClients,
+    rpc_env: RpcServiceEnvironmentRef,
+    monitor_ref: MonitorRef,
     log: Logger,
 ) {
-    let ws_route = warp::path::end()
+    let ws_log = log.clone();
+    let json_rpc_route = warp::path::path("rpc")
+        .and(warp::path::end())
         .and(warp::ws())
-        .and(with_clients(clients.clone()))
+        .and(with_rpc_clients(rpc_clients.clone()))
+        .and(with_monitor_ref(monitor_ref))
         .and(with_max_number_of_websocket_connections(
             max_number_of_websocket_connections,
         ))
         .and(with_log(log.clone()))
-        .and_then(ws_handler)
-        .recover(move |rejection| handle_rejection(rejection, log.clone()))
+        .and(with_rpc_env(rpc_env))
+        .and_then(ws_rpc_handler)
+        .recover(move |rejection| handle_rejection(rejection, ws_log.clone()))
         .with(warp::cors().allow_any_origin())
         .boxed();
 
-    warp::serve(ws_route).run(address).await
+    warp::serve(json_rpc_route).run(address).await
 }
 
-fn with_clients(clients: Clients) -> BoxedFilter<(Clients,)> {
+fn with_monitor_ref(monitor_ref: MonitorRef) -> BoxedFilter<(MonitorRef,)> {
+    warp::any().map(move || monitor_ref.clone()).boxed()
+}
+
+fn with_rpc_clients(clients: RpcClients) -> BoxedFilter<(RpcClients,)> {
     warp::any().map(move || clients.clone()).boxed()
 }
 
@@ -52,6 +68,10 @@ fn with_max_number_of_websocket_connections(
 
 fn with_log(log: Logger) -> BoxedFilter<(Logger,)> {
     warp::any().map(move || log.clone()).boxed()
+}
+
+fn with_rpc_env(env: RpcServiceEnvironmentRef) -> BoxedFilter<(RpcServiceEnvironmentRef,)> {
+    warp::any().map(move || env.clone()).boxed()
 }
 
 #[derive(Debug)]
@@ -86,11 +106,13 @@ pub async fn handle_rejection(err: Rejection, log: Logger) -> Result<impl Reply,
     }
 }
 
-pub async fn ws_handler(
+pub async fn ws_rpc_handler(
     ws: warp::ws::Ws,
-    clients: Clients,
+    clients: RpcClients,
+    monitor_ref: MonitorRef,
     max_number_of_websocket_connections: u16,
     log: Logger,
+    env: RpcServiceEnvironmentRef,
 ) -> Result<impl Reply, Rejection> {
     // limit max number of open websockets
     let clients_count = clients.read().await.len();
@@ -103,10 +125,16 @@ pub async fn ws_handler(
     }
 
     // handle websocket
-    Ok(ws.on_upgrade(move |socket| client_connection(socket, clients, log)))
+    Ok(ws.on_upgrade(move |socket| client_connection_rpc(socket, clients, log, env, monitor_ref)))
 }
 
-pub async fn client_connection(ws: WebSocket, clients: Clients, log: Logger) {
+pub async fn client_connection_rpc(
+    ws: WebSocket,
+    clients: RpcClients,
+    log: Logger,
+    env: RpcServiceEnvironmentRef,
+    monitor_ref: MonitorRef,
+) {
     let (client_sender, client_rcv) = mpsc::unbounded_channel();
 
     // create an uuid to add to a hashmap
@@ -114,7 +142,7 @@ pub async fn client_connection(ws: WebSocket, clients: Clients, log: Logger) {
     clients
         .write()
         .await
-        .insert(id.clone(), Some(client_sender));
+        .insert(id.clone(), Some(client_sender.clone()));
     info!(log, "New websocket connection detected"; "id" => &id);
 
     // redirect channel to websocket
@@ -122,12 +150,68 @@ pub async fn client_connection(ws: WebSocket, clients: Clients, log: Logger) {
         let log = log.clone();
         let id = id.clone();
 
-        // wrap the reciever into a stream
-        UnboundedReceiverStream::new(client_rcv).forward(ws).map(move |result| {
-            if let Err(e) = result {
-                warn!(log, "Error sending message to connected websocket"; "id" => &id, "reason" => format!("{}", e));
+        let (mut user_ws_tx, mut user_ws_rx) = ws.split();
+
+        let mut rx = UnboundedReceiverStream::new(client_rcv);
+
+        let t_log = log.clone();
+        tokio::task::spawn(async move {
+            while let Some(message) = rx.next().await {
+                let message = match serde_json::to_string(&message) {
+                    Ok(s) => s,
+                    Err(err) => {
+                        slog::error!(t_log, "Websocket serialization error: {}", err);
+                        "{\"error\": \"Could not serialize result\"}".to_string()
+                    }
+                };
+                if let Err(e) = user_ws_tx.send(Message::text(message)).await {
+                    slog::error!(t_log, "Websocket error: {}", e);
+                }
             }
-        }).await;
+        });
+
+        while let Some(result) = user_ws_rx.next().await {
+            let msg = match result {
+                Ok(message) => message,
+                Err(e) => {
+                    slog::error!(
+                        log,
+                        "Failed to recieve message from websocket channel: user {id}, error: {e}"
+                    );
+                    break;
+                }
+            };
+
+            if let Ok(msg) = msg.to_str() {
+                let response =
+                    match serde_json::from_str::<json_rpc_types::Request<Params, String>>(msg) {
+                        Ok(request) => {
+                            if request.method == "getMonitorStats" {
+                                monitor_ref.tell(
+                                    BroadcastSignal::PublishAll((
+                                        Some(client_sender.clone()),
+                                        request.id,
+                                    )),
+                                    None,
+                                );
+                                continue;
+                            }
+                            handle_request(&request, &env).await
+                        }
+                        Err(_) => {
+                            let error =
+                                JsonRpcError::from_code(json_rpc_types::ErrorCode::ParseError);
+                            JsonRpcResponse::error(json_rpc_types::Version::V2, error, None)
+                        }
+                    };
+                if let Err(e) = client_sender.send(response) {
+                    slog::error!(
+                        log,
+                        "Failed to send to websocket channel: user {id}, error: {e}"
+                    );
+                }
+            }
+        }
     }
 
     info!(log, "Websocket connection removed"; "id" => &id);

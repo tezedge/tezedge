@@ -20,3 +20,5 @@ tezos_context = { path = "../tezos/context" }
 tezos_context_api = { path = "../tezos/context-api" }
 tezos_interop = { path = "../tezos/interop" }
 tezos_messages = { path = "../tezos/messages" }
+ocaml-interop = { version = "0.8.7", features = ["without-ocamlopt", "caml-state"] }
+

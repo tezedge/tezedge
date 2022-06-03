@@ -261,6 +261,8 @@ impl_to_ocaml_record! {
         block_metadata_hash: Option<OCamlBlockMetadataHash>,
         ops_metadata_hashes: Option<OCamlList<OCamlList<OCamlOperationMetadataHash>>>,
         ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
+        cycle: Option<OCamlInt>,
+        cycle_position: Option<OCamlInt>,
         cycle_rolls_owner_snapshots: OCamlList<OCamlCycleRollsOwnerSnapshot>,
         new_protocol_constants_json: Option<String>,
         new_cycle_eras_json: Option<String>,
@@ -310,8 +312,6 @@ impl_to_ocaml_record! {
         predecessor: OCamlBlockHeader => FfiBlockHeader::from(predecessor),
         predecessor_hash: OCamlBlockHash,
         protocol_data: Option<OCamlBytes>,
-        predecessor_block_metadata_hash: Option<OCamlBlockMetadataHash>,
-        predecessor_ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
     }
 }
 
@@ -319,7 +319,6 @@ impl_to_ocaml_record! {
     PrevalidatorWrapper => OCamlPrevalidatorWrapper {
         chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
-        context_fitness: Option<OCamlList<OCamlBytes>>,
         predecessor: OCamlBlockHash,
     }
 }
@@ -327,6 +326,7 @@ impl_to_ocaml_record! {
 impl_to_ocaml_record! {
     ValidateOperationRequest => OCamlValidateOperationRequest {
         prevalidator: OCamlPrevalidatorWrapper,
+        operation_hash: OCamlOperationHash,
         operation: OCamlOperation => FfiOperation::from(operation),
     }
 }
@@ -557,10 +557,9 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::ApplyBlockCall(req: OCamlApplyBlockRequest),
         ProtocolMessage::AssertEncodingForProtocolDataCall(hash: OCamlProtocolHash, data: OCamlBytes),
         ProtocolMessage::BeginApplicationCall(req: OCamlBeginApplicationRequest),
-        ProtocolMessage::BeginConstructionForPrevalidationCall(req: OCamlBeginConstructionRequest),
-        ProtocolMessage::ValidateOperationForPrevalidationCall(req: OCamlValidateOperationRequest),
-        ProtocolMessage::BeginConstructionForMempoolCall(req: OCamlBeginConstructionRequest),
-        ProtocolMessage::ValidateOperationForMempoolCall(req: OCamlValidateOperationRequest),
+        ProtocolMessage::BeginConstruction(req: OCamlBeginConstructionRequest),
+        ProtocolMessage::PreFilterOperation(req: OCamlValidateOperationRequest),
+        ProtocolMessage::ValidateOperation(req: OCamlValidateOperationRequest),
         ProtocolMessage::ProtocolRpcCall(req: OCamlProtocolRpcRequest),
         ProtocolMessage::HelpersPreapplyOperationsCall(req: OCamlProtocolRpcRequest),
         ProtocolMessage::HelpersPreapplyBlockCall(req: OCamlHelpersPreapplyBlockRequest),
@@ -577,6 +576,10 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::DumpContext(req: OCamlDumpContextRequest),
         ProtocolMessage::RestoreContext(req: OCamlRestoreContextRequest),
         ProtocolMessage::ContextGetLatestContextHashes(req: OCamlInt),
+        ProtocolMessage::GetContextRawBytes(req: OCamlProtocolRpcRequest),
+        ProtocolMessage::GetEndorsingRights(req: OCamlProtocolRpcRequest),
+        ProtocolMessage::GetValidators(req: OCamlProtocolRpcRequest),
+        ProtocolMessage::GetCycleDelegates(req: OCamlProtocolRpcRequest),
         ProtocolMessage::Ping,
         ProtocolMessage::ShutdownCall,
     }

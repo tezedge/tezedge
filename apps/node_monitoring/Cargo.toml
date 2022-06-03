@@ -10,13 +10,14 @@ default-run = "node-monitoring"
 anyhow = "1"
 cfg-if = "1.0"
 clap = "2.33"
-time = "0.3"
+time = { version = "0.3", features = ["parsing"] }
 thiserror = "1"
 fs2 = "0.4"
 fs_extra = "1.2"
 itertools = "0.10"
 getset = "0.1"
 merge = "0.1"
+num = "0.4"
 http = "0.2.2"
 percentage = "0.1"
 reqwest = { version = "0.11", features = ["json"] }
@@ -25,6 +26,8 @@ serde_json = "1.0"
 slog = { version = "2.7", features = ["nested-values", "max_level_trace", "release_max_level_trace"] }
 slog-async = "2.6"
 slog-term = "2.9"
+strum = "0.23"
+strum_macros = "0.23"
 sysinfo = { git = "https://github.com/tezedge/sysinfo.git", tag = "tezedge-v0.19.2-1" }
 tokio = { version = "1.12", features = ["full"] }
 wait-timeout = "0.2"

@@ -22,19 +22,6 @@ pub struct Cycle {
     duration: Option<f32>,
 }
 
-impl Cycle {
-    pub fn new(id: usize, headers: usize, operations: usize, applications: usize) -> Self {
-        Self {
-            id,
-            headers,
-            operations,
-            applications,
-            start: Instant::now(),
-            duration: None,
-        }
-    }
-}
-
 // monitoring statistics for bootraping
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

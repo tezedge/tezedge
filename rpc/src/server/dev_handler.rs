@@ -4,7 +4,8 @@
 use crate::helpers::{parse_block_hash, parse_chain_id, RpcServiceError, MAIN_CHAIN_ID};
 use crate::result_option_to_json_response;
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
-use crate::services::{context, dev_services};
+use crate::services::rewards_services::CycleRewardsFilter;
+use crate::services::{context, dev_services, rewards_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
 use anyhow::format_err;
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
@@ -298,16 +299,21 @@ pub async fn dev_shell_automaton_state_raw_get(
     let state = dev_services::get_shell_automaton_state_current(&env).await?;
     let contents = state.encode()?;
 
-    Ok(Response::builder()
-        .header(hyper::header::CONTENT_TYPE, "application/octet-stream")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
-            "GET, POST, OPTIONS, PUT",
-        )
-        .body(Body::from(contents))?)
+    let contents_string = serde_json::to_value(&contents)?;
+
+    Ok((
+        Response::builder()
+            .header(hyper::header::CONTENT_TYPE, "application/octet-stream")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, POST, OPTIONS, PUT",
+            )
+            .body(Body::from(contents))?,
+        contents_string.into(),
+    ))
 }
 
 pub async fn dev_shell_automaton_actions_raw_get(
@@ -324,17 +330,21 @@ pub async fn dev_shell_automaton_actions_raw_get(
     .await?;
 
     let contents = actions.encode()?;
+    let contents_value = serde_json::to_value(&contents)?;
 
-    Ok(Response::builder()
-        .header(hyper::header::CONTENT_TYPE, "application/octet-stream")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
-        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .header(
-            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
-            "GET, POST, OPTIONS, PUT",
-        )
-        .body(Body::from(contents))?)
+    Ok((
+        Response::builder()
+            .header(hyper::header::CONTENT_TYPE, "application/octet-stream")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+            .header(
+                hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, POST, OPTIONS, PUT",
+            )
+            .body(Body::from(contents))?,
+        contents_value.into(),
+    ))
 }
 
 pub async fn dev_shell_automaton_storage_requests_get(
@@ -389,7 +399,7 @@ pub async fn dev_shell_automaton_actions_stats_for_blocks_get(
 ) -> ServiceResult {
     let level_filter = query.get("level").map(|v| {
         v.iter()
-            .flat_map(|s| s.split(","))
+            .flat_map(|s| s.split(','))
             .filter_map(|s| s.parse().ok())
             .take(64)
             .collect::<BTreeSet<_>>()
@@ -414,17 +424,25 @@ pub async fn dev_shell_automaton_mempool_operation_stats_get(
     query: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
+    use shell_automaton::service::rpc_service::MempoolOperationStatsFilter;
     let hash_filter = query
         .get("hash")
         .map(|v| {
             v.iter()
-                .flat_map(|s| s.split(","))
+                .flat_map(|s| s.split(','))
                 .filter_map(|s| OperationHash::from_base58_check(s).ok())
                 .collect::<BTreeSet<_>>()
         })
         .filter(|v| !v.is_empty());
+    let head_filter = query.get_hash("head")?;
+    let filter = match (hash_filter, head_filter) {
+        (None, None) => MempoolOperationStatsFilter::None,
+        (Some(v), None) => MempoolOperationStatsFilter::OperationHashes(v),
+        (None, Some(v)) => MempoolOperationStatsFilter::BlockHash(v),
+        _ => return Err(anyhow::anyhow!("Either `hashes` or `head` is expected").into()),
+    };
     make_json_response(
-        &dev_services::get_shell_automaton_mempool_operation_stats(&env, hash_filter).await?,
+        &dev_services::get_shell_automaton_mempool_operation_stats(&env, filter).await?,
     )
 }
 
@@ -762,4 +780,25 @@ pub async fn best_remote_level(
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     make_json_response(&dev_services::get_best_remote_level(&env).await?)
+}
+
+pub async fn dev_cycle_rewards(
+    _: Request<Body>,
+    params: Params,
+    query: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let chain_id_param = MAIN_CHAIN_ID;
+    let chain_id = parse_chain_id(chain_id_param, &env)?;
+    let cycle_num = required_param!(params, "cycle_num")?.parse()?;
+    let delegate = query.get_str("delegate").map(|v| v.to_string());
+    let commission: Option<i32> = query.get_parsed("comission")?;
+    let exclude_accusation_rewards = query.contains_key("exclude_accusation_rewards");
+
+    let filter = CycleRewardsFilter::new(delegate, commission, exclude_accusation_rewards);
+
+    make_json_response(
+        &rewards_services::get_cycle_rewards_distribution(&chain_id, &env, cycle_num, filter)
+            .await?,
+    )
 }

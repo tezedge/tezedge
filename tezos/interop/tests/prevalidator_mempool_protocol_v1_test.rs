@@ -3,13 +3,14 @@
 
 use serial_test::serial;
 
-use crypto::hash::ChainId;
+use crypto::hash::{ChainId, OperationHash};
 use tezos_api::ffi::{
-    ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, ValidateOperationRequest,
+    ApplyBlockRequest, ApplyBlockResponse, BeginConstructionRequest, ClassifiedOperation,
+    OperationClassification, ValidateOperationRequest, ValidateOperationResult,
 };
 
 use tezos_interop::apply_encoded_message;
-use tezos_messages::p2p::binary_message::BinaryRead;
+use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_protocol_ipc_messages::{NodeMessage, ProtocolMessage};
 
@@ -17,7 +18,7 @@ mod common;
 
 #[test]
 #[serial]
-fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error> {
+fn test_begin_construction() -> Result<(), anyhow::Error> {
     common::init_test_runtime();
 
     // init empty context for test
@@ -27,7 +28,7 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
     );
 
     // apply block 1 and block 2
-    let (last_block, apply_block_result) = apply_blocks_1_2(&chain_id, genesis_block_header);
+    let (last_block, _apply_block_result) = apply_blocks_1_2(&chain_id, genesis_block_header);
     let predecessor_hash = last_block
         .hash()
         .as_ref()
@@ -37,41 +38,39 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
         .unwrap();
 
     // let's initialize prevalidator for current head
-    let prevalidator = apply_encoded_message(
-        ProtocolMessage::BeginConstructionForPrevalidationCall(BeginConstructionRequest {
+    let prevalidator = apply_encoded_message(ProtocolMessage::BeginConstruction(
+        BeginConstructionRequest {
             chain_id: chain_id.clone(),
             predecessor: last_block,
             predecessor_hash,
             protocol_data: None,
-            predecessor_block_metadata_hash: apply_block_result.block_metadata_hash,
-            predecessor_ops_metadata_hash: apply_block_result.ops_metadata_hash,
-        }),
-    )
+        },
+    ))
     .unwrap();
     let prevalidator = expect_response!(BeginConstructionResult, prevalidator)?;
     assert_eq!(prevalidator.chain_id, chain_id);
-    assert_eq!(
-        prevalidator.context_fitness,
-        Some(vec![vec![1], vec![0, 0, 0, 0, 0, 0, 0, 2]])
-    );
 
     let operation =
         test_data_protocol_v1::operation_from_hex(test_data_protocol_v1::OPERATION_LEVEL_3);
+    let operation_hash = operation.message_typed_hash::<OperationHash>().unwrap();
 
-    let result = apply_encoded_message(ProtocolMessage::ValidateOperationForPrevalidationCall(
+    let result = apply_encoded_message(ProtocolMessage::ValidateOperation(
         ValidateOperationRequest {
             prevalidator,
+            operation_hash,
             operation,
         },
     ))
     .unwrap();
     let result = expect_response!(ValidateOperationResponse, result)?;
     assert_eq!(result.prevalidator.chain_id, chain_id);
-    assert_eq!(result.result.applied.len(), 1);
-    assert_eq!(
-        result.prevalidator.context_fitness,
-        Some(vec![vec![1], vec![0, 0, 0, 0, 0, 0, 0, 2]])
-    );
+    assert!(matches!(
+        result.result,
+        ValidateOperationResult::Classified(ClassifiedOperation {
+            classification: OperationClassification::Applied,
+            ..
+        })
+    ));
 
     Ok(())
 }

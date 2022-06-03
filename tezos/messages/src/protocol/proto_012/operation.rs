@@ -21,28 +21,30 @@ pub use super::super::proto_011::operation::{
     SeedNonceRevelationOperation, TransactionOperation,
 };
 
-use std::convert::TryFrom;
-
-use crypto::hash::{
-    BlockHash, BlockPayloadHash, ContextHash, HashTrait, NonceHash, OperationListListHash,
-    Signature,
+use crypto::{
+    hash::{
+        BlockHash, BlockPayloadHash, ChainId, ContextHash, HashTrait, NonceHash,
+        OperationListListHash, Signature,
+    },
+    CryptoError,
 };
 use tezos_encoding::{
     binary_reader::BinaryReaderError,
+    binary_writer::BinaryWriterError,
     encoding::HasEncoding,
     nom::NomReader,
     types::{Mutez, SizedBytes},
 };
 
-#[cfg(feature = "fuzzing")]
-use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
-
 use tezos_encoding_derive::BinWriter;
 
 use crate::{
-    base::signature_public_key::SignaturePublicKeyHash,
-    p2p::encoding::{block_header::Level, fitness::Fitness, operation::Operation as P2POperation},
-    protocol::proto_011::operation::RegisterGlobalConstantOperation,
+    base::signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash, SignatureWatermark},
+    p2p::{
+        binary_message::BinaryWrite,
+        encoding::{block_header::Level, fitness::Fitness, operation::Operation as P2POperation},
+    },
+    protocol::{proto_011::operation::RegisterGlobalConstantOperation, FromShell},
     Timestamp,
 };
 
@@ -67,10 +69,44 @@ pub struct Operation {
     pub signature: Signature,
 }
 
-impl TryFrom<P2POperation> for Operation {
+#[derive(Debug, thiserror::Error)]
+pub enum OperationVerifyError {
+    #[error("invalid operation contents")]
+    InvalidContents,
+    #[error("cannot encode operation: `{0}`")]
+    ToBytes(#[from] BinaryWriterError),
+    #[error("cryptography error: `{0}`")]
+    Crypto(#[from] CryptoError),
+}
+
+impl Operation {
+    pub fn verify_signature(
+        &self,
+        pk: &SignaturePublicKey,
+        chain_id: &ChainId,
+    ) -> Result<bool, OperationVerifyError> {
+        let watermark = match self.contents.split_first() {
+            Some((Contents::Preendorsement(_), [])) => SignatureWatermark::Preendorsement(chain_id),
+            Some((Contents::Endorsement(_), [])) => SignatureWatermark::Endorsement(chain_id),
+            _ => SignatureWatermark::GenericOperation,
+        };
+        let encoded_contents = self.contents.iter().try_fold(
+            Vec::new(),
+            |mut acc, item| -> Result<_, BinaryWriterError> {
+                acc.extend(item.as_bytes()?);
+                Ok(acc)
+            },
+        )?;
+        let bytes: [&[u8]; 2] = [self.branch.as_ref(), encoded_contents.as_slice()];
+        let result = pk.verify_signature(&self.signature, watermark, bytes)?;
+        Ok(result)
+    }
+}
+
+impl FromShell<P2POperation> for Operation {
     type Error = BinaryReaderError;
 
-    fn try_from(operation: P2POperation) -> Result<Self, Self::Error> {
+    fn convert_from(operation: &P2POperation) -> Result<Self, Self::Error> {
         use crate::p2p::binary_message::BinaryRead;
         let branch = operation.branch().clone();
         let OperationContents {
@@ -161,10 +197,10 @@ pub struct OperationContents {
     pub signature: Signature,
 }
 
-impl TryFrom<P2POperation> for OperationContents {
+impl FromShell<P2POperation> for OperationContents {
     type Error = BinaryReaderError;
 
-    fn try_from(operation: P2POperation) -> Result<Self, Self::Error> {
+    fn convert_from(operation: &P2POperation) -> Result<Self, Self::Error> {
         use crate::p2p::binary_message::BinaryRead;
         let OperationContents {
             contents,
@@ -313,9 +349,9 @@ pub struct DoubleEndorsementEvidenceOperation {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedEndorsement {
-    branch: BlockHash,
-    operations: InlinedEndorsementMempoolContents,
-    signature: Signature,
+    pub branch: BlockHash,
+    pub operations: InlinedEndorsementMempoolContents,
+    pub signature: Signature,
 }
 
 /**
@@ -352,10 +388,10 @@ Endorsement (tag 21)
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedEndorsementMempoolContentsEndorsementVariant {
-    slot: u16,
-    level: i32,
-    round: i32,
-    block_payload_hash: BlockPayloadHash,
+    pub slot: u16,
+    pub level: i32,
+    pub round: i32,
+    pub block_payload_hash: BlockPayloadHash,
 }
 
 /// Double_baking_evidence (tag 3).
@@ -385,7 +421,7 @@ pub struct FullHeader {
     pub context: ContextHash,
     pub payload_hash: BlockPayloadHash,
     pub payload_round: i32,
-    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<8>))]
+    #[cfg_attr(feature = "fuzzing", field_mutator(tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator<8>))]
     pub proof_of_work_nonce: SizedBytes<8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed_nonce_hash: Option<NonceHash>,
@@ -437,9 +473,9 @@ pub struct DoublePreendorsementEvidenceOperation {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedPreendorsement {
-    branch: BlockHash,
-    operations: InlinedPreendorsementContents,
-    signature: Signature,
+    pub branch: BlockHash,
+    pub operations: InlinedPreendorsementContents,
+    pub signature: Signature,
 }
 
 /**
@@ -495,10 +531,10 @@ Preendorsement (tag 20)
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, HasEncoding, NomReader, BinWriter)]
 pub struct InlinedPreendorsementVariant {
-    slot: u16,
-    level: i32,
-    round: i32,
-    block_payload_hash: BlockPayloadHash,
+    pub slot: u16,
+    pub level: i32,
+    pub round: i32,
+    pub block_payload_hash: BlockPayloadHash,
 }
 
 /**

@@ -9,7 +9,7 @@ use tezos_messages::{
 
 use crate::State;
 
-use super::{CurrentHeadPrecheckError, CurrentHeadState};
+use super::CurrentHeadPrecheckError;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -43,19 +43,8 @@ pub struct CurrentHeadPrecheckAction {
 }
 
 impl EnablingCondition<State> for CurrentHeadPrecheckAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        super::block_prechecking_possible(state, &self.prev_block_hash)
-            && state
-                .current_head_level()
-                .map_or(false, |applied_head_level| {
-                    if let Some(CurrentHeadState::Received { block_header }) =
-                        state.current_heads.candidates.get(&self.block_hash)
-                    {
-                        block_header.level() == applied_head_level + 1
-                    } else {
-                        false
-                    }
-                })
+    fn is_enabled(&self, _state: &State) -> bool {
+        false
     }
 }
 
@@ -106,9 +95,7 @@ pub struct CurrentHeadPrecacheBakingRightsAction {
 }
 
 impl EnablingCondition<State> for CurrentHeadPrecacheBakingRightsAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        super::block_prechecking_possible(state, &self.prev_block_hash)
-            && state.current_head.get().is_some()
-            && state.is_bootstrapped()
+    fn is_enabled(&self, _state: &State) -> bool {
+        false
     }
 }

@@ -73,6 +73,8 @@ use crate::peers::init::PeersInitAction;
 use crate::peers::remove::PeersRemoveAction;
 use crate::prechecker::prechecker_actions::*;
 
+use crate::rights::cycle_delegates::rights_cycle_delegates_actions::*;
+use crate::rights::cycle_eras::rights_cycle_eras_actions::*;
 use crate::rights::rights_actions::*;
 
 use crate::bootstrap::*;
@@ -508,6 +510,9 @@ pub enum Action {
     MempoolOperationDecoded(MempoolOperationDecodedAction),
     MempoolRpcEndorsementsStatusGet(MempoolRpcEndorsementsStatusGetAction),
     MempoolOperationValidateNext(MempoolOperationValidateNextAction),
+    MempoolTimeoutsInit(MempoolTimeoutsInitAction),
+    MempoolGetOperationTimeout(MempoolGetOperationTimeoutAction),
+    MempoolRequestFullContent(MempoolRequestFullContentAction),
 
     MempoolValidatorInit(MempoolValidatorInitAction),
     MempoolValidatorPending(MempoolValidatorPendingAction),
@@ -520,27 +525,19 @@ pub enum Action {
 
     BlockInject(BlockInjectAction),
 
-    PrecheckerPrecheckOperationRequest(PrecheckerPrecheckOperationRequestAction),
-    PrecheckerPrecheckOperationResponse(PrecheckerPrecheckOperationResponseAction),
-    PrecheckerPrecheckBlock(PrecheckerPrecheckBlockAction),
-    PrecheckerCacheAppliedBlock(PrecheckerCacheAppliedBlockAction),
-    PrecheckerPrecheckOperationInit(PrecheckerPrecheckOperationInitAction),
+    PrecheckerCurrentHeadUpdate(PrecheckerCurrentHeadUpdateAction),
+    PrecheckerStoreEndorsementBranch(PrecheckerStoreEndorsementBranchAction),
+    PrecheckerPrecheckOperation(PrecheckerPrecheckOperationAction),
+    PrecheckerRevalidateOperation(PrecheckerPrecheckDelayedOperationAction),
     PrecheckerDecodeOperation(PrecheckerDecodeOperationAction),
-    PrecheckerOperationDecoded(PrecheckerOperationDecodedAction),
-    PrecheckerWaitForBlockPrechecked(PrecheckerWaitForBlockPrecheckedAction),
-    PrecheckerBlockPrechecked(PrecheckerBlockPrecheckedAction),
-    PrecheckerWaitForBlockApplied(PrecheckerWaitForBlockAppliedAction),
-    PrecheckerBlockApplied(PrecheckerBlockAppliedAction),
-    PrecheckerGetEndorsingRights(PrecheckerGetEndorsingRightsAction),
-    PrecheckerEndorsingRightsReady(PrecheckerEndorsingRightsReadyAction),
-    PrecheckerValidateEndorsement(PrecheckerValidateEndorsementAction),
-    PrecheckerEndorsementValidationApplied(PrecheckerEndorsementValidationAppliedAction),
-    PrecheckerEndorsementValidationRefused(PrecheckerEndorsementValidationRefusedAction),
     PrecheckerProtocolNeeded(PrecheckerProtocolNeededAction),
+    PrecheckerCategorizeOperation(PrecheckerCategorizeOperationAction),
+    PrecheckerValidateOperation(PrecheckerValidateOperationAction),
+    PrecheckerOperationValidated(PrecheckerOperationValidatedAction),
     PrecheckerError(PrecheckerErrorAction),
-    PrecheckerPrecacheEndorsingRights(PrecheckerPrecacheEndorsingRightsAction),
-    PrecheckerPruneOperation(PrecheckerPruneOperationAction),
     PrecheckerCacheProtocol(PrecheckerCacheProtocolAction),
+    PrecheckerCacheDelayedOperation(PrecheckerCacheDelayedOperationAction),
+    PrecheckerPruneOperation(PrecheckerPruneOperationAction),
 
     RightsGet(RightsGetAction),
     RightsRpcGet(RightsRpcGetAction),
@@ -559,12 +556,38 @@ pub enum Action {
     RightsCycleErasReady(RightsCycleErasReadyAction),
     RightsGetCycle(RightsGetCycleAction),
     RightsCycleReady(RightsCycleReadyAction),
+
     RightsGetCycleData(RightsGetCycleDataAction),
     RightsCycleDataReady(RightsCycleDataReadyAction),
     RightsCalculateEndorsingRights(RightsCalculateAction),
+
+    RightsGetCycleDelegates(RightsGetCycleDelegatesAction),
+    RightsCycleDelegatesReady(RightsCycleDelegatesReadyAction),
+
+    RightsCalculateIthaca(RightsCalculateIthacaAction),
+    RightsContextRequested(RightsContextRequestedAction),
+    RightsIthacaContextSuccess(RightsIthacaContextSuccessAction),
+    RightsIthacaContextValidatorsSuccess(RightsIthacaContextValidatorsSuccessAction),
+
+    RightsEndorsingOldReady(RightsEndorsingOldReadyAction),
+    RightsBakingOldReady(RightsBakingOldReadyAction),
     RightsEndorsingReady(RightsEndorsingReadyAction),
-    RightsBakingReady(RightsBakingReadyAction),
+    RightsValidatorsReady(RightsValidatorsReadyAction),
     RightsError(RightsErrorAction),
+
+    RightsCycleErasGet(RightsCycleErasGetAction),
+    RightsCycleErasKVSuccess(RightsCycleErasKVSuccessAction),
+    RightsCycleErasKVError(RightsCycleErasKVErrorAction),
+    RightsCycleErasContextRequested(RightsCycleErasContextRequestedAction),
+    RightsCycleErasContextSuccess(RightsCycleErasContextSuccessAction),
+    RightsCycleErasContextError(RightsCycleErasContextErrorAction),
+    RightsCycleErasSuccess(RightsCycleErasSuccessAction),
+    RightsCycleErasError(RightsCycleErasErrorAction),
+
+    RightsCycleDelegatesGet(RightsCycleDelegatesGetAction),
+    RightsCycleDelegatesRequested(RightsCycleDelegatesRequestedAction),
+    RightsCycleDelegatesSuccess(RightsCycleDelegatesSuccessAction),
+    RightsCycleDelegatesError(RightsCycleDelegatesErrorAction),
 
     CurrentHeadReceived(CurrentHeadReceivedAction),
     CurrentHeadPrecheck(CurrentHeadPrecheckAction),

@@ -1,7 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use tezos_api::ffi::{BeginConstructionRequest, ValidateOperationRequest};
+use tezos_api::ffi::{
+    Applied, BeginConstructionRequest, ClassifiedOperation, Errored, OperationClassification,
+    ValidateOperationRequest, ValidateOperationResult,
+};
 
 use crate::current_head::CurrentHeadState;
 use crate::service::protocol_runner_service::ProtocolRunnerResult;
@@ -22,25 +25,15 @@ where
         Action::MempoolValidatorInit(_) => {
             let chain_id = store.state().config.chain_id.clone();
             let req = match &store.state().current_head {
-                CurrentHeadState::Rehydrated {
-                    head,
-                    block_metadata_hash,
-                    ops_metadata_hash,
-                    ..
-                } => BeginConstructionRequest {
+                CurrentHeadState::Rehydrated { head, .. } => BeginConstructionRequest {
                     chain_id,
                     predecessor: (*head.header).clone(),
                     predecessor_hash: head.hash.clone(),
                     protocol_data: None,
-                    predecessor_block_metadata_hash: block_metadata_hash.clone(),
-                    predecessor_ops_metadata_hash: ops_metadata_hash.clone(),
                 },
                 _ => return,
             };
-            store
-                .service()
-                .prevalidator()
-                .begin_construction_for_prevalidation(req);
+            store.service().prevalidator().begin_construction(req);
 
             store.dispatch(MempoolValidatorPendingAction {});
         }
@@ -54,12 +47,13 @@ where
             };
             let validate_req = ValidateOperationRequest {
                 prevalidator,
+                operation_hash: content.op_hash.clone(),
                 operation: content.op_content.clone(),
             };
             store
                 .service()
                 .prevalidator()
-                .validate_operation_for_prevalidation(validate_req);
+                .validate_operation(validate_req);
             store.dispatch(MempoolValidatorValidatePendingAction {});
         }
         Action::ProtocolRunnerResponse(resp) => match &resp.result {
@@ -86,36 +80,65 @@ where
                         "current_mempool_head" => format!("{:?}", store.state().current_head.get_hash()));
                     return;
                 }
-                let (op_hash, result) = {
-                    if let Some(data) = res.result.applied.first() {
-                        (
-                            data.hash.clone(),
-                            MempoolValidatorValidateResult::Applied(data.clone()),
-                        )
-                    } else if let Some(data) = res.result.refused.first() {
-                        (
-                            data.hash.clone(),
-                            MempoolValidatorValidateResult::Refused(data.clone()),
-                        )
-                    } else if let Some(data) = res.result.branch_refused.first() {
-                        (
-                            data.hash.clone(),
-                            MempoolValidatorValidateResult::BranchRefused(data.clone()),
-                        )
-                    } else if let Some(data) = res.result.branch_delayed.first() {
-                        (
-                            data.hash.clone(),
-                            MempoolValidatorValidateResult::BranchDelayed(data.clone()),
-                        )
-                    } else if let Some(data) = res.result.outdated.first() {
-                        (
-                            data.hash.clone(),
-                            MempoolValidatorValidateResult::Outdated(data.clone()),
-                        )
-                    } else {
+                let result = match &res.result {
+                    ValidateOperationResult::Unparseable => {
+                        // TODO: add to list of known unparseables
                         return;
                     }
+                    ValidateOperationResult::Classified(ClassifiedOperation {
+                        classification,
+                        operation_data_json,
+                        is_endorsement,
+                    }) => {
+                        let is_endorsement = *is_endorsement;
+                        match classification {
+                            OperationClassification::Applied => {
+                                MempoolValidatorValidateResult::Applied(Applied {
+                                    hash: res.operation_hash.clone(),
+                                    protocol_data_json: operation_data_json.clone(),
+                                })
+                            }
+                            OperationClassification::Prechecked => {
+                                // NOTE: this cannot happen right now, because the protocol-runner
+                                // doesn't currently do prechecking
+                                return;
+                            }
+                            OperationClassification::BranchDelayed(error_json) => {
+                                MempoolValidatorValidateResult::BranchDelayed(Errored {
+                                    hash: res.operation_hash.clone(),
+                                    protocol_data_json: operation_data_json.clone(),
+                                    error_json: error_json.clone(),
+                                    is_endorsement,
+                                })
+                            }
+                            OperationClassification::BranchRefused(error_json) => {
+                                MempoolValidatorValidateResult::BranchRefused(Errored {
+                                    hash: res.operation_hash.clone(),
+                                    protocol_data_json: operation_data_json.clone(),
+                                    error_json: error_json.clone(),
+                                    is_endorsement,
+                                })
+                            }
+                            OperationClassification::Refused(error_json) => {
+                                MempoolValidatorValidateResult::Refused(Errored {
+                                    hash: res.operation_hash.clone(),
+                                    protocol_data_json: operation_data_json.clone(),
+                                    error_json: error_json.clone(),
+                                    is_endorsement,
+                                })
+                            }
+                            OperationClassification::Outdated(error_json) => {
+                                MempoolValidatorValidateResult::Outdated(Errored {
+                                    hash: res.operation_hash.clone(),
+                                    protocol_data_json: operation_data_json.clone(),
+                                    error_json: error_json.clone(),
+                                    is_endorsement,
+                                })
+                            }
+                        }
+                    }
                 };
+                let op_hash = res.operation_hash.clone();
                 store.dispatch(MempoolValidatorValidateSuccessAction {
                     op_hash,
                     result,

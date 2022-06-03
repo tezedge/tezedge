@@ -4,14 +4,13 @@
 use std::collections::BTreeMap;
 
 use crypto::blake2b;
-use storage::{
-    cycle_eras_storage::{CycleEra, CycleErasData},
-    cycle_storage::CycleData,
-    num_from_slice,
-};
+use storage::{cycle_storage::CycleData, num_from_slice};
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use super::{Cycle, Delegate};
+use super::{
+    cycle_eras::{CycleEra, CycleEras},
+    Cycle, Delegate,
+};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
@@ -24,19 +23,19 @@ pub enum CycleError {
     InvalidValue(String),
 }
 
-fn get_cycle_era(level: Level, cycle_eras: &CycleErasData) -> Result<&CycleEra, CycleError> {
+fn get_cycle_era(level: Level, cycle_eras: &CycleEras) -> Result<&CycleEra, CycleError> {
     cycle_eras
         .iter()
-        .find(|era| era.first_level() <= &level)
+        .find(|era| era.first_level <= level)
         .ok_or(CycleError::EraNotFound(level))
 }
 
 pub type Position = i32;
 
 fn cycle_from_level(level: Level, era: &CycleEra) -> Result<(Cycle, Position), CycleError> {
-    if *era.blocks_per_cycle() > 0 {
-        let cycle = (level - era.first_level()) / era.blocks_per_cycle() + era.first_cycle();
-        let position = (level - era.first_level()) % era.blocks_per_cycle();
+    if era.blocks_per_cycle > 0 {
+        let cycle = (level - era.first_level) / era.blocks_per_cycle + era.first_cycle;
+        let position = (level - era.first_level) % era.blocks_per_cycle;
         Ok((cycle, position))
     } else {
         Err(CycleError::InvalidValue("blocks_per_cycle".to_string()))
@@ -54,7 +53,7 @@ fn assert_cycle(cycle: Cycle, block_cycle: Cycle, preserved_cycles: u8) -> Resul
 pub(super) fn get_cycle(
     block_level: Level,
     level: Option<Level>,
-    cycle_eras: &CycleErasData,
+    cycle_eras: &CycleEras,
     preserved_cycles: u8,
 ) -> Result<(Cycle, Position), CycleError> {
     let level = level.unwrap_or(block_level);
@@ -125,7 +124,6 @@ impl TezosPRNG {
             let r = num_from_slice!(self.state, 0, i32).abs();
 
             if r >= i32::MAX - (i32::MAX % bound) {
-                eprintln!("get_next continue: `{r}`");
                 continue;
             } else {
                 break r % bound;

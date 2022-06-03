@@ -7,6 +7,7 @@ rust-version = "1.58"
 
 [dependencies]
 ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state"] }
+num-bigint = "0.3"
 # local dependencies
 tezos_api = { path = "../api" }
 tezos_context_api = { path = "../context-api" }
