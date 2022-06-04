@@ -160,6 +160,8 @@ pub struct ValidatedOperations {
     pub branch_refused: VecDeque<Errored>,
     pub refused: VecDeque<Errored>,
     pub outdated: VecDeque<Errored>,
+    // Unparseable operations TODO: needs to be regularly flushed or limited somehow
+    pub unparseable: BTreeSet<OperationHash>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -443,6 +445,8 @@ pub enum OperationValidationResult {
     BranchDelayed,
     Outdated,
 
+    Unparseable,
+
     Prechecked,
     PrecheckRefused,
     Prevalidate,
@@ -673,6 +677,8 @@ pub enum OperationState {
     BranchRefused,
     BranchDelayed,
     Outdated,
+
+    Unparseable,
 }
 
 impl OperationState {

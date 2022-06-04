@@ -15,21 +15,12 @@ pub enum MempoolValidatorValidateResult {
     BranchRefused(Errored),
     BranchDelayed(Errored),
     Outdated(Errored),
+    Unparseable(OperationHash)
 }
 
 impl MempoolValidatorValidateResult {
     pub fn is_applied(&self) -> bool {
         matches!(self, Self::Applied(_))
-    }
-
-    pub fn as_result(&self) -> Result<&Applied, &Errored> {
-        match self {
-            Self::Applied(applied) => Ok(applied),
-            Self::Refused(errored)
-            | Self::BranchRefused(errored)
-            | Self::BranchDelayed(errored)
-            | Self::Outdated(errored) => Err(errored),
-        }
     }
 }
 

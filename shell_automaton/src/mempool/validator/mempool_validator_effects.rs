@@ -82,8 +82,7 @@ where
                 }
                 let result = match &res.result {
                     ValidateOperationResult::Unparseable => {
-                        // TODO: add to list of known unparseables
-                        return;
+                        MempoolValidatorValidateResult::Unparseable(res.operation_hash.clone())
                     }
                     ValidateOperationResult::Classified(ClassifiedOperation {
                         classification,

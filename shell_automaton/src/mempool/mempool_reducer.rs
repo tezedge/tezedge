@@ -259,6 +259,41 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         }
                     }
                 }
+                MempoolValidatorValidateResult::Unparseable(operation_hash) => {
+                    if let Some(op) = mempool_state.pending_operations.remove(operation_hash) {
+                        mempool_state
+                            .validated_operations
+                            .ops
+                            .insert(operation_hash.clone(), op);
+                        mempool_state
+                            .validated_operations
+                            .unparseable
+                            .insert(operation_hash.clone());
+                        mempool_state
+                            .operation_stats
+                            .entry(operation_hash.clone())
+                            .or_insert_with(OperationStats::new)
+                            .validation_finished(
+                                action.time_as_nanos(),
+                                Some(content.protocol_preapply_start),
+                                Some(content.protocol_preapply_end),
+                                current_head_level,
+                                OperationValidationResult::Unparseable,
+                            );
+                    }
+                    if let Some(operation_state) =
+                        mempool_state.operations_state.get_mut(operation_hash)
+                    {
+                        if let MempoolOperation {
+                            state: OperationState::Decoded,
+                            ..
+                        } = operation_state
+                        {
+                            *operation_state =
+                                operation_state.next_state(OperationState::Unparseable, action);
+                        }
+                    }
+                }
             }
         }
         Action::BlockApplierApplySuccess(_) => {
