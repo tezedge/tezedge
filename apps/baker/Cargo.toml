@@ -4,7 +4,7 @@ version = "2.4.0"
 edition = "2021"
 
 [[bin]]
-name = "baker"
+name = "tezedge-baker"
 path = "src/bin/baker.rs"
 
 [dev-dependencies]

@@ -21,11 +21,13 @@
 
 ## Create a working directory
 
-_The Tezos baker requires access to the context directory, which is produced by TezEdge node._
+_The Octez baker requires access to the context directory, which is produced by TezEdge or Octez node._
 ```
 $ mkdir $HOME/data-mainnet
 $ mkdir $HOME/data-mainnet/client
 ```
+
+The TezEdge baker doesn't require it.
 
 ## Import snapshot data
 
@@ -132,6 +134,11 @@ tezos-client
 
 _Note: Following commands assume that tezos sources directory is added to the PATH environment variable_
 
+### TezEdge baker
+
+It is recommended to use TezEdge baker instead of `tezos-baker-012-Psithaca`.
+
+See [TezEdge Baker](../../apps/baker/README.md#running) to build and run it.
 
 ## Wait for TezEdge node to sync with the network
 
@@ -212,7 +219,17 @@ $ tezos-client \
    register key <delegate_alias> as delegate
 ```
 
-## Run Baker And Endorser
+## Run Baker
+
+### TezEdge baker
+
+Assuming that the secret key (or locator for remote signing) is in `$HOME/.tezos-client` and the node is running locally and uses 18732 port for RPC, the command is:
+
+```
+$ tezedge-baker --base-dir "$HOME/.tezos-client" --endpoint "http://localhost:18732" --baker <delegate_alias>
+```
+
+### Octez baker
 
 _Note. For Tezos baker executable from v12.x.x `--media-type json` (or `-m json`) parameters should be added to make it expect JSON RPC instead of new compact encoding_
 
