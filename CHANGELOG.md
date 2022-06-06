@@ -33,6 +33,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Nothing.
 
+## [2.3.1] - 2022-06-06
+
+## Added
+
+- New baker documentation.
+
+### Fixed
+
+- Handle corner case when recovering the context storage from a hard crash.
+- Add missing flush call for the chain storage after block application to ensure it can be recovered from a hard crash.
+- Bug in baker scheduler that caused some requests to wrongly eclipse previous ones.
+
 ## [2.3.0] - 2022-06-03
 
 ### Added
@@ -828,7 +840,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.3.0...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.3.1...develop
+[2.3.1]: https://github.com/tezedge/tezedge/releases/v2.3.1
 [2.3.0]: https://github.com/tezedge/tezedge/releases/v2.3.0
 [2.2.0]: https://github.com/tezedge/tezedge/releases/v2.2.0
 [2.1.0]: https://github.com/tezedge/tezedge/releases/v2.1.0
