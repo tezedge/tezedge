@@ -15,8 +15,9 @@ use tezos_api::ffi::{
     BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
     ComputePathResponse, DumpContextError, FfiJsonEncoderError, GetDataError,
     GetLastContextHashesError, HelpersPreapplyBlockRequest, HelpersPreapplyError,
-    HelpersPreapplyResponse, InitProtocolContextResult, PreFilterOperationError,
-    PreFilterOperationResponse, PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError,
+    HelpersPreapplyResponse, InitProtocolContextResult, IntegrityCheckContextError,
+    PreFilterOperationError, PreFilterOperationResponse, PreapplyBlockError, PreapplyBlockRequest,
+    PreapplyBlockResponse, PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError,
     ProtocolRpcRequest, ProtocolRpcResponse, RestoreContextError, RustBytes,
     TezosRuntimeConfiguration, TezosStorageInitError, ValidateOperationError,
     ValidateOperationRequest, ValidateOperationResponse,
@@ -36,6 +37,7 @@ pub enum ProtocolMessage {
     BeginConstruction(BeginConstructionRequest),
     PreFilterOperation(ValidateOperationRequest),
     ValidateOperation(ValidateOperationRequest),
+    PreapplyBlock(PreapplyBlockRequest),
     ProtocolRpcCall(ProtocolRpcRequest),
     HelpersPreapplyOperationsCall(ProtocolRpcRequest),
     HelpersPreapplyBlockCall(HelpersPreapplyBlockRequest),
@@ -55,6 +57,7 @@ pub enum ProtocolMessage {
     GetCycleDelegates(ProtocolRpcRequest),
     DumpContext(DumpContextRequest),
     RestoreContext(RestoreContextRequest),
+    IntegrityCheckContext(IntegrityCheckContextRequest),
     ContextGetLatestContextHashes(i64),
     Ping,
     ShutdownCall,
@@ -90,6 +93,12 @@ pub struct RestoreContextRequest {
     pub expected_context_hash: ContextHash,
     pub restore_from_path: String,
     pub nb_context_elements: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct IntegrityCheckContextRequest {
+    pub context_path: String,
+    pub auto_repair: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -146,6 +155,7 @@ pub enum NodeMessage {
     BeginConstructionResult(Result<PrevalidatorWrapper, BeginConstructionError>),
     PreFilterOperationResult(Result<PreFilterOperationResponse, PreFilterOperationError>),
     ValidateOperationResponse(Result<ValidateOperationResponse, ValidateOperationError>),
+    PreapplyBlockResponse(Result<PreapplyBlockResponse, PreapplyBlockError>),
     RpcResponse(Result<ProtocolRpcResponse, ProtocolRpcError>),
     HelpersPreapplyResponse(Result<HelpersPreapplyResponse, HelpersPreapplyError>),
     ChangeRuntimeConfigurationResult,
@@ -160,13 +170,13 @@ pub enum NodeMessage {
     ContextGetTreeByPrefixResult(Result<StringTreeObject, String>),
     DumpContextResponse(Result<i64, DumpContextError>),
     RestoreContextResponse(Result<(), RestoreContextError>),
+    IntegrityCheckContextResponse(Result<(), IntegrityCheckContextError>),
     ContextGetLatestContextHashesResult(Result<Vec<ContextHash>, GetLastContextHashesError>),
 
     // TODO: generic error response instead with error types?
     IpcResponseEncodingFailure(String),
 
     PingResult,
-
     ShutdownResult,
 }
 

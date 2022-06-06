@@ -280,6 +280,8 @@ pub fn snapshot_storage(
             .expect("Failed to store cycle eras data to new main storage");
     }
 
+    block_storage.flush().expect("Failed to flush data to disk");
+
     let head = new_chain_meta_storage.get_current_head(&chain_id).unwrap();
     info!(log, "Stored current head = {:?}", head);
 
