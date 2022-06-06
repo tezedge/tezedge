@@ -265,7 +265,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     mempool_state.pending_operations.remove(operation_hash);
                     mempool_state.operations_state.remove(operation_hash);
                     mempool_state
-                        .known_unparseable_operations
+                        .unparseable_operations
                         .insert(operation_hash.clone());
                 }
             }
@@ -285,6 +285,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .flatten()
                 .filter_map(|op| op.message_typed_hash::<OperationHash>().ok())
                 .collect::<BTreeSet<_>>();
+
+            // Everytime the head changes, we forget about the known unparseables.
+            // If the protocol changes thes may become parseable.
+            mempool_state.unparseable_operations.clear();
 
             let applied = &mut mempool_state.validated_operations.applied;
             let branch_delayed = &mut mempool_state.validated_operations.branch_delayed;
