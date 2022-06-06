@@ -156,7 +156,7 @@ impl ShellAutomatonManager {
         .keypair()
         .unwrap();
         let public_key = SignaturePublicKey::Ed25519(public_key);
-        let mut baker_service = BakerServiceDefault::new();
+        let mut baker_service = BakerServiceDefault::new(mio_service.waker());
         baker_service.add_local_baker(public_key.clone(), secret_key);
 
         let service = ServiceDefault {

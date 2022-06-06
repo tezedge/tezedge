@@ -237,6 +237,17 @@ impl ValidatedOperations {
         Self::enforce_max_refused_operations_helper(&mut self.refused, &mut self.ops);
         Self::enforce_max_refused_operations_helper(&mut self.outdated, &mut self.ops);
     }
+
+    pub fn collect_preendorsements(&self) -> Vec<Operation> {
+        self.applied
+            .iter()
+            .filter_map(|op| self.ops.get(&op.hash))
+            .filter(|op| {
+                OperationKind::from_operation_content_raw(op.data().as_ref()).is_preendorsement()
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -630,6 +641,10 @@ impl OperationKind {
             111 => Self::RegisterGlobalConstant,
             _ => Self::Unknown,
         }
+    }
+
+    pub fn is_preendorsement(&self) -> bool {
+        matches!(self, Self::Preendorsement)
     }
 
     pub fn is_consensus_operation(&self) -> bool {

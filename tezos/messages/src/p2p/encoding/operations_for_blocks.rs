@@ -107,6 +107,10 @@ impl OperationsForBlocksMessage {
             operations,
         }
     }
+
+    pub fn as_operations(self) -> Vec<Operation> {
+        self.operations
+    }
 }
 
 impl From<OperationsForBlocksMessage> for Vec<Operation> {

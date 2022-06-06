@@ -76,6 +76,11 @@ impl crypto::PublicKeyWithHash for SignaturePublicKey {
 impl SignaturePublicKey {
     #[inline]
     pub fn to_string_representation(&self) -> String {
+        self.to_base58_check()
+    }
+
+    #[inline]
+    pub fn to_base58_check(&self) -> String {
         match self {
             SignaturePublicKey::Ed25519(h) => h.to_base58_check(),
             SignaturePublicKey::Secp256k1(h) => h.to_base58_check(),

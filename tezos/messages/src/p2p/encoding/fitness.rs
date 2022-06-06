@@ -60,6 +60,15 @@ impl Fitness {
         FitnessRef(&self.0).as_hex_vec()
     }
 
+    pub fn locked_round(&self) -> Option<i32> {
+        self.0.get(2).and_then(|bytes| {
+            if bytes.len() != 4 {
+                return None;
+            }
+            Some(i32::from_be_bytes(bytes[0..4].try_into().unwrap()))
+        })
+    }
+
     pub fn round(&self) -> Option<i32> {
         self.0.get(4).and_then(|bytes| {
             if bytes.len() != 4 {

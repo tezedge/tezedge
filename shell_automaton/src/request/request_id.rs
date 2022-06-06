@@ -15,6 +15,10 @@ impl RequestId {
         Self { locator, counter }
     }
 
+    pub fn new_unchecked(locator: usize, counter: usize) -> Self {
+        Self { locator, counter }
+    }
+
     pub fn locator(&self) -> usize {
         self.locator
     }
