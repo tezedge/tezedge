@@ -21,7 +21,7 @@ impl Timer {
             let mut scheduled_at_round = 0;
             loop {
                 let (next, l, r) = match timeout_duration.take() {
-                    Some(duration) => match task_rx.recv_timeout(duration) {
+                    Some((duration, _)) => match task_rx.recv_timeout(duration) {
                         Ok(next) => next,
                         Err(mpsc::RecvTimeoutError::Timeout) => {
                             let _ = event_sender.send(BakerAction::TickEvent(TickEventAction {
@@ -40,15 +40,19 @@ impl Timer {
                 let now = SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("the unix epoch has begun");
-                if next.unix_epoch > now {
-                    timeout_duration = Some(next.unix_epoch - now);
+                if next.unix_epoch > now && l >= scheduled_at_level {
+                    timeout_duration = Some((next.unix_epoch - now, next));
                     scheduled_at_level = l;
                     scheduled_at_round = r;
-                } else {
+                } else if l >= scheduled_at_level {
                     let _ = event_sender.send(BakerAction::TickEvent(TickEventAction {
                         scheduled_at_level: l,
                         scheduled_at_round: r,
                     }));
+                } else if next.unix_epoch > now {
+                    // next timeout remains the same still the same
+                    let next = timeout_duration.map(|(_, t)| t).unwrap_or(next);
+                    timeout_duration = Some((next.unix_epoch - now, next));
                 }
             }
         });
@@ -88,7 +92,7 @@ mod tests {
     };
     use tenderbake as tb;
 
-    use crate::machine::BakerAction;
+    use crate::machine::{BakerAction, TickEventAction};
 
     use super::Timer;
 
@@ -128,12 +132,28 @@ mod tests {
     fn timer_eclipse() {
         let (timer, timestamp, collector) = new_timer_and_collector();
 
-        timer.schedule(timestamp + Duration::from_millis(1500), 0, 0);
-        timer.schedule(timestamp + Duration::from_millis(1000), 0, 0);
-        thread::sleep(Duration::from_millis(2500));
+        timer.schedule(timestamp + Duration::from_millis(1500), 2, 0);
+        timer.schedule(timestamp + Duration::from_millis(1000), 1, 0);
+        thread::sleep(Duration::from_millis(3000));
         drop(timer);
 
         let actions = collector.join().unwrap();
+        assert!(matches!(actions[0], BakerAction::TickEvent(TickEventAction { scheduled_at_level: 2, .. })));
+        assert_eq!(actions.len(), 1);
+    }
+
+    // next request should eclipse previous, only if level is same or bigger
+    #[test]
+    fn timer_not_eclipse_higher_level() {
+        let (timer, timestamp, collector) = new_timer_and_collector();
+
+        timer.schedule(timestamp + Duration::from_millis(1500), 0, 0);
+        timer.schedule(timestamp + Duration::from_millis(1000), 1, 0);
+        thread::sleep(Duration::from_millis(3000));
+        drop(timer);
+
+        let actions = collector.join().unwrap();
+        assert!(matches!(actions[0], BakerAction::TickEvent(TickEventAction { scheduled_at_level: 1, .. })));
         assert_eq!(actions.len(), 1);
     }
 
