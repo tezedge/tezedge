@@ -1,6 +1,6 @@
 # TezEdge Baker
 
-The daemon for creating, signing and injecting endorsements and blocks for the Tezos blockchain, in accordance to the Tenderbake consensus algorithm.
+This is a daemon for creating, signing and injecting endorsements and blocks for the Tezos blockchain, in accordance to the Tenderbake consensus algorithm.
 
 ## Running
 
@@ -30,7 +30,7 @@ The daemon for creating, signing and injecting endorsements and blocks for the T
     rustup toolchain install 1.58.1
     rustup default 1.58.1
     ```
-4. Download `tezos-client` from https://gitlab.com/tezos/tezos/-/releases. And put the `tezos-client` binary into one of directories listed in `$PATH` variable
+4. Download `tezos-client` from https://gitlab.com/tezos/tezos/-/releases and put the `tezos-client` binary into one of directories listed in `$PATH` variable
     ```
     sudo mv tezos-client /usr/local/bin
     ```
@@ -49,7 +49,7 @@ You can use the tag `--tag v2.3.x` instead of branch name `--branch develop`.
 cargo install --git https://github.com/tezedge/tezedge --tag v2.3.1 develop baker
 ```
 
-The cargo will create the binary `tezedge-baker` at `~/.cargo/bin`. The directory `~/.cargo/bin` should be in your `$PATH` variable, so you can run `tezedge-baker` without full path. If it is not work (it might not work if you are using non standard shell), execute `source ~/.cargo/env` to update environment.
+The cargo will create the binary `tezedge-baker` at `~/.cargo/bin`. The directory `~/.cargo/bin` should be in your `$PATH` variable, so you can run `tezedge-baker` without full path. If it is not working (it might not work if you are using a non-standard shell), execute `source ~/.cargo/env` to update the environment.
 
 #### Option 2: clone sources and build
 
@@ -61,7 +61,7 @@ cargo build -p baker --release
 
 The binary will be in `target/release`.
 
-Make sure you copy the binary into one of directories listed in `$PATH` variable, for example:
+Make sure you copy the binary into one of the directories listed in `$PATH` variable, for example:
 
 ```
 sudo cp target/release/tezedge-baker /usr/local/bin
@@ -69,15 +69,15 @@ sudo cp target/release/tezedge-baker /usr/local/bin
 
 ### Prepare an account
 
-Skip this section if you already have a tezos account ready for baking.
+Skip this section if you already have a Tezos account ready for baking.
 
-Pick a new <delegate_alias> and generate a new tezos account using Octez client.
+Pick a new <delegate_alias> and generate a new Tezos account using Octez client.
 
 ```
 tezos-client gen keys <delegate_alias>
 ```
 
-You need to fund this account with at least 6000 tz. Register the account as delegate and wait a time between 5 and 6 cycles, depending on the position in cycle (approximately 15 days).
+You need to fund this account with at least 6000 ꜩ. Register the account as delegate and wait a time between 5 and 6 cycles, depending on the position in the cycle (approximately 15 days).
 
 ```
 tezos-client register key <delegate_alias> as delegate
@@ -85,13 +85,13 @@ tezos-client register key <delegate_alias> as delegate
 
 By default, tezos-client storing secret key for the account in `$HOME/.tezos-client` directory.
 
-See [baking documentation](../../baking/mainnet/README.md#initialize-keys-for-bakerendorser) for details.
+See the [baking documentation](../../baking/mainnet/README.md#initialize-keys-for-bakerendorser) for more details.
 
-See [Key management](https://tezos.gitlab.io/user/key-management.html) guide for more information.
+See the [Key management](https://tezos.gitlab.io/user/key-management.html) guide for more information.
 
 ### Run the TezEdge node
 
-See [baking documentation](../../baking/mainnet/README.md#run-tezedge-node) for instructions how to run the TezEdge node.
+See [baking documentation](../../baking/mainnet/README.md#run-tezedge-node) for instructions onhow to run the TezEdge node.
 
 ### Run the baker
 
@@ -103,23 +103,23 @@ Assuming that the secret key (or locator for remote signing) is in `$HOME/.tezos
 nohup tezedge-baker --base-dir "$HOME/.tezos-client" --endpoint "http://localhost:18732" --baker <delegate_alias> &
 ```
 
-Also, you can run `tezedge-baker --help` to get short help.
+Additionally, you can run `tezedge-baker --help` to get short help.
 
 Options:
 
-- `--base-dir`: The base directory. The path to the directory where the baker can find secret keys, or the remote signer's location. Usually, it is `~/.tezos-client`. Also, this directory is used by baker as a persistent storage of the state. It is crucial, for example, for revealing the seed nonce in the new cycle.
+- `--base-dir`: The base directory. The path to the directory where the baker can find secret keys, or the remote signer's location. Usually, it is `~/.tezos-client`. Also, this directory is used by baker as a persistent storage of the state. It is crucial, for example, when revealing the seed nonce in a new cycle.
 - `--endpoint`: TezEdge or Tezos node RPC endpoint. Usually the port is `8732` or `18732`. If node is running locally, it will be `http://localhost:8732`.
 - `--baker`: The alias of the baker.
 - `--archive` or `-a`: If this flag is used, the baker will store verbose information for debug in the base directory.
 
 ### Common problems
 
-1. After created account and registering it as a delegate, make sure you wait at least 5 cycles (approximately 15 days) to be able to bake.
-1. The executable `tezedge-baker` and `tezos-client` should be in directory which is in `$PATH` environment variable. It may be `/usr/local/bin`, you need superuser permission to copy in this directory. Also, it is possible to execute `tezos-client` from any directory, but you need to specify full path, for example `/home/username/tezos/tezos-client gen keys bob`, instead of `tezos-client gen keys bob`.
+1. After creating an account and registering it as a delegate, make sure you wait at least 5 cycles (approximately 15 days) before you start to bake.
+1. The executable `tezedge-baker` and `tezos-client` should be in the directory which is in the `$PATH` environment variable. It may be `/usr/local/bin`, you need superuser permission to copy in this directory. Also, it is possible to execute `tezos-client` from any directory, but you need to specify the full path, for example `/home/username/tezos/tezos-client gen keys bob`, instead of `tezos-client gen keys bob`.
 
 ## Tests
 
-Run from source code directory:
+Run from the source code directory:
 
 ```
 cargo test -p baker
@@ -154,9 +154,9 @@ make
 make mitten
 ```
 
-Rename file `tezos-mitten/tezos-baker-012-Psithaca` -> `tezos-mitten/tezos-baker-012-Psithaca.octez`
+Rename the file `tezos-mitten/tezos-baker-012-Psithaca` to `tezos-mitten/tezos-baker-012-Psithaca.octez`
 
-Copy files `tezedge/apps/baker/tezedge.env` and `tezedge/apps/baker/tezos-baker-012-Psithaca` into `tezos-mitten` directory.
+Copy the files `tezedge/apps/baker/tezedge.env` and `tezedge/apps/baker/tezos-baker-012-Psithaca` into the `tezos-mitten` directory.
 
 Build the baker and copy the binary into `tezos-mitten`.
 
@@ -168,7 +168,7 @@ cp target/release/tezedge-baker ../tezos-mitten/tezos-baker-012-Psithaca.tezedge
 
 Now you can run the mitten scenario:
 
-From `tezos-mitten` directory:
+From the `tezos-mitten` directory:
 ```
 dune exec src/mitten/scenarios/no_eqc_stuck.exe
 ```
