@@ -1,6 +1,6 @@
 [package]
 name = "async_ipc"
-version = "2.4.0"
+version = "2.3.1"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2021"
 rust-version = "1.58"
