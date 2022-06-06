@@ -6365,50 +6365,50 @@ steps:
 ## failing cases
 
 # The consensus committee size must be strictly greater than 3.
-- name: bake_till_level20_round_robin
-  failure: ignore
-  <<: *mitten-test
+# - name: bake_till_level20_round_robin
+#   failure: ignore
+#   <<: *mitten-test
 
 # Passes with non-empty GITLAB_CI and special version of tezos-baker
-- name: simple_pred_fork_negative_with_observed_PQC
-  failure: ignore
-  <<: *mitten-test
+# - name: simple_pred_fork_negative_with_observed_PQC
+#   failure: ignore
+#   <<: *mitten-test
 
 # TODO install libfaketime to opam-builder
-- name: proposal_in_the_future
-  failure: ignore
-  <<: *mitten-test
+# - name: proposal_in_the_future
+#   failure: ignore
+#   <<: *mitten-test
 
 # Proposed level 4 round 0
 # TODO investigate further
-- name: baker_not_participating_round_r_because_pqc_previous_round_diff_playload
-  failure: ignore
-  <<: *mitten-test
+# - name: baker_not_participating_round_r_because_pqc_previous_round_diff_playload
+#   failure: ignore
+#   <<: *mitten-test
 
 # The delay increment per round must be greater than zero
-- name: end_before_proposal
-  failure: ignore
-  <<: *mitten-test
+# - name: end_before_proposal
+#   failure: ignore
+#   <<: *mitten-test
 
 # The consensus committee size must be strictly greater than 3.
-- name: next_round
-  failure: ignore
-  <<: *mitten-test
+# - name: next_round
+#   failure: ignore
+#   <<: *mitten-test
 
 # The delay increment per round must be greater than zero
-- name: preend_before_proposal
-  failure: ignore
-  <<: *mitten-test
+# - name: preend_before_proposal
+#   failure: ignore
+#   <<: *mitten-test
 
 # The consensus committee size must be strictly greater than 3.
-- name: reproposal
-  failure: ignore
-  <<: *mitten-test
+# - name: reproposal
+#   failure: ignore
+#   <<: *mitten-test
 
 # Baker state is missing -- special version of tezos-baker is needed.
-- name: resume_after_network_failure
-  failure: ignore
-  <<: *mitten-test
+# - name: resume_after_network_failure
+#   failure: ignore
+#   <<: *mitten-test
 
 - name: save-python-test-logs
   image: meltwater/drone-cache
@@ -6531,10 +6531,10 @@ steps:
       mv $BINS_DIR/tezos-baker-012-Psithaca $BINS_DIR/tezos-baker-012-Psithaca.octez
     # copy Tezedge binaries
     - |
-      for f in light-node protocol-runner baker ffi/libtezos.so; do
+      for f in light-node protocol-runner tezedge-baker ffi/libtezos.so; do
           cp drone-cache/build_files/$f $BINS_DIR
       done
-      mv $BINS_DIR/baker $BINS_DIR/tezos-baker-012-Psithaca.tezedge
+      mv $BINS_DIR/tezedge-baker $BINS_DIR/tezos-baker-012-Psithaca.tezedge
     # copy wrapper scripts
     - cp drone-cache/mitten/* $BINS_DIR
     # create config templates
@@ -6583,50 +6583,50 @@ steps:
 ## failing cases
 
 # The consensus committee size must be strictly greater than 3.
-- name: bake_till_level20_round_robin
-  failure: ignore
-  <<: *mitten-test
+# - name: bake_till_level20_round_robin
+#   failure: ignore
+#   <<: *mitten-test
 
 # Passes with non-empty GITLAB_CI and special version of tezos-baker
-- name: simple_pred_fork_negative_with_observed_PQC
-  failure: ignore
-  <<: *mitten-test
+# - name: simple_pred_fork_negative_with_observed_PQC
+#   failure: ignore
+#   <<: *mitten-test
 
 # TODO install libfaketime to opam-builder
-- name: proposal_in_the_future
-  failure: ignore
-  <<: *mitten-test
+# - name: proposal_in_the_future
+#   failure: ignore
+#   <<: *mitten-test
 
 # Proposed level 4 round 0
 # TODO investigate further
-- name: baker_not_participating_round_r_because_pqc_previous_round_diff_playload
-  failure: ignore
-  <<: *mitten-test
+# - name: baker_not_participating_round_r_because_pqc_previous_round_diff_playload
+#   failure: ignore
+#   <<: *mitten-test
 
 # The delay increment per round must be greater than zero
-- name: end_before_proposal
-  failure: ignore
-  <<: *mitten-test
+# - name: end_before_proposal
+#   failure: ignore
+#   <<: *mitten-test
 
 # The consensus committee size must be strictly greater than 3.
-- name: next_round
-  failure: ignore
-  <<: *mitten-test
+# - name: next_round
+#   failure: ignore
+#   <<: *mitten-test
 
 # The delay increment per round must be greater than zero
-- name: preend_before_proposal
-  failure: ignore
-  <<: *mitten-test
+# - name: preend_before_proposal
+#   failure: ignore
+#   <<: *mitten-test
 
 # The consensus committee size must be strictly greater than 3.
-- name: reproposal
-  failure: ignore
-  <<: *mitten-test
+# - name: reproposal
+#   failure: ignore
+#   <<: *mitten-test
 
 # Baker state is missing -- special version of tezos-baker is needed.
-- name: resume_after_network_failure
-  failure: ignore
-  <<: *mitten-test
+# - name: resume_after_network_failure
+#   failure: ignore
+#   <<: *mitten-test
 
 - name: save-python-test-logs
   image: meltwater/drone-cache
@@ -6749,10 +6749,10 @@ steps:
       mv $BINS_DIR/tezos-baker-012-Psithaca $BINS_DIR/tezos-baker-012-Psithaca.octez
     # copy Tezedge binaries
     - |
-      for f in light-node protocol-runner baker ffi/libtezos.so; do
+      for f in light-node protocol-runner tezedge-baker ffi/libtezos.so; do
           cp drone-cache/build_files/$f $BINS_DIR
       done
-      mv $BINS_DIR/baker $BINS_DIR/tezos-baker-012-Psithaca.tezedge
+      mv $BINS_DIR/tezedge-baker $BINS_DIR/tezos-baker-012-Psithaca.tezedge
     # copy wrapper scripts
     - cp drone-cache/mitten/* $BINS_DIR
     # create config templates
@@ -6801,50 +6801,50 @@ steps:
 ## failing cases
 
 # The consensus committee size must be strictly greater than 3.
-- name: bake_till_level20_round_robin
-  failure: ignore
-  <<: *mitten-test
+# - name: bake_till_level20_round_robin
+#   failure: ignore
+#   <<: *mitten-test
 
 # Passes with non-empty GITLAB_CI and special version of tezos-baker
-- name: simple_pred_fork_negative_with_observed_PQC
-  failure: ignore
-  <<: *mitten-test
+# - name: simple_pred_fork_negative_with_observed_PQC
+#   failure: ignore
+#   <<: *mitten-test
 
 # TODO install libfaketime to opam-builder
-- name: proposal_in_the_future
-  failure: ignore
-  <<: *mitten-test
+# - name: proposal_in_the_future
+#   failure: ignore
+#   <<: *mitten-test
 
 # Proposed level 4 round 0
 # TODO investigate further
-- name: baker_not_participating_round_r_because_pqc_previous_round_diff_playload
-  failure: ignore
-  <<: *mitten-test
+# - name: baker_not_participating_round_r_because_pqc_previous_round_diff_playload
+#   failure: ignore
+#   <<: *mitten-test
 
 # The delay increment per round must be greater than zero
-- name: end_before_proposal
-  failure: ignore
-  <<: *mitten-test
+# - name: end_before_proposal
+#   failure: ignore
+#   <<: *mitten-test
 
 # The consensus committee size must be strictly greater than 3.
-- name: next_round
-  failure: ignore
-  <<: *mitten-test
+# - name: next_round
+#   failure: ignore
+#   <<: *mitten-test
 
 # The delay increment per round must be greater than zero
-- name: preend_before_proposal
-  failure: ignore
-  <<: *mitten-test
+# - name: preend_before_proposal
+#   failure: ignore
+#   <<: *mitten-test
 
 # The consensus committee size must be strictly greater than 3.
-- name: reproposal
-  failure: ignore
-  <<: *mitten-test
+# - name: reproposal
+#   failure: ignore
+#   <<: *mitten-test
 
 # Baker state is missing -- special version of tezos-baker is needed.
-- name: resume_after_network_failure
-  failure: ignore
-  <<: *mitten-test
+# - name: resume_after_network_failure
+#   failure: ignore
+#   <<: *mitten-test
 
 - name: save-python-test-logs
   image: meltwater/drone-cache
