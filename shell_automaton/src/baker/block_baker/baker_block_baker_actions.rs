@@ -396,8 +396,27 @@ impl EnablingCondition<State> for BakerBlockBakerComputeProofOfWorkSuccessAction
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BakerBlockBakerSignInitAction {
+    pub baker: SignaturePublicKey,
+}
+
+impl EnablingCondition<State> for BakerBlockBakerSignInitAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        state
+            .bakers
+            .get(&self.baker)
+            .map_or(false, |baker| match &baker.block_baker {
+                BakerBlockBakerState::ComputeProofOfWorkSuccess { .. } => true,
+                _ => false,
+            })
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerSignPendingAction {
     pub baker: SignaturePublicKey,
+    pub req_id: RequestId,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerSignPendingAction {

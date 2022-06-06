@@ -29,7 +29,7 @@ use super::{
     BakerBlockBakerRightsGetCurrentLevelSuccessAction, BakerBlockBakerRightsGetInitAction,
     BakerBlockBakerRightsGetNextLevelSuccessAction, BakerBlockBakerRightsGetPendingAction,
     BakerBlockBakerRightsGetSuccessAction, BakerBlockBakerRightsNoRightsAction,
-    BakerBlockBakerSignPendingAction, BakerBlockBakerSignSuccessAction, BakerBlockBakerState,
+    BakerBlockBakerSignInitAction, BakerBlockBakerSignPendingAction, BakerBlockBakerState,
     BakerBlockBakerTimeoutPendingAction, BlockPreapplyRequest,
 };
 
@@ -256,28 +256,27 @@ where
             });
         }
         Action::BakerBlockBakerComputeProofOfWorkSuccess(content) => {
-            store.dispatch(BakerBlockBakerSignPendingAction {
+            store.dispatch(BakerBlockBakerSignInitAction {
                 baker: content.baker.clone(),
             });
         }
-        Action::BakerBlockBakerSignPending(content) => {
+        Action::BakerBlockBakerSignInit(content) => {
             let header = match store.state.get().bakers.get(&content.baker) {
                 Some(v) => match &v.block_baker {
-                    BakerBlockBakerState::SignPending { header, .. } => header,
+                    BakerBlockBakerState::ComputeProofOfWorkSuccess { header, .. } => header,
                     _ => return,
                 },
                 None => return,
             };
             let chain_id = &store.state.get().config.chain_id;
-            let signature = store
+            let req_id = store
                 .service
                 .baker()
-                .block_sign(&content.baker, chain_id, header)
-                .unwrap();
+                .block_sign(&content.baker, chain_id, header);
 
-            store.dispatch(BakerBlockBakerSignSuccessAction {
+            store.dispatch(BakerBlockBakerSignPendingAction {
                 baker: content.baker.clone(),
-                signature,
+                req_id,
             });
         }
         Action::BakerBlockBakerSignSuccess(content) => {

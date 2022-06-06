@@ -9,6 +9,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::baker::BakerState;
 use crate::current_head::CurrentHeadState;
+use crate::request::RequestId;
 use crate::rights::EndorsingPower;
 use crate::{EnablingCondition, State};
 
@@ -192,18 +193,22 @@ impl EnablingCondition<State> for BakerBlockEndorserPreendorseAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BakerBlockEndorserPreendorsementSignPendingAction {
+pub struct BakerBlockEndorserPreendorsementSignInitAction {
     pub baker: SignaturePublicKey,
     pub operation: PreendorsementWithForgedBytes,
 }
 
-impl EnablingCondition<State> for BakerBlockEndorserPreendorsementSignPendingAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let baker_state = match state.bakers.get(&self.baker) {
+impl BakerBlockEndorserPreendorsementSignInitAction {
+    fn should_sign(
+        state: &State,
+        baker: &SignaturePublicKey,
+        operation: &PreendorsementWithForgedBytes,
+    ) -> bool {
+        let baker_state = match state.bakers.get(&baker) {
             Some(v) => v,
             None => return false,
         };
-        let preendorsement = self.operation.operation();
+        let preendorsement = operation.operation();
         match &baker_state.block_endorser {
             BakerBlockEndorserState::Preendorse { first_slot, .. } => {
                 preendorsement.slot == *first_slot
@@ -222,6 +227,34 @@ impl EnablingCondition<State> for BakerBlockEndorserPreendorsementSignPendingAct
             }
             _ => false,
         }
+    }
+}
+
+impl EnablingCondition<State> for BakerBlockEndorserPreendorsementSignInitAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        BakerBlockEndorserPreendorsementSignInitAction::should_sign(
+            state,
+            &self.baker,
+            &self.operation,
+        )
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BakerBlockEndorserPreendorsementSignPendingAction {
+    pub baker: SignaturePublicKey,
+    pub operation: PreendorsementWithForgedBytes,
+    pub req_id: RequestId,
+}
+
+impl EnablingCondition<State> for BakerBlockEndorserPreendorsementSignPendingAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        BakerBlockEndorserPreendorsementSignInitAction::should_sign(
+            state,
+            &self.baker,
+            &self.operation,
+        )
     }
 }
 
@@ -333,18 +366,22 @@ impl EnablingCondition<State> for BakerBlockEndorserEndorseAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BakerBlockEndorserEndorsementSignPendingAction {
+pub struct BakerBlockEndorserEndorsementSignInitAction {
     pub baker: SignaturePublicKey,
     pub operation: EndorsementWithForgedBytes,
 }
 
-impl EnablingCondition<State> for BakerBlockEndorserEndorsementSignPendingAction {
-    fn is_enabled(&self, state: &State) -> bool {
-        let baker_state = match state.bakers.get(&self.baker) {
+impl BakerBlockEndorserEndorsementSignInitAction {
+    fn should_sign(
+        state: &State,
+        baker: &SignaturePublicKey,
+        operation: &EndorsementWithForgedBytes,
+    ) -> bool {
+        let baker_state = match state.bakers.get(&baker) {
             Some(v) => v,
             None => return false,
         };
-        let endorsement = self.operation.operation();
+        let endorsement = operation.operation();
 
         matches!(
             &baker_state.block_endorser,
@@ -365,6 +402,34 @@ impl EnablingCondition<State> for BakerBlockEndorserEndorsementSignPendingAction
                 .current_head
                 .payload_hash()
                 .map_or(false, |p_hash| &endorsement.block_payload_hash == p_hash)
+    }
+}
+
+impl EnablingCondition<State> for BakerBlockEndorserEndorsementSignInitAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        BakerBlockEndorserEndorsementSignInitAction::should_sign(
+            state,
+            &self.baker,
+            &self.operation,
+        )
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BakerBlockEndorserEndorsementSignPendingAction {
+    pub baker: SignaturePublicKey,
+    pub operation: EndorsementWithForgedBytes,
+    pub req_id: RequestId,
+}
+
+impl EnablingCondition<State> for BakerBlockEndorserEndorsementSignPendingAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        BakerBlockEndorserEndorsementSignInitAction::should_sign(
+            state,
+            &self.baker,
+            &self.operation,
+        )
     }
 }
 
