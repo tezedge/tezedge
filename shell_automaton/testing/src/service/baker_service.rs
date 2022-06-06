@@ -1,12 +1,12 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::{ChainId, Signature};
+use crypto::hash::ChainId;
 use shell_automaton::baker::block_endorser::{
     EndorsementWithForgedBytes, PreendorsementWithForgedBytes,
 };
 use shell_automaton::request::RequestId;
-use shell_automaton::service::baker_service::{BakerService, BakerWorkerMessage, EncodeError};
+use shell_automaton::service::baker_service::{BakerService, BakerWorkerMessage};
 use shell_automaton::service::service_channel::ResponseTryRecvError;
 use tezos_messages::base::signature_public_key::SignaturePublicKey;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
@@ -39,8 +39,8 @@ impl BakerService for BakerServiceDummy {
         _baker: &SignaturePublicKey,
         _chain_id: &ChainId,
         _operation: &PreendorsementWithForgedBytes,
-    ) -> Result<Signature, EncodeError> {
-        Ok(Signature(vec![]))
+    ) -> RequestId {
+        RequestId::new_unchecked(0, 0)
     }
 
     fn endrosement_sign(
@@ -48,8 +48,8 @@ impl BakerService for BakerServiceDummy {
         _baker: &SignaturePublicKey,
         _chain_id: &ChainId,
         _operation: &EndorsementWithForgedBytes,
-    ) -> Result<Signature, EncodeError> {
-        Ok(Signature(vec![]))
+    ) -> RequestId {
+        RequestId::new_unchecked(0, 0)
     }
 
     fn block_sign(
@@ -57,8 +57,8 @@ impl BakerService for BakerServiceDummy {
         _baker: &SignaturePublicKey,
         _chain_id: &ChainId,
         _block_header: &BlockHeader,
-    ) -> Result<Signature, EncodeError> {
-        Ok(Signature(vec![]))
+    ) -> RequestId {
+        RequestId::new_unchecked(0, 0)
     }
 
     fn compute_proof_of_work(

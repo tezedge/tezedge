@@ -568,6 +568,7 @@ impl SeedEd25519 {
     }
 }
 
+#[derive(Clone)]
 pub struct SecretKeyEd25519(sodiumoxide::crypto::sign::SecretKey);
 
 impl PublicKeyEd25519 {

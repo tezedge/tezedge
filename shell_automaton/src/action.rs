@@ -726,6 +726,7 @@ pub enum Action {
     ),
 
     BakerBlockEndorserPreendorse(BakerBlockEndorserPreendorseAction),
+    BakerBlockEndorserPreendorsementSignInit(BakerBlockEndorserPreendorsementSignInitAction),
     BakerBlockEndorserPreendorsementSignPending(BakerBlockEndorserPreendorsementSignPendingAction),
     BakerBlockEndorserPreendorsementSignSuccess(BakerBlockEndorserPreendorsementSignSuccessAction),
     BakerBlockEndorserPreendorsementInjectPending(
@@ -739,6 +740,7 @@ pub enum Action {
     BakerBlockEndorserPrequorumSuccess(BakerBlockEndorserPrequorumSuccessAction),
 
     BakerBlockEndorserEndorse(BakerBlockEndorserEndorseAction),
+    BakerBlockEndorserEndorsementSignInit(BakerBlockEndorserEndorsementSignInitAction),
     BakerBlockEndorserEndorsementSignPending(BakerBlockEndorserEndorsementSignPendingAction),
     BakerBlockEndorserEndorsementSignSuccess(BakerBlockEndorserEndorsementSignSuccessAction),
     BakerBlockEndorserEndorsementInjectPending(BakerBlockEndorserEndorsementInjectPendingAction),
@@ -764,6 +766,7 @@ pub enum Action {
     BakerBlockBakerComputeProofOfWorkInit(BakerBlockBakerComputeProofOfWorkInitAction),
     BakerBlockBakerComputeProofOfWorkPending(BakerBlockBakerComputeProofOfWorkPendingAction),
     BakerBlockBakerComputeProofOfWorkSuccess(BakerBlockBakerComputeProofOfWorkSuccessAction),
+    BakerBlockBakerSignInit(BakerBlockBakerSignInitAction),
     BakerBlockBakerSignPending(BakerBlockBakerSignPendingAction),
     BakerBlockBakerSignSuccess(BakerBlockBakerSignSuccessAction),
     BakerBlockBakerComputeOperationsPathsInit(BakerBlockBakerComputeOperationsPathsInitAction),
