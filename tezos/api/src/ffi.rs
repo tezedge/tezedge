@@ -7,11 +7,14 @@ use std::{convert::TryFrom, fmt};
 
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
+use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::encoding::fitness::Fitness;
+use tezos_messages::Timestamp;
 use thiserror::Error;
 
 use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, ContextHash, FromBytesError, OperationHash,
-    OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
+    OperationListListHash, OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use tezos_messages::p2p::binary_message::{MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::{
@@ -566,6 +569,8 @@ pub enum ApplyBlockError {
     },
 }
 
+pub type PreapplyBlockError = ApplyBlockError;
+
 // Extracts the parameters from a JSON error coming from the protocol runner like:
 // [{"kind":"permanent","id":"ffi.incomplete_operations","expected":4,"actual":1}]
 // If cannot be parsed, returns 0 as the values.
@@ -814,6 +819,32 @@ impl From<TezosErrorTrace> for FfiJsonEncoderError {
             message: error.trace_json,
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PreapplyBlockRequest {
+    pub chain_id: ChainId,
+    pub protocol_data: Vec<u8>,
+    pub timestamp: Option<i64>,
+    pub operations: Vec<Vec<Operation>>,
+    pub predecessor_header: BlockHeader,
+    pub predecessor_block_metadata_hash: Option<BlockMetadataHash>,
+    pub predecessor_ops_metadata_hash: Option<OperationMetadataListListHash>,
+    pub predecessor_max_operations_ttl: i32,
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PreapplyBlockResponse {
+    pub level: Level,
+    pub proto: u8,
+    pub predecessor: BlockHash,
+    pub timestamp: Timestamp,
+    pub validation_pass: u8,
+    pub operations_hash: OperationListListHash,
+    pub fitness: Fitness,
+    pub context: ContextHash,
+    pub applied_operations: Vec<OperationHash>,
 }
 
 pub type Json = String;
@@ -1115,6 +1146,8 @@ pub enum ProtocolError {
     PreFilterOperationError { reason: PreFilterOperationError },
     #[error("Validate operation error: {reason}")]
     ValidateOperationError { reason: ValidateOperationError },
+    #[error("Preapply block error: {reason}")]
+    PreapplyBlockError { reason: PreapplyBlockError },
     #[error("Protocol rpc call error: {reason}")]
     ProtocolRpcError {
         reason: ProtocolRpcError,

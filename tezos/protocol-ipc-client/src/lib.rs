@@ -346,6 +346,7 @@ impl ProtocolRunnerConnection {
     const DEFAULT_TIMEOUT_VERY_LONG: Duration = Duration::from_secs(60 * 30);
 
     const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(60 * 240);
+    const PREAPPLY_BLOCK_TIMEOUT: Duration = Self::APPLY_BLOCK_TIMEOUT;
     const GET_LATEST_CONTEXT_HASHES_TIMEOUT: Duration = Self::APPLY_BLOCK_TIMEOUT; // Reloading the context from disk might takes a long time
     const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
     const BEGIN_APPLICATION_TIMEOUT: Duration = Self::DEFAULT_TIMEOUT_LONG;
@@ -453,6 +454,20 @@ impl ProtocolRunnerConnection {
             ValidateOperationResponse(result),
             ValidateOperationError,
             Some(Self::VALIDATE_OPERATION_TIMEOUT),
+        )
+    }
+
+    /// Preapply block
+    pub async fn preapply_block(
+        &mut self,
+        request: PreapplyBlockRequest,
+    ) -> Result<PreapplyBlockResponse, ProtocolServiceError> {
+        handle_request!(
+            self.io,
+            PreapplyBlock(request),
+            PreapplyBlockResponse(result),
+            PreapplyBlockError,
+            Some(Self::PREAPPLY_BLOCK_TIMEOUT),
         )
     }
 
