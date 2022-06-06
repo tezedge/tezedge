@@ -7,6 +7,7 @@ use crypto::hash::{
     BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash, ProtocolHash,
 };
 use storage::BlockHeaderWithHash;
+use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::request::RequestId;
@@ -75,6 +76,8 @@ pub struct CurrentHeadRehydrateSuccessAction {
 
     pub pred_block_metadata_hash: Option<BlockMetadataHash>,
     pub pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
+
+    pub operations: Vec<Vec<Operation>>,
 }
 
 impl EnablingCondition<State> for CurrentHeadRehydrateSuccessAction {
@@ -110,6 +113,7 @@ pub struct CurrentHeadUpdateAction {
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
     pub pred_block_metadata_hash: Option<BlockMetadataHash>,
     pub pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
+    pub operations: Vec<Vec<Operation>>,
 }
 
 impl EnablingCondition<State> for CurrentHeadUpdateAction {

@@ -237,6 +237,12 @@ impl ProtocolRunnerServiceWorker {
                     .send(ProtocolRunnerResult::GenesisCommitResultGet((token, res)))
                     .await;
             }
+            ProtocolMessage::PreapplyBlock(req) => {
+                let res = conn.preapply_block(req).await;
+                let _ = channel
+                    .send(ProtocolRunnerResult::PreapplyBlock((token, res)))
+                    .await;
+            }
             ProtocolMessage::ApplyBlockCall(req) => {
                 let res = conn.apply_block(req).await;
                 // TODO: here, if the result is an error, we want to retry
@@ -286,6 +292,12 @@ impl ProtocolRunnerServiceWorker {
                 let res = res.map(cycle_delegates_from_rpc_response);
                 let _ = channel
                     .send(ProtocolRunnerResult::GetCycleDelegates((token, res)))
+                    .await;
+            }
+            ProtocolMessage::ComputePathCall(req) => {
+                let res = conn.compute_path(req).await;
+                let _ = channel
+                    .send(ProtocolRunnerResult::ComputeOperationsPaths((token, res)))
                     .await;
             }
             _other => {
@@ -452,6 +464,9 @@ impl ProtocolRunnerServiceWorker {
                         }
                         ProtocolMessage::InitProtocolContextIpcServer(_) => {
                             ProtocolRunnerResult::InitContextIpcServer((token, Err(err.into())))
+                        }
+                        ProtocolMessage::PreapplyBlock(_) => {
+                            ProtocolRunnerResult::PreapplyBlock((token, Err(err.into())))
                         }
                         ProtocolMessage::ApplyBlockCall(_) => {
                             ProtocolRunnerResult::ApplyBlock((token, Err(err.into())))

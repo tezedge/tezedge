@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{BlockHash, BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash};
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::request::RequestId;
 use crate::service::storage_service::StorageError;
@@ -37,6 +38,8 @@ pub enum CurrentHeadState {
         ops_metadata_hash: Option<OperationMetadataListListHash>,
         pred_block_metadata_hash: Option<BlockMetadataHash>,
         pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
+
+        operations: Vec<Vec<Operation>>,
     },
 
     Rehydrated {
@@ -44,12 +47,15 @@ pub enum CurrentHeadState {
         head_pred: Option<BlockHeaderWithHash>,
 
         payload_hash: Option<BlockPayloadHash>,
+        payload_round: Option<i32>,
         // Needed for mempool prevalidator's begin construction
         // for prevalidation request.
         block_metadata_hash: Option<BlockMetadataHash>,
         ops_metadata_hash: Option<OperationMetadataListListHash>,
         pred_block_metadata_hash: Option<BlockMetadataHash>,
         pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
+
+        operations: Vec<Vec<Operation>>,
 
         /// Stores all applied blocks on last 2 levels.
         applied_blocks: BTreeMap<BlockHash, BlockHeaderWithHash>,
@@ -88,14 +94,19 @@ impl CurrentHeadState {
         .filter(|(_, b)| b.header.level() + 1 >= head.header.level())
         .collect();
 
+        let payload_hash = head.header.payload_hash();
+        let payload_round = head.header.payload_round();
+
         Self::Rehydrated {
             head,
             head_pred,
-            payload_hash: None,
+            payload_hash,
+            payload_round,
             block_metadata_hash: None,
             ops_metadata_hash: None,
             pred_block_metadata_hash: None,
             pred_ops_metadata_hash: None,
+            operations: vec![],
             applied_blocks,
         }
     }
@@ -149,6 +160,13 @@ impl CurrentHeadState {
         self
     }
 
+    pub fn set_operations(&mut self, value: Vec<Vec<Operation>>) -> &mut Self {
+        if let Self::Rehydrated { operations, .. } = self {
+            *operations = value;
+        }
+        self
+    }
+
     pub fn add_applied_block(&mut self, block: &BlockHeaderWithHash) -> &mut Self {
         if let Self::Rehydrated { applied_blocks, .. } = self {
             if !applied_blocks.contains_key(&block.hash) {
@@ -188,6 +206,13 @@ impl CurrentHeadState {
         }
     }
 
+    pub fn payload_round(&self) -> Option<i32> {
+        match self {
+            Self::Rehydrated { payload_round, .. } => payload_round.clone(),
+            _ => None,
+        }
+    }
+
     pub fn round(&self) -> Option<i32> {
         match self {
             Self::Rehydrated { head, .. } => head.header.fitness().round(),
@@ -210,6 +235,33 @@ impl CurrentHeadState {
             Self::Rehydrated {
                 ops_metadata_hash, ..
             } => ops_metadata_hash.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn pred_block_metadata_hash(&self) -> Option<&BlockMetadataHash> {
+        match self {
+            Self::Rehydrated {
+                pred_block_metadata_hash,
+                ..
+            } => pred_block_metadata_hash.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn pred_ops_metadata_hash(&self) -> Option<&OperationMetadataListListHash> {
+        match self {
+            Self::Rehydrated {
+                pred_ops_metadata_hash,
+                ..
+            } => pred_ops_metadata_hash.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub fn operations(&self) -> Option<&Vec<Vec<Operation>>> {
+        match self {
+            Self::Rehydrated { operations, .. } => Some(operations),
             _ => None,
         }
     }
