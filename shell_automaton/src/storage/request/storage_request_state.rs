@@ -5,6 +5,8 @@ use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 
+use tezos_messages::base::signature_public_key::SignaturePublicKey;
+
 use crate::service::storage_service::{
     StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
@@ -50,6 +52,8 @@ pub enum StorageRequestor {
     None,
     Bootstrap,
     BlockApplier,
+
+    BakerBlockBaker(SignaturePublicKey),
 
     // External requestors.
     Peer(#[cfg_attr(feature = "fuzzing", field_mutator(SocketAddrMutator))] SocketAddr),

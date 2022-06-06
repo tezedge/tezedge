@@ -33,8 +33,8 @@ fn is_payload_new(state: &State, baker: &BakerState) -> Option<bool> {
         None => return Some(true),
     };
     Some(
-        locked_payload.level < level
-            || (locked_payload.level == level && round > locked_payload.round),
+        locked_payload.level() < level
+            || (locked_payload.level() == level && round > locked_payload.round()),
     )
 }
 
@@ -49,8 +49,8 @@ fn should_preendorse(state: &State, baker: &BakerState) -> Option<bool> {
         None => return Some(true),
     };
 
-    let can_accept_payload = locked_payload.level < level
-        || locked_payload.payload_hash.eq(payload_hash)
+    let can_accept_payload = locked_payload.level() < level
+        || locked_payload.payload_hash().eq(payload_hash)
         || state.mempool.prequorum.is_reached();
 
     is_payload_new(state, baker).map(|v| v && can_accept_payload)

@@ -77,6 +77,11 @@ use crate::storage::{
 
 use crate::rpc::rpc_effects;
 
+use crate::baker::baker_effects;
+use crate::baker::block_baker::{
+    baker_block_baker_effects, BakerBlockBakerBakeNextLevelAction,
+    BakerBlockBakerBakeNextRoundAction, BakerBlockBakerNextLevelTimeoutSuccessQuorumPendingAction,
+};
 use crate::baker::block_endorser::baker_block_endorser_effects;
 
 fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
@@ -105,6 +110,19 @@ pub fn check_timeouts<S: Service>(store: &mut Store<S>) {
     store.dispatch(PeersCheckTimeoutsInitAction {});
     store.dispatch(BootstrapCheckTimeoutsInitAction {});
     store.dispatch(MempoolTimeoutsInitAction {});
+
+    let bakers = store.state().baker_keys_iter().cloned().collect::<Vec<_>>();
+    for baker in bakers {
+        store.dispatch(BakerBlockBakerNextLevelTimeoutSuccessQuorumPendingAction {
+            baker: baker.clone(),
+        });
+        store.dispatch(BakerBlockBakerBakeNextLevelAction {
+            baker: baker.clone(),
+        });
+        store.dispatch(BakerBlockBakerBakeNextRoundAction {
+            baker: baker.clone(),
+        });
+    }
 }
 
 pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
@@ -200,7 +218,9 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     kv_cycle_meta_effects(store, action);
     kv_operations_effects(store, action);
 
+    baker_effects(store, action);
     baker_block_endorser_effects(store, action);
+    baker_block_baker_effects(store, action);
 
     shutdown_effects(store, action);
 }

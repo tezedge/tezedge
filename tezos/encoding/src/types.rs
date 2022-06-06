@@ -317,7 +317,7 @@ impl<const SIZE: usize> HasEncoding for SizedBytes<SIZE> {
 }
 
 /// Sequence of bytes bounded by maximum size
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct Bytes(Vec<u8>);
 

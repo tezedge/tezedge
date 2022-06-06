@@ -171,6 +171,19 @@ pub struct ValidatedOperations {
     pub outdated: VecDeque<Errored>,
 }
 
+impl ValidatedOperations {
+    pub fn collect_preendorsements(&self) -> Vec<Operation> {
+        self.applied
+            .iter()
+            .filter_map(|op| self.ops.get(&op.hash))
+            .filter(|op| {
+                OperationKind::from_operation_content_raw(op.data().as_ref()).is_preendorsement()
+            })
+            .cloned()
+            .collect()
+    }
+}
+
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct PeerState {
     // we received mempool from the peer and gonna send GetOperations
@@ -562,6 +575,10 @@ impl OperationKind {
             111 => Self::RegisterGlobalConstant,
             _ => Self::Unknown,
         }
+    }
+
+    pub fn is_preendorsement(&self) -> bool {
+        matches!(self, Self::Preendorsement)
     }
 
     pub fn is_consensus_operation(&self) -> bool {
