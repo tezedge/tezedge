@@ -4,7 +4,14 @@
 use crate::service::baker_service::{BakerService, BakerWorkerMessage};
 use crate::{Action, ActionWithMeta, Service, Store};
 
-use super::block_baker::{BakerBlockBakerComputeProofOfWorkSuccessAction, BakerBlockBakerState};
+use super::block_baker::{
+    BakerBlockBakerComputeProofOfWorkSuccessAction, BakerBlockBakerSignSuccessAction,
+    BakerBlockBakerState,
+};
+use super::block_endorser::{
+    BakerBlockEndorserEndorsementSignSuccessAction,
+    BakerBlockEndorserPreendorsementSignSuccessAction, BakerBlockEndorserState,
+};
 
 pub fn baker_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
@@ -33,6 +40,76 @@ where
                             baker,
                             proof_of_work_nonce: nonce.clone(),
                         });
+                    }
+                    BakerWorkerMessage::PreendorsementSign(result) => {
+                        let baker = bakers_iter
+                            .find(|(_, v)| match &v.block_endorser {
+                                BakerBlockEndorserState::PreendorsementSignPending {
+                                    req_id,
+                                    ..
+                                } => result_req_id == *req_id,
+                                _ => false,
+                            })
+                            .map(|(baker, _)| baker.clone());
+                        let baker = match baker {
+                            Some(v) => v,
+                            None => continue,
+                        };
+                        match result {
+                            Ok(signature) => {
+                                store.dispatch(BakerBlockEndorserPreendorsementSignSuccessAction {
+                                    baker,
+                                    signature,
+                                });
+                            }
+                            Err(err) => todo!("PreendorsementSignError: {:?}", err),
+                        }
+                    }
+                    BakerWorkerMessage::EndorsementSign(result) => {
+                        let baker = bakers_iter
+                            .find(|(_, v)| match &v.block_endorser {
+                                BakerBlockEndorserState::EndorsementSignPending {
+                                    req_id, ..
+                                } => result_req_id == *req_id,
+                                _ => false,
+                            })
+                            .map(|(baker, _)| baker.clone());
+                        let baker = match baker {
+                            Some(v) => v,
+                            None => continue,
+                        };
+                        match result {
+                            Ok(signature) => {
+                                store.dispatch(BakerBlockEndorserEndorsementSignSuccessAction {
+                                    baker,
+                                    signature,
+                                });
+                            }
+                            Err(err) => todo!("EndorsementSignError: {:?}", err),
+                        }
+                    }
+                    BakerWorkerMessage::BlockSign(result) => {
+                        let baker = bakers_iter
+                            .find(|(_, v)| match &v.block_baker {
+                                BakerBlockBakerState::SignPending { req_id, .. } => {
+                                    result_req_id == *req_id
+                                }
+                                _ => false,
+                            })
+                            .map(|(baker, _)| baker.clone());
+                        let baker = match baker {
+                            Some(v) => v,
+                            None => continue,
+                        };
+                        match result {
+                            Ok(signature) => {
+                                store.dispatch(BakerBlockBakerSignSuccessAction {
+                                    baker,
+                                    signature,
+                                });
+                            }
+                            Err(err) => todo!("BlockSignError: {:?}", err),
+                        }
                     }
                 }
             }

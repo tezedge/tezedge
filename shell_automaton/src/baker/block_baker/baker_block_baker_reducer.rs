@@ -515,6 +515,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                     } => {
                         baker.block_baker = BakerBlockBakerState::SignPending {
                             time: action.time_as_nanos(),
+                            req_id: content.req_id,
                             header: header.clone(),
                             operations: operations.clone(),
                         };

@@ -16,14 +16,14 @@ use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
     BakerBlockEndorserEndorseAction, BakerBlockEndorserEndorsementInjectPendingAction,
-    BakerBlockEndorserEndorsementInjectSuccessAction,
-    BakerBlockEndorserEndorsementSignPendingAction, BakerBlockEndorserEndorsementSignSuccessAction,
-    BakerBlockEndorserPayloadLockedAction, BakerBlockEndorserPayloadOutdatedAction,
+    BakerBlockEndorserEndorsementInjectSuccessAction, BakerBlockEndorserEndorsementSignInitAction,
+    BakerBlockEndorserEndorsementSignPendingAction, BakerBlockEndorserPayloadLockedAction,
+    BakerBlockEndorserPayloadOutdatedAction,
     BakerBlockEndorserPayloadUnlockedAsPreQuorumReachedAction, BakerBlockEndorserPreendorseAction,
     BakerBlockEndorserPreendorsementInjectPendingAction,
     BakerBlockEndorserPreendorsementInjectSuccessAction,
-    BakerBlockEndorserPreendorsementSignPendingAction,
-    BakerBlockEndorserPreendorsementSignSuccessAction, BakerBlockEndorserPrequorumPendingAction,
+    BakerBlockEndorserPreendorsementSignInitAction,
+    BakerBlockEndorserPreendorsementSignPendingAction, BakerBlockEndorserPrequorumPendingAction,
     BakerBlockEndorserPrequorumSuccessAction, BakerBlockEndorserRightsGetInitAction,
     BakerBlockEndorserRightsGetPendingAction, BakerBlockEndorserRightsGetSuccessAction,
     BakerBlockEndorserRightsNoRightsAction, BakerBlockEndorserState, EndorsementWithForgedBytes,
@@ -147,22 +147,37 @@ where
                 block_payload_hash,
             };
             let preendorsement = InlinedPreendorsementContents::Preendorsement(preendorsement);
-            store.dispatch(BakerBlockEndorserPreendorsementSignPendingAction {
+            store.dispatch(BakerBlockEndorserPreendorsementSignInitAction {
                 baker: content.baker.clone(),
                 operation: PreendorsementWithForgedBytes::new(pred_hash, preendorsement).unwrap(),
             });
         }
+        Action::BakerBlockEndorserPreendorsementSignInit(content) => {
+            let chain_id = &store.state.get().config.chain_id;
+            let req_id = store.service.baker().preendrosement_sign(
+                &content.baker,
+                chain_id,
+                &content.operation,
+            );
+
+            store.dispatch(BakerBlockEndorserPreendorsementSignPendingAction {
+                baker: content.baker.clone(),
+                operation: content.operation.clone(),
+                req_id,
+            });
+        }
         Action::BakerBlockEndorserPreendorsementSignPending(content) => {
             let chain_id = &store.state.get().config.chain_id;
-            let signature = store
-                .service
-                .baker()
-                .preendrosement_sign(&content.baker, chain_id, &content.operation)
-                .unwrap();
+            let req_id = store.service.baker().preendrosement_sign(
+                &content.baker,
+                chain_id,
+                &content.operation,
+            );
 
-            store.dispatch(BakerBlockEndorserPreendorsementSignSuccessAction {
+            store.dispatch(BakerBlockEndorserPreendorsementSignPendingAction {
                 baker: content.baker.clone(),
-                signature,
+                operation: content.operation.clone(),
+                req_id,
             });
         }
         Action::BakerBlockEndorserPreendorsementSignSuccess(content) => {
@@ -335,22 +350,23 @@ where
             };
             let endorsement = InlinedEndorsementMempoolContents::Endorsement(endorsement);
 
-            store.dispatch(BakerBlockEndorserEndorsementSignPendingAction {
+            store.dispatch(BakerBlockEndorserEndorsementSignInitAction {
                 baker: content.baker.clone(),
                 operation: EndorsementWithForgedBytes::new(pred_hash, endorsement).unwrap(),
             });
         }
-        Action::BakerBlockEndorserEndorsementSignPending(content) => {
+        Action::BakerBlockEndorserEndorsementSignInit(content) => {
             let chain_id = &store.state.get().config.chain_id;
-            let signature = store
-                .service
-                .baker()
-                .endrosement_sign(&content.baker, chain_id, &content.operation)
-                .unwrap();
+            let req_id = store.service.baker().endrosement_sign(
+                &content.baker,
+                chain_id,
+                &content.operation,
+            );
 
-            store.dispatch(BakerBlockEndorserEndorsementSignSuccessAction {
+            store.dispatch(BakerBlockEndorserEndorsementSignPendingAction {
                 baker: content.baker.clone(),
-                signature,
+                operation: content.operation.clone(),
+                req_id,
             });
         }
         Action::BakerBlockEndorserEndorsementSignSuccess(content) => {
