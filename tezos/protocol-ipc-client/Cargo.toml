@@ -11,7 +11,7 @@ rust-version = "1.58"
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
-tokio = { version = "1.12", features = ["full"] }
+tokio = { version = "1.19", features = ["full"] }
 nix = "0.23"
 fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
 
