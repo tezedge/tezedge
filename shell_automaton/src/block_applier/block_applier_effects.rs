@@ -225,6 +225,7 @@ where
                     payload_hash,
                     pred_block_metadata_hash,
                     pred_ops_metadata_hash,
+                    block_operations,
                     ..
                 } => {
                     let chain_id = store.state().config.chain_id.clone();
@@ -247,6 +248,7 @@ where
                     let ops_metadata_hash = block_additional_data.ops_metadata_hash().clone();
                     let pred_block_metadata_hash = pred_block_metadata_hash.clone();
                     let pred_ops_metadata_hash = pred_ops_metadata_hash.clone();
+                    let operations = block_operations.clone();
                     store.dispatch(CurrentHeadUpdateAction {
                         new_head,
                         protocol,
@@ -256,6 +258,7 @@ where
                         ops_metadata_hash,
                         pred_block_metadata_hash,
                         pred_ops_metadata_hash,
+                        operations,
                     });
                 }
                 _ => return,

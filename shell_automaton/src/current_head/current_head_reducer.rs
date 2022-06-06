@@ -34,9 +34,10 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 ops_metadata_hash: content.ops_metadata_hash.clone(),
                 pred_block_metadata_hash: content.pred_block_metadata_hash.clone(),
                 pred_ops_metadata_hash: content.pred_ops_metadata_hash.clone(),
+                operations: content.operations.clone(),
             };
         }
-        Action::CurrentHeadRehydrated(_) => match &state.current_head {
+        Action::CurrentHeadRehydrated(_) => match &mut state.current_head {
             CurrentHeadState::RehydrateSuccess {
                 head,
                 head_pred,
@@ -44,6 +45,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 ops_metadata_hash,
                 pred_block_metadata_hash,
                 pred_ops_metadata_hash,
+                operations,
                 ..
             } => {
                 let mut new_head = CurrentHeadState::rehydrated(head.clone(), head_pred.clone());
@@ -51,7 +53,8 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                     .set_block_metadata_hash(block_metadata_hash.clone())
                     .set_ops_metadata_hash(ops_metadata_hash.clone())
                     .set_pred_block_metadata_hash(pred_block_metadata_hash.clone())
-                    .set_pred_ops_metadata_hash(pred_ops_metadata_hash.clone());
+                    .set_pred_ops_metadata_hash(pred_ops_metadata_hash.clone())
+                    .set_operations(std::mem::take(operations));
                 state.current_head = new_head;
             }
             _ => {}
@@ -80,15 +83,18 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 .filter(|pred| &pred.hash == head.header.predecessor())
                 .or_else(|| applied_blocks.get(head.header.predecessor()))
                 .cloned();
+            let payload_round = head.header.payload_round();
 
             state.current_head = CurrentHeadState::Rehydrated {
                 head,
                 head_pred,
                 payload_hash: content.payload_hash.clone(),
+                payload_round,
                 block_metadata_hash: content.block_metadata_hash.clone(),
                 ops_metadata_hash: content.ops_metadata_hash.clone(),
                 pred_block_metadata_hash: content.pred_block_metadata_hash.clone(),
                 pred_ops_metadata_hash: content.pred_ops_metadata_hash.clone(),
+                operations: content.operations.clone(),
                 applied_blocks,
             };
         }

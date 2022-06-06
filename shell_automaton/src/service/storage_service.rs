@@ -120,6 +120,7 @@ pub struct CurrentHeadData {
     pub pred: Option<BlockHeaderWithHash>,
     pub additional_data: BlockAdditionalData,
     pub pred_additional_data: Option<BlockAdditionalData>,
+    pub operations: Vec<Vec<Operation>>,
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
@@ -403,11 +404,18 @@ impl StorageServiceDefault {
                                 .map(|pred| block_meta_storage.get_additional_data(&pred.hash))
                                 .transpose()?
                                 .flatten();
+                            let operations =
+                                operations_storage.get_operations(&head.hash).map(|ops| {
+                                    ops.into_iter()
+                                        .map(|v| v.as_operations())
+                                        .collect::<Vec<_>>()
+                                })?;
                             Ok(CurrentHeadData {
                                 head,
                                 pred,
                                 additional_data,
                                 pred_additional_data,
+                                operations,
                             })
                         });
                     match result {
