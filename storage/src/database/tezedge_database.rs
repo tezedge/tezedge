@@ -61,6 +61,9 @@ pub trait KVStore<S: KeyValueSchema> {
     /// # Arguments
     /// * `batch` - WriteBatch containing all batched writes to be written to DB
     fn write_batch(&self, batch: Vec<(S::Key, S::Value)>) -> Result<(), Error>;
+
+    /// Flush data to disk
+    fn flush(&self) -> Result<(), Error>;
 }
 
 pub trait KVStoreWithSchemaIterator<S: KeyValueSchema> {
@@ -234,6 +237,11 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
         }
 
         self.backend.write_batch(S::column_name(), generic_batch)?;
+        Ok(())
+    }
+
+    fn flush(&self) -> Result<(), Error> {
+        self.backend.flush()?;
         Ok(())
     }
 }

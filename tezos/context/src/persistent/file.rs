@@ -160,13 +160,29 @@ fn get_custom_flags() -> i32 {
     0
 }
 
+fn remove_file_when_empty(filepath: &Path) -> Result<(), std::io::Error> {
+    let metadata = std::fs::metadata(filepath)?;
+
+    if metadata.len() <= HEADER_LENGTH as u64 {
+        // The file might be empty or contains an old header
+        std::fs::remove_file(filepath)?;
+    }
+
+    Ok(())
+}
+
 impl<const T: TaggedFile> File<T> {
     pub fn try_new(base_path: &str, read_only: bool) -> Result<Self, OpenFileError> {
         std::fs::create_dir_all(&base_path)?;
 
         let file_type: FileType = T.into();
-        let append_mode = !matches!(file_type, FileType::Sizes);
+        let filepath = PathBuf::from(base_path).join(file_type.get_path());
 
+        if filepath.exists() && !read_only {
+            remove_file_when_empty(&filepath)?;
+        }
+
+        let append_mode = !matches!(file_type, FileType::Sizes);
         let mut options = OpenOptions::new();
 
         if read_only {
@@ -185,7 +201,7 @@ impl<const T: TaggedFile> File<T> {
                 .custom_flags(get_custom_flags());
         }
 
-        let mut file = options.open(PathBuf::from(base_path).join(file_type.get_path()))?;
+        let mut file = options.open(&filepath)?;
 
         // We use seek, in cases metadatas were not synchronized
         let offset = file.seek(SeekFrom::End(0))?;
@@ -402,7 +418,20 @@ impl<const T: TaggedFile> File<T> {
     ) -> Result<(), io::Error> {
         use std::os::unix::prelude::FileExt;
 
-        self.file.read_exact_at(buffer, offset.as_u64())
+        match self.file.read_exact_at(buffer, offset.as_u64()) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let buf_len = buffer.len();
+                elog!(
+                    "read_exact_at file={:?} offset={:?} length={:?} err={:?}",
+                    T,
+                    offset,
+                    buf_len,
+                    e
+                );
+                Err(e)
+            }
+        }
     }
 
     pub fn read_at_most<'a>(
@@ -419,7 +448,19 @@ impl<const T: TaggedFile> File<T> {
             buffer = &mut buffer[..buf_len - (end - eof)];
         }
 
-        self.read_exact_at(buffer, offset)?;
+        match self.read_exact_at(buffer, offset) {
+            Ok(()) => {}
+            Err(e) => {
+                elog!(
+                    "read_at_most file={:?} offset={:?} length={:?} err={:?}",
+                    T,
+                    offset,
+                    buf_len,
+                    e
+                );
+                return Err(e);
+            }
+        }
 
         Ok(buffer)
     }

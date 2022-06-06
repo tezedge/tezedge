@@ -245,6 +245,15 @@ impl BlockStorage {
             })
             .collect()
     }
+
+    pub fn flush(&self) -> Result<(), StorageError> {
+        // The commit log must be flushed/synced before the block storage.
+        // If one of the 2 calls fail, the commit log would contain some garbage,
+        // while the block storage pointers would still be valid.
+        self.clog.sync()?;
+        self.primary_index.flush()?;
+        Ok(())
+    }
 }
 
 impl BlockStorageReader for BlockStorage {
@@ -451,6 +460,10 @@ impl BlockPrimaryIndex {
             .find(IteratorMode::Start)?
             .map(|result| Ok(<Self as KeyValueSchema>::Key::decode(&result?.0)?))
             .collect()
+    }
+
+    fn flush(&self) -> Result<(), StorageError> {
+        self.kv.flush().map_err(StorageError::from)
     }
 }
 

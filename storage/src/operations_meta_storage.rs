@@ -136,11 +136,11 @@ impl KVStoreKeyValueSchema for OperationsMetaStorage {
 pub fn merge_meta_value(
     _new_key: &[u8],
     existing_val: Option<&[u8]>,
-    operands: &mut MergeOperands,
+    operands: &MergeOperands,
 ) -> Option<Vec<u8>> {
     let mut result = existing_val.map(|v| v.to_vec());
 
-    for op in operands {
+    for op in operands.iter() {
         match result {
             Some(ref mut val) => {
                 debug_assert_eq!(

@@ -94,8 +94,8 @@ impl CommitLog {
     }
 
     /// Flushes data to disc
-    pub fn flush(&mut self) -> Result<(), CommitLogError> {
-        self.data_file.flush()?;
+    pub fn sync(&mut self) -> Result<(), CommitLogError> {
+        self.data_file.sync_data()?;
         Ok(())
     }
 }
@@ -173,6 +173,9 @@ pub trait CommitLogWithSchema<S: CommitLogSchema> {
 
     /// Retrieve a stored record.
     fn get(&self, location: &Location) -> Result<S::Value, CommitLogError>;
+
+    /// Flush to disk.
+    fn sync(&self) -> Result<(), CommitLogError>;
 }
 
 impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
@@ -199,6 +202,20 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let bytes = cl.read(location.0, location.1)?;
         let value = S::Value::decode(&bytes)?;
         Ok(value)
+    }
+
+    fn sync(&self) -> Result<(), CommitLogError> {
+        let cl = self
+            .cl_handle(S::name())?
+            .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
+
+        let mut cl = cl.write().map_err(|e| CommitLogError::RwLockPoisonError {
+            error: e.to_string(),
+        })?;
+
+        cl.sync()?;
+
+        Ok(())
     }
 }
 
@@ -298,7 +315,7 @@ impl CommitLogs {
                     .map_err(|e| CommitLogError::RwLockPoisonError {
                         error: e.to_string(),
                     })?;
-            match commit_log.flush() {
+            match commit_log.sync() {
                 Ok(_) => {
                     slog::debug!(&self.log, "Successfully flushed commit log"; "commit_log_num" => (commit_log_idx + 1), "commit_log_name" => commit_log_name, "data_file_path" => format!("{:?}", commit_log.data_file_path))
                 }

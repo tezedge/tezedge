@@ -10,7 +10,7 @@ use crate::{
     OCamlContextGetKeyValuesByPrefixRequest, OCamlContextGetTreeByPrefixRequest,
     OCamlCycleRollsOwnerSnapshot, OCamlDumpContextRequest, OCamlGenesisChain,
     OCamlGenesisResultDataParams, OCamlHelpersPreapplyBlockRequest, OCamlInitProtocolContextParams,
-    OCamlJsonEncodeApplyBlockOperationsMetadataParams,
+    OCamlIntegrityCheckContextRequest, OCamlJsonEncodeApplyBlockOperationsMetadataParams,
     OCamlJsonEncodeApplyBlockResultMetadataParams, OCamlOperation, OCamlOperationShellHeader,
     OCamlPatchContext, OCamlProtocolMessage, OCamlProtocolOverrides, OCamlProtocolRpcRequest,
     OCamlRestoreContextRequest, OCamlRpcRequest, OCamlTezosContextConfiguration,
@@ -55,8 +55,9 @@ use tezos_messages::p2p::encoding::{
 use tezos_protocol_ipc_messages::{
     ContextGetKeyFromHistoryRequest, ContextGetKeyValuesByPrefixRequest,
     ContextGetTreeByPrefixRequest, DumpContextRequest, GenesisResultDataParams,
-    InitProtocolContextParams, JsonEncodeApplyBlockOperationsMetadataParams,
-    JsonEncodeApplyBlockResultMetadataParams, ProtocolMessage, RestoreContextRequest,
+    InitProtocolContextParams, IntegrityCheckContextRequest,
+    JsonEncodeApplyBlockOperationsMetadataParams, JsonEncodeApplyBlockResultMetadataParams,
+    ProtocolMessage, RestoreContextRequest,
 };
 
 // Hashes
@@ -503,6 +504,13 @@ impl_to_ocaml_record! {
     }
 }
 
+impl_to_ocaml_record! {
+    IntegrityCheckContextRequest => OCamlIntegrityCheckContextRequest {
+        context_path: String,
+        auto_repair: bool,
+    }
+}
+
 unsafe impl<'a> ToOCaml<OCamlBlockHeaderShellHeader> for FfiBlockHeaderShellHeader<'a> {
     fn to_ocaml<'gc>(&self, cr: &'gc mut OCamlRuntime) -> OCaml<'gc, OCamlBlockHeaderShellHeader> {
         ocaml_alloc_record! {
@@ -575,6 +583,7 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::ContextGetTreeByPrefix(req: OCamlContextGetTreeByPrefixRequest),
         ProtocolMessage::DumpContext(req: OCamlDumpContextRequest),
         ProtocolMessage::RestoreContext(req: OCamlRestoreContextRequest),
+        ProtocolMessage::IntegrityCheckContext(req: OCamlIntegrityCheckContextRequest),
         ProtocolMessage::ContextGetLatestContextHashes(req: OCamlInt),
         ProtocolMessage::GetContextRawBytes(req: OCamlProtocolRpcRequest),
         ProtocolMessage::GetEndorsingRights(req: OCamlProtocolRpcRequest),
