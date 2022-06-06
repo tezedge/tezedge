@@ -1,17 +1,20 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-//! Big integration which compares two nodes for the same rpc result
+//! Integration test that compares the node's reward calculations to the one of an indexer (currently only tzkt as tzstats seems to have a bug in it's rewards' response)
+//!
+//! Note: You require to run a synched TezEdge node on ithacanet
 //!
 //! usage:
 //!
 //! ```
-//!     IGNORE_PATH_PATTERNS=/context/raw/bytes FROM_BLOCK_HEADER=0 TO_BLOCK_HEADER=8100 NODE_RPC_CONTEXT_ROOT_1=http://127.0.0.1:16732 NODE_RPC_CONTEXT_ROOT_2=http://127.0.0.1:18888 target/release/deps/integration_tests-4a5eeedb180cbb20 --ignored test_rpc_compare -- --nocapture
+//!     FROM_CYCLE=100 TO_CYCLE=153 NODE_RPC_CONTEXT_ROOT_1=http://116.202.128.230:18732 cargo test --release reward_distribution_tests -- --ignored --nocapture test_rewards_distribution
 //! ```
 
 use std::collections::BTreeMap;
+use std::env;
 use std::str::FromStr;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use anyhow::format_err;
 use hyper::body::Buf;
@@ -19,62 +22,56 @@ use hyper::Client;
 use hyper_tls::HttpsConnector;
 use num::{BigInt, BigRational};
 use serde::Deserialize;
+use url::Url;
 
 fn client() -> Client<hyper::client::HttpConnector, hyper::Body> {
     Client::new()
 }
 
+fn node_rpc_context_root_1() -> String {
+    let node_url = env::var("NODE_RPC_CONTEXT_ROOT_1")
+        .expect("env variable 'NODE_RPC_CONTEXT_ROOT_1' should be set");
+    Url::parse(&node_url).expect("invalid url").to_string()
+}
+
+fn from_cycle() -> i32 {
+    env::var("FROM_CYCLE")
+        .unwrap_or_else(|_| panic!("FROM_CYCLE env variable is missing"))
+        .parse()
+        .unwrap_or_else(|_| panic!("FROM_CYCLE env variable can not be parsed as a number"))
+}
+
+fn to_cycle() -> i32 {
+    env::var("TO_CYCLE")
+        .unwrap_or_else(|_| panic!("TO_CYCLE env variable is missing"))
+        .parse()
+        .unwrap_or_else(|_| panic!("TO_CYCLE env variable can not be parsed as a number"))
+}
+
 #[ignore]
 #[tokio::test]
 async fn test_rewards_distribution() {
-    // let cycle = 124;
+    let cycles = from_cycle()..=to_cycle();
 
-    // Note (ithacanet): all of these cycles have snapshot_index at 15 (the max value)
-    // For some reason tzkt do not have the right frozen balances corresponding to this value
-    // In other words https://api.ithacanet.tzkt.io/v1/cycles/{cycle} returns the correct snapshot
-    // level and index, but when we check https://api.ithacanet.tzkt.io/v1/rewards/split/{delegate}/{cycle}
-    // the balances differ from the block on snapshot level reported by the former call
-    let exclude = [];
-    // let exclude = [25, 68, 85, 86, 98, 105, 115];
-
-    // Tzstats not returning delegators for tz1MeT8NACB8Q4uV9dPQ3YxXBmYgapbxQxQ5 in 31? Investigate...
-    // Tzstats incosistency in cycle 81: Comparing cycle 81 delegate tz1NiaviJwtMbpEcNqSP6neeoBYj8Brb3QPv
-
-    // let tzstats_exclude = [81];
-    // let exclude_delegates = ["tz1MeT8NACB8Q4uV9dPQ3YxXBmYgapbxQxQ5"];
-
-    let cycles = 25..=153;
-    // let cycles = 25..=25;
+    let tezedge_url = node_rpc_context_root_1();
 
     // Tzkt
     for cycle in cycles {
-        if exclude.contains(&cycle) {
-            println!("Excluding {cycle}");
-        } else {
-            let tezedge_reward = get_tezedge_rewards(cycle).await.unwrap();
-            // let delegates: Vec<String> = tezedge_reward.keys().cloned().collect();
+        let tezedge_reward = get_tezedge_rewards(cycle, &tezedge_url).await.unwrap();
 
-            // for delegate in delegates {
-            //     println!("Comparing cycle {cycle} delegate {delegate}");
-            //     let tzkt_response = get_tzkt_rewards_split(cycle, &delegate).await.unwrap();
-            //     let tezedge_delegate_split = tezedge_reward.get(&delegate).unwrap();
+        for reward in tezedge_reward {
+            println!("Comparing cycle {cycle} delegate {}", reward.address);
+            let tzkt_response = get_tzkt_rewards_split(cycle, &reward.address)
+                .await
+                .unwrap();
 
-            //     compare_rewards(tzkt_response, tezedge_delegate_split);
-            // }
-            for reward in tezedge_reward {
-                println!("Comparing cycle {cycle} delegate {}", reward.address);
-                let tzkt_response = get_tzkt_rewards_split(cycle, &reward.address)
-                    .await
-                    .unwrap();
-                // let tezedge_delegate_split = tezedge_reward.get(&delegate).unwrap();
-
-                compare_rewards(tzkt_response, reward.delegator_rewards);
-            }
+            compare_rewards(tzkt_response, reward.delegator_rewards);
         }
 
         println!();
     }
 
+    // Note: Enable once tzstats bug is resolved
     // Tzstats
     // for cycle in cycles {
     //     if tzstats_exclude.contains(&cycle) {
@@ -106,11 +103,6 @@ async fn test_rewards_distribution() {
 
     //     println!();
     // }
-
-    // let res = get_tzkt_rewards_split(124, "tz1RuHDSj9P7mNNhfKxsyLGRDahTX5QD1DdP").await;
-
-    // println!("Res: {:#?}", res);
-    panic!("Force fail");
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -136,26 +128,16 @@ struct IndexerDelegatorInfo {
 #[derive(Clone, Debug, Deserialize)]
 struct TzstatsRewardsResponse {
     total_income: i64,
-    total_loss: i64,
     staking_balance: i64,
     delegators: Vec<IndexerDelegatorInfo>,
 }
 
 type TezedgeRewardsResponse = Vec<TezedgeDelegateRewards>;
-// pub type TezedgeDelegatorRewardsInt = BTreeMap<String, BigInt>;
 
 #[derive(Clone, Debug, Deserialize)]
 struct TezedgeDelegatorRewards {
     address: String,
-    balance: String,
     reward: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct TezedgeDelegatorRewardsInt {
-    address: String,
-    balance: BigInt,
-    reward: BigInt,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -291,7 +273,7 @@ async fn get_tzkt_rewards_split(
     let https = HttpsConnector::new();
     let client = hyper::Client::builder().build::<_, hyper::Body>(https);
     let start = Instant::now();
-    let (status_code, body, response_time) = match client.get(url).await {
+    let (status_code, body, _) = match client.get(url).await {
         Ok(res) => {
             let finished = start.elapsed();
             (
@@ -328,18 +310,22 @@ async fn get_tzkt_rewards_split(
 }
 
 // TODO: duplicate body...
-async fn get_tezedge_rewards(cycle: i32) -> Result<TezedgeRewardsResponse, anyhow::Error> {
-    // https://api.ithacanet.tzkt.io/v1/rewards/split/tz1RuHDSj9P7mNNhfKxsyLGRDahTX5QD1DdP/124
-    const TEZEDGE_REWARDS_RPC_ENDOPOINT: &str = "http://116.202.128.230:29911/dev/rewards/cycle/";
+async fn get_tezedge_rewards(
+    cycle: i32,
+    node_url: &str,
+) -> Result<TezedgeRewardsResponse, anyhow::Error> {
+    const TEZEDGE_REWARDS_RPC_ENDOPOINT: &str = "dev/rewards/cycle";
 
-    let url_as_string = format!("{}/{}", TEZEDGE_REWARDS_RPC_ENDOPOINT, cycle);
+    let url_as_string = format!("{}{}/{}", node_url, TEZEDGE_REWARDS_RPC_ENDOPOINT, cycle);
     let url = url_as_string
         .parse()
         .unwrap_or_else(|_| panic!("Invalid URL: {}", &url_as_string));
 
+    println!("Request: {url_as_string}");
+
     let client = client();
     let start = Instant::now();
-    let (status_code, body, response_time) = match client.get(url).await {
+    let (status_code, body, _) = match client.get(url).await {
         Ok(res) => {
             let finished = start.elapsed();
             (
@@ -376,6 +362,7 @@ async fn get_tezedge_rewards(cycle: i32) -> Result<TezedgeRewardsResponse, anyho
 }
 
 // TODO: duplicate body...
+#[allow(dead_code)]
 async fn get_tzstats_rewards(
     cycle: i32,
     delegate: &str,
@@ -394,7 +381,7 @@ async fn get_tzstats_rewards(
     let https = HttpsConnector::new();
     let client = hyper::Client::builder().build::<_, hyper::Body>(https);
     let start = Instant::now();
-    let (status_code, body, response_time) = match client.get(url).await {
+    let (status_code, body, _) = match client.get(url).await {
         Ok(res) => {
             let finished = start.elapsed();
             (
