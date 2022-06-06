@@ -9,6 +9,8 @@ use tezos_messages::protocol::proto_012::operation::{
     InlinedEndorsementMempoolContents, InlinedPreendorsementContents,
 };
 
+use crate::request::RequestId;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OperationWithForgedBytes<T> {
     branch: BlockHash,
@@ -87,6 +89,7 @@ pub enum BakerBlockEndorserState {
     },
     PreendorsementSignPending {
         time: u64,
+        req_id: RequestId,
         first_slot: u16,
         operation: PreendorsementWithForgedBytes,
     },
@@ -126,6 +129,7 @@ pub enum BakerBlockEndorserState {
     },
     EndorsementSignPending {
         time: u64,
+        req_id: RequestId,
         first_slot: u16,
         operation: EndorsementWithForgedBytes,
     },

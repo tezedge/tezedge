@@ -165,6 +165,7 @@ pub fn baker_block_endorser_reducer(state: &mut State, action: &ActionWithMeta) 
                 };
                 baker.block_endorser = BakerBlockEndorserState::PreendorsementSignPending {
                     time: action.time_as_nanos(),
+                    req_id: content.req_id,
                     first_slot,
                     operation: content.operation.clone(),
                 };
@@ -295,6 +296,7 @@ pub fn baker_block_endorser_reducer(state: &mut State, action: &ActionWithMeta) 
                 };
                 baker.block_endorser = BakerBlockEndorserState::EndorsementSignPending {
                     time: action.time_as_nanos(),
+                    req_id: content.req_id,
                     first_slot,
                     operation: content.operation.clone(),
                 };

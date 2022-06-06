@@ -25,16 +25,46 @@ use crate::baker::block_endorser::{EndorsementWithForgedBytes, PreendorsementWit
 use crate::request::RequestId;
 
 #[derive(Error, From, Debug)]
-pub enum EncodeError {
+pub enum BakerSignError {
     #[error("{_0}")]
     Bin(BinError),
     #[error("{_0}")]
     Crypto(CryptoError),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+pub type BakerSignResult = Result<Signature, BakerSignError>;
+
+#[derive(Debug)]
 pub enum BakerWorkerMessage {
     ComputeProofOfWork(SizedBytes<8>),
+    PreendorsementSign(BakerSignResult),
+    EndorsementSign(BakerSignResult),
+    BlockSign(BakerSignResult),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+enum BakerSignTarget {
+    Preendorsement,
+    Endorsement,
+    Block,
+}
+
+impl BakerSignTarget {
+    fn watermark_tag(&self) -> u8 {
+        match self {
+            Self::Preendorsement => 0x12,
+            Self::Endorsement => 0x13,
+            Self::Block => 0x11,
+        }
+    }
+
+    fn baker_worker_message(self, result: BakerSignResult) -> BakerWorkerMessage {
+        match self {
+            Self::Preendorsement => BakerWorkerMessage::PreendorsementSign(result),
+            Self::Endorsement => BakerWorkerMessage::EndorsementSign(result),
+            Self::Block => BakerWorkerMessage::BlockSign(result),
+        }
+    }
 }
 
 pub trait BakerService {
@@ -46,21 +76,21 @@ pub trait BakerService {
         baker: &SignaturePublicKey,
         chain_id: &ChainId,
         operation: &PreendorsementWithForgedBytes,
-    ) -> Result<Signature, EncodeError>;
+    ) -> RequestId;
 
     fn endrosement_sign(
         &mut self,
         baker: &SignaturePublicKey,
         chain_id: &ChainId,
         operation: &EndorsementWithForgedBytes,
-    ) -> Result<Signature, EncodeError>;
+    ) -> RequestId;
 
     fn block_sign(
         &mut self,
         baker: &SignaturePublicKey,
         chain_id: &ChainId,
         block_header: &BlockHeader,
-    ) -> Result<Signature, EncodeError>;
+    ) -> RequestId;
 
     fn compute_proof_of_work(
         &mut self,
@@ -100,6 +130,7 @@ pub struct BakerServiceDefault {
     worker_channel: Channel<(RequestId, BakerWorkerMessage)>,
 }
 
+#[derive(Clone)]
 pub enum BakerSigner {
     Local { secret_key: SecretKeyEd25519 },
 }
@@ -128,30 +159,50 @@ impl BakerServiceDefault {
             .insert(public_key, BakerSigner::Local { secret_key });
     }
 
+    pub fn get_baker(&self, key: &SignaturePublicKey) -> &BakerSigner {
+        self.bakers
+            .get(key)
+            .expect("Missing signer for baker: {key}")
+    }
+
     pub fn get_baker_mut(&mut self, key: &SignaturePublicKey) -> &mut BakerSigner {
         self.bakers
             .get_mut(key)
-            .expect("Missing signed for baker: {key}")
+            .expect("Missing signer for baker: {key}")
     }
 
-    pub fn sign(
+    fn sign(
         &mut self,
         baker: &SignaturePublicKey,
-        watermark_tag: u8,
+        target: BakerSignTarget,
         chain_id: &ChainId,
         value_bytes: &[u8],
-    ) -> Result<Signature, EncodeError> {
-        let watermark_bytes = {
+    ) -> RequestId {
+        let req_id = self.new_req_id();
+
+        let watermark_tag = target.watermark_tag();
+        let watermark_bytes = Result::<(), BakerSignError>::Ok(()).and_then(|_| {
             let mut v = Vec::with_capacity(5);
             v.push(watermark_tag);
             chain_id.bin_write(&mut v)?;
-            v
-        };
-        match self.get_baker_mut(baker) {
+            Ok(v)
+        });
+        let value_bytes = value_bytes.to_vec();
+        let baker = self.get_baker(baker).clone();
+
+        let mut sender = self.worker_channel.responder_sender();
+
+        std::thread::spawn(move || match baker {
             BakerSigner::Local { secret_key, .. } => {
-                Ok(secret_key.sign(&[watermark_bytes.as_slice(), value_bytes])?)
+                let result = watermark_bytes
+                    .map(|watermark| [watermark, value_bytes])
+                    .and_then(|data| Ok(secret_key.sign(data)?));
+                let resp = target.baker_worker_message(result);
+                let _ = sender.send((req_id, resp));
             }
-        }
+        });
+
+        req_id
     }
 }
 
@@ -165,8 +216,9 @@ impl BakerService for BakerServiceDefault {
         baker: &SignaturePublicKey,
         chain_id: &ChainId,
         operation: &PreendorsementWithForgedBytes,
-    ) -> Result<Signature, EncodeError> {
-        self.sign(baker, 0x12, chain_id, operation.forged_with_branch())
+    ) -> RequestId {
+        let target = BakerSignTarget::Preendorsement;
+        self.sign(baker, target, chain_id, operation.forged_with_branch())
     }
 
     fn endrosement_sign(
@@ -174,8 +226,9 @@ impl BakerService for BakerServiceDefault {
         baker: &SignaturePublicKey,
         chain_id: &ChainId,
         operation: &EndorsementWithForgedBytes,
-    ) -> Result<Signature, EncodeError> {
-        self.sign(baker, 0x13, chain_id, operation.forged_with_branch())
+    ) -> RequestId {
+        let target = BakerSignTarget::Endorsement;
+        self.sign(baker, target, chain_id, operation.forged_with_branch())
     }
 
     fn block_sign(
@@ -183,12 +236,13 @@ impl BakerService for BakerServiceDefault {
         baker: &SignaturePublicKey,
         chain_id: &ChainId,
         block_header: &BlockHeader,
-    ) -> Result<Signature, EncodeError> {
+    ) -> RequestId {
         let mut bytes = Vec::new();
-        block_header.bin_write(&mut bytes)?;
+        block_header.bin_write(&mut bytes).unwrap();
 
         let without_signature_len = bytes.len().saturating_sub(64);
-        self.sign(baker, 0x11, chain_id, &bytes[..without_signature_len])
+        let target = BakerSignTarget::Block;
+        self.sign(baker, target, chain_id, &bytes[..without_signature_len])
     }
 
     fn compute_proof_of_work(

@@ -102,6 +102,7 @@ pub enum BakerBlockBakerState {
     },
     SignPending {
         time: u64,
+        req_id: RequestId,
         header: BlockHeader,
         operations: Vec<Vec<Operation>>,
     },
