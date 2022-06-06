@@ -54,6 +54,9 @@ pub struct MempoolState {
     pub(super) prechecking_operations: BTreeMap<OperationHash, u8>,
     pub(super) prechecking_delayed_operations: BTreeSet<OperationHash>,
     pub validated_operations: ValidatedOperations,
+    // Unparseable operations
+    // TODO: needs to be regularly flushed or limited somehow
+    pub known_unparseable_operations: BTreeSet<OperationHash>,
     // track ttl
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
 
@@ -160,8 +163,6 @@ pub struct ValidatedOperations {
     pub branch_refused: VecDeque<Errored>,
     pub refused: VecDeque<Errored>,
     pub outdated: VecDeque<Errored>,
-    // Unparseable operations TODO: needs to be regularly flushed or limited somehow
-    pub unparseable: BTreeSet<OperationHash>,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -445,8 +446,6 @@ pub enum OperationValidationResult {
     BranchDelayed,
     Outdated,
 
-    Unparseable,
-
     Prechecked,
     PrecheckRefused,
     Prevalidate,
@@ -677,8 +676,6 @@ pub enum OperationState {
     BranchRefused,
     BranchDelayed,
     Outdated,
-
-    Unparseable,
 }
 
 impl OperationState {
