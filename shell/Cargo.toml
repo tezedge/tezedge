@@ -24,7 +24,7 @@ tezedge-actor-system = { git = "https://github.com/tezedge/tezedge-actor-system.
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_trace"] }
 serde = "1.0"
 serde_json = "1.0"
-tokio = { version = "1.12", features = ["time"] }
+tokio = { version = "1.19", features = ["time"] }
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
@@ -41,7 +41,7 @@ slog-async = "2.6"
 slog-term = "2.9"
 fs_extra = "1.2.0"
 zip = { git = "https://github.com/zip-rs/zip.git", rev = "2009d162fbaf162190e6495e211cebfe6cd98a96" }
-tokio = { version = "1.12", features = ["sync"] }
+tokio = { version = "1.19", features = ["sync"] }
 nom = "6.1"
 tezos_encoding = { path = "../tezos/encoding" }
 # TODO: TE-224 - this is not used directly, but test which using PROTOCOL_RUNNER fails without that (tezos_interop can be also replaced with tezos_client, and still works)

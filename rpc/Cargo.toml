@@ -20,7 +20,7 @@ path-tree = "0.1.9"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
 slog = { version = "2.7", features = ["nested-values", "max_level_trace", "release_max_level_trace"] }
-tokio = { version = "1.12", features = ["time"] }
+tokio = { version = "1.19", features = ["time"] }
 tokio-stream = { version = "0.1.8" }
 url = "2.2"
 rusqlite = "0.25.1"
@@ -52,4 +52,4 @@ lazy_static = "1.4"
 rand = "0.7.3"
 hyper = { version = "0.14", features = ["client"] }
 hyper-tls = "0.5"
-tokio = { version = "1.12", features = ["macros"] }
+tokio = { version = "1.19", features = ["macros"] }
