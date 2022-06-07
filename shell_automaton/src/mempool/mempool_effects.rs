@@ -19,7 +19,6 @@ use tezos_messages::p2p::{
 };
 
 use crate::{
-    block_applier::BlockApplierApplyState,
     mempool::mempool_state::OperationState,
     peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
     prechecker::{
@@ -211,7 +210,12 @@ where
                 _ => (),
             }
         }
-        Action::BlockApplierApplySuccess(_) => {
+        Action::ProtocolRunnerReady(_) => {
+            if store.state().mempool.running_since.is_some() {
+                store.dispatch(MempoolValidatorInitAction {});
+            }
+        }
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
             // close streams
             let streams = store.state().mempool.operation_streams.clone();
             store.dispatch(MempoolUnregisterOperationsStreamsAction {});
@@ -223,37 +227,31 @@ where
                 store.service().rpc().respond_stream(stream.rpc_id, None);
             }
 
-            if let BlockApplierApplyState::Success {
-                block,
-                block_additional_data,
-                payload_hash,
-                ..
-            } = &store.state.get().block_applier.current
-            {
-                let head = block.clone();
-                let protocol = block_additional_data.protocol_hash().clone();
-                let payload_hash = payload_hash.clone();
-                store.dispatch(PrecheckerCurrentHeadUpdateAction {
-                    head,
-                    protocol,
-                    payload_hash,
-                });
-                for hash in store.state().mempool.prechecking_delayed_operations.clone() {
-                    store.dispatch(PrecheckerPrecheckDelayedOperationAction { hash: hash.clone() });
-                }
-            }
-        }
-        Action::ProtocolRunnerReady(_) => {
-            if store.state().mempool.running_since.is_some() {
-                store.dispatch(MempoolValidatorInitAction {});
-            }
-        }
-        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
             if store.state().mempool.running_since.is_some() {
                 store.dispatch(MempoolBroadcastAction {
                     send_operations: false,
                 });
                 store.dispatch(MempoolValidatorInitAction {});
+            }
+
+            let current_head = &store.state.get().current_head;
+            let (head, protocol, payload_hash) = match Some(()).and_then(|_| {
+                Some((
+                    current_head.get()?.clone(),
+                    current_head.protocol_hash()?.clone(),
+                    current_head.payload_hash().cloned(),
+                ))
+            }) {
+                Some(v) => v,
+                None => return,
+            };
+            store.dispatch(PrecheckerCurrentHeadUpdateAction {
+                head: head.into(),
+                protocol,
+                payload_hash,
+            });
+            for hash in store.state().mempool.prechecking_delayed_operations.clone() {
+                store.dispatch(PrecheckerPrecheckDelayedOperationAction { hash: hash.clone() });
             }
         }
         Action::MempoolRegisterOperationsStream(act) => {

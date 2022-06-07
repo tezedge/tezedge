@@ -62,6 +62,7 @@ where
                         head: data.head.clone(),
                         head_pred: data.pred.clone(),
 
+                        protocol_hash: data.additional_data.protocol_hash().clone(),
                         block_metadata_hash: data.additional_data.block_metadata_hash().clone(),
                         ops_metadata_hash: data.additional_data.ops_metadata_hash().clone(),
                         pred_block_metadata_hash: data

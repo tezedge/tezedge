@@ -71,6 +71,7 @@ pub struct CurrentHeadRehydrateSuccessAction {
     pub head: BlockHeaderWithHash,
     pub head_pred: Option<BlockHeaderWithHash>,
 
+    pub protocol_hash: ProtocolHash,
     pub block_metadata_hash: Option<BlockMetadataHash>,
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
 

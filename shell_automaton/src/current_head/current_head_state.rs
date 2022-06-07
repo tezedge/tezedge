@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash};
+use crypto::hash::{
+    BlockHash, BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash, ProtocolHash,
+};
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operation::Operation;
@@ -83,6 +85,7 @@ pub enum CurrentHeadState {
         head: BlockHeaderWithHash,
         head_pred: Option<BlockHeaderWithHash>,
 
+        protocol_hash: Option<ProtocolHash>,
         block_metadata_hash: Option<BlockMetadataHash>,
         ops_metadata_hash: Option<OperationMetadataListListHash>,
         pred_block_metadata_hash: Option<BlockMetadataHash>,
@@ -99,6 +102,7 @@ pub enum CurrentHeadState {
         head: BlockHeaderWithHash,
         head_pred: Option<BlockHeaderWithHash>,
 
+        protocol_hash: Option<ProtocolHash>,
         payload_hash: Option<BlockPayloadHash>,
         payload_round: Option<i32>,
         // Needed for mempool prevalidator's begin construction
@@ -158,6 +162,7 @@ impl CurrentHeadState {
             head_pred,
             payload_hash,
             payload_round,
+            protocol_hash: None,
             block_metadata_hash: None,
             ops_metadata_hash: None,
             pred_block_metadata_hash: None,
@@ -167,6 +172,13 @@ impl CurrentHeadState {
             constants: None,
             applied_blocks,
         }
+    }
+
+    pub fn set_protocol_hash(&mut self, value: Option<ProtocolHash>) -> &mut Self {
+        if let Self::Rehydrated { protocol_hash, .. } = self {
+            *protocol_hash = value;
+        }
+        self
     }
 
     pub fn set_block_metadata_hash(&mut self, value: Option<BlockMetadataHash>) -> &mut Self {
@@ -296,6 +308,13 @@ impl CurrentHeadState {
     pub fn round(&self) -> Option<i32> {
         match self {
             Self::Rehydrated { head, .. } => head.header.fitness().round(),
+            _ => None,
+        }
+    }
+
+    pub fn protocol_hash(&self) -> Option<&ProtocolHash> {
+        match self {
+            Self::Rehydrated { protocol_hash, .. } => protocol_hash.as_ref(),
             _ => None,
         }
     }

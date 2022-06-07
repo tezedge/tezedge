@@ -30,6 +30,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 time: action.time_as_nanos(),
                 head: content.head.clone(),
                 head_pred: content.head_pred.clone(),
+                protocol_hash: Some(content.protocol_hash.clone()),
                 block_metadata_hash: content.block_metadata_hash.clone(),
                 ops_metadata_hash: content.ops_metadata_hash.clone(),
                 pred_block_metadata_hash: content.pred_block_metadata_hash.clone(),
@@ -43,6 +44,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
             CurrentHeadState::RehydrateSuccess {
                 head,
                 head_pred,
+                protocol_hash,
                 block_metadata_hash,
                 ops_metadata_hash,
                 pred_block_metadata_hash,
@@ -54,6 +56,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
             } => {
                 let mut new_head = CurrentHeadState::rehydrated(head.clone(), head_pred.clone());
                 new_head
+                    .set_protocol_hash(protocol_hash.clone())
                     .set_block_metadata_hash(block_metadata_hash.clone())
                     .set_ops_metadata_hash(ops_metadata_hash.clone())
                     .set_pred_block_metadata_hash(pred_block_metadata_hash.clone())
@@ -101,6 +104,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 head_pred,
                 payload_hash: content.payload_hash.clone(),
                 payload_round,
+                protocol_hash: Some(content.next_protocol.clone()),
                 block_metadata_hash: content.block_metadata_hash.clone(),
                 ops_metadata_hash: content.ops_metadata_hash.clone(),
                 pred_block_metadata_hash: content.pred_block_metadata_hash.clone(),
