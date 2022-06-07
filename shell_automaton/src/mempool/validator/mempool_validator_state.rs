@@ -15,7 +15,7 @@ pub enum MempoolValidatorValidateResult {
     BranchRefused(Errored),
     BranchDelayed(Errored),
     Outdated(Errored),
-    Unparseable(OperationHash)
+    Unparseable(OperationHash),
 }
 
 impl MempoolValidatorValidateResult {
