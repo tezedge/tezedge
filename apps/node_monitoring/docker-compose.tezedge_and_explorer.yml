@@ -2,7 +2,7 @@ version: "3"
 
 services:
   tezedge-node:
-    image: tezedge/tezedge:v2.3.1
+    image: tezedge/tezedge:v2.3.2
     environment:
       - TEZOS_CONTEXT=index-log-size=5_000_000
     command: [
@@ -40,7 +40,7 @@ services:
   monitoring:
     privileged: true
     network_mode: host
-    image: tezedge/node-monitoring:v2.3.1
+    image: tezedge/node-monitoring:v2.3.2
     pid: "host"
     command: [
       "--tezedge-nodes", "tezedge:18732:/tmp/tezedge",

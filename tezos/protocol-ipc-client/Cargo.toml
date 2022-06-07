@@ -1,6 +1,6 @@
 [package]
 name = "tezos_protocol_ipc_client"
-version = "2.4.0"
+version = "2.3.2"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2021"
 rust-version = "1.58"
