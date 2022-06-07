@@ -1,6 +1,6 @@
 [package]
 name = "shell_automaton"
-version = "2.3.1"
+version = "2.3.2"
 edition = "2021"
 rust-version = "1.58"
 
@@ -16,7 +16,7 @@ mio = { version = "0.7.13", features = ["os-poll", "net"] }
 dns-lookup = "1.0.1"
 derive_more = "0.99.16"
 enum-kinds = "0.5.1"
-tokio = { version = "1.12", features = ["time", "rt-multi-thread"] }
+tokio = { version = "1.19", features = ["time", "rt-multi-thread"] }
 nix = "0.23"
 rmp = "0.8.10"
 rmp-serde = "0.15.5"

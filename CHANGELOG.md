@@ -33,6 +33,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Nothing.
 
+## [2.3.2] - 2022-06-07
+
+### Fixed
+
+- In the baker, filter out outdated operations when injectiong a block.
+- Better handling of injection RPC responses for unparseable operations.
+
 ## [2.3.1] - 2022-06-06
 
 ### Added
@@ -840,7 +847,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.3.1...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.3.2...develop
+[2.3.2]: https://github.com/tezedge/tezedge/releases/v2.3.2
 [2.3.1]: https://github.com/tezedge/tezedge/releases/v2.3.1
 [2.3.0]: https://github.com/tezedge/tezedge/releases/v2.3.0
 [2.2.0]: https://github.com/tezedge/tezedge/releases/v2.2.0

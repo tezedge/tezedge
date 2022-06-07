@@ -1,6 +1,6 @@
 [package]
 name = "monitoring"
-version = "2.3.1"
+version = "2.3.2"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2021"
 rust-version = "1.58"
@@ -18,7 +18,7 @@ crypto = { path = "../crypto" }
 networking = { path = "../networking" }
 shell = { path = "../shell" }
 tezos_messages = { path = "../tezos/messages" }
-tokio = { version = "1.12", features = ["full"] }
+tokio = { version = "1.19", features = ["full"] }
 tokio-stream = "0.1.2"
 futures = { version = "0.3", default-features = false }
 warp = "0.3"
