@@ -27,10 +27,15 @@ use super::{operation_contents::OperationDecodedContents, Round};
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct EndorsementBranch {
-    pub predecessor: BlockHash,
     pub level: Level,
     pub round: Round,
     pub payload_hash: BlockPayloadHash,
+    pub predecessor: BlockHash,
+
+    pub pred_level: Level,
+    pub pred_round: Round,
+    pub pred_payload_hash: BlockPayloadHash,
+    pub pred_predecessor: BlockHash,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

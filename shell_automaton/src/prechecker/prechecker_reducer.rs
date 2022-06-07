@@ -316,8 +316,10 @@ enum TenderbakeConsensusResult<'a> {
     LevelInPast(Level, Level),
     #[error("round in the future, expected `{0}`, actual `{1}`")]
     RoundInFuture(Round, Round),
-    #[error("round in the past, expected `{0}`, actual `{1}`")]
-    RoundInPast(Round, Round),
+    /// Consensus operation is for last 2 block levels, but it isn't for
+    /// current branch (level + round + payload).
+    #[error("consensus for unexpected round, expected `{0}`, actual `{1}`")]
+    UnexpectedRound(Round, Round),
     #[error("wrong branch, expected `{0}`, actual `{1}`")]
     WrongBranch(&'a BlockHash, &'a BlockHash),
     #[error("competing proposal, expected `{0}`, actual `{1}`")]
@@ -342,13 +344,15 @@ impl<'a> TenderbakeConsensusResult<'a> {
                     endorsing_rights_verified,
                 }
             }
-            TenderbakeConsensusResult::LevelInPast(..)
-            | TenderbakeConsensusResult::RoundInPast(..) => PrecheckerOperationState::Outdated {
+            TenderbakeConsensusResult::LevelInPast(..) => PrecheckerOperationState::Outdated {
                 operation_decoded_contents,
             },
-            TenderbakeConsensusResult::WrongBranch(..) => PrecheckerOperationState::BranchRefused {
-                operation_decoded_contents,
-            },
+            TenderbakeConsensusResult::UnexpectedRound(..)
+            | TenderbakeConsensusResult::WrongBranch(..) => {
+                PrecheckerOperationState::BranchRefused {
+                    operation_decoded_contents,
+                }
+            }
             TenderbakeConsensusResult::CompetingProposal(..) => PrecheckerOperationState::Refused {
                 operation_decoded_contents: Some(operation_decoded_contents),
                 error: PrecheckerError::Consensus(ConsensusOperationError::CompetingProposal),
@@ -365,53 +369,61 @@ fn validate_tenderbake_consensus_operation_contents<'a>(
     let expected = endorsement_branch
         .ok_or_else(|| TenderbakeConsensusResult::LevelInFuture(-1, actual.level))?;
 
-    match actual.level.cmp(&expected.level) {
-        Ordering::Less => {
-            return Err(TenderbakeConsensusResult::LevelInPast(
-                expected.level,
-                actual.level,
-            ))
-        }
-        Ordering::Greater => {
-            return Err(TenderbakeConsensusResult::LevelInFuture(
-                expected.level,
-                actual.level,
-            ))
-        }
-        _ => (),
-    }
-
-    match actual.round.cmp(&expected.round) {
-        Ordering::Less => {
-            return Err(TenderbakeConsensusResult::RoundInPast(
-                expected.round,
+    if actual.level > expected.level {
+        Err(TenderbakeConsensusResult::LevelInFuture(
+            expected.level,
+            actual.level,
+        ))
+    } else if actual.level < expected.pred_level {
+        Err(TenderbakeConsensusResult::LevelInPast(
+            expected.level,
+            actual.level,
+        ))
+    } else if actual.level == expected.pred_level {
+        if actual.round != expected.pred_round
+            || actual.payload_hash != expected.pred_payload_hash
+            || actual_branch != &expected.pred_predecessor
+        {
+            Err(TenderbakeConsensusResult::UnexpectedRound(
+                expected.pred_round,
                 actual.round,
             ))
+        } else {
+            Ok(())
         }
-        Ordering::Greater => {
-            return Err(TenderbakeConsensusResult::RoundInFuture(
-                expected.round,
-                actual.round,
-            ))
+    } else {
+        match actual.round.cmp(&expected.round) {
+            Ordering::Less => {
+                return Err(TenderbakeConsensusResult::UnexpectedRound(
+                    expected.round,
+                    actual.round,
+                ));
+            }
+            Ordering::Greater => {
+                return Err(TenderbakeConsensusResult::RoundInFuture(
+                    expected.round,
+                    actual.round,
+                ));
+            }
+            _ => (),
         }
-        _ => (),
-    }
 
-    if actual_branch != &expected.predecessor {
-        return Err(TenderbakeConsensusResult::WrongBranch(
-            &expected.predecessor,
-            actual_branch,
-        ));
-    }
+        if actual_branch != &expected.predecessor {
+            return Err(TenderbakeConsensusResult::WrongBranch(
+                &expected.predecessor,
+                actual_branch,
+            ));
+        }
 
-    if actual.payload_hash != expected.payload_hash {
-        return Err(TenderbakeConsensusResult::CompetingProposal(
-            &expected.payload_hash,
-            &actual.payload_hash,
-        ));
-    }
+        if actual.payload_hash != expected.payload_hash {
+            return Err(TenderbakeConsensusResult::CompetingProposal(
+                &expected.payload_hash,
+                &actual.payload_hash,
+            ));
+        }
 
-    Ok(())
+        Ok(())
+    }
 }
 
 fn validate_tenderbake_consensus_operation_signature(

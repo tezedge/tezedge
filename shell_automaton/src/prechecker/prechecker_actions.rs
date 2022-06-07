@@ -1,9 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::Arc;
-
-use crypto::hash::{BlockPayloadHash, OperationHash, ProtocolHash};
+use crypto::hash::{OperationHash, ProtocolHash};
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::operation::Operation;
 
@@ -14,9 +12,9 @@ use super::{EndorsementBranch, PrecheckerOperationState};
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct PrecheckerCurrentHeadUpdateAction {
-    pub head: Arc<BlockHeaderWithHash>,
+    pub head: BlockHeaderWithHash,
+    pub pred: BlockHeaderWithHash,
     pub protocol: ProtocolHash,
-    pub payload_hash: Option<BlockPayloadHash>,
 }
 
 impl EnablingCondition<State> for PrecheckerCurrentHeadUpdateAction {

@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use tezos_messages::protocol::proto_012::FitnessRepr;
-
 use crate::{
     mempool::MempoolOperationDecodedAction,
     rights::{
@@ -152,28 +150,27 @@ where
 
         Action::PrecheckerCurrentHeadUpdate(PrecheckerCurrentHeadUpdateAction {
             protocol,
-            payload_hash,
             head,
+            pred,
         }) => {
             if !store.state().is_bootstrapped() {
                 return;
             }
             let level = head.header.level();
-            let payload_hash = payload_hash.clone();
             let block_hash = head.hash.clone();
-            let endorsement_branch = if let (Some(payload_hash), Ok(fitness)) =
-                (payload_hash, FitnessRepr::try_from(head.header.fitness()))
-            {
-                let predecessor = head.header.predecessor().clone();
+            let endorsement_branch = Some(()).and_then(|_| {
                 Some(EndorsementBranch {
-                    predecessor,
-                    payload_hash,
-                    level: fitness.level,
-                    round: fitness.round,
+                    level: head.header.level(),
+                    round: head.header.fitness().round()?,
+                    payload_hash: head.header.payload_hash()?,
+                    predecessor: head.header.predecessor().clone(),
+
+                    pred_level: pred.header.level(),
+                    pred_round: pred.header.fitness().round()?,
+                    pred_payload_hash: pred.header.payload_hash()?,
+                    pred_predecessor: pred.header.predecessor().clone(),
                 })
-            } else {
-                None
-            };
+            });
             store.dispatch(PrecheckerCacheProtocolAction {
                 proto: head.header.proto(),
                 protocol_hash: protocol.clone(),

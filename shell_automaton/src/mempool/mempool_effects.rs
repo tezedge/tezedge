@@ -235,20 +235,20 @@ where
             }
 
             let current_head = &store.state.get().current_head;
-            let (head, protocol, payload_hash) = match Some(()).and_then(|_| {
+            let (head, pred, protocol) = match Some(()).and_then(|_| {
                 Some((
                     current_head.get()?.clone(),
+                    current_head.get_pred()?.clone(),
                     current_head.protocol_hash()?.clone(),
-                    current_head.payload_hash().cloned(),
                 ))
             }) {
                 Some(v) => v,
                 None => return,
             };
             store.dispatch(PrecheckerCurrentHeadUpdateAction {
-                head: head.into(),
+                head,
+                pred,
                 protocol,
-                payload_hash,
             });
             for hash in store.state().mempool.prechecking_delayed_operations.clone() {
                 store.dispatch(PrecheckerPrecheckDelayedOperationAction { hash: hash.clone() });
