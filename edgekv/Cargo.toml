@@ -1,6 +1,6 @@
 [package]
 name = "edgekv"
-version = "2.3.2"
+version = "2.4.0"
 authors = ["Mambisi Zempare <mambisi.zempare@viablesystems.io>"]
 edition = "2021"
 rust-version = "1.58"
