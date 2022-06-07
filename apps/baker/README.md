@@ -46,7 +46,7 @@ cargo install --git https://github.com/tezedge/tezedge --branch develop baker
 You can use the tag `--tag v2.3.x` instead of branch name `--branch develop`.
 
 ```
-cargo install --git https://github.com/tezedge/tezedge --tag v2.3.1 develop baker
+cargo install --git https://github.com/tezedge/tezedge --tag v2.3.2 develop baker
 ```
 
 The cargo will create the binary `tezedge-baker` at `~/.cargo/bin`. The directory `~/.cargo/bin` should be in your `$PATH` variable, so you can run `tezedge-baker` without full path. If it is not working (it might not work if you are using a non-standard shell), execute `source ~/.cargo/env` to update the environment.

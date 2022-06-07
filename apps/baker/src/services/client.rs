@@ -55,6 +55,16 @@ pub enum RpcError {
     Less(RpcErrorInner),
 }
 
+impl AsRef<RpcErrorInner> for RpcError {
+    fn as_ref(&self) -> &RpcErrorInner {
+        match self {
+            RpcError::WithBody { ref inner, .. } => inner,
+            RpcError::WithContext { ref inner, .. } => inner,
+            RpcError::Less(ref inner) => inner,
+        }
+    }
+}
+
 #[derive(Debug, Error, From)]
 pub enum RpcErrorInner {
     #[error("reqwest: {_0}")]
