@@ -54,6 +54,8 @@ pub struct MempoolState {
     pub(super) prechecking_operations: BTreeMap<OperationHash, u8>,
     pub(super) prechecking_delayed_operations: BTreeSet<OperationHash>,
     pub validated_operations: ValidatedOperations,
+    // Unparseable operations
+    pub unparseable_operations: BTreeSet<OperationHash>,
     // track ttl
     pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
 
