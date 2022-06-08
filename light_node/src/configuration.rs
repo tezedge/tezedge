@@ -1204,7 +1204,7 @@ impl Environment {
                 }),
                 disable_endorsements_precheck: args
                     .value_of("disable-endorsements-precheck")
-                    .map_or(false, |s| {
+                    .map_or(true, |s| {
                         s.parse()
                             .expect("Boolean value expected for disable-endorsements-precheck")
                     }),

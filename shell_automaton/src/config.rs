@@ -223,7 +223,7 @@ pub fn default_test_config() -> Config {
         record_state_snapshots_with_interval: None,
         record_actions: false,
 
-        disable_endorsements_precheck: false,
+        disable_endorsements_precheck: true,
         disable_block_precheck: true,
 
         mempool_get_operation_timeout: Duration::from_secs(1),
