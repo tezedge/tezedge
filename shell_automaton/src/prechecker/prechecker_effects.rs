@@ -178,12 +178,10 @@ where
                 proto: head.header.proto(),
                 protocol_hash: protocol.clone(),
             });
-            if !store.state.get().config.disable_endorsements_precheck {
-                store.dispatch(PrecheckerStoreEndorsementBranchAction { endorsement_branch });
-                store.dispatch(RightsGetAction {
-                    key: RightsKey::endorsing(block_hash, Some(level + 1)),
-                });
-            }
+            store.dispatch(PrecheckerStoreEndorsementBranchAction { endorsement_branch });
+            store.dispatch(RightsGetAction {
+                key: RightsKey::endorsing(block_hash, Some(level + 1)),
+            });
         }
 
         _ => (),
