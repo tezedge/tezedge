@@ -31,6 +31,26 @@ fn set_elected_block_operations(baker: &mut BakerState, mempool: &MempoolState) 
         let operations = applied
             .into_iter()
             .filter_map(|hash| Some((ops.get(&hash)?, hash)))
+            .filter(|(op, hash)| {
+                if !OperationKind::from_operation_content_raw(op.data().as_ref())
+                    .is_consensus_operation()
+                {
+                    return true;
+                }
+                let op_state = mempool.operations_state.get(hash);
+                op_state
+                    .and_then(|op| {
+                        let op = op.operation_decoded_contents.as_ref()?;
+
+                        let (level, round) = op.level_round()?;
+                        Some(
+                            level == block.header().level()
+                                && round == block.round()
+                                && op.payload()? == block.payload_hash(),
+                        )
+                    })
+                    .unwrap_or(false)
+            })
             .fold(empty_operations, |mut r, (op, hash)| {
                 let container = match OperationKind::from_operation_content_raw(op.data().as_ref())
                 {
