@@ -7,6 +7,7 @@ use crate::{
     helpers::{parse_block_hash, parse_chain_id, BlockMetadata, BlockOperations, MAIN_CHAIN_ID},
     RpcServiceEnvironment,
 };
+use anyhow::bail;
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use num::{bigint::Sign, BigInt, BigRational};
 use serde::{Deserialize, Serialize};
@@ -134,6 +135,29 @@ pub struct DelegateInfo {
     delegated_contracts: Vec<String>,
 }
 
+impl DelegateInfo {
+    async fn try_get_from_rpc(
+        delegate: String,
+        snapshot_info: &SnapshotCycleInfo,
+        env: &RpcServiceEnvironment,
+    ) -> Result<Self, anyhow::Error> {
+        let SnapshotCycleInfo {
+            snapshot_block_level,
+            snapshot_block_hash,
+            ..
+        } = snapshot_info;
+
+        let delegate_info_string = get_routed_request(
+            &format!("chains/main/blocks/{snapshot_block_level}/context/delegates/{delegate}"),
+            snapshot_block_hash.clone(),
+            env,
+        )
+        .await?;
+
+        Ok(serde_json::from_str::<DelegateInfo>(&delegate_info_string)?)
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct DelegateInfoInt {
     staking_balance: BigInt,
@@ -231,15 +255,39 @@ impl DelegatorInfo {
 
 // To serialize bigint we use its string form
 // pub type DelegateRewardDistribution = BTreeMap<Delegator, String>;
-pub type CycleRewardDistribution = Vec<DelegateRewardDistribution>;
+// pub type CycleRewardDistribution = Vec<DelegateRewardDistribution>;
 
-// TODO: create proper errors
-pub(crate) async fn get_cycle_rewards_distribution(
+#[derive(Clone, Debug, Serialize)]
+pub struct DelegateRewards {
+    address: String,
+    total_rewards: String,
+    staking_balance: String,
+    delegator_count: usize,
+}
+
+impl DelegateRewards {
+    fn new(delegate: String, cycle_rewards: CycleRewardsInt, delegate_info: DelegateInfo) -> Self {
+        // sometimes the delegate itself is present in the delegated contracts
+        let delegator_count = if delegate_info.delegated_contracts.contains(&delegate) {
+            delegate_info.delegated_contracts.len().saturating_sub(1)
+        } else {
+            delegate_info.delegated_contracts.len()
+        };
+
+        Self {
+            address: delegate,
+            total_rewards: cycle_rewards.totoal_rewards.to_string(),
+            staking_balance: delegate_info.staking_balance,
+            delegator_count,
+        }
+    }
+}
+
+pub(crate) async fn get_cycle_delegate_rewards(
     chain_id: &ChainId,
     env: &RpcServiceEnvironment,
     cycle_num: i32,
-    filter: CycleRewardsFilter,
-) -> Result<CycleRewardDistribution, anyhow::Error> {
+) -> Result<Vec<DelegateRewards>, anyhow::Error> {
     let current_head_hash = if let Ok(shared_state) = env.state().read() {
         shared_state.current_head().hash.clone()
     } else {
@@ -275,35 +323,81 @@ pub(crate) async fn get_cycle_rewards_distribution(
             )
             .await?;
 
-            // we need to get all the delegators for a specific delegate
-            let mut delegates_reward_distribution: CycleRewardDistribution =
-                Vec::with_capacity(cycle_rewards.len());
-
-            if let Some(delegate) = filter.delegate {
-                if let Some(cycle_rewards) = cycle_rewards.get(&delegate) {
-                    let reward_distributon = get_delegate_reward_distribution(
-                        &delegate,
-                        &cycle_rewards.clone(),
-                        &snapshot_info,
-                        env,
-                    )
-                    .await?;
-                    delegates_reward_distribution.push(reward_distributon);
-                }
-            } else {
-                for (delegate, cycle_rewards) in cycle_rewards.iter() {
-                    let reward_distributon = get_delegate_reward_distribution(
-                        delegate,
-                        &cycle_rewards.clone(),
-                        &snapshot_info,
-                        env,
-                    )
-                    .await?;
-                    delegates_reward_distribution.push(reward_distributon);
-                }
+            let mut res: Vec<DelegateRewards> = Vec::with_capacity(cycle_rewards.len());
+            for (delegate, delegate_rewards) in cycle_rewards {
+                let delegate_info =
+                    DelegateInfo::try_get_from_rpc(delegate.clone(), &snapshot_info, env).await?;
+                let delegate_rewards_with_delegator_count =
+                    DelegateRewards::new(delegate, delegate_rewards, delegate_info);
+                res.push(delegate_rewards_with_delegator_count);
             }
 
-            Ok(delegates_reward_distribution)
+            Ok(res)
+        }
+        _ => Err(UnsupportedProtocolError {
+            protocol: protocol_hash.to_string(),
+        }
+        .into()),
+    }
+}
+
+// TODO: create proper errors
+pub(crate) async fn get_cycle_rewards_distribution(
+    chain_id: &ChainId,
+    env: &RpcServiceEnvironment,
+    cycle_num: i32,
+    delegate: &str,
+) -> Result<DelegateRewardDistribution, anyhow::Error> {
+    let current_head_hash = if let Ok(shared_state) = env.state().read() {
+        shared_state.current_head().hash.clone()
+    } else {
+        anyhow::bail!("Cannot access current head")
+    };
+
+    let protocol_hash =
+        &get_additional_data_or_fail(chain_id, &current_head_hash, env.persistent_storage())?
+            .protocol_hash;
+
+    // Note: (Assumption, needs to be verifed) There is a bug in cycle era storage that won't save the era data on a new protocol change if there was no change
+    let saved_cycle_era_in_proto_hash =
+        ProtocolHash::from_base58_check(&SupportedProtocol::Proto011.protocol_hash())?;
+    let cycle_era = get_cycle_era(&saved_cycle_era_in_proto_hash, cycle_num, env)?;
+    let (_, end) = cycle_range(&cycle_era, cycle_num);
+
+    let constants = get_constants(protocol_hash, env)?;
+
+    match SupportedProtocol::try_from(protocol_hash)? {
+        SupportedProtocol::Proto012 => {
+            let end_hash = parse_block_hash(chain_id, &end.to_string(), env)?;
+
+            let cycle_rewards = get_cycle_rewards(cycle_num, &cycle_era, env, chain_id).await?;
+
+            let snapshot_info = SnapshotCycleInfo::fetch_snapshot_cycle(
+                cycle_num,
+                end_hash,
+                end,
+                &saved_cycle_era_in_proto_hash,
+                chain_id,
+                &constants,
+                env,
+            )
+            .await?;
+
+            if let Some(cycle_rewards) = cycle_rewards.get(delegate) {
+                let reward_distributon = get_delegate_reward_distribution(
+                    delegate,
+                    &cycle_rewards.clone(),
+                    &snapshot_info,
+                    env,
+                )
+                .await?;
+                Ok(reward_distributon)
+            } else {
+                bail!(
+                    "Baker has not earned any rewards during cycle {}",
+                    cycle_num
+                );
+            }
         }
         _ => Err(UnsupportedProtocolError {
             protocol: protocol_hash.to_string(),
