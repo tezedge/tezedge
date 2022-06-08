@@ -23,8 +23,8 @@ use crate::{
     peer::message::{read::PeerMessageReadSuccessAction, write::PeerMessageWriteInitAction},
     prechecker::{
         prechecker_actions::{
-            PrecheckerCurrentHeadUpdateAction, PrecheckerPrecheckDelayedOperationAction,
-            PrecheckerPrecheckOperationAction,
+            PrecheckerCurrentHeadUpdateAction, PrecheckerPrecheckOperationAction,
+            PrecheckerRevalidateOperationAction,
         },
         PrecheckerResultKind,
     },
@@ -251,7 +251,7 @@ where
                 protocol,
             });
             for hash in store.state().mempool.prechecking_delayed_operations.clone() {
-                store.dispatch(PrecheckerPrecheckDelayedOperationAction { hash: hash.clone() });
+                store.dispatch(PrecheckerRevalidateOperationAction { hash: hash.clone() });
             }
         }
         Action::MempoolRegisterOperationsStream(act) => {

@@ -98,6 +98,10 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                     PrecheckerOperationState::BranchDelayed {
                         endorsing_rights_verified,
                         ..
+                    }
+                    | PrecheckerOperationState::BranchRefused {
+                        endorsing_rights_verified,
+                        ..
                     } => *endorsing_rights_verified,
                     _ => false,
                 };
@@ -105,15 +109,13 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                     PrecheckerOperationState::Applied {
                         operation_decoded_contents,
                     }
-                    | PrecheckerOperationState::BranchRefused {
-                        operation_decoded_contents,
-                    }
                     | PrecheckerOperationState::BranchDelayed {
                         operation_decoded_contents,
                         ..
                     }
-                    | PrecheckerOperationState::Outdated {
+                    | PrecheckerOperationState::BranchRefused {
                         operation_decoded_contents,
+                        ..
                     } => {
                         if let Some(consensus_contents) =
                             operation_decoded_contents.as_tenderbake_consensus()
@@ -351,6 +353,7 @@ impl<'a> TenderbakeConsensusResult<'a> {
             | TenderbakeConsensusResult::WrongBranch(..) => {
                 PrecheckerOperationState::BranchRefused {
                     operation_decoded_contents,
+                    endorsing_rights_verified,
                 }
             }
             TenderbakeConsensusResult::CompetingProposal(..) => PrecheckerOperationState::Refused {

@@ -65,11 +65,11 @@ impl EnablingCondition<State> for PrecheckerPrecheckOperationAction {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-pub struct PrecheckerPrecheckDelayedOperationAction {
+pub struct PrecheckerRevalidateOperationAction {
     pub hash: OperationHash,
 }
 
-impl EnablingCondition<State> for PrecheckerPrecheckDelayedOperationAction {
+impl EnablingCondition<State> for PrecheckerRevalidateOperationAction {
     fn is_enabled(&self, _state: &State) -> bool {
         true
     }

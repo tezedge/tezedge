@@ -127,6 +127,7 @@ impl<'a> TryFrom<&'a PrecheckerOperation> for PrecheckerResult<'a> {
             },
             PrecheckerOperationState::BranchRefused {
                 operation_decoded_contents,
+                ..
             } => PrecheckerResult {
                 operation: &source.operation,
                 contents: Some(operation_decoded_contents),
@@ -251,6 +252,7 @@ pub enum PrecheckerOperationState {
     },
     BranchRefused {
         operation_decoded_contents: OperationDecodedContents,
+        endorsing_rights_verified: bool,
     },
     BranchDelayed {
         operation_decoded_contents: OperationDecodedContents,
@@ -275,16 +277,18 @@ impl PrecheckerOperationState {
     }
 
     pub(super) fn caching_level(&self) -> Option<Level> {
-        if let PrecheckerOperationState::BranchDelayed {
-            operation_decoded_contents,
-            ..
-        } = self
-        {
-            operation_decoded_contents
+        match self {
+            PrecheckerOperationState::BranchDelayed {
+                operation_decoded_contents,
+                ..
+            }
+            | PrecheckerOperationState::BranchRefused {
+                operation_decoded_contents,
+                ..
+            } => operation_decoded_contents
                 .level_round()
-                .map(|(level, _)| level)
-        } else {
-            None
+                .map(|(level, _)| level + 1),
+            _ => None,
         }
     }
 
@@ -302,6 +306,7 @@ impl PrecheckerOperationState {
             }
             | PrecheckerOperationState::BranchRefused {
                 operation_decoded_contents,
+                ..
             }
             | PrecheckerOperationState::BranchDelayed {
                 operation_decoded_contents,
