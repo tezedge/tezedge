@@ -254,7 +254,7 @@ pub fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler> {
 
     // Other Protocol rpcs - routed through ffi calls
     routes.handle(
-        hash_set![Method::GET, Method::POST, Method::OPTIONS, Method::PUT],
+        hash_set![Method::GET, Method::POST, Method::PUT],
         "/chains/:chain_id/blocks/:block_id/*any",
         protocol_handler::call_protocol_rpc,
     );

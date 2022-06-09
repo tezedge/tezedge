@@ -812,7 +812,21 @@ pub async fn describe(
         {
             &Method::GET
         } else {
-            allowed_methods.iter().next().unwrap()
+            if path.contains(&"context".to_string())
+                && (path.contains(&"rank".to_string())
+                    || path.contains(&"big_map_get".to_string())
+                    || path.contains(&"seed".to_string()))
+            {
+                &Method::POST
+            } else {
+                if allowed_methods.contains(&Method::GET) {
+                    &Method::GET
+                } else {
+                    // FIXME: the topmost comment mentions that we get the "first element",
+                    // however this element is random in hash-sets.
+                    allowed_methods.iter().next().unwrap()
+                }
+            }
         }
     } else {
         return empty();
