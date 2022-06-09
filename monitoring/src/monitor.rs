@@ -189,7 +189,7 @@ impl Receive<BroadcastSignal> for Monitor {
             if let Some(client) = client {
                 let res = match serde_json::to_value(msg) {
                     Ok(serialized) => {
-                        JsonRpcResponse::result(json_rpc_types::Version::V2, serialized.into(), id)
+                        JsonRpcResponse::result(json_rpc_types::Version::V2, serialized, id)
                     }
                     Err(_) => {
                         let error = json_rpc_types::Error::from_code(
