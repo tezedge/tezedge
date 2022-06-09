@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::OperationHash;
-use tezos_messages::base::signature_public_key::SignaturePublicKey;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::Operation;
 
@@ -22,7 +22,7 @@ fn should_set_locked_payload(state: &State) -> bool {
     head_locked_round.is_some() || state.mempool.prequorum.is_reached()
 }
 
-fn set_locked_payload(state: &mut State, baker_key: &SignaturePublicKey) -> Option<()> {
+fn set_locked_payload(state: &mut State, baker_key: &SignaturePublicKeyHash) -> Option<()> {
     if !should_set_locked_payload(state) {
         return None;
     }

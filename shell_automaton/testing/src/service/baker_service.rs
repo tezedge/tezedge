@@ -8,7 +8,7 @@ use shell_automaton::baker::block_endorser::{
 use shell_automaton::request::RequestId;
 use shell_automaton::service::baker_service::{BakerService, BakerWorkerMessage};
 use shell_automaton::service::service_channel::ResponseTryRecvError;
-use tezos_messages::base::signature_public_key::SignaturePublicKey;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 /// Mocked BakerService.
@@ -36,7 +36,7 @@ impl BakerService for BakerServiceDummy {
 
     fn preendrosement_sign(
         &mut self,
-        _baker: &SignaturePublicKey,
+        _baker: &SignaturePublicKeyHash,
         _chain_id: &ChainId,
         _operation: &PreendorsementWithForgedBytes,
     ) -> RequestId {
@@ -45,7 +45,7 @@ impl BakerService for BakerServiceDummy {
 
     fn endrosement_sign(
         &mut self,
-        _baker: &SignaturePublicKey,
+        _baker: &SignaturePublicKeyHash,
         _chain_id: &ChainId,
         _operation: &EndorsementWithForgedBytes,
     ) -> RequestId {
@@ -54,7 +54,7 @@ impl BakerService for BakerServiceDummy {
 
     fn block_sign(
         &mut self,
-        _baker: &SignaturePublicKey,
+        _baker: &SignaturePublicKeyHash,
         _chain_id: &ChainId,
         _block_header: &BlockHeader,
     ) -> RequestId {
@@ -63,7 +63,7 @@ impl BakerService for BakerServiceDummy {
 
     fn compute_proof_of_work(
         &mut self,
-        _baker: SignaturePublicKey,
+        _baker: SignaturePublicKeyHash,
         _header: BlockHeader,
         _proof_of_work_threshold: u64,
     ) -> RequestId {
