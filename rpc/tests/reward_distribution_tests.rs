@@ -21,7 +21,7 @@ use hyper::body::Buf;
 use hyper::Client;
 use hyper_tls::HttpsConnector;
 use num::{BigInt, BigRational};
-use serde::Deserialize;
+use serde::{de::DeserializeOwned, Deserialize};
 use url::Url;
 
 fn client() -> Client<hyper::client::HttpConnector, hyper::Body> {
@@ -57,15 +57,24 @@ async fn test_rewards_distribution() {
 
     // Tzkt
     for cycle in cycles {
-        let tezedge_reward = get_tezedge_rewards(cycle, &tezedge_url).await.unwrap();
-
-        for reward in tezedge_reward {
-            println!("Comparing cycle {cycle} delegate {}", reward.address);
-            let tzkt_response = get_tzkt_rewards_split(cycle, &reward.address)
+        let tezedge_delegate_rewards: TezedgeDelegateRewardsResponse =
+            call_tezedge_rpc(&format!("dev/rewards/cycle/{}", cycle), &tezedge_url)
                 .await
                 .unwrap();
 
-            compare_rewards(tzkt_response, reward.delegator_rewards);
+        for delegate in tezedge_delegate_rewards {
+            println!("Comparing cycle {cycle} delegate {}", delegate.address);
+            let tezedge_response: TezedgeDelegateRewardDistribution = call_tezedge_rpc(
+                &format!("dev/rewards/cycle/{}/{}", cycle, delegate.address),
+                &tezedge_url,
+            )
+            .await
+            .unwrap();
+            let tzkt_response = get_tzkt_rewards_split(cycle, &delegate.address)
+                .await
+                .unwrap();
+
+            compare_rewards(tzkt_response, tezedge_response.delegator_rewards);
         }
 
         println!();
@@ -132,7 +141,14 @@ struct TzstatsRewardsResponse {
     delegators: Vec<IndexerDelegatorInfo>,
 }
 
-type TezedgeRewardsResponse = Vec<TezedgeDelegateRewards>;
+// type TezedgeDelegatorRewardsResponse = Vec<TezedgeDelegateRewardDistribution>;
+type TezedgeDelegateRewardsResponse = Vec<TezedgeDelegateRewards>;
+
+#[derive(Clone, Debug, Deserialize)]
+struct TezedgeDelegateRewards {
+    address: String,
+    // reward: String,
+}
 
 #[derive(Clone, Debug, Deserialize)]
 struct TezedgeDelegatorRewards {
@@ -141,8 +157,7 @@ struct TezedgeDelegatorRewards {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-struct TezedgeDelegateRewards {
-    address: String,
+struct TezedgeDelegateRewardDistribution {
     delegator_rewards: Vec<TezedgeDelegatorRewards>,
 }
 
@@ -310,18 +325,16 @@ async fn get_tzkt_rewards_split(
 }
 
 // TODO: duplicate body...
-async fn get_tezedge_rewards(
-    cycle: i32,
+async fn call_tezedge_rpc<T: DeserializeOwned>(
+    endpoint: &str,
     node_url: &str,
-) -> Result<TezedgeRewardsResponse, anyhow::Error> {
-    const TEZEDGE_REWARDS_RPC_ENDOPOINT: &str = "dev/rewards/cycle";
+) -> Result<T, anyhow::Error> {
+    // const TEZEDGE_REWARDS_RPC_ENDOPOINT: &str = "dev/rewards/cycle";
 
-    let url_as_string = format!("{}{}/{}", node_url, TEZEDGE_REWARDS_RPC_ENDOPOINT, cycle);
+    let url_as_string = format!("{}{}", node_url, endpoint);
     let url = url_as_string
         .parse()
         .unwrap_or_else(|_| panic!("Invalid URL: {}", &url_as_string));
-
-    println!("Request: {url_as_string}");
 
     let client = client();
     let start = Instant::now();
@@ -344,7 +357,7 @@ async fn get_tezedge_rewards(
 
     // process status code
     if status_code.is_success() {
-        let response_value: TezedgeRewardsResponse = match serde_json::from_slice(&dst) {
+        let response_value: T = match serde_json::from_slice(&dst) {
             Ok(result) => result,
             Err(err) => {
                 return Err(format_err!(
