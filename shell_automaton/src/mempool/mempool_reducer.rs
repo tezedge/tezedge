@@ -66,7 +66,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                                 current_head_level,
                                 OperationValidationResult::Applied,
                             );
+                        update_quorum_state_with_validated_operation(state, &v.hash);
                     }
+                    let mempool_state = &mut state.mempool;
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
                         if let MempoolOperation {
                             state: OperationState::Decoded,
@@ -331,13 +333,29 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             let mempool_state = &mut state.mempool;
 
-            let t = Instant::now();
-
-            if mempool_state.branch_changed {
-                // remove all `branch_refused` results, put them into `pending_operations`
-                // to validate again with new prevalidator
+            if !state.config.disable_endorsements_precheck {
+                let t = Instant::now();
+                if mempool_state.branch_changed {
+                    // remove all `branch_refused` results, put them into `pending_operations`
+                    // to validate again with new prevalidator
+                    for v in drain_consensus_deq(
+                        &mut mempool_state.validated_operations.branch_refused,
+                        &mempool_state.validated_operations.ops,
+                    ) {
+                        if mempool_state
+                            .validated_operations
+                            .ops
+                            .remove(&v.hash)
+                            .is_some()
+                        {
+                            mempool_state.prechecking_delayed_operations.insert(v.hash);
+                        }
+                    }
+                }
+                // remove all remaining `applied` results and all `branch_delayed` results,
+                // put them into `pending_operations` to validate again with prechecker
                 for v in drain_consensus_deq(
-                    &mut mempool_state.validated_operations.branch_refused,
+                    &mut mempool_state.validated_operations.branch_delayed,
                     &mempool_state.validated_operations.ops,
                 ) {
                     if mempool_state
@@ -349,44 +367,15 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state.prechecking_delayed_operations.insert(v.hash);
                     }
                 }
-            }
-            // remove all remaining `applied` results and all `branch_delayed` results,
-            // put them into `pending_operations` to validate again with prechecker
-            for v in drain_consensus_deq(
-                &mut mempool_state.validated_operations.branch_delayed,
-                &mempool_state.validated_operations.ops,
-            ) {
-                if mempool_state
-                    .validated_operations
-                    .ops
-                    .remove(&v.hash)
-                    .is_some()
-                {
-                    mempool_state.prechecking_delayed_operations.insert(v.hash);
+                // remove all applied consensus operations
+                for v in drain_consensus(
+                    &mut mempool_state.validated_operations.applied,
+                    &mempool_state.validated_operations.ops,
+                ) {
+                    mempool_state.validated_operations.ops.remove(&v.hash);
                 }
+                slog::debug!(state.log, "validated_operations: updated consensus operations"; "time" => format!("{:?}", Instant::now() - t));
             }
-            // remove all applied consensus operations
-            for v in drain_consensus(
-                &mut mempool_state.validated_operations.applied,
-                &mempool_state.validated_operations.ops,
-            ) {
-                mempool_state.validated_operations.ops.remove(&v.hash);
-            }
-            // remove all outdated consensus operations
-            for v in drain_consensus_deq(
-                &mut mempool_state.validated_operations.outdated,
-                &mempool_state.validated_operations.ops,
-            ) {
-                mempool_state.validated_operations.ops.remove(&v.hash);
-            }
-            // remove all refused consensus operations
-            for v in drain_consensus_deq(
-                &mut mempool_state.validated_operations.refused,
-                &mempool_state.validated_operations.ops,
-            ) {
-                mempool_state.validated_operations.ops.remove(&v.hash);
-            }
-            slog::debug!(state.log, "validated_operations: updated consensus operations"; "time" => format!("{:?}", Instant::now() - t));
 
             let t = Instant::now();
             // update last 120 predecessor blocks map.
@@ -673,120 +662,89 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
 
             let is_applied = result.kind().is_applied();
-
-            let mut update_stats = |state1, state2| {
-                if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
-                    if matches!(
-                        operation_state.state,
-                        OperationState::Decoded | OperationState::BranchDelayed
-                    ) {
-                        *operation_state = operation_state.next_state(state1, action);
-                        let op = operation_state
-                            .operation_decoded_contents
-                            .as_ref()
-                            .and_then(|op| match op {
-                                OperationDecodedContents::Proto012(operation) => Some(operation),
-                                _ => None,
-                            });
-
-                        Some(())
-                            .and_then(|_| {
-                                let op = op?.as_preendorsement()?;
-                                Some((op.level, op.round, op.slot))
-                            })
-                            .or_else(|| {
-                                let op = op?.as_endorsement()?;
-                                Some((op.level, op.round, op.slot))
-                            })
-                            .filter(|_| is_applied)
-                            .and_then(|(level, round, slot)| {
-                                let head_level = state.current_head.level()?;
-                                let head_round = state.current_head.round()?;
-                                if level != head_level || round != head_round {
-                                    return None;
-                                }
-                                let rights = state.rights.tenderbake_validators(level)?;
-                                let delegate = rights.validators.get(slot as usize)?;
-                                let endorsing_power = rights.slots.get(delegate)?.len() as u16;
-
-                                if op?.is_preendorsement() {
-                                    mempool_state
-                                        .prequorum
-                                        .add(delegate.clone(), endorsing_power);
-                                } else {
-                                    mempool_state.quorum.add(delegate.clone(), endorsing_power);
-                                }
-                                Some(())
-                            });
-                    }
-                }
-                mempool_state
-                    .operation_stats
-                    .entry(hash.clone())
-                    .or_insert_with(OperationStats::new)
-                    .validation_finished(
-                        action.time_as_nanos(),
-                        None,
-                        None,
-                        current_head_level,
-                        state2,
-                    );
-            };
-
-            match result.kind() {
+            let (state1, state2) = match result.kind() {
                 crate::prechecker::PrecheckerResultKind::Applied => {
-                    mempool_state
+                    state
+                        .mempool
                         .validated_operations
                         .applied
                         .push(as_applied(hash, result));
 
-                    update_stats(
+                    (
                         OperationState::Prechecked,
                         OperationValidationResult::Prechecked,
-                    );
+                    )
                 }
                 crate::prechecker::PrecheckerResultKind::Outdated => {
-                    mempool_state
+                    state
+                        .mempool
                         .validated_operations
                         .outdated
                         .push_back(as_errored(hash, result));
 
-                    update_stats(
+                    (
                         OperationState::Outdated,
                         OperationValidationResult::Outdated,
-                    );
+                    )
                 }
                 crate::prechecker::PrecheckerResultKind::Refused(_) => {
-                    mempool_state
+                    state
+                        .mempool
                         .validated_operations
                         .refused
                         .push_back(as_errored(hash, result));
 
-                    update_stats(OperationState::Refused, OperationValidationResult::Refused);
+                    (OperationState::Refused, OperationValidationResult::Refused)
                 }
                 crate::prechecker::PrecheckerResultKind::BranchRefused => {
-                    mempool_state
+                    state
+                        .mempool
                         .validated_operations
                         .branch_refused
                         .push_back(as_errored(hash, result));
 
-                    update_stats(
+                    (
                         OperationState::BranchRefused,
                         OperationValidationResult::BranchRefused,
-                    );
+                    )
                 }
                 crate::prechecker::PrecheckerResultKind::BranchDelayed => {
-                    mempool_state
+                    state
+                        .mempool
                         .validated_operations
                         .branch_delayed
                         .push_back(as_errored(hash, result));
 
-                    update_stats(
+                    (
                         OperationState::BranchDelayed,
                         OperationValidationResult::BranchDelayed,
-                    );
+                    )
+                }
+            };
+
+            if let Some(operation_state) = state.mempool.operations_state.get_mut(hash) {
+                if matches!(
+                    operation_state.state,
+                    OperationState::Decoded | OperationState::BranchDelayed
+                ) {
+                    *operation_state = operation_state.next_state(state1, action);
+                }
+                if is_applied {
+                    update_quorum_state_with_validated_operation(state, hash);
                 }
             }
+            state
+                .mempool
+                .operation_stats
+                .entry(hash.clone())
+                .or_insert_with(OperationStats::new)
+                .validation_finished(
+                    action.time_as_nanos(),
+                    None,
+                    None,
+                    current_head_level,
+                    state2,
+                );
         }
         Action::MempoolBroadcastDone(MempoolBroadcastDoneAction {
             address,
@@ -992,6 +950,30 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
 
+        Action::RightsValidatorsReady(_) => {
+            if state.mempool.prequorum.total != 0 || state.mempool.quorum.total != 0 {
+                // if we have already incremented quorum total endorsing
+                // power state, that means we already had rights so we
+                // don't need to fill quorum state with the operations
+                // that were validated before we had rights available.
+                return;
+            }
+            let ops = &state.mempool.validated_operations;
+            let consensus_ops = ops
+                .applied
+                .iter()
+                .map(|v| &v.hash)
+                .filter_map(|hash| Some((hash, ops.ops.get(hash)?)))
+                .filter(|(_, op)| {
+                    OperationKind::from_operation_content_raw(op.data().as_ref())
+                        .is_consensus_operation()
+                })
+                .map(|(hash, _)| hash.clone())
+                .collect::<Vec<_>>();
+            for hash in consensus_ops {
+                update_quorum_state_with_validated_operation(state, &hash);
+            }
+        }
         Action::MempoolPrequorumReached(_) => {
             state.mempool.prequorum.set_notified();
         }
@@ -1118,4 +1100,45 @@ fn drain_consensus<T: HasOperationHash>(
         .partition(|v| ops.get(v.operation_hash()).map_or(false, is_consensus_op));
     *deq = non_consensus;
     consensus
+}
+
+fn update_quorum_state_with_validated_operation(
+    state: &mut State,
+    hash: &OperationHash,
+) -> Option<()> {
+    let operation_state = state.mempool.operations_state.get(hash)?;
+    let op = operation_state
+        .operation_decoded_contents
+        .as_ref()
+        .and_then(|op| match op {
+            OperationDecodedContents::Proto012(operation) => Some(operation),
+            _ => None,
+        })?;
+
+    let (level, round, slot) = op
+        .as_preendorsement()
+        .map(|op| (op.level, op.round, op.slot))
+        .or_else(|| {
+            let op = op.as_endorsement()?;
+            Some((op.level, op.round, op.slot))
+        })?;
+
+    let head_level = state.current_head.level()?;
+    let head_round = state.current_head.round()?;
+    if level != head_level || round != head_round {
+        return None;
+    }
+    let rights = state.rights.tenderbake_validators(level)?;
+    let delegate = rights.validators.get(slot as usize)?;
+    let endorsing_power = rights.slots.get(delegate)?.len() as u16;
+
+    if op.is_preendorsement() {
+        state
+            .mempool
+            .prequorum
+            .add(delegate.clone(), endorsing_power);
+    } else {
+        state.mempool.quorum.add(delegate.clone(), endorsing_power);
+    }
+    Some(())
 }

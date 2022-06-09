@@ -29,7 +29,7 @@ use crate::{
         },
         PrecheckerResultKind,
     },
-    rights::Slot,
+    rights::{rights_actions::RightsGetAction, RightsKey, Slot},
     service::{RandomnessService, RpcService},
     Action, ActionWithMeta, Service, State,
 };
@@ -88,6 +88,9 @@ where
         }
         Action::MempoolValidatorValidateSuccess(content) => {
             if content.result.is_applied() {
+                store.dispatch(MempoolPrequorumReachedAction {});
+                store.dispatch(MempoolQuorumReachedAction {});
+
                 let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
 
                 for address in addresses {
@@ -250,6 +253,14 @@ where
         }
         Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
             if store.state().mempool.running_since.is_some() {
+                let head_hash = match store.state().current_head.hash() {
+                    Some(v) => v.clone(),
+                    None => return,
+                };
+                // Needed for calculating (pre)quorum.
+                store.dispatch(RightsGetAction {
+                    key: RightsKey::endorsing(head_hash, None),
+                });
                 store.dispatch(MempoolBroadcastAction {
                     send_operations: false,
                 });
@@ -631,6 +642,10 @@ where
         }
         Action::MempoolRequestFullContent(MempoolRequestFullContentAction { address, .. }) => {
             store.dispatch(MempoolGetOperationsAction { address: *address });
+        }
+        Action::RightsValidatorsReady(_) => {
+            store.dispatch(MempoolPrequorumReachedAction {});
+            store.dispatch(MempoolQuorumReachedAction {});
         }
         _ => (),
     }
