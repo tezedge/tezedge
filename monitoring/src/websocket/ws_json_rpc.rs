@@ -65,7 +65,7 @@ pub async fn handle_request(
                     Err(_) => {
                         let json_error = json_rpc_types::Error::with_custom_msg(
                             json_rpc_types::ErrorCode::InternalError,
-                            "Failed to get bytes from hyper body",
+                            "Failed to get bytes",
                         );
                         return json_rpc_types::Response::error(
                             req.jsonrpc,
@@ -79,7 +79,7 @@ pub async fn handle_request(
                     Err(_) => {
                         let json_error = json_rpc_types::Error::with_custom_msg(
                             json_rpc_types::ErrorCode::InternalError,
-                            "Failed to deserialize body bytes to json",
+                            "Failed to deserialize body",
                         );
                         return json_rpc_types::Response::error(
                             req.jsonrpc,
