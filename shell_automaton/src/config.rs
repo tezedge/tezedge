@@ -12,7 +12,7 @@ use tezos_context_api::{
     ContextKvStoreConfiguration, GenesisChain, ProtocolOverrides, TezosContextStorageConfiguration,
     TezosContextTezEdgeStorageConfiguration, TezosContextTezedgeOnDiskBackendOptions,
 };
-use tezos_messages::base::signature_public_key::SignaturePublicKey;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_protocol_ipc_client::ProtocolRunnerConfiguration;
 
@@ -133,7 +133,7 @@ impl Config {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerConfig {
-    pub public_key: SignaturePublicKey,
+    pub pkh: SignaturePublicKeyHash,
 }
 
 pub fn default_test_config() -> Config {

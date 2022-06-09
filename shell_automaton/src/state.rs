@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::time::{Duration, SystemTime};
-use tezos_messages::base::signature_public_key::SignaturePublicKey;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 
 use ::storage::persistent::SchemaError;
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
@@ -88,7 +88,7 @@ pub struct State {
     pub last_action: ActionIdWithKind,
     pub applied_actions_count: u64,
 
-    pub bakers: BTreeMap<SignaturePublicKey, BakerState>,
+    pub bakers: BTreeMap<SignaturePublicKeyHash, BakerState>,
 
     pub shutdown: ShutdownState,
 }
@@ -103,7 +103,7 @@ impl State {
         let bakers = config
             .bakers
             .iter()
-            .map(|baker| (baker.public_key.clone(), BakerState::new()))
+            .map(|baker| (baker.pkh.clone(), BakerState::new()))
             .collect();
         Self {
             log: Default::default(),
@@ -293,7 +293,7 @@ impl State {
         matches!(self.shutdown, ShutdownState::Success { .. })
     }
 
-    pub fn baker_keys_iter<'a>(&'a self) -> impl 'a + Iterator<Item = &'a SignaturePublicKey> {
+    pub fn baker_keys_iter<'a>(&'a self) -> impl 'a + Iterator<Item = &'a SignaturePublicKeyHash> {
         self.bakers.iter().map(|(key, _)| key)
     }
 }

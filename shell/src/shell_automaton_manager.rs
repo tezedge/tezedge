@@ -11,6 +11,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use crypto::PublicKeyWithHash;
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
 use slog::{info, warn, Logger};
 
@@ -155,9 +156,9 @@ impl ShellAutomatonManager {
         .unwrap()
         .keypair()
         .unwrap();
-        let public_key = SignaturePublicKey::Ed25519(public_key);
+        let baker_pkh = SignaturePublicKey::Ed25519(public_key).pk_hash().unwrap();
         let mut baker_service = BakerServiceDefault::new(mio_service.waker());
-        baker_service.add_local_baker(public_key.clone(), secret_key);
+        baker_service.add_local_baker(baker_pkh.clone(), secret_key);
 
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),
@@ -175,7 +176,7 @@ impl ShellAutomatonManager {
 
         let chain_id = init_storage_data.chain_id.clone();
 
-        let baker_config = shell_automaton::config::BakerConfig { public_key };
+        let baker_config = shell_automaton::config::BakerConfig { pkh: baker_pkh };
         let mut initial_state = shell_automaton::State::new(shell_automaton::Config {
             initial_time: SystemTime::now(),
 

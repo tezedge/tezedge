@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
 use tezos_api::ffi::{Applied, Errored};
 use tezos_messages::{
-    base::signature_public_key::SignaturePublicKey,
+    base::signature_public_key::SignaturePublicKeyHash,
     p2p::encoding::{
         block_header::{BlockHeader, Level},
         operation::Operation,
@@ -712,7 +712,7 @@ impl OperationState {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct QuorumState {
     pub threshold: u16,
-    pub delegates: BTreeMap<SignaturePublicKey, EndorsingPower>,
+    pub delegates: BTreeMap<SignaturePublicKeyHash, EndorsingPower>,
     pub total: EndorsingPower,
     pub notified: bool,
 }
@@ -737,7 +737,7 @@ impl QuorumState {
         self.notified = false;
     }
 
-    pub fn add(&mut self, delegate: SignaturePublicKey, endorsing_power: EndorsingPower) {
+    pub fn add(&mut self, delegate: SignaturePublicKeyHash, endorsing_power: EndorsingPower) {
         if self.delegates.insert(delegate, endorsing_power).is_none() {
             self.total += endorsing_power;
         }

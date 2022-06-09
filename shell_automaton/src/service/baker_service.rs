@@ -14,7 +14,7 @@ use crypto::hash::{ChainId, SecretKeyEd25519, Signature};
 use crypto::CryptoError;
 use tezos_encoding::enc::{BinError, BinWriter};
 use tezos_encoding::types::SizedBytes;
-use tezos_messages::base::signature_public_key::SignaturePublicKey;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 use super::service_channel::{
@@ -73,28 +73,28 @@ pub trait BakerService {
 
     fn preendrosement_sign(
         &mut self,
-        baker: &SignaturePublicKey,
+        baker: &SignaturePublicKeyHash,
         chain_id: &ChainId,
         operation: &PreendorsementWithForgedBytes,
     ) -> RequestId;
 
     fn endrosement_sign(
         &mut self,
-        baker: &SignaturePublicKey,
+        baker: &SignaturePublicKeyHash,
         chain_id: &ChainId,
         operation: &EndorsementWithForgedBytes,
     ) -> RequestId;
 
     fn block_sign(
         &mut self,
-        baker: &SignaturePublicKey,
+        baker: &SignaturePublicKeyHash,
         chain_id: &ChainId,
         block_header: &BlockHeader,
     ) -> RequestId;
 
     fn compute_proof_of_work(
         &mut self,
-        baker: SignaturePublicKey,
+        baker: SignaturePublicKeyHash,
         header: BlockHeader,
         proof_of_work_threshold: u64,
     ) -> RequestId;
@@ -125,8 +125,8 @@ impl<T> Channel<T> {
 
 pub struct BakerServiceDefault {
     counter: usize,
-    bakers: BTreeMap<SignaturePublicKey, BakerSigner>,
-    bakers_compute_pow_tasks: BTreeMap<SignaturePublicKey, Arc<RequestId>>,
+    bakers: BTreeMap<SignaturePublicKeyHash, BakerSigner>,
+    bakers_compute_pow_tasks: BTreeMap<SignaturePublicKeyHash, Arc<RequestId>>,
     worker_channel: Channel<(RequestId, BakerWorkerMessage)>,
 }
 
@@ -152,20 +152,20 @@ impl BakerServiceDefault {
 
     pub fn add_local_baker(
         &mut self,
-        public_key: SignaturePublicKey,
+        public_key: SignaturePublicKeyHash,
         secret_key: SecretKeyEd25519,
     ) {
         self.bakers
             .insert(public_key, BakerSigner::Local { secret_key });
     }
 
-    pub fn get_baker(&self, key: &SignaturePublicKey) -> &BakerSigner {
+    pub fn get_baker(&self, key: &SignaturePublicKeyHash) -> &BakerSigner {
         self.bakers
             .get(key)
             .expect("Missing signer for baker: {key}")
     }
 
-    pub fn get_baker_mut(&mut self, key: &SignaturePublicKey) -> &mut BakerSigner {
+    pub fn get_baker_mut(&mut self, key: &SignaturePublicKeyHash) -> &mut BakerSigner {
         self.bakers
             .get_mut(key)
             .expect("Missing signer for baker: {key}")
@@ -173,7 +173,7 @@ impl BakerServiceDefault {
 
     fn sign(
         &mut self,
-        baker: &SignaturePublicKey,
+        baker: &SignaturePublicKeyHash,
         target: BakerSignTarget,
         chain_id: &ChainId,
         value_bytes: &[u8],
@@ -213,7 +213,7 @@ impl BakerService for BakerServiceDefault {
 
     fn preendrosement_sign(
         &mut self,
-        baker: &SignaturePublicKey,
+        baker: &SignaturePublicKeyHash,
         chain_id: &ChainId,
         operation: &PreendorsementWithForgedBytes,
     ) -> RequestId {
@@ -223,7 +223,7 @@ impl BakerService for BakerServiceDefault {
 
     fn endrosement_sign(
         &mut self,
-        baker: &SignaturePublicKey,
+        baker: &SignaturePublicKeyHash,
         chain_id: &ChainId,
         operation: &EndorsementWithForgedBytes,
     ) -> RequestId {
@@ -233,7 +233,7 @@ impl BakerService for BakerServiceDefault {
 
     fn block_sign(
         &mut self,
-        baker: &SignaturePublicKey,
+        baker: &SignaturePublicKeyHash,
         chain_id: &ChainId,
         block_header: &BlockHeader,
     ) -> RequestId {
@@ -247,7 +247,7 @@ impl BakerService for BakerServiceDefault {
 
     fn compute_proof_of_work(
         &mut self,
-        baker: SignaturePublicKey,
+        baker: SignaturePublicKeyHash,
         header: BlockHeader,
         proof_of_work_threshold: u64,
     ) -> RequestId {
