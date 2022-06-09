@@ -18,7 +18,7 @@ use shell_automaton_testing::{generate_chain, generate_next_block};
 use storage::BlockHeaderWithHash;
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::block_header::{GetBlockHeadersMessage, Level};
-use tezos_messages::p2p::encoding::current_head::CurrentHeadMessage;
+use tezos_messages::p2p::encoding::current_head::{CurrentHeadMessage, GetCurrentHeadMessage};
 use tezos_messages::p2p::encoding::mempool::Mempool;
 use tezos_messages::p2p::encoding::operations_for_blocks::{
     GetOperationsForBlocksMessage, OperationsForBlock, OperationsForBlocksMessage, Path,
@@ -128,6 +128,12 @@ fn test(chain_level: Level, fork_depth: usize, should_accept: bool) {
     assert_eq!(
         peer.read_peer_message(),
         Some(PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(
+            chain_id.clone(),
+        )))
+    );
+    assert_eq!(
+        peer.read_peer_message(),
+        Some(PeerMessage::GetCurrentHead(GetCurrentHeadMessage::new(
             chain_id
         )))
     );
