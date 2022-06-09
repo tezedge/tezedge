@@ -390,12 +390,12 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     ..
                 } = request
                 {
-                    let validators = context_validators
+                    let validators_by_pk = context_validators
                         .validators
                         .iter()
                         .filter_map(|pkh| delegates.get(pkh).cloned())
                         .collect();
-                    let slots = context_validators
+                    let slots_by_pk = context_validators
                         .slots
                         .iter()
                         .filter_map(|(pkh, rights)| {
@@ -404,8 +404,10 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         .collect();
                     *request = RightsRequest::ValidatorsReady(Validators {
                         level: *level,
-                        validators,
-                        slots,
+                        validators: context_validators.validators.clone(),
+                        slots: context_validators.slots.clone(),
+                        validators_by_pk,
+                        slots_by_pk,
                     });
                 }
             }

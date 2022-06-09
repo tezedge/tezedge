@@ -424,13 +424,13 @@ fn validate_tenderbake_consensus_operation_signature(
 ) -> Result<(), ConsensusOperationError> {
     let TenderbakeConsensusContents { slot, .. } = consensus_contents;
 
-    let delegate = if let Some(d) = tenderbake_validators.validators.get(*slot as usize) {
+    let delegate = if let Some(d) = tenderbake_validators.validators_by_pk.get(*slot as usize) {
         d
     } else {
         return Err(ConsensusOperationError::IncorrectSlot(*slot));
     };
     if tenderbake_validators
-        .slots
+        .slots_by_pk
         .get(delegate)
         .and_then(|slots| slots.first())
         != Some(slot)

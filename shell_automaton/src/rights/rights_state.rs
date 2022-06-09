@@ -10,7 +10,7 @@ use crypto::hash::{ProtocolHash, TryFromPKError};
 use redux_rs::ActionId;
 use storage::cycle_storage::CycleData;
 use tezos_messages::{
-    base::signature_public_key::SignaturePublicKey,
+    base::signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash},
     p2p::encoding::block_header::{BlockHeader, Level},
     protocol::{SupportedProtocol, UnsupportedProtocolError},
 };
@@ -76,12 +76,19 @@ pub type EndorsingPower = u16;
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct Validators {
     pub level: Level,
+
     pub validators: ValidatorsTable,
     pub slots: ValidatorSlots,
+
+    pub validators_by_pk: ValidatorsTableByPK,
+    pub slots_by_pk: ValidatorSlotsByPK,
 }
 
-pub type ValidatorsTable = Vec<SignaturePublicKey>;
-pub type ValidatorSlots = BTreeMap<SignaturePublicKey, Vec<Slot>>;
+pub type ValidatorsTable = Vec<SignaturePublicKeyHash>;
+pub type ValidatorSlots = BTreeMap<SignaturePublicKeyHash, Vec<Slot>>;
+
+pub type ValidatorsTableByPK = Vec<SignaturePublicKey>;
+pub type ValidatorSlotsByPK = BTreeMap<SignaturePublicKey, Vec<Slot>>;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

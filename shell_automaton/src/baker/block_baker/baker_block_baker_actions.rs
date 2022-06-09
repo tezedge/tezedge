@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{NonceHash, Signature};
 use storage::BlockHeaderWithHash;
 use tezos_encoding::types::SizedBytes;
-use tezos_messages::base::signature_public_key::SignaturePublicKey;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::operations_for_blocks::Path;
 
 use crate::protocol_runner::ProtocolRunnerToken;
@@ -28,7 +28,7 @@ impl EnablingCondition<State> for BakerBlockBakerRightsGetInitAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerRightsGetPendingAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerRightsGetPendingAction {
@@ -43,7 +43,7 @@ impl EnablingCondition<State> for BakerBlockBakerRightsGetPendingAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerRightsGetCurrentLevelSuccessAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub slots: Vec<u16>,
 }
 
@@ -62,7 +62,7 @@ impl EnablingCondition<State> for BakerBlockBakerRightsGetCurrentLevelSuccessAct
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerRightsGetNextLevelSuccessAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub slots: Vec<u16>,
 }
 
@@ -81,7 +81,7 @@ impl EnablingCondition<State> for BakerBlockBakerRightsGetNextLevelSuccessAction
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerRightsGetSuccessAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerRightsGetSuccessAction {
@@ -104,7 +104,7 @@ impl EnablingCondition<State> for BakerBlockBakerRightsGetSuccessAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerRightsNoRightsAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerRightsNoRightsAction {
@@ -127,7 +127,7 @@ impl EnablingCondition<State> for BakerBlockBakerRightsNoRightsAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerTimeoutPendingAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerTimeoutPendingAction {
@@ -148,7 +148,7 @@ impl EnablingCondition<State> for BakerBlockBakerTimeoutPendingAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerNextLevelTimeoutSuccessQuorumPendingAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerNextLevelTimeoutSuccessQuorumPendingAction {
@@ -174,7 +174,7 @@ impl EnablingCondition<State> for BakerBlockBakerNextLevelTimeoutSuccessQuorumPe
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerBakeNextLevelAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerBakeNextLevelAction {
@@ -195,7 +195,7 @@ impl EnablingCondition<State> for BakerBlockBakerBakeNextLevelAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerBakeNextRoundAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerBakeNextRoundAction {
@@ -234,7 +234,7 @@ impl EnablingCondition<State> for BakerBlockBakerBakeNextRoundAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerBuildBlockInitAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerBuildBlockInitAction {
@@ -253,7 +253,7 @@ impl EnablingCondition<State> for BakerBlockBakerBuildBlockInitAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerBuildBlockSuccessAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub seed_nonce_hash: Option<NonceHash>,
 }
 
@@ -284,7 +284,7 @@ impl EnablingCondition<State> for BakerBlockBakerBuildBlockSuccessAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerPreapplyInitAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerPreapplyInitAction {
@@ -302,7 +302,7 @@ impl EnablingCondition<State> for BakerBlockBakerPreapplyInitAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerPreapplyPendingAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub protocol_req_id: ProtocolRunnerToken,
     pub request: BlockPreapplyRequest,
 }
@@ -322,7 +322,7 @@ impl EnablingCondition<State> for BakerBlockBakerPreapplyPendingAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerPreapplySuccessAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub response: BlockPreapplyResponse,
 }
 
@@ -341,7 +341,7 @@ impl EnablingCondition<State> for BakerBlockBakerPreapplySuccessAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerComputeProofOfWorkInitAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerComputeProofOfWorkInitAction {
@@ -359,7 +359,7 @@ impl EnablingCondition<State> for BakerBlockBakerComputeProofOfWorkInitAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerComputeProofOfWorkPendingAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub req_id: RequestId,
 }
 
@@ -378,7 +378,7 @@ impl EnablingCondition<State> for BakerBlockBakerComputeProofOfWorkPendingAction
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerComputeProofOfWorkSuccessAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub proof_of_work_nonce: SizedBytes<8>,
 }
 
@@ -397,7 +397,7 @@ impl EnablingCondition<State> for BakerBlockBakerComputeProofOfWorkSuccessAction
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerSignInitAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerSignInitAction {
@@ -415,7 +415,7 @@ impl EnablingCondition<State> for BakerBlockBakerSignInitAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerSignPendingAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub req_id: RequestId,
 }
 
@@ -434,7 +434,7 @@ impl EnablingCondition<State> for BakerBlockBakerSignPendingAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerSignSuccessAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub signature: Signature,
 }
 
@@ -453,7 +453,7 @@ impl EnablingCondition<State> for BakerBlockBakerSignSuccessAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerComputeOperationsPathsInitAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerComputeOperationsPathsInitAction {
@@ -471,7 +471,7 @@ impl EnablingCondition<State> for BakerBlockBakerComputeOperationsPathsInitActio
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerComputeOperationsPathsPendingAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub protocol_req_id: ProtocolRunnerToken,
 }
 
@@ -490,7 +490,7 @@ impl EnablingCondition<State> for BakerBlockBakerComputeOperationsPathsPendingAc
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerComputeOperationsPathsSuccessAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub operations_paths: Vec<Path>,
 }
 
@@ -509,7 +509,7 @@ impl EnablingCondition<State> for BakerBlockBakerComputeOperationsPathsSuccessAc
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerInjectInitAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerInjectInitAction {
@@ -527,7 +527,7 @@ impl EnablingCondition<State> for BakerBlockBakerInjectInitAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerInjectPendingAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub block: BlockHeaderWithHash,
 }
 
@@ -546,7 +546,7 @@ impl EnablingCondition<State> for BakerBlockBakerInjectPendingAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerInjectSuccessAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
 }
 
 impl EnablingCondition<State> for BakerBlockBakerInjectSuccessAction {

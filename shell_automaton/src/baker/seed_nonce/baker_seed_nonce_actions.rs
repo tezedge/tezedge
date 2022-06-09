@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
-use tezos_messages::base::signature_public_key::SignaturePublicKey;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::baker::block_baker::BakerBlockBakerState;
@@ -18,7 +18,7 @@ use super::{
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerSeedNonceGeneratedAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub level: Level,
     pub nonce: SeedNonce,
     pub nonce_hash: SeedNonceHash,
@@ -39,7 +39,7 @@ impl EnablingCondition<State> for BakerSeedNonceGeneratedAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerSeedNonceCommittedAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub level: Level,
     pub block_hash: BlockHash,
 }
@@ -71,7 +71,7 @@ impl EnablingCondition<State> for BakerSeedNonceCommittedAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerSeedNonceCycleNextWaitAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub level: Level,
 }
 
@@ -100,7 +100,7 @@ impl EnablingCondition<State> for BakerSeedNonceCycleNextWaitAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerSeedNonceRevealInitAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub level: Level,
 }
 
@@ -132,7 +132,7 @@ impl EnablingCondition<State> for BakerSeedNonceRevealInitAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerSeedNonceRevealPendingAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub level: Level,
     pub operation: SeedNonceRevelationOperationWithForgedBytes,
 }
@@ -156,7 +156,7 @@ impl EnablingCondition<State> for BakerSeedNonceRevealPendingAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerSeedNonceRevealMempoolInjectAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub level: Level,
 }
 
@@ -185,7 +185,7 @@ impl EnablingCondition<State> for BakerSeedNonceRevealMempoolInjectAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerSeedNonceRevealIncludedAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub level: Level,
 }
 
@@ -231,7 +231,7 @@ impl EnablingCondition<State> for BakerSeedNonceRevealIncludedAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerSeedNonceRevealSuccessAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub level: Level,
 }
 
@@ -257,7 +257,7 @@ impl EnablingCondition<State> for BakerSeedNonceRevealSuccessAction {
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerSeedNonceFinishAction {
-    pub baker: SignaturePublicKey,
+    pub baker: SignaturePublicKeyHash,
     pub level: Level,
 }
 
