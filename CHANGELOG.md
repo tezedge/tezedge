@@ -12,7 +12,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 
 - Nothing.
-
 ### Deprecated
 
 - Nothing.
@@ -32,6 +31,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Performance
 
 - Nothing.
+
+## [2.3.2] - 2022-06-07
+
+### Fixed
+
+- Fixed possible errors while calling RPCs due to the WebSocket RPC feature.
+- Fixed handling of lazy encoded micheline values in operations.
+- Fixed unimplemented panic in describe endpoint.
+
+### Performance
+
+- Split the rewards RPC into two (/dev/rewards/cycle/:cycle_num and /dev/rewards/cycle/:cycle_num/:delegate) to further optimise performance
 
 ## [2.3.2] - 2022-06-07
 
@@ -847,7 +858,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.3.2...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.3.3...develop
+[2.3.3]: https://github.com/tezedge/tezedge/releases/v2.3.3
 [2.3.2]: https://github.com/tezedge/tezedge/releases/v2.3.2
 [2.3.1]: https://github.com/tezedge/tezedge/releases/v2.3.1
 [2.3.0]: https://github.com/tezedge/tezedge/releases/v2.3.0
