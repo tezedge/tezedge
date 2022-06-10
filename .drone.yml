@@ -6253,6 +6253,7 @@ defs:
       - sed -i 's/~can_fail:false/~can_fail:true/g' src/mitten/lib/scenarios.ml
       - eval $(opam env)
       - dune exec src/mitten/scenarios/$$DRONE_STEP_NAME.exe -- --data-dir $DATA_DIR --logs-dir $LOGS_DIR --binaries-dir bins --verbose 2 --timeout 400
+    failure: ignore
 
 steps:
 
@@ -6341,7 +6342,6 @@ steps:
   <<: *mitten-test
 
 - name: simple_pred_fork_negative
-  failure: ignore
   <<: *mitten-test
 
 - name: advanced_fork_with_double_bake_and_preendorse

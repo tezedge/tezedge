@@ -3,7 +3,7 @@ version: "3"
 services:
 
   tezedge-with-memory-storage:
-    image: tezedge/tezedge:v2.3.2
+    image: tezedge/tezedge:v2.3.3
     pid: host
     network_mode: host
     command: [ "--network=mainnet", "--p2p-port=5554", "--rpc-port=5555", "--websocket-address=0.0.0.0:5556", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=tezedge", "--context-stats-db-path", "context-stats-db", "--context-kv-store", "inmem"]
@@ -13,7 +13,7 @@ services:
       - "tezedge-with-memory-storage-data:/tmp/tezedge"
 
   tezedge-explorer-with-memory-storage:
-    image: tezedge/tezedge-explorer:v2.2.2
+    image: tezedge/tezedge-explorer:v2.2.3
     hostname: tezedge-explorer-with-memory-storage
     environment:
       - API=[{"id":"tezedge-with-memory-storage","name":"tezedge-with-memory-storage","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:5555","p2p_port":5554,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:5556"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:5557/resources/tezedge"}]}]
@@ -24,7 +24,7 @@ services:
   monitoring:
     privileged: true
     network_mode: host
-    image: tezedge/node-monitoring:v2.3.2
+    image: tezedge/node-monitoring:v2.3.3
     pid: "host"
     command: ["--tezedge-nodes", "tezedge:5555:/tmp/tezedge", "--wait-for-nodes", "--rpc-port", "5557"]
     volumes:

@@ -1,6 +1,6 @@
 [package]
 name = "db-checker"
-version = "2.3.2"
+version = "2.3.3"
 authors = ["Mambisi <mambisi.zempare@simplestaking.com> <lilbizi96@gmail.com>"]
 edition = "2021"
 rust-version = "1.58"
