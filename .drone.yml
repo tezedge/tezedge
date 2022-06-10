@@ -597,6 +597,16 @@ steps:
   commands:
     - cargo test --release --workspace
 
+- name: run-unit-tests-baker
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cargo test -p baker
+
 # NOTE: right now rocksdb is the default, so the default unit tests run
 # above already includes these tests.
 # - name: run-unit-tests-multibackend-rockdb

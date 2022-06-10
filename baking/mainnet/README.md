@@ -27,8 +27,6 @@ $ mkdir $HOME/data-mainnet
 $ mkdir $HOME/data-mainnet/client
 ```
 
-The TezEdge baker doesn't require it.
-
 ## Import snapshot data
 
 _If you want to run node from empty storage, you can skip this step._
