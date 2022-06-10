@@ -2,7 +2,7 @@ use std::{collections::HashMap, pin::Pin};
 
 use rpc::{
     server::{parse_query_string, MethodHandler},
-    RpcServiceEnvironmentRef, ServiceResultBody,
+    RpcServiceEnvironmentRef,
 };
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
@@ -19,7 +19,7 @@ pub struct PostRequestParams {
     pub body: Value,
 }
 
-pub type JsonRpcResponse = json_rpc_types::Response<ServiceResultBody, ()>;
+pub type JsonRpcResponse = json_rpc_types::Response<serde_json::Value, ()>;
 pub type JsonRpcError = json_rpc_types::Error<()>;
 
 /// Handles the json-rpc 2.0 requests and propagates it to the RPC handlers
@@ -58,7 +58,38 @@ pub async fn handle_request(
         );
 
         match Pin::from(fut).await {
-            Ok((_, resp)) => json_rpc_types::Response::result(req.jsonrpc, resp, req.id.clone()),
+            Ok(v) => {
+                let (_, body) = v.into_parts();
+                let body_bytes = match warp::hyper::body::to_bytes(body).await {
+                    Ok(body_bytes) => body_bytes,
+                    Err(_) => {
+                        let json_error = json_rpc_types::Error::with_custom_msg(
+                            json_rpc_types::ErrorCode::InternalError,
+                            "Failed to get bytes",
+                        );
+                        return json_rpc_types::Response::error(
+                            req.jsonrpc,
+                            json_error,
+                            req.id.clone(),
+                        );
+                    }
+                };
+                let res = match serde_json::from_slice(&body_bytes) {
+                    Ok(res) => res,
+                    Err(_) => {
+                        let json_error = json_rpc_types::Error::with_custom_msg(
+                            json_rpc_types::ErrorCode::InternalError,
+                            "Failed to deserialize body",
+                        );
+                        return json_rpc_types::Response::error(
+                            req.jsonrpc,
+                            json_error,
+                            req.id.clone(),
+                        );
+                    }
+                };
+                json_rpc_types::Response::result(req.jsonrpc, res, req.id.clone())
+            }
             Err(_) => {
                 let error =
                     json_rpc_types::Error::from_code(json_rpc_types::ErrorCode::InternalError);
