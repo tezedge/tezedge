@@ -40,6 +40,7 @@ pub const TAG_STRINGS: u64 = 4;
 pub const TAG_BIG_STRINGS: u64 = 5;
 pub const TAG_HASHES: u64 = 6;
 pub const TAG_SIZES: u64 = 7;
+pub const TAG_NEW_SHAPES: u64 = 8;
 
 impl From<FileType> for u64 {
     fn from(file_type: FileType) -> Self {
