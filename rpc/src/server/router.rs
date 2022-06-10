@@ -391,6 +391,11 @@ pub fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler> {
         "/dev/rewards/cycle/:cycle_num",
         dev_handler::dev_cycle_rewards,
     );
+    routes.handle(
+        hash_set![Method::GET],
+        "/dev/rewards/cycle/:cycle_num/:delegate",
+        dev_handler::dev_cycle_delegate_reward_distribution,
+    );
 
     routes.handle(
         hash_set![Method::GET],

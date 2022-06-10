@@ -776,20 +776,31 @@ pub async fn best_remote_level(
 pub async fn dev_cycle_rewards(
     _: Request<Body>,
     params: Params,
-    query: Query,
+    _: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id_param = MAIN_CHAIN_ID;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
     let cycle_num = required_param!(params, "cycle_num")?.parse()?;
-    let delegate = query.get_str("delegate").map(|v| v.to_string());
-    let commission: Option<i32> = query.get_parsed("comission")?;
-    let exclude_accusation_rewards = query.contains_key("exclude_accusation_rewards");
-
-    let filter = CycleRewardsFilter::new(delegate, commission, exclude_accusation_rewards);
 
     make_json_response(
-        &rewards_services::get_cycle_rewards_distribution(&chain_id, &env, cycle_num, filter)
+        &rewards_services::get_cycle_delegate_rewards(&chain_id, &env, cycle_num).await?,
+    )
+}
+
+pub async fn dev_cycle_delegate_reward_distribution(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    let chain_id_param = MAIN_CHAIN_ID;
+    let chain_id = parse_chain_id(chain_id_param, &env)?;
+    let cycle_num = required_param!(params, "cycle_num")?.parse()?;
+    let delegate = required_param!(params, "delegate")?;
+
+    make_json_response(
+        &rewards_services::get_cycle_rewards_distribution(&chain_id, &env, cycle_num, delegate)
             .await?,
     )
 }
