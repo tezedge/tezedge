@@ -263,14 +263,26 @@ pub struct BakerSeedNonceFinishAction {
 
 impl EnablingCondition<State> for BakerSeedNonceFinishAction {
     fn is_enabled(&self, state: &State) -> bool {
+        let head_cycle = match state.current_head.cycle_info() {
+            Some(v) => v.cycle,
+            None => return false,
+        };
         state
             .bakers
             .get(&self.baker)
             .and_then(|baker| baker.seed_nonces.get(&self.level))
-            .map_or(false, |s| match s {
-                BakerSeedNonceState::RevealPending { injected_in, .. } => injected_in.len() > 32,
-                BakerSeedNonceState::RevealSuccess { .. } => true,
-                _ => false,
+            .map_or(false, |s| {
+                if s.reveal_cycle() < head_cycle {
+                    // nonce for an old cycle so garbage collect it.
+                    return true;
+                }
+                match s {
+                    BakerSeedNonceState::RevealPending { injected_in, .. } => {
+                        injected_in.len() > 32
+                    }
+                    BakerSeedNonceState::RevealSuccess { .. } => true,
+                    _ => false,
+                }
             })
     }
 }

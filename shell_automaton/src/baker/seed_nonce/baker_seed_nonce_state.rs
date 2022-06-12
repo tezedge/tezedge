@@ -97,3 +97,15 @@ pub enum BakerSeedNonceState {
         nonce_hash: SeedNonceHash,
     },
 }
+
+impl BakerSeedNonceState {
+    /// Cycle in which we are supposed to reveal the nonce.
+    pub fn reveal_cycle(&self) -> i32 {
+        match self {
+            Self::Generated { cycle, .. } | Self::Committed { cycle, .. } => *cycle + 1,
+            Self::CycleNextWait { cycle, .. }
+            | Self::RevealPending { cycle, .. }
+            | Self::RevealSuccess { cycle, .. } => *cycle,
+        }
+    }
+}
