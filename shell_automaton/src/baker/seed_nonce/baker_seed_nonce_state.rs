@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
 use tezos_encoding::enc::BinWriter;
-use tezos_encoding::encoding::HasEncoding;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operation::Operation;
 
@@ -18,28 +17,31 @@ pub type SeedNonceHash = crypto::hash::NonceHash;
 pub type SeedNonce = tezos_encoding::types::SizedBytes<32>;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, Serialize, Deserialize, HasEncoding, BinWriter)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SeedNonceRevelationOperationWithForgedBytes {
-    #[encoding(builtin = "Int32")]
     level: Level,
     #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<32>))]
     nonce: SeedNonce,
-    #[encoding(skip)]
     forged: Vec<u8>,
 }
 
 impl SeedNonceRevelationOperationWithForgedBytes {
     pub fn new(level: i32, nonce: SeedNonce) -> Self {
-        let mut this = Self {
+        use tezos_messages::protocol::proto_005::operation::SeedNonceRevelationOperation;
+        use tezos_messages::protocol::proto_012::operation::Contents;
+        let op = Contents::SeedNonceRevelation(SeedNonceRevelationOperation {
+            level,
+            nonce: nonce.clone(),
+        });
+        let mut forged = vec![];
+        op.bin_write(&mut forged).unwrap();
+        forged.extend_from_slice(&[0; 64]);
+
+        Self {
             level,
             nonce,
-            forged: vec![],
-        };
-        let mut forged = vec![];
-        this.bin_write(&mut forged).unwrap();
-        forged.extend_from_slice(&[0; 64]);
-        this.forged = forged;
-        this
+            forged,
+        }
     }
 
     pub fn forged(&self) -> &[u8] {
