@@ -148,6 +148,12 @@ pub fn baker_seed_nonce_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             });
         }
+        Action::BakerSeedNonceFinish(content) => {
+            state
+                .bakers
+                .get_mut(&content.baker)
+                .and_then(|baker| baker.seed_nonces.remove(&content.level));
+        }
         _ => {}
     }
 }
