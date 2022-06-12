@@ -6,15 +6,19 @@ use std::convert::TryInto;
 use std::sync::Arc;
 
 use derive_more::From;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crypto::blake2b;
-use crypto::hash::{ChainId, SecretKeyEd25519, Signature};
-use crypto::CryptoError;
+use crypto::base58::FromBase58CheckError;
+use crypto::hash::{
+    ChainId, Ed25519Signature, SecretKeyEd25519, SeedEd25519, Signature, TryFromPKError,
+};
+use crypto::{blake2b, CryptoError, PublicKeyWithHash};
 use tezos_encoding::enc::{BinError, BinWriter};
 use tezos_encoding::types::SizedBytes;
-use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
+use tezos_messages::base::signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash};
+use tezos_messages::base::ConversionError;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 use super::service_channel::{
@@ -30,6 +34,10 @@ pub enum BakerSignError {
     Bin(BinError),
     #[error("{_0}")]
     Crypto(CryptoError),
+    #[error("{_0}")]
+    Reqwest(reqwest::Error),
+    #[error("{_0}")]
+    Json(serde_json::Error),
 }
 
 pub type BakerSignResult = Result<Signature, BakerSignError>;
@@ -130,9 +138,65 @@ pub struct BakerServiceDefault {
     worker_channel: Channel<(RequestId, BakerWorkerMessage)>,
 }
 
+#[derive(Debug, Error, From)]
+pub enum BakerSignerParseError {
+    #[error("schema not found")]
+    NoSchema,
+    #[error("unknown schema: \"{_0}\"")]
+    UnknownSchema(String),
+    #[error("only ed25519 keys supported")]
+    UnsupportedKey,
+    #[error("invalid key {_0}")]
+    InvalidKey(FromBase58CheckError),
+    #[error("crypto error {_0}")]
+    Crypto(CryptoError),
+    #[error("public key format error {_0}")]
+    PkFormat(TryFromPKError),
+    #[error("public key format error {_0}")]
+    Conversion(ConversionError),
+    #[error("{_0}")]
+    InvalidUrl(url::ParseError),
+    #[error("missing \"/tz1...\"")]
+    MissingPkhPathSegment,
+}
+
 #[derive(Clone)]
 pub enum BakerSigner {
     Local { secret_key: SecretKeyEd25519 },
+    Remote { url: Url },
+}
+
+impl BakerSigner {
+    pub fn parse_config_str(
+        s: &str,
+    ) -> Result<(Self, SignaturePublicKeyHash), BakerSignerParseError> {
+        let mut it = s.split(':');
+        let schema = it.next().ok_or(BakerSignerParseError::NoSchema)?;
+        let value = it.next().ok_or(BakerSignerParseError::NoSchema)?;
+        match schema {
+            "unencrypted" => {
+                if !value.starts_with("edsk") {
+                    return Err(BakerSignerParseError::UnsupportedKey);
+                }
+                let (public_key, secret_key) = SeedEd25519::from_base58_check(value)?.keypair()?;
+
+                let signer = BakerSigner::Local { secret_key };
+                let pkh = SignaturePublicKey::Ed25519(public_key).pk_hash()?;
+                Ok((signer, pkh))
+            }
+            "http" | "https" => {
+                let url = Url::parse(s)?;
+                let pkh_str = url
+                    .path_segments()
+                    .ok_or(BakerSignerParseError::MissingPkhPathSegment)?
+                    .last()
+                    .ok_or(BakerSignerParseError::MissingPkhPathSegment)?;
+                let pkh = SignaturePublicKeyHash::from_b58_hash(pkh_str)?;
+                Ok((Self::Remote { url }, pkh))
+            }
+            s => Err(BakerSignerParseError::UnknownSchema(s.to_string())),
+        }
+    }
 }
 
 impl BakerServiceDefault {
@@ -150,13 +214,8 @@ impl BakerServiceDefault {
         RequestId::new_unchecked(0, self.counter)
     }
 
-    pub fn add_local_baker(
-        &mut self,
-        public_key: SignaturePublicKeyHash,
-        secret_key: SecretKeyEd25519,
-    ) {
-        self.bakers
-            .insert(public_key, BakerSigner::Local { secret_key });
+    pub fn add_signer(&mut self, pkh: SignaturePublicKeyHash, signer: BakerSigner) {
+        self.bakers.insert(pkh, signer);
     }
 
     pub fn get_baker(&self, key: &SignaturePublicKeyHash) -> &BakerSigner {
@@ -192,14 +251,36 @@ impl BakerServiceDefault {
 
         let mut sender = self.worker_channel.responder_sender();
 
-        std::thread::spawn(move || match baker {
-            BakerSigner::Local { secret_key, .. } => {
-                let result = watermark_bytes
-                    .map(|watermark| [watermark, value_bytes])
-                    .and_then(|data| Ok(secret_key.sign(data)?));
-                let resp = target.baker_worker_message(result);
-                let _ = sender.send((req_id, resp));
-            }
+        std::thread::spawn(move || {
+            let result = Ok(()).and_then(|_| match baker {
+                BakerSigner::Local { secret_key, .. } => {
+                    Ok(secret_key.sign([watermark_bytes?, value_bytes])?)
+                }
+                BakerSigner::Remote { url, .. } => {
+                    let bytes = watermark_bytes?
+                        .into_iter()
+                        .chain(value_bytes)
+                        .collect::<Vec<_>>();
+                    let body = format!("{:?}", hex::encode(bytes));
+                    let response = reqwest::blocking::Client::new()
+                        .post(url)
+                        .body(body)
+                        .header("Content-Type", "application/json")
+                        .send()?;
+
+                    // TODO: refactor Signature to be enum so that it
+                    // can represent multiple different signature types.
+                    #[derive(Deserialize)]
+                    struct SignerResponse {
+                        signature: Ed25519Signature,
+                    }
+                    let SignerResponse { signature } = serde_json::from_reader(response)?;
+
+                    Ok(Signature(signature.0))
+                }
+            });
+            let resp = target.baker_worker_message(result);
+            let _ = sender.send((req_id, resp));
         });
 
         req_id
