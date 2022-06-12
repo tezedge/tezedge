@@ -598,6 +598,20 @@ pub fn tezos_app() -> App<'static, 'static> {
             .required(false)
             .help("Path to the json file with key-values, which will be added to empty context on startup and commit genesis.")
             .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Sandbox patch-context json file not found at '{}'", v)) }))
+        .arg(Arg::with_name("baker-data-dir")
+            .long("baker-data-dir")
+            .global(true)
+            .takes_value(true)
+            .value_name("PATH")
+            .help("Path to bakers' base dir.
+                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
+        .arg(Arg::with_name("baker-name")
+            .long("baker-name")
+            .global(true)
+            .takes_value(true)
+            .help("Baker name.
+                       Can accept multiple comma(,) separated names in order to run multiple bakers.
+                       If local keys are used, must match the name in key files(.tezos-client/secret_keys) which are in --baker-data-dir"))
         .subcommand(
             clap::SubCommand::with_name("replay")
                 .arg(Arg::with_name("from-block")
@@ -1215,6 +1229,17 @@ impl Environment {
                 record_shell_automaton_state_snapshots: args
                     .is_present("record-shell-automaton-state-snapshots"),
                 record_shell_automaton_actions: args.is_present("record-shell-automaton-actions"),
+
+                baker_data_dir: args
+                    .value_of("baker-base-dir")
+                    .unwrap_or("")
+                    .parse::<PathBuf>()
+                    .map(|p| get_final_path(&tezos_data_dir, p))
+                    .expect("Provided value cannot be converted to path"),
+                baker_names: args
+                    .value_of("baker-name")
+                    .map(|v| v.split(",").map(|s| s.to_owned()).collect())
+                    .unwrap_or(vec![]),
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args
