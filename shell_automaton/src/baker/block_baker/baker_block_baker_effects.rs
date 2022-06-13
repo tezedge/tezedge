@@ -40,7 +40,7 @@ where
     S: Service,
 {
     match &action.action {
-        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) | Action::BakerAdd(_) => {
             store.dispatch(BakerBlockBakerRightsGetInitAction {});
         }
         Action::BakerBlockBakerRightsGetInit(_) => {

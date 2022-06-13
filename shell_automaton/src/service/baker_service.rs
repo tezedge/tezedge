@@ -83,6 +83,8 @@ impl BakerSignTarget {
 }
 
 pub trait BakerService {
+    fn add_local_baker(&mut self, pkh: SignaturePublicKeyHash, secret_key: SecretKeyEd25519);
+
     /// Try to receive/read queued message from baker worker, if there is any.
     fn try_recv(&mut self) -> Result<(RequestId, BakerWorkerMessage), ResponseTryRecvError>;
 
@@ -319,6 +321,10 @@ impl BakerServiceDefault {
 }
 
 impl BakerService for BakerServiceDefault {
+    fn add_local_baker(&mut self, pkh: SignaturePublicKeyHash, secret_key: SecretKeyEd25519) {
+        self.bakers.insert(pkh, BakerSigner::Local { secret_key });
+    }
+
     fn try_recv(&mut self) -> Result<(RequestId, BakerWorkerMessage), ResponseTryRecvError> {
         self.worker_channel.try_recv()
     }

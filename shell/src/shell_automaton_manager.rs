@@ -33,7 +33,7 @@ use shell_automaton::service::baker_service::BakerSigner;
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
 use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use shell_automaton::service::{
-    ActorsServiceDefault, BakerServiceDefault, DnsServiceDefault, MioServiceDefault,
+    ActorsServiceDefault, BakerService, BakerServiceDefault, DnsServiceDefault, MioServiceDefault,
     ProtocolRunnerServiceDefault, RpcServiceDefault, ServiceDefault, StorageServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
@@ -244,6 +244,7 @@ impl ShellAutomatonManager {
             ),
 
             bakers: bakers_config,
+            liquidity_baking_escape_vote: p2p_config.liquidity_baking_escape_vote,
         });
 
         initial_state.set_logger(log.clone());

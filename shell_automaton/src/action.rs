@@ -163,6 +163,7 @@ use crate::baker::block_endorser::*;
 use crate::baker::persisted::persist::*;
 use crate::baker::persisted::rehydrate::*;
 use crate::baker::seed_nonce::*;
+use crate::baker::BakerAddAction;
 
 use crate::shutdown::{ShutdownInitAction, ShutdownPendingAction, ShutdownSuccessAction};
 
@@ -725,6 +726,8 @@ pub enum Action {
     BakerPersistedPersistInit(BakerPersistedPersistInitAction),
     BakerPersistedPersistPending(BakerPersistedPersistPendingAction),
     BakerPersistedPersistSuccess(BakerPersistedPersistSuccessAction),
+
+    BakerAdd(BakerAddAction),
 
     BakerBlockEndorserRightsGetInit(BakerBlockEndorserRightsGetInitAction),
     BakerBlockEndorserRightsGetPending(BakerBlockEndorserRightsGetPendingAction),

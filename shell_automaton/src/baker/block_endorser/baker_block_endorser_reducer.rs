@@ -61,7 +61,7 @@ fn set_locked_payload(state: &mut State, baker_key: &SignaturePublicKeyHash) -> 
 
 pub fn baker_block_endorser_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
-        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) | Action::BakerAdd(_) => {
             let head = match state.current_head.get() {
                 Some(v) => v,
                 None => return,

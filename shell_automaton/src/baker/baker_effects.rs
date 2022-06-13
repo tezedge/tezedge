@@ -14,7 +14,8 @@ use super::block_endorser::{
 };
 use super::persisted::persist::{BakerPersistedPersistState, BakerPersistedPersistSuccessAction};
 use super::persisted::rehydrate::{
-    BakerPersistedRehydrateState, BakerPersistedRehydrateSuccessAction,
+    BakerPersistedRehydrateInitAction, BakerPersistedRehydrateState,
+    BakerPersistedRehydrateSuccessAction,
 };
 
 pub fn baker_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -22,6 +23,11 @@ where
     S: Service,
 {
     match &action.action {
+        Action::BakerAdd(content) => {
+            store.dispatch(BakerPersistedRehydrateInitAction {
+                baker: content.baker.clone(),
+            });
+        }
         Action::WakeupEvent(_) => {
             while let Ok((result_req_id, result)) = store.service.baker().try_recv() {
                 let mut bakers_iter = store.state().bakers.iter();
