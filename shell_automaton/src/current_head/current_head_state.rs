@@ -49,7 +49,7 @@ pub struct ProtocolConstants {
     pub max_operations_ttl: i32,
 
     #[serde(with = "serde_as_str")]
-    pub proof_of_work_threshold: u64,
+    pub proof_of_work_threshold: i64,
 
     pub consensus_committee_size: u32,
     pub quorum_min: u16,
