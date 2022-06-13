@@ -254,10 +254,21 @@ where
                         .and_then(|cycle| apply_result.cycle_position.map(|pos| (cycle, pos)))
                         .map(|(cycle, position)| BlockCycleInfo { cycle, position });
                     let operations = block_operations.clone();
-                    let new_constants = apply_result
-                        .new_protocol_constants_json
-                        .as_ref()
-                        .and_then(|json| serde_json::from_str(json).ok());
+                    let new_constants =
+                        apply_result
+                            .new_protocol_constants_json
+                            .as_ref()
+                            .and_then(|json| {
+                                serde_json::from_str(json)
+                                    .map_err(|e| {
+                                        slog::warn!(store.state().log, "error parsing constants JSON";
+                                            "error" => e.to_string(),
+                                            "constants" => json,
+                                        );
+                                        e
+                                    })
+                                    .ok()
+                            });
                     store.dispatch(CurrentHeadUpdateAction {
                         new_head,
                         protocol,

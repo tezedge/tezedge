@@ -104,7 +104,7 @@ pub trait BakerService {
         &mut self,
         baker: SignaturePublicKeyHash,
         header: BlockHeader,
-        proof_of_work_threshold: u64,
+        proof_of_work_threshold: i64,
     ) -> RequestId;
 }
 
@@ -330,7 +330,7 @@ impl BakerService for BakerServiceDefault {
         &mut self,
         baker: SignaturePublicKeyHash,
         header: BlockHeader,
-        proof_of_work_threshold: u64,
+        proof_of_work_threshold: i64,
     ) -> RequestId {
         let raw_req_id = self.new_req_id();
         let req_id = Arc::new(raw_req_id);
@@ -355,7 +355,7 @@ impl BakerService for BakerServiceDefault {
 
 fn guess_proof_of_work<F>(
     header: &BlockHeader,
-    proof_of_work_threshold: u64,
+    proof_of_work_threshold: i64,
     cancel: F,
 ) -> Option<SizedBytes<8>>
 where
@@ -382,7 +382,12 @@ where
     }
 }
 
-fn check_proof_of_work(header_bytes: &[u8], proof_of_work_threshold: u64) -> bool {
+fn check_proof_of_work(header_bytes: &[u8], proof_of_work_threshold: i64) -> bool {
+    let proof_of_work_threshold = if let Ok(v) = u64::try_from(proof_of_work_threshold) {
+        v
+    } else {
+        return true;
+    };
     let hash = blake2b::digest_256(&header_bytes).unwrap();
     let stamp = u64::from_be_bytes(hash[0..8].try_into().unwrap());
     stamp < proof_of_work_threshold
