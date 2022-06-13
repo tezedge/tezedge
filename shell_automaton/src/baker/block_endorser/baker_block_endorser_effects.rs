@@ -166,20 +166,6 @@ where
                 req_id,
             });
         }
-        Action::BakerBlockEndorserPreendorsementSignPending(content) => {
-            let chain_id = &store.state.get().config.chain_id;
-            let req_id = store.service.baker().preendrosement_sign(
-                &content.baker,
-                chain_id,
-                &content.operation,
-            );
-
-            store.dispatch(BakerBlockEndorserPreendorsementSignPendingAction {
-                baker: content.baker.clone(),
-                operation: content.operation.clone(),
-                req_id,
-            });
-        }
         Action::BakerBlockEndorserPreendorsementSignSuccess(content) => {
             store.dispatch(BakerBlockEndorserPreendorsementInjectPendingAction {
                 baker: content.baker.clone(),
