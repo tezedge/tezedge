@@ -9,11 +9,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{
-    BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, OperationListHash, Signature,
-};
+use crypto::hash::{BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, Signature};
 use tenderbake as tb;
-use tezos_encoding::types::SizedBytes;
 use tezos_messages::protocol::proto_012::operation::{
     EndorsementOperation, InlinedEndorsement, InlinedEndorsementMempoolContents,
     InlinedEndorsementMempoolContentsEndorsementVariant, InlinedPreendorsement,
@@ -21,7 +18,7 @@ use tezos_messages::protocol::proto_012::operation::{
 };
 
 use crate::services::{
-    client::{Constants, ProtocolBlockHeader},
+    client::Constants,
     event::{Block, OperationKind, OperationSimple, Slots},
     EventWithTime,
 };
@@ -669,36 +666,13 @@ impl Initialized {
             }
         }
         let payload_round = payload.payload_round;
-        let payload_hash = if payload.hash.0.as_slice() != [0x55; 32] {
-            BlockPayloadHash(payload.hash.0.to_vec())
-        } else {
-            let hashes = operations[1..]
-                .as_ref()
-                .iter()
-                .flatten()
-                .filter_map(|op| op.hash.as_ref().cloned())
-                .collect::<Vec<_>>();
-            let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
-            BlockPayloadHash::calculate(
-                &predecessor_hash,
-                payload_round as u32,
-                &operation_list_hash,
-            )
-            .unwrap()
-        };
         let seed_nonce_hash = self.nonces.gen_nonce(block.level);
-        let protocol_header = ProtocolBlockHeader {
-            payload_hash,
-            payload_round,
-            seed_nonce_hash,
-            proof_of_work_nonce: SizedBytes(0x7985fafe1fb70300u64.to_be_bytes()),
-            liquidity_baking_escape_vote: false,
-            signature: Signature(vec![0x55; 64]),
-        };
         let timestamp = block.time_header.timestamp.unix_epoch.as_secs() as i64;
 
         self.actions.push(BakerAction::Propose(ProposeAction {
-            protocol_header,
+            payload_hash: payload.hash,
+            payload_round,
+            seed_nonce_hash,
             predecessor_hash,
             operations,
             timestamp,

@@ -6,14 +6,11 @@ use std::collections::BTreeMap;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ContractTz1Hash};
+use crypto::hash::{BlockHash, BlockPayloadHash, ContractTz1Hash, NonceHash};
 use redux_rs::EnablingCondition;
 use tezos_messages::protocol::proto_012::operation::{InlinedEndorsement, InlinedPreendorsement};
 
-use crate::services::{
-    client::ProtocolBlockHeader,
-    event::{Block, OperationSimple, Slots},
-};
+use crate::services::event::{Block, OperationSimple, Slots};
 
 use super::{state::Gathering, BakerState};
 
@@ -349,7 +346,9 @@ where
 // #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProposeAction {
-    pub protocol_header: ProtocolBlockHeader,
+    pub payload_hash: BlockPayloadHash,
+    pub payload_round: i32,
+    pub seed_nonce_hash: Option<NonceHash>,
     pub predecessor_hash: BlockHash,
     pub operations: [Vec<OperationSimple>; 4],
     pub timestamp: i64,

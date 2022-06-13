@@ -32,8 +32,6 @@ use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
 use super::event::{Block, OperationSimple, Slots};
 use crate::machine::{BakerAction, OperationsEventAction, ProposalEventAction, RpcErrorAction};
 
-pub const PROTOCOL: &str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
-
 #[derive(Clone)]
 pub struct RpcClient {
     tx: mpsc::Sender<BakerAction>,
@@ -92,7 +90,7 @@ pub enum RpcErrorInner {
 // signature watermark: 0x11 | chain_id
 #[derive(BinWriter, HasEncoding, NomReader, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-pub struct ProtocolBlockHeader {
+struct ProtocolBlockHeaderI {
     pub payload_hash: BlockPayloadHash,
     pub payload_round: i32,
     #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<8>))]
@@ -101,6 +99,27 @@ pub struct ProtocolBlockHeader {
     pub seed_nonce_hash: Option<NonceHash>,
     pub liquidity_baking_escape_vote: bool,
     pub signature: Signature,
+}
+
+impl ProtocolBlockHeaderI {
+    const P: &'static str = "Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A";
+}
+
+#[derive(BinWriter, HasEncoding, NomReader, Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+struct ProtocolBlockHeaderJ {
+    pub payload_hash: BlockPayloadHash,
+    pub payload_round: i32,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<8>))]
+    pub proof_of_work_nonce: SizedBytes<8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_nonce_hash: Option<NonceHash>,
+    pub liquidity_baking_toggle_vote: String,
+    pub signature: Signature,
+}
+
+impl ProtocolBlockHeaderJ {
+    const P: &'static str = "PtJakart2xVj7pYXJBXrqHgd82rdkLey5ZeeGwDgPp9rhQUbSqY";
 }
 
 pub struct Constants {
@@ -238,7 +257,8 @@ impl RpcClient {
     pub fn monitor_heads(&self, chain_id: &ChainId) -> Result<(), RpcError> {
         let s = format!("monitor/heads/{chain_id}");
         let mut url = self.endpoint.join(&s).expect("valid constant url");
-        url.query_pairs_mut().append_pair("next_protocol", PROTOCOL);
+        url.query_pairs_mut()
+            .append_pair("next_protocol", ProtocolBlockHeaderI::P);
 
         #[allow(dead_code)]
         #[derive(Deserialize)]
@@ -275,7 +295,7 @@ impl RpcClient {
             let Protocols { protocol } =
                 this.single_response_blocking(&url, None, Some(Duration::from_secs(30)))?;
 
-            let transition = protocol.to_base58_check() != PROTOCOL;
+            let transition = protocol.to_base58_check() != ProtocolBlockHeaderI::P;
 
             let (payload_hash, payload_round, round) = if !transition {
                 let protocol_data_bytes = hex::decode(header.protocol_data)
@@ -284,7 +304,7 @@ impl RpcClient {
                         url: url.clone(),
                         inner,
                     })?;
-                let protocol_header = ProtocolBlockHeader::from_bytes(&protocol_data_bytes)
+                let protocol_header = ProtocolBlockHeaderI::from_bytes(&protocol_data_bytes)
                     .map_err(RpcErrorInner::Nom)
                     .map_err(|inner| RpcError::WithContext {
                         url: url.clone(),
@@ -380,7 +400,9 @@ impl RpcClient {
 
     pub fn preapply_block(
         &self,
-        protocol_header: ProtocolBlockHeader,
+        payload_hash: BlockPayloadHash,
+        payload_round: i32,
+        seed_nonce_hash: &Option<NonceHash>,
         predecessor_hash: BlockHash,
         timestamp: i64,
         mut operations: [Vec<OperationSimple>; 4],
@@ -409,6 +431,17 @@ impl RpcClient {
             operations: Vec<serde_json::Value>,
         }
 
+        let protocol_header = ProtocolBlockHeaderI {
+            payload_hash,
+            payload_round,
+            // fake constant
+            proof_of_work_nonce: SizedBytes(0x7985fafe1fb70300u64.to_be_bytes()),
+            seed_nonce_hash: seed_nonce_hash.clone(),
+            liquidity_baking_escape_vote: false,
+            // fake signature
+            signature: Signature(vec![0; 64]),
+        };
+
         let mut protocol_data = serde_json::to_value(&protocol_header)
             .map_err(Into::into)
             .map_err(RpcError::Less)?;
@@ -422,7 +455,7 @@ impl RpcClient {
         );
         protocol_block_header_obj.insert(
             "protocol".to_string(),
-            serde_json::Value::String(PROTOCOL.to_string()),
+            serde_json::Value::String(ProtocolBlockHeaderI::P.to_string()),
         );
 
         for ops_list in &mut operations {
@@ -475,7 +508,7 @@ impl RpcClient {
             })?
             .unix_timestamp()
             .into();
-        let ProtocolBlockHeader {
+        let ProtocolBlockHeaderI {
             payload_hash,
             payload_round,
             proof_of_work_nonce,
