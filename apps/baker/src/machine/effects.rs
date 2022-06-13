@@ -217,7 +217,6 @@ where
             }
         }
         Some(BakerAction::Propose(ProposeAction {
-            payload_hash,
             payload_round,
             seed_nonce_hash,
             predecessor_hash,
@@ -228,7 +227,6 @@ where
         })) => inject_block(
             &mut store.service,
             st,
-            payload_hash.clone(),
             *payload_round,
             seed_nonce_hash,
             predecessor_hash,
@@ -243,7 +241,6 @@ where
 fn inject_block<Srv>(
     srv: &mut Srv,
     st: &Initialized,
-    payload_hash: BlockPayloadHash,
     payload_round: i32,
     seed_nonce_hash: &Option<NonceHash>,
     predecessor_hash: &BlockHash,
@@ -254,9 +251,7 @@ fn inject_block<Srv>(
 ) where
     Srv: TimeService + BakerService,
 {
-    let payload_hash = if payload_hash.0.as_slice() != [0x55; 32] {
-        payload_hash.clone()
-    } else {
+    let payload_hash = {
         let hashes = operations[1..]
             .as_ref()
             .iter()
@@ -303,7 +298,7 @@ fn inject_block<Srv>(
         .iter()
         .map(|ops_list| ops_list.len())
         .sum::<usize>();
-    if sum != sum_before {
+    if sum != sum_before || payload_round != header.payload_round {
         let hashes = valid_operations[1..]
             .as_ref()
             .iter()
@@ -370,8 +365,7 @@ fn inject_block<Srv>(
                         inject_block(
                             srv,
                             st,
-                            BlockPayloadHash(vec![0x55; 32]),
-                            payload_round,
+                            header.payload_round,
                             seed_nonce_hash,
                             predecessor_hash,
                             &operations,
@@ -415,4 +409,13 @@ fn extract_invalid_ops_test() {
     let err = r#"[{"kind":"permanent","id":"validator.invalid_block","invalid_block":"BM8EPrBCqLzxNxqWkctjREMqNzjfiHNFMssvS4fhJXZLeLTZTf6","error":"outdated_operation","operation":"oo5qFAHchTG9rpNDbRBmSaJbSsiCqHBtfmKwk9Atiavhih9hYbC","originating_block":"BMExe9wTeATNPfXpymKc7iCLD3oDrw1zHCwXTVK261qf9MevmAo"}]"#;
     let ops = extract_invalid_ops(err);
     assert_eq!(ops.len(), 1);
+}
+
+#[cfg(test)]
+#[test]
+fn ph_() {
+    let predecessor = BlockHash::from_base58_check("BM76V7ruQpqqbo3qZXjAJgMdhD3RD42NkjA1YCAcJyNnbmE6o9L").unwrap();
+    let operation_list_hash = OperationListHash::calculate(&[]).unwrap();
+    let payload_hash = BlockPayloadHash::calculate(&predecessor, 0, &operation_list_hash).unwrap();
+    println!("{payload_hash}");
 }

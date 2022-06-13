@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, BlockPayloadHash, ContractTz1Hash, NonceHash};
+use crypto::hash::{BlockHash, ContractTz1Hash, NonceHash};
 use redux_rs::EnablingCondition;
 use tezos_messages::protocol::proto_012::operation::{InlinedEndorsement, InlinedPreendorsement};
 
@@ -346,7 +346,6 @@ where
 // #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProposeAction {
-    pub payload_hash: BlockPayloadHash,
     pub payload_round: i32,
     pub seed_nonce_hash: Option<NonceHash>,
     pub predecessor_hash: BlockHash,

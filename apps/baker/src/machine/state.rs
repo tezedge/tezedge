@@ -670,7 +670,6 @@ impl Initialized {
         let timestamp = block.time_header.timestamp.unix_epoch.as_secs() as i64;
 
         self.actions.push(BakerAction::Propose(ProposeAction {
-            payload_hash: payload.hash,
             payload_round,
             seed_nonce_hash,
             predecessor_hash,
