@@ -124,6 +124,7 @@ pub struct Config {
     pub mempool_get_operation_timeout: Duration,
 
     pub bakers: Vec<BakerConfig>,
+    pub liquidity_baking_escape_vote: LiquidityBakingToggleVote,
 }
 
 impl Config {
@@ -231,5 +232,6 @@ pub fn default_test_config() -> Config {
         mempool_get_operation_timeout: Duration::from_secs(1),
 
         bakers: vec![],
+        liquidity_baking_escape_vote: LiquidityBakingToggleVote::Off,
     }
 }

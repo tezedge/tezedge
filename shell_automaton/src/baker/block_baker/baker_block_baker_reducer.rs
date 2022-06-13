@@ -110,7 +110,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
         }
-        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) | Action::BakerAdd(_) => {
             for (_, baker) in state.bakers.iter_mut() {
                 baker.block_baker = BakerBlockBakerState::Idle {
                     time: action.time_as_nanos(),
