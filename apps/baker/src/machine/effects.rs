@@ -441,3 +441,12 @@ fn extract_invalid_ops_test() {
     let ops = extract_invalid_ops(err);
     assert_eq!(ops.len(), 1);
 }
+
+#[cfg(test)]
+#[test]
+fn ph_() {
+    let predecessor = BlockHash::from_base58_check("BM76V7ruQpqqbo3qZXjAJgMdhD3RD42NkjA1YCAcJyNnbmE6o9L").unwrap();
+    let operation_list_hash = OperationListHash::calculate(&[]).unwrap();
+    let payload_hash = BlockPayloadHash::calculate(&predecessor, 0, &operation_list_hash).unwrap();
+    println!("{payload_hash}");
+}
