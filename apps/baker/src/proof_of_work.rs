@@ -5,13 +5,16 @@ use std::convert::TryInto;
 
 use crypto::blake2b;
 use tezos_encoding::enc::BinWriter;
-use tezos_messages::protocol::proto_012::operation::FullHeader;
 
-pub fn guess_proof_of_work(header: &FullHeader, proof_of_work_threshold: u64) -> [u8; 8] {
+pub fn guess_proof_of_work(
+    header: &impl BinWriter,
+    nonce_offset: usize,
+    proof_of_work_threshold: u64,
+) -> [u8; 8] {
     let mut header_bytes = vec![];
     header.bin_write(&mut header_bytes).unwrap();
     let fitness_size = u32::from_be_bytes(header_bytes[78..82].try_into().unwrap()) as usize;
-    let nonce_pos = fitness_size + 150;
+    let nonce_pos = fitness_size + 82 + 32 + nonce_offset;
 
     loop {
         let nonce = header_bytes[nonce_pos..(nonce_pos + 8)].try_into().unwrap();

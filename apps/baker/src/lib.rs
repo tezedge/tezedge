@@ -9,6 +9,9 @@ mod proof_of_work;
 pub mod machine;
 
 mod services;
-pub use self::services::{EventWithTime, Services};
+pub use self::services::{
+    client::{Protocol, ProtocolBlockHeaderI, ProtocolBlockHeaderJ},
+    EventWithTime, Services,
+};
 
 pub use tenderbake::Timestamp;

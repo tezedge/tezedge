@@ -164,6 +164,15 @@ pub trait BinWriter {
     fn bin_write(&self, output: &mut Vec<u8>) -> BinResult;
 }
 
+impl<T> BinWriter for Box<T>
+where
+    T: ?Sized + BinWriter,
+{
+    fn bin_write(&self, output: &mut Vec<u8>) -> BinResult {
+        (&**self).bin_write(output)
+    }
+}
+
 impl BinWriter for u16 {
     fn bin_write(&self, out: &mut Vec<u8>) -> BinResult {
         put_bytes(&self.to_be_bytes(), out);

@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{convert::TryFrom, time::Duration};
+use std::{convert::TryFrom, mem, time::Duration};
 
 use redux_rs::{ActionWithMeta, Store, TimeService};
 
-use crypto::hash::{BlockHash, BlockPayloadHash, OperationHash, OperationListHash};
+use crypto::hash::{BlockHash, BlockPayloadHash, NonceHash, OperationHash, OperationListHash};
 use serde::Deserialize;
 use tenderbake as tb;
 use tezos_encoding::{enc::BinWriter, types::SizedBytes};
@@ -26,7 +26,7 @@ use crate::{
     machine::state::Initialized,
     proof_of_work::guess_proof_of_work,
     services::{
-        client::{ProtocolBlockHeader, RpcErrorInner},
+        client::{Protocol, ProtocolBlockHeaderI, ProtocolBlockHeaderJ, RpcErrorInner},
         event::OperationSimple,
         BakerService,
     },
@@ -221,7 +221,8 @@ where
             }
         }
         Some(BakerAction::Propose(ProposeAction {
-            protocol_header,
+            payload_round,
+            seed_nonce_hash,
             predecessor_hash,
             operations,
             timestamp,
@@ -230,7 +231,8 @@ where
         })) => inject_block(
             &mut store.service,
             st,
-            protocol_header,
+            *payload_round,
+            seed_nonce_hash,
             predecessor_hash,
             operations,
             timestamp,
@@ -243,7 +245,8 @@ where
 fn inject_block<Srv>(
     srv: &mut Srv,
     st: &Initialized,
-    protocol_header: &ProtocolBlockHeader,
+    payload_round: i32,
+    seed_nonce_hash: &Option<NonceHash>,
     predecessor_hash: &BlockHash,
     operations: &[Vec<OperationSimple>; 4],
     timestamp: &i64,
@@ -252,17 +255,46 @@ fn inject_block<Srv>(
 ) where
     Srv: TimeService + BakerService,
 {
+    let payload_hash = {
+        let hashes = operations[1..]
+            .as_ref()
+            .iter()
+            .flatten()
+            .filter_map(|op| op.hash.as_ref().cloned())
+            .collect::<Vec<_>>();
+        let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
+        BlockPayloadHash::calculate(
+            &predecessor_hash,
+            payload_round as u32,
+            &operation_list_hash,
+        )
+        .unwrap()
+    };
+
     let sum_before = operations[1..]
         .iter()
         .map(|ops_list| ops_list.len())
         .sum::<usize>();
 
-    let (mut header, ops) = match srv.client().preapply_block(
-        protocol_header.clone(),
-        predecessor_hash.clone(),
-        *timestamp,
-        operations.clone(),
-    ) {
+    let r = match st.protocol {
+        Protocol::Ithaca => srv.client().preapply_block::<ProtocolBlockHeaderI>(
+            payload_hash,
+            payload_round,
+            seed_nonce_hash,
+            predecessor_hash.clone(),
+            *timestamp,
+            operations.clone(),
+        ),
+        Protocol::Jakarta => srv.client().preapply_block::<ProtocolBlockHeaderJ>(
+            payload_hash,
+            payload_round,
+            seed_nonce_hash,
+            predecessor_hash.clone(),
+            *timestamp,
+            operations.clone(),
+        ),
+    };
+    let (mut header, ops) = match r {
         Ok(v) => v,
         Err(err) => {
             slog::error!(srv.log(), " .  {err}");
@@ -281,7 +313,7 @@ fn inject_block<Srv>(
         .iter()
         .map(|ops_list| ops_list.len())
         .sum::<usize>();
-    if sum != sum_before {
+    if sum != sum_before || payload_round != header.payload_round() {
         let hashes = valid_operations[1..]
             .as_ref()
             .iter()
@@ -301,17 +333,21 @@ fn inject_block<Srv>(
             })
             .collect::<Vec<_>>();
         let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
-        header.payload_hash = BlockPayloadHash::calculate(
-            &predecessor_hash,
-            header.payload_round as u32,
-            &operation_list_hash,
-        )
-        .unwrap();
+        header.set_payload_hash(
+            BlockPayloadHash::calculate(
+                &predecessor_hash,
+                payload_round as u32,
+                &operation_list_hash,
+            )
+            .unwrap(),
+        );
     }
 
-    header.signature.0 = vec![0x00; 64];
-    let p = guess_proof_of_work(&header, st.proof_of_work_threshold);
-    header.proof_of_work_nonce = SizedBytes(p);
+    // nonce_offset is the offset of `proof_of_work_nonce` in protocol header (Ithaca and Jakarta)
+    // 32 is the size of `BlockPayloadHash`
+    let nonce_offset = 32 + mem::size_of::<i32>();
+    let p = guess_proof_of_work(&header, nonce_offset, st.proof_of_work_threshold);
+    header.set_proof_of_work_nonce(SizedBytes(p));
     slog::info!(srv.log(), "{:?}", header);
     let (data, _) = match srv.crypto().sign(0x11, &st.chain_id, &header, level, round) {
         Ok(v) => v,
@@ -328,10 +364,11 @@ fn inject_block<Srv>(
         Ok(hash) => slog::info!(
             srv.log(),
             " .  inject block: {}:{}, {hash}",
-            header.level,
+            header.level(),
             round
         ),
         Err(err) => {
+            slog::error!(srv.log(), " .  {err}");
             match err.as_ref() {
                 RpcErrorInner::NodeError(err, _) => {
                     let invalid_ops = extract_invalid_ops(&err);
@@ -347,7 +384,8 @@ fn inject_block<Srv>(
                         inject_block(
                             srv,
                             st,
-                            &protocol_header,
+                            header.payload_round(),
+                            seed_nonce_hash,
                             predecessor_hash,
                             &operations,
                             timestamp,
@@ -360,7 +398,6 @@ fn inject_block<Srv>(
                 }
                 _ => (),
             }
-            slog::error!(srv.log(), " .  {err}");
             slog::error!(srv.log(), " .  {}", serde_json::to_string(&ops).unwrap());
         }
     }
