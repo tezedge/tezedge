@@ -161,6 +161,7 @@ use crate::storage::{
 use crate::baker::block_baker::*;
 use crate::baker::block_endorser::*;
 use crate::baker::seed_nonce::*;
+use crate::baker::BakerAddAction;
 
 use crate::shutdown::{ShutdownInitAction, ShutdownPendingAction, ShutdownSuccessAction};
 
@@ -714,6 +715,8 @@ pub enum Action {
     ),
 
     StorageBlocksGenesisInitSuccess(StorageBlocksGenesisInitSuccessAction),
+
+    BakerAdd(BakerAddAction),
 
     BakerBlockEndorserRightsGetInit(BakerBlockEndorserRightsGetInitAction),
     BakerBlockEndorserRightsGetPending(BakerBlockEndorserRightsGetPendingAction),

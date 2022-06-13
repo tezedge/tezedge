@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::ChainId;
+use crypto::hash::{ChainId, SecretKeyEd25519};
 use shell_automaton::baker::block_endorser::{
     EndorsementWithForgedBytes, PreendorsementWithForgedBytes,
 };
@@ -30,6 +30,8 @@ impl Default for BakerServiceDummy {
 }
 
 impl BakerService for BakerServiceDummy {
+    fn add_local_baker(&mut self, _pkh: SignaturePublicKeyHash, _secret_key: SecretKeyEd25519) {}
+
     fn try_recv(&mut self) -> Result<(RequestId, BakerWorkerMessage), ResponseTryRecvError> {
         Err(ResponseTryRecvError::Empty)
     }
