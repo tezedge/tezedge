@@ -25,7 +25,11 @@ use tezos_messages::{
 use crate::{
     machine::state::Initialized,
     proof_of_work::guess_proof_of_work,
-    services::{client::RpcErrorInner, event::OperationSimple, BakerService},
+    services::{
+        client::{Protocol, ProtocolBlockHeaderI, ProtocolBlockHeaderJ, RpcErrorInner},
+        event::OperationSimple,
+        BakerService,
+    },
 };
 
 use super::{actions::*, state::BakerState};
@@ -272,14 +276,25 @@ fn inject_block<Srv>(
         .map(|ops_list| ops_list.len())
         .sum::<usize>();
 
-    let (mut header, ops) = match srv.client().preapply_block(
-        payload_hash,
-        payload_round,
-        seed_nonce_hash,
-        predecessor_hash.clone(),
-        *timestamp,
-        operations.clone(),
-    ) {
+    let r = match st.protocol {
+        Protocol::Ithaca => srv.client().preapply_block::<ProtocolBlockHeaderI>(
+            payload_hash,
+            payload_round,
+            seed_nonce_hash,
+            predecessor_hash.clone(),
+            *timestamp,
+            operations.clone(),
+        ),
+        Protocol::Jakarta => srv.client().preapply_block::<ProtocolBlockHeaderJ>(
+            payload_hash,
+            payload_round,
+            seed_nonce_hash,
+            predecessor_hash.clone(),
+            *timestamp,
+            operations.clone(),
+        ),
+    };
+    let (mut header, ops) = match r {
         Ok(v) => v,
         Err(err) => {
             slog::error!(srv.log(), " .  {err}");
@@ -298,7 +313,7 @@ fn inject_block<Srv>(
         .iter()
         .map(|ops_list| ops_list.len())
         .sum::<usize>();
-    if sum != sum_before || payload_round != header.payload_round {
+    if sum != sum_before || payload_round != header.payload_round() {
         let hashes = valid_operations[1..]
             .as_ref()
             .iter()
@@ -318,18 +333,20 @@ fn inject_block<Srv>(
             })
             .collect::<Vec<_>>();
         let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
-        header.payload_hash = BlockPayloadHash::calculate(
-            &predecessor_hash,
-            payload_round as u32,
-            &operation_list_hash,
-        )
-        .unwrap();
+        header.set_payload_hash(
+            BlockPayloadHash::calculate(
+                &predecessor_hash,
+                payload_round as u32,
+                &operation_list_hash,
+            )
+            .unwrap(),
+        );
     }
 
     // is the offset of `proof_of_work_nonce` in protocol header (Ithaca and Jakarta)
     let nonce_offset = mem::size_of::<BlockPayloadHash>() + mem::size_of::<i32>();
     let p = guess_proof_of_work(&header, nonce_offset, st.proof_of_work_threshold);
-    header.proof_of_work_nonce = SizedBytes(p);
+    header.set_proof_of_work_nonce(SizedBytes(p));
     slog::info!(srv.log(), "{:?}", header);
     let (data, _) = match srv.crypto().sign(0x11, &st.chain_id, &header, level, round) {
         Ok(v) => v,
@@ -346,10 +363,11 @@ fn inject_block<Srv>(
         Ok(hash) => slog::info!(
             srv.log(),
             " .  inject block: {}:{}, {hash}",
-            header.level,
+            header.level(),
             round
         ),
         Err(err) => {
+            slog::error!(srv.log(), " .  {err}");
             match err.as_ref() {
                 RpcErrorInner::NodeError(err, _) => {
                     let invalid_ops = extract_invalid_ops(&err);
@@ -365,7 +383,7 @@ fn inject_block<Srv>(
                         inject_block(
                             srv,
                             st,
-                            header.payload_round,
+                            header.payload_round(),
                             seed_nonce_hash,
                             predecessor_hash,
                             &operations,
@@ -379,7 +397,6 @@ fn inject_block<Srv>(
                 }
                 _ => (),
             }
-            slog::error!(srv.log(), " .  {err}");
             slog::error!(srv.log(), " .  {}", serde_json::to_string(&ops).unwrap());
         }
     }
@@ -409,13 +426,4 @@ fn extract_invalid_ops_test() {
     let err = r#"[{"kind":"permanent","id":"validator.invalid_block","invalid_block":"BM8EPrBCqLzxNxqWkctjREMqNzjfiHNFMssvS4fhJXZLeLTZTf6","error":"outdated_operation","operation":"oo5qFAHchTG9rpNDbRBmSaJbSsiCqHBtfmKwk9Atiavhih9hYbC","originating_block":"BMExe9wTeATNPfXpymKc7iCLD3oDrw1zHCwXTVK261qf9MevmAo"}]"#;
     let ops = extract_invalid_ops(err);
     assert_eq!(ops.len(), 1);
-}
-
-#[cfg(test)]
-#[test]
-fn ph_() {
-    let predecessor = BlockHash::from_base58_check("BM76V7ruQpqqbo3qZXjAJgMdhD3RD42NkjA1YCAcJyNnbmE6o9L").unwrap();
-    let operation_list_hash = OperationListHash::calculate(&[]).unwrap();
-    let payload_hash = BlockPayloadHash::calculate(&predecessor, 0, &operation_list_hash).unwrap();
-    println!("{payload_hash}");
 }

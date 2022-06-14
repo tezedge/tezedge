@@ -18,7 +18,7 @@ use tezos_messages::protocol::proto_012::operation::{
 };
 
 use crate::services::{
-    client::Constants,
+    client::{Constants, Protocol},
     event::{Block, OperationKind, OperationSimple, Slots},
     EventWithTime,
 };
@@ -98,6 +98,8 @@ impl fmt::Display for BakerState {
 
 #[derive(Serialize, Deserialize)]
 pub struct Initialized {
+    #[serde(default)]
+    pub protocol: Protocol,
     pub chain_id: ChainId,
     pub proof_of_work_threshold: u64,
     pub this: ContractTz1Hash,
@@ -151,7 +153,12 @@ impl AsMut<Initialized> for BakerState {
 }
 
 impl BakerState {
-    pub fn new(chain_id: ChainId, constants: Constants, this: ContractTz1Hash) -> Self {
+    pub fn new(
+        chain_id: ChainId,
+        constants: Constants,
+        this: ContractTz1Hash,
+        protocol: Protocol,
+    ) -> Self {
         let timing = tb::TimingLinearGrow {
             minimal_block_delay: constants.minimal_block_delay,
             delay_increment_per_round: constants.delay_increment_per_round,
@@ -170,6 +177,7 @@ impl BakerState {
         };
 
         BakerState::Idle(Initialized {
+            protocol,
             chain_id,
             proof_of_work_threshold: constants.proof_of_work_threshold,
             this,
