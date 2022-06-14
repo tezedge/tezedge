@@ -383,6 +383,11 @@ pub fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler> {
     );
     routes.handle(
         hash_set![Method::GET],
+        "/dev/shell/automaton/baking_state",
+        dev_handler::dev_shell_automaton_baking_state,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/dev/peers/best_remote_level",
         dev_handler::best_remote_level,
     );

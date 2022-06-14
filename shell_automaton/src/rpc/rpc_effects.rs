@@ -16,7 +16,7 @@ use crate::mempool::mempool_actions::{
 };
 use crate::mempool::OperationKind;
 use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
-use crate::service::rpc_service::{RpcRequest, RpcRequestStream};
+use crate::service::rpc_service::{BakingState, RpcRequest, RpcRequestStream};
 use crate::service::{RpcService, Service};
 use crate::storage::request::StorageRequestStatus;
 use crate::{Action, ActionWithMeta, Store};
@@ -188,6 +188,18 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                     RpcRequest::GetBlockStats { channel } => {
                         let stats = store.service().statistics();
                         let _ = channel.send(stats.map(|s| s.block_stats_get_all().clone()));
+                    }
+                    RpcRequest::GetBakingState { channel } => {
+                        let data = Some(())
+                            .and_then(|_| store.state().current_head.get().cloned())
+                            .map(|current_head| BakingState {
+                                current_head,
+                                prequorum: store.state().mempool.prequorum.clone(),
+                                quorum: store.state().mempool.quorum.clone(),
+                                bakers: store.state().bakers.clone(),
+                            });
+
+                        let _ = channel.send(data);
                     }
                     RpcRequest::InjectBlock { block } => {
                         if !store.dispatch(RpcInjectBlockAction {
