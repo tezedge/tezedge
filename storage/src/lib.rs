@@ -443,21 +443,7 @@ pub fn store_applied_block_result(
         block_result.protocol_hash,
         block_result.next_protocol_hash.clone(),
         block_result.block_metadata_hash,
-        {
-            // Note: Ocaml introduces this two attributes (block_metadata_hash, ops_metadata_hash) in 008 edo
-            //       So, we need to add the same handling, because this attributes contributes to context_hash
-            //       They, store it, only if [`validation_passes > 0`], this measn that we have some operations
-            match &block_result.ops_metadata_hashes {
-                Some(hashes) => {
-                    if hashes.is_empty() {
-                        None
-                    } else {
-                        block_result.ops_metadata_hash
-                    }
-                }
-                None => None,
-            }
-        },
+        block_result.ops_metadata_hash,
         block_result.ops_metadata_hashes,
     );
     block_meta_storage.put_block_additional_data(block_hash, &block_additional_data)?;
