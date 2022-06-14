@@ -3,7 +3,9 @@
 
 use std::collections::BTreeSet;
 
-use crypto::hash::{BlockPayloadHash, OperationListHash};
+use crypto::hash::{
+    BlockPayloadHash, HashTrait, HashType, OperationListHash, OperationMetadataListListHash,
+};
 use tezos_encoding::types::SizedBytes;
 use tezos_messages::p2p::encoding::block_header::BlockHeaderBuilder;
 
@@ -116,13 +118,53 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                     time: action.time_as_nanos(),
                 };
                 let head = state.current_head.get();
-                baker.elected_block = baker.elected_block.take().and_then(|block| {
-                    if block.header().level() < head?.header.level() {
-                        None
-                    } else {
-                        Some(block)
-                    }
-                });
+                let pred = state.current_head.get_pred();
+                baker.elected_block = baker
+                    .elected_block
+                    .take()
+                    .and_then(|block| {
+                        if block.header().level() < head?.header.level() {
+                            None
+                        } else {
+                            Some(block)
+                        }
+                    })
+                    .or_else(|| {
+                        if pred?.header.proto() != head?.header.proto() {
+                            let block = head?.clone();
+                            let payload_hash =
+                                block.header.payload_hash().clone().or_else(|| {
+                                    BlockPayloadHash::try_from_bytes(
+                                        &[0; HashType::BlockPayloadHash.size()],
+                                    )
+                                    .ok()
+                                })?;
+                            let ops_metadata_hash = state
+                                .current_head
+                                .ops_metadata_hash()
+                                .cloned()
+                                .or_else(|| {
+                                    OperationMetadataListListHash::try_from_bytes(
+                                        &[0; HashType::OperationMetadataListListHash.size()],
+                                    )
+                                    .ok()
+                                })?;
+                            Some(ElectedBlock {
+                                block,
+                                round: 0,
+                                payload_hash,
+                                block_metadata_hash: state
+                                    .current_head
+                                    .block_metadata_hash()?
+                                    .clone(),
+                                ops_metadata_hash,
+                                operations: vec![],
+                                non_consensus_op_hashes: vec![],
+                            })
+                        } else {
+                            None
+                        }
+                    });
             }
         }
         Action::BakerBlockBakerRightsGetPending(content) => {
@@ -193,14 +235,13 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             Some(round) => {
                                 (round as u32 % constants.consensus_committee_size) as u16
                             }
-                            None => return,
+                            None => 0,
                         };
                         let next_round = slots
                             .iter()
                             .map(|slot| *slot)
                             .find(|slot| *slot > current_slot)
                             .and_then(|slot| {
-                                let constants = state.current_head.constants()?;
                                 let pred = state.current_head.get()?;
                                 let round = pred.header.fitness().round()?;
                                 let timestamp = pred.header.timestamp().as_u64();
@@ -221,26 +262,28 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                 })
                             });
                         let next_level = next_slots.first().cloned().and_then(|slot| {
-                            let constants = state.current_head.constants()?;
                             let pred = baker
                                 .elected_block_header_with_hash()
                                 .or_else(|| state.current_head.get())?;
-                            let round = pred.header.fitness().round()?;
                             let timestamp = pred.header.timestamp().as_u64();
                             let timestamp = timestamp * 1_000_000_000;
 
-                            let time_left = calc_time_until_round(
-                                round as u64,
-                                (round + 1) as u64,
+                            let curr_round = pred.header.fitness().round().unwrap_or(0) as u32;
+                            let time_to_next_level_round0 = calc_time_until_round(
+                                curr_round as u64,
+                                curr_round as u64 + 1,
                                 constants.min_block_delay,
                                 constants.delay_increment_per_round,
-                            ) + calc_time_until_round(
+                            );
+                            let time_to_next_level_target_round = calc_time_until_round(
                                 0,
                                 slot as u64,
                                 constants.min_block_delay,
                                 constants.delay_increment_per_round,
                             );
-                            let timeout = timestamp + time_left;
+                            let timeout = timestamp
+                                + time_to_next_level_round0
+                                + time_to_next_level_target_round;
                             Some(BakingSlot {
                                 round: slot as u32,
                                 timeout,
@@ -300,7 +343,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                 .bakers
                 .iter_mut()
                 .filter(|(_, baker_state)| baker_state.elected_block.is_none())
-                .fold(None, |_, (_, baker_state)| {
+                .try_for_each(|(_, baker_state)| {
                     let block = head?.clone();
                     let round = block.header.fitness().round()?;
 
