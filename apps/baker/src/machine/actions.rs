@@ -354,6 +354,7 @@ pub struct ProposeAction {
     pub operations: [Vec<OperationSimple>; 4],
     pub timestamp: i64,
     pub round: i32,
+    pub level: i32,
 }
 
 impl<S> EnablingCondition<S> for ProposeAction

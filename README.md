@@ -342,7 +342,6 @@ For a more detailed description of the RPCs, see the [shell](https://docs.tezedg
 
 ### Baking
 
-- [Baking in the Hangzhou testnet](baking/011-PtHangz2/README.md)
 - [Baking in the Ithaca testnet](baking/012-Psithaca/README.md)
 - [Baking in the mainnet](baking/mainnet/README.md)
 
