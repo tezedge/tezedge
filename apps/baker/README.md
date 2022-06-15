@@ -45,7 +45,7 @@ This is a daemon for creating, signing and injecting endorsements and blocks for
 
 Use the tool cargo, which is part of **Rust** already installed in the previous step:
 ```
-cargo install --git https://github.com/tezedge/tezedge --tag v2.3.2 baker
+cargo install --git https://github.com/tezedge/tezedge --tag v2.3.4 baker
 ```
 
 You can install the latest development version using `--branch develop` instead of `--tag v2.3.x`.
@@ -62,7 +62,7 @@ Clone sources and build:
 ```
 git clone https://github.com/tezedge/tezedge
 cd tezedge
-git checkout tags/v2.3.2 -b v2.3.2
+git checkout tags/v2.3.4 -b v2.3.4
 cargo build -p baker --release
 ```
 
@@ -81,7 +81,7 @@ Get the source code, and build the node
 ```
 git clone https://github.com/tezedge/tezedge
 cd tezedge
-git checkout tags/v2.3.2 -b v2.3.2
+git checkout tags/v2.3.4 -b v2.3.4
 cargo build -p light-node -p protocol-runner --release
 ```
 
@@ -180,7 +180,7 @@ tezos-signer \
 
 This will print `added: tz1...`, it is your public key. Run the following command to import it. The command has `secret key` words, but it is working with the link that contains public key hash, the real secret key is still inside the ledger, and isn't exposed.
 ```
-tezos-client 
+tezos-client
     -E "http://localhost:18732" \
     import secret key <delegate_alias> http://localhost:6732/tz1...
 ```

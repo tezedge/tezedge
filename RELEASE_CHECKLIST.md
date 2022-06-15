@@ -41,7 +41,7 @@ Follow this checklist when creating a new release for the tezedge node.
 #### Tutorials to check:
 
 - [ ] [README.md](README.md)
-- [ ] [baking/011-PtHangz2/README.md](baking/011-PtHangz2/README.md)
+- [ ] [apps/baker/README.md](apps/baker/README.md)
 - [ ] [baking/012-Psithaca/README.md](baking/012-Psithaca/README.md)
 - [ ] [baking/mainnet/README.md](baking/mainnet/README.md)
 
