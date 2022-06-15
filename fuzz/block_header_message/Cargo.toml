@@ -1,6 +1,6 @@
 [package]
 name = "fuzz_block_header_message"
-version = "2.4.0"
+version = "2.3.4"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2021"
 rust-version = "1.58"

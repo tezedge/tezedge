@@ -32,7 +32,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Nothing.
 
-## [2.3.2] - 2022-06-07
+## [2.3.4] - 2022-06-15
+
+### Added
+
+- Double-baking and double-endorsement protection in baker
+- Updated documentation.
+
+## [2.3.3] - 2022-06-10
 
 ### Fixed
 
@@ -858,7 +865,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.3.3...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.3.4...develop
+[2.3.4]: https://github.com/tezedge/tezedge/releases/v2.3.4
 [2.3.3]: https://github.com/tezedge/tezedge/releases/v2.3.3
 [2.3.2]: https://github.com/tezedge/tezedge/releases/v2.3.2
 [2.3.1]: https://github.com/tezedge/tezedge/releases/v2.3.1

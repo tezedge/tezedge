@@ -1,6 +1,6 @@
 [package]
 name = "fuzz_encoding"
-version = "2.4.0"
+version = "2.3.4"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2021"
 rust-version = "1.58"
