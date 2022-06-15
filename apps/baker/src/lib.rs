@@ -10,7 +10,7 @@ pub mod machine;
 
 mod services;
 pub use self::services::{
-    client::{Protocol, ProtocolBlockHeaderI, ProtocolBlockHeaderJ},
+    client::{LiquidityBakingToggleVote, Protocol, ProtocolBlockHeaderI, ProtocolBlockHeaderJ},
     EventWithTime, Services,
 };
 

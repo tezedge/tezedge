@@ -156,6 +156,7 @@ pub trait ProtocolHeader {
         payload_hash: BlockPayloadHash,
         payload_round: i32,
         seed_nonce_hash: Option<NonceHash>,
+        liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     ) -> Self;
 
     fn payload_hash(&self) -> &BlockPayloadHash;
@@ -235,13 +236,15 @@ impl ProtocolHeader for ProtocolBlockHeaderI {
         payload_hash: BlockPayloadHash,
         payload_round: i32,
         seed_nonce_hash: Option<NonceHash>,
+        liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     ) -> Self {
+        let l = matches!(liquidity_baking_toggle_vote, LiquidityBakingToggleVote::On);
         ProtocolBlockHeaderI {
             payload_hash,
             payload_round,
             proof_of_work_nonce: SizedBytes(0x7985fafe1fb70300u64.to_be_bytes()),
             seed_nonce_hash,
-            liquidity_baking_escape_vote: false,
+            liquidity_baking_escape_vote: l,
             // fake signature
             signature: Signature(vec![0; 64]),
         }
@@ -310,13 +313,32 @@ impl ProtocolHeader for ProtocolBlockHeaderI {
     }
 }
 
-#[derive(BinWriter, HasEncoding, NomReader, Clone, Debug, Serialize, Deserialize)]
+#[derive(BinWriter, HasEncoding, NomReader, Clone, Copy, Debug, Serialize, Deserialize)]
 #[encoding(tags = "u8")]
 #[serde(rename_all = "snake_case")]
 pub enum LiquidityBakingToggleVote {
     On,
     Off,
     Pass,
+}
+
+impl Default for LiquidityBakingToggleVote {
+    fn default() -> Self {
+        LiquidityBakingToggleVote::Off
+    }
+}
+
+impl FromStr for LiquidityBakingToggleVote {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "on" => Ok(LiquidityBakingToggleVote::On),
+            "off" => Ok(LiquidityBakingToggleVote::Off),
+            "pass" => Ok(LiquidityBakingToggleVote::Pass),
+            _ => Err("unknown value".to_string()),
+        }
+    }
 }
 
 #[derive(BinWriter, HasEncoding, NomReader, Clone, Debug, Serialize, Deserialize)]
@@ -383,13 +405,14 @@ impl ProtocolHeader for ProtocolBlockHeaderJ {
         payload_hash: BlockPayloadHash,
         payload_round: i32,
         seed_nonce_hash: Option<NonceHash>,
+        liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     ) -> Self {
         ProtocolBlockHeaderJ {
             payload_hash,
             payload_round,
             proof_of_work_nonce: SizedBytes(0x7985fafe1fb70300u64.to_be_bytes()),
             seed_nonce_hash,
-            liquidity_baking_toggle_vote: LiquidityBakingToggleVote::Pass,
+            liquidity_baking_toggle_vote,
             // fake signature
             signature: Signature(vec![0; 64]),
         }
@@ -745,6 +768,7 @@ impl RpcClient {
         predecessor_hash: BlockHash,
         timestamp: i64,
         mut operations: [Vec<OperationSimple>; 4],
+        liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     ) -> Result<(Box<dyn ProtocolHeaderFull>, Vec<serde_json::Value>), RpcError>
     where
         H: ProtocolHeader + Serialize,
@@ -762,7 +786,12 @@ impl RpcClient {
             operations: Vec<serde_json::Value>,
         }
 
-        let protocol_header = H::new(payload_hash.clone(), payload_round, seed_nonce_hash.clone());
+        let protocol_header = H::new(
+            payload_hash.clone(),
+            payload_round,
+            seed_nonce_hash.clone(),
+            liquidity_baking_toggle_vote,
+        );
 
         let mut protocol_data = serde_json::to_value(&protocol_header)
             .map_err(Into::into)
