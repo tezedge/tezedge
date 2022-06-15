@@ -313,7 +313,7 @@ _More about building TezEdge docker images see [here](docker/README.md)._
 #### Run image
 
 ```
-docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v2.3.3 --network=mainnet --p2p-port 9732 --rpc-port 18732
+docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v2.3.4 --network=mainnet --p2p-port 9732 --rpc-port 18732
 ```
 _A full description of all arguments can be found in the light_node [README](light_node/README.md) file._
 
@@ -342,7 +342,7 @@ For a more detailed description of the RPCs, see the [shell](https://docs.tezedg
 
 ### Baking
 
-- [Baking in the Hangzhou testnet](baking/011-PtHangz2/README.md)
+- [Using Tezedge external baker](apps/baker/README.md)
 - [Baking in the Ithaca testnet](baking/012-Psithaca/README.md)
 - [Baking in the mainnet](baking/mainnet/README.md)
 

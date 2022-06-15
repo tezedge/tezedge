@@ -27,8 +27,6 @@ $ mkdir $HOME/data-mainnet
 $ mkdir $HOME/data-mainnet/client
 ```
 
-The TezEdge baker doesn't require it.
-
 ## Import snapshot data
 
 _If you want to run node from empty storage, you can skip this step._
@@ -223,10 +221,13 @@ $ tezos-client \
 
 ### TezEdge baker
 
-Assuming that the secret key (or locator for remote signing) is in `$HOME/.tezos-client` and the node is running locally and uses 18732 port for RPC, the command is:
+Assuming that the secret key (or locator for remote signing) is in `$HOME/.tezos-client` and the node is running locally and uses 8732 port for RPC, the command is:
 
 ```
-$ tezedge-baker --base-dir "$HOME/.tezos-client" --endpoint "http://localhost:18732" --baker <delegate_alias>
+$ tezedge-baker \
+   --endpoint "http://localhost:8732" \
+   --base-dir "$HOME/.tezos-client" \
+   --baker <delegate_alias>
 ```
 
 ### Octez baker
@@ -245,7 +246,7 @@ Baker started.
 ...
 ```
 
-## Run accuser
+## Run Accuser
 
 ```
 $ tezos-accuser-012-Psithaca \

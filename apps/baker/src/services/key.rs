@@ -42,9 +42,22 @@ pub enum SignError {
     Reqwest(reqwest::Error),
     #[error("{_0}")]
     Base58(FromBase58CheckError),
+    #[error("already signed {} {level}:{round}")]
+    AlreadySigned {
+        kind: String,
+        level: i32,
+        round: i32,
+    },
 }
 
-pub struct CryptoService(Signer);
+#[derive(Default)]
+struct LastSigned {
+    preendorsement: (i32, i32),
+    endorsement: (i32, i32),
+    block: (i32, i32),
+}
+
+pub struct CryptoService(Signer, LastSigned);
 
 impl CryptoService {
     pub fn read_key(
@@ -75,7 +88,7 @@ impl CryptoService {
             slog::info!(log, "using local key: {}", signer.pkh);
         }
 
-        Ok(CryptoService(signer))
+        Ok(CryptoService(signer, LastSigned::default()))
     }
 
     pub fn public_key_hash(&self) -> &ContractTz1Hash {
@@ -83,14 +96,49 @@ impl CryptoService {
     }
 
     pub fn sign<T>(
-        &self,
+        &mut self,
         watermark_tag: u8,
         chain_id: &ChainId,
         value: &T,
+        level: i32,
+        round: i32,
     ) -> Result<(Vec<u8>, Signature), SignError>
     where
         T: BinWriter,
     {
+        if watermark_tag == 0x12 {
+            if level < self.1.preendorsement.0
+                || (level == self.1.preendorsement.0 && round <= self.1.preendorsement.1)
+            {
+                return Err(SignError::AlreadySigned {
+                    kind: "preendorsement".to_string(),
+                    level,
+                    round,
+                });
+            }
+            self.1.preendorsement = (level, round);
+        } else if watermark_tag == 0x13 {
+            if level < self.1.endorsement.0
+                || (level == self.1.endorsement.0 && round <= self.1.endorsement.1)
+            {
+                return Err(SignError::AlreadySigned {
+                    kind: "endorsement".to_string(),
+                    level,
+                    round,
+                });
+            }
+            self.1.endorsement = (level, round);
+        } else if watermark_tag == 0x11 {
+            if level < self.1.block.0 || (level == self.1.block.0 && round <= self.1.block.1) {
+                return Err(SignError::AlreadySigned {
+                    kind: "block".to_string(),
+                    level,
+                    round,
+                });
+            }
+            self.1.block = (level, round);
+        }
+
         let mut v = Vec::new();
         let mut value_bytes = {
             value.bin_write(&mut v)?;

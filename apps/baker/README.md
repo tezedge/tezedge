@@ -14,14 +14,13 @@ This is a daemon for creating, signing and injecting endorsements and blocks for
 | CentOS |  8 |
 | MacOS |  *experimental* - newer or equal to 10.13 should work, Intel and M1 cpus |
 
-1. Install **Git** (client), **Curl** and **LibSSL**
+1. Install **Git** (client), **Curl**, a several other tools and libs in your OS. In Ubuntu and Debian it will be:
     ```
-    # If you are using ubuntu
-    apt install git curl libssl-dev
+    sudo apt install git curl libssl-dev clang gcc pkg-config make libsodium-dev libev-dev
     ```
 2. Install **Rust** command _(We recommend installing Rust through rustup.)_
     ```
-    # Run the following in your terminal, then follow the onscreen instructions.
+    # Run this in your terminal, then follow the onscreen instructions.
     curl https://sh.rustup.rs -sSf | sh
     source ~/.cargo/env
     ```
@@ -30,32 +29,40 @@ This is a daemon for creating, signing and injecting endorsements and blocks for
     rustup toolchain install 1.58.1
     rustup default 1.58.1
     ```
-4. Download `tezos-client` from https://gitlab.com/tezos/tezos/-/releases and put the `tezos-client` binary into one of directories listed in `$PATH` variable
+4. Install **Tezos Client** and **Tezos Signer**
     ```
+    curl https://gitlab.com/tezos/tezos/-/package_files/36986666/download -o tezos-client
+    chmod +x tezos-client
     sudo mv tezos-client /usr/local/bin
+    curl https://gitlab.com/tezos/tezos/-/package_files/36986689/download -o tezos-signer
+    chmod +x tezos-signer
+    sudo mv tezos-signer /usr/local/bin
     ```
 
 ### Building
 
-#### Option 1: use tool cargo, which is part of **Rust** already installed in previous step
+#### Option 1
+
+Use the tool cargo, which is part of **Rust** already installed in the previous step:
+```
+cargo install --git https://github.com/tezedge/tezedge --tag v2.3.4 baker
+```
+
+You can install the latest development version using `--branch develop` instead of `--tag v2.3.x`.
 
 ```
 cargo install --git https://github.com/tezedge/tezedge --branch develop baker
 ```
 
-You can use the tag `--tag v2.3.x` instead of branch name `--branch develop`.
+The cargo will create the binary `tezedge-baker` at `~/.cargo/bin`. The directory `~/.cargo/bin` should be in your `$PATH` variable, so you can run `tezedge-baker` without the full path. If it is not working (it might not work if you are using a non-standard shell), execute `source ~/.cargo/env` to update the environment.
 
+#### Option 2
+
+Clone sources and build:
 ```
-cargo install --git https://github.com/tezedge/tezedge --tag v2.3.2 develop baker
-```
-
-The cargo will create the binary `tezedge-baker` at `~/.cargo/bin`. The directory `~/.cargo/bin` should be in your `$PATH` variable, so you can run `tezedge-baker` without full path. If it is not working (it might not work if you are using a non-standard shell), execute `source ~/.cargo/env` to update the environment.
-
-#### Option 2: clone sources and build
-
-```
-git clone https://github.com/tezedge/tezedge --branch develop
+git clone https://github.com/tezedge/tezedge
 cd tezedge
+git checkout tags/v2.3.4 -b v2.3.4
 cargo build -p baker --release
 ```
 
@@ -67,31 +74,129 @@ Make sure you copy the binary into one of the directories listed in `$PATH` vari
 sudo cp target/release/tezedge-baker /usr/local/bin
 ```
 
+### Run the TezEdge node
+
+Get the source code, and build the node
+
+```
+git clone https://github.com/tezedge/tezedge
+cd tezedge
+git checkout tags/v2.3.4 -b v2.3.4
+cargo build -p light-node -p protocol-runner --release
+```
+
+Open the page [Snapshots](http://snapshots.tezedge.com), choose the network either mainnet or testnet. Choose Storage: tezedge, and Type: Full.
+
+![Snapshot page](docs/screenshot-snapshot-page.png)
+
+You will see blocks, each block is a snapshot, the top-most block is most recent snapshot. Every day, a new link to the snapshot will appear. Copy the link.
+
+![Link](docs/screenshot-snapshot-link.png)
+
+To run the node on testnet use the following commands, replace `...` with the actual link copied on previous step:
+```
+mkdir -p "$HOME/data-ithacanet/tezedge-data"
+./target/release/light-node import-snapshot \
+    --from ... \
+    --tezos-data-dir "$HOME/data-ithacanet/tezedge-data"
+KEEP_DATA=1 ./run.sh release \
+    --network=ithacanet \
+    --tezos-data-dir "$HOME/data-ithacanet/tezedge-data" \
+    --tezos-context-storage=tezedge
+```
+
+To run the node on mainnet, use the following commands:
+```
+mkdir -p "$HOME/data-mainnet/tezedge-data"
+./target/release/light-node import-snapshot \
+    --from ... \
+    --tezos-data-dir "$HOME/data-mainnet/tezedge-data"
+KEEP_DATA=1 ./run.sh release \
+    --network=mainnet \
+    --tezos-data-dir "$HOME/data-mainnet/tezedge-data" \
+    --tezos-context-storage=tezedge
+```
+
+The node will be building for some time and then it will run. Keep it running. Continue in another terminal tab.
+
 ### Prepare an account
 
 Skip this section if you already have a Tezos account ready for baking.
 
-Pick a new <delegate_alias> and generate a new Tezos account using Octez client.
+Pick a new <delegate_alias> and generate a new Tezos account using the Octez client.
 
 ```
-tezos-client gen keys <delegate_alias>
+tezos-client -E "http://localhost:18732" gen keys <delegate_alias>
 ```
 
-You need to fund this account with at least 6000 ꜩ. Register the account as delegate and wait a time between 5 and 6 cycles, depending on the position in the cycle (approximately 15 days).
+You need to fund this account with at least 6000 ꜩ. Register the account as a delegate and wait the amount of time equal to between 5 and 6 cycles, depending on the position in the cycle (approximately 15 days).
 
 ```
-tezos-client register key <delegate_alias> as delegate
+tezos-client -E "http://localhost:18732" register key <delegate_alias> as delegate
 ```
 
-By default, tezos-client storing secret key for the account in `$HOME/.tezos-client` directory.
+By default, tezos-client stores the secret key for the account in the `$HOME/.tezos-client` directory.
 
 See the [baking documentation](../../baking/mainnet/README.md#initialize-keys-for-bakerendorser) for more details.
 
 See the [Key management](https://tezos.gitlab.io/user/key-management.html) guide for more information.
 
-### Run the TezEdge node
+### Use ledger
 
-See [baking documentation](../../baking/mainnet/README.md#run-tezedge-node) for instructions onhow to run the TezEdge node.
+Alternatively, you can use an external ledger.
+
+Install tezos baker app in ledger by using ledger-live gui tool. You also need to open baker app and enable baking.
+
+Run signer, it will be running in background:
+```
+nohup tezos-signer \
+    -E "http://localhost:18732" \
+    launch http signer &
+```
+
+After that, run this in the terminal
+```
+tezos-signer \
+    -E "http://localhost:18732" \
+    list connected ledgers
+```
+
+It will print something like this:
+```
+To use keys at BIP32 path m/44'/1729'/0'/0' (default Tezos key path), use one
+of:
+  tezos-client import secret key ledger0 "ledger://reckless-duck-mysterious-wallaby/bip25519/0h/0h"
+  tezos-client import secret key ledger0 "ledger://reckless-duck-mysterious-wallaby/ed25519/0h/0h"
+  tezos-client import secret key ledger0 "ledger://reckless-duck-mysterious-wallaby/secp256k1/0h/0h"
+  tezos-client import secret key ledger0 "ledger://reckless-duck-mysterious-wallaby/P-256/0h/0h"
+```
+
+User must choose ed25519 link and run:
+```
+tezos-signer \
+    -E "http://localhost:18732" \
+    import secret key <delegate_alias> "ledger://reckless-duck-mysterious-wallaby/ed25519/0h/0h"
+```
+
+This will print `added: tz1...`, it is your public key. Run the following command to import it. The command has `secret key` words, but it is working with the link that contains public key hash, the real secret key is still inside the ledger, and isn't exposed.
+```
+tezos-client
+    -E "http://localhost:18732" \
+    import secret key <delegate_alias> http://localhost:6732/tz1...
+```
+
+And finally, the Tezos Baking application on the Ledger should be configured for baking:
+```
+tezos-client \
+    -E "http://localhost:18732" \
+    setup ledger to bake for <delegate_alias>
+```
+
+If you did not done it before, you need to fund this account with at least 6000 ꜩ. Register the account as delegate and wait the amount of time equal to between 5 and 6 cycles, depending on the position in the cycle (approximately 15 days).
+
+```
+tezos-client -E "http://localhost:18732" register key <delegate_alias> as delegate
+```
 
 ### Run the baker
 

@@ -1,12 +1,12 @@
-# Runing baker/endorser/accuser on Testnet (Ithacanet)
+# Runing Baker/Endorser/Accuser on Testnet (Ithacanet)
 
 ## Table of Contents
-* [Get free XTZ](#get-free-xtz)
-* [Run from sources/binaries](#run-from-sourcesbinaries)
+* [Get Free XTZ](#get-free-xtz)
+* [Run from Sources/Binaries](#run-from-sourcesbinaries)
 * [Use Ledger](#use-ledger)
 * [Remote Signing](#remote-signing)
 
-# Get free XTZ
+# Get Free XTZ
 
 https://tezos.gitlab.io/introduction/howtouse.html#get-free-tez
 
@@ -16,9 +16,9 @@ Download free faucets:
 
 https://teztnets.xyz/ithacanet-faucet
 
-# Run from sources/binaries
+# Run from Sources/Binaries
 
-## Create working directory
+## Create Working Directory
 
 _Tezos baker requires access to the context directory, which is produced by TezEdge node._
 
@@ -29,7 +29,7 @@ mkdir $HOME/data-dir-012-Psithaca/client
 cp faucet.json $HOME/data-dir-012-Psithaca
 ```
 
-## Import snapshot
+## Import Snapshot
 
 To get node bootstrapped with the rest of the network faster, you can optionally import latest irmin snapshot mentioned here: [http://snapshots.tezedge.com]. Find the topmost Ithaca archive snapshot and launch the following command:
 
@@ -39,7 +39,7 @@ $ target/release/light-node import-snapshot \
   --from http://snapshots.tezedge.com:8880/testnet/tezedge/archive/tezedge_ithaca_<...>_irmin.archive \
 ```
 
-## Run TezEdge node
+## Run TezEdge Node
 
 At first you need to [build TezEdge from sources](../../README.md#build-from-source-code) and then check [how to run it](../../README.md#how-to-run).
 
@@ -80,7 +80,7 @@ Mar 31 16:10:23.359 INFO Generating new tezos identity. This will take a while, 
 ...
 ```
 
-## Download tezos client binaries (or build from source)
+## Download Tezos Client Binaries (or Build from Source)
 
 Download `tezos-client`, `tezos-baker-012-Psithaca` and `tezos-accuser-012-Psithaca` from the [Tezos project v13.0 Releases page at Gitlab.com](https://gitlab.com/tezos/tezos/-/releases). E.g. this [archive containing all x86-64 binaries for v13.0 release](https://gitlab.com/tezos/tezos/-/package_files/36986880/download).
 
@@ -98,8 +98,14 @@ To prevent `tezos-client` from issuing a warning about testnet, you can set the 
 ``` sh
 $ export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=y
 ```
+## TezEdge Baker
 
-## Wait for TezEdge node to sync with network
+It is recommended to use TezEdge baker instead of `tezos-baker-012-Psithaca`.
+
+See [TezEdge Baker](../../apps/baker/README.md#running) to build and run it.
+
+
+## Wait for TezEdge Node to Sync with the Network
 
 ```
 $ tezos-client -E http://localhost:12535 bootstrapped
@@ -111,7 +117,7 @@ Current head: BLMa76HNwT1C (timestamp: 2022-02-24T19:02:54.000-00:00, validation
 Node is bootstrapped
 ```
 
-## Initialize keys
+## Initialize Keys
 
 _TezEdge node have to be synced already._
 ```
@@ -124,7 +130,7 @@ Account my_delegate (tz1XXXXXX) activated with ꜩ76351.572618.
 ...
 ```
 
-## Register baker/endorser delegate
+## Register Baker/Endorser Delegate
 
 _TezEdge node have to be synced already._
 
@@ -139,11 +145,23 @@ We recommend to wait more.
 ...
 ```
 
-## Run baker and endorser
+## Run Baker
 
 _Note that the delegate needs to have at least ꜩ8,000 (own or delegated funds) to get baking/endorsing rights._
 
 _Also it takes several cycles to get baking/endorsing rights (2 + num of preserved cycles)_
+
+### TezEdge Baker
+
+```
+$ tezedge-baker \
+   --endpoint "http://localhost:12535" \
+   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --baker my_delegate
+```
+
+
+### Octez Baker
 
 _Note. For Tezos baker executable from v12.x.x and higher `--media-type json` (or `-m json`) paramters should be added to make it expect JSON RPC instead of new compact encoding_
 
@@ -162,6 +180,8 @@ May 30 16:14:01.447 - 012-Psithaca.baker.transitions: received new head BLvPTWvc
 May 30 16:14:01.447 - 012-Psithaca.baker.transitions:   level 614180, round 0
 ...
 ```
+
+
 
 ## Run accuser
 
@@ -191,7 +211,7 @@ _To install Tezos Baker, developer mode should be enabled in Ledger Live_
 
 For extensively detailed information about these applications, visit the developer's [GitHub page](https://github.com/obsidiansystems/ledger-app-tezos).
 
-## Create new account
+## Create New Account
 
 If you do not have a Tezos account in your ledger, you need to create a new one. _Note that you should not use your mainnet accounts within a testnet_.
 
@@ -244,7 +264,7 @@ $ tezos-client \
 my_delegate: tzXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX (ledger sk known)
 ```
 
-## Register new account as a delegate
+## Register New Account as a Delegate
 
 To get baking/endorsing rights, this account needs owning some funds, at least ꜩ8,000 (one roll). One way of getting them is to receive them from a faucet account (see [Get free XTZ](#get-free-xtz)).
  
@@ -273,7 +293,7 @@ $ tezos-client \
 ```
 
 
-## Run baker/endorser
+## Run Baker/Endorser
 
 Start baker daemon:
 
@@ -291,7 +311,7 @@ May 30 19:09:49.898 - 012-Psithaca.baker.transitions:   level 614596, round 0
 ...
 ```
 
-## Set up the ledger for baking
+## Set Up the Ledger for Baking
 
 Usually you need to interact with ledger to confirm a signing operation. For baking/endorsing Tezos Baking application offers automated signing, limited to blocks and endorsements only.
 
