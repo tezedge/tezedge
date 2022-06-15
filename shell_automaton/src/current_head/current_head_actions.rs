@@ -125,6 +125,7 @@ pub struct CurrentHeadUpdateAction {
     pub cycle: Option<BlockCycleInfo>,
     pub operations: Vec<Vec<Operation>>,
     pub new_constants: Option<ProtocolConstants>,
+    pub max_operations_ttl: i32,
 }
 
 impl EnablingCondition<State> for CurrentHeadUpdateAction {
