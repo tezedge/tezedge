@@ -183,7 +183,7 @@ where
                 match store
                     .service
                     .crypto()
-                    .sign(0x12, &st.chain_id, op, c.level, c.round)
+                    .sign(0x12, &st.chain_id, op, c.level, c.round, false)
                 {
                     Ok(v) => v,
                     Err(err) => {
@@ -206,7 +206,7 @@ where
                 match store
                     .service
                     .crypto()
-                    .sign(0x13, &st.chain_id, op, c.level, c.round)
+                    .sign(0x13, &st.chain_id, op, c.level, c.round, false)
                 {
                     Ok(v) => v,
                     Err(err) => {
@@ -242,6 +242,7 @@ where
             st.liquidity_baking_toggle_vote,
             *round,
             *level,
+            false,
         ),
     }
 }
@@ -257,6 +258,7 @@ fn inject_block<Srv>(
     liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     round: i32,
     level: i32,
+    force: bool,
 ) where
     Srv: TimeService + BakerService,
 {
@@ -343,7 +345,7 @@ fn inject_block<Srv>(
         header.set_payload_hash(
             BlockPayloadHash::calculate(
                 &predecessor_hash,
-                payload_round as u32,
+                header.payload_round() as u32,
                 &operation_list_hash,
             )
             .unwrap(),
@@ -355,7 +357,10 @@ fn inject_block<Srv>(
     let p = guess_proof_of_work(&header, nonce_offset, st.proof_of_work_threshold);
     header.set_proof_of_work_nonce(SizedBytes(p));
     slog::info!(srv.log(), "{:?}", header);
-    let (data, _) = match srv.crypto().sign(0x11, &st.chain_id, &header, level, round) {
+    let (data, _) = match srv
+        .crypto()
+        .sign(0x11, &st.chain_id, &header, level, round, force)
+    {
         Ok(v) => v,
         Err(err) => {
             slog::error!(srv.log(), " .  {err}");
@@ -398,6 +403,7 @@ fn inject_block<Srv>(
                             liquidity_baking_toggle_vote,
                             round,
                             level,
+                            true,
                         );
 
                         return;
