@@ -65,7 +65,7 @@ impl Services {
 pub trait BakerService {
     fn client(&self) -> &client::RpcClient;
 
-    fn crypto(&self) -> &key::CryptoService;
+    fn crypto(&mut self) -> &mut key::CryptoService;
 
     fn log(&self) -> &slog::Logger;
 
@@ -77,8 +77,8 @@ impl BakerService for Services {
         &self.client
     }
 
-    fn crypto(&self) -> &key::CryptoService {
-        &self.crypto
+    fn crypto(&mut self) -> &mut key::CryptoService {
+        &mut self.crypto
     }
 
     fn log(&self) -> &slog::Logger {
