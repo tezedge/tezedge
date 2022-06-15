@@ -18,7 +18,7 @@ use tezos_messages::protocol::proto_012::operation::{
 };
 
 use crate::services::{
-    client::{Constants, Protocol},
+    client::{Constants, LiquidityBakingToggleVote, Protocol},
     event::{Block, OperationKind, OperationSimple, Slots},
     EventWithTime,
 };
@@ -100,6 +100,8 @@ impl fmt::Display for BakerState {
 pub struct Initialized {
     #[serde(default)]
     pub protocol: Protocol,
+    #[serde(default)]
+    pub liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     pub chain_id: ChainId,
     pub proof_of_work_threshold: u64,
     pub this: ContractTz1Hash,
@@ -160,6 +162,7 @@ impl BakerState {
         constants: Constants,
         this: ContractTz1Hash,
         protocol: Protocol,
+        liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     ) -> Self {
         let timing = tb::TimingLinearGrow {
             minimal_block_delay: constants.minimal_block_delay,
@@ -180,6 +183,7 @@ impl BakerState {
 
         BakerState::Idle(Initialized {
             protocol,
+            liquidity_baking_toggle_vote,
             chain_id,
             proof_of_work_threshold: constants.proof_of_work_threshold,
             this,
