@@ -106,9 +106,11 @@ pub struct Initialized {
     // cycle state
     pub nonces: CycleNonce,
     // live blocks
-    pub live_blocks: Vec<BlockHash>,
+    pub live_blocks: (BlockHash, Vec<BlockHash>),
     // operations in this proposal
     pub operations: Vec<Vec<OperationSimple>>,
+    #[serde(default)]
+    pub new_operations: Vec<OperationSimple>,
     // tenderbake machine
     pub tb_config: tb::Config<tb::TimingLinearGrow, SlotsInfo>,
     pub tb_state: tb::Machine<ContractTz1Hash, OperationSimple, 200>,
@@ -189,8 +191,9 @@ impl BakerState {
                 previous: BTreeMap::new(),
                 this: BTreeMap::new(),
             },
-            live_blocks: Vec::new(),
+            live_blocks: (BlockHash(vec![0x55; 32]), Vec::new()),
             operations: Vec::new(),
+            new_operations: Vec::new(),
             tb_config,
             tb_state: tb::Machine::<ContractTz1Hash, OperationSimple, 200>::default(),
             actions: vec![],
@@ -323,12 +326,12 @@ impl BakerState {
                     BakerState::Gathering {
                         mut state,
                         gathering: Gathering::GetLiveBlocks(Request {
-                            id: _,
+                            id,
                             state: RequestState::Success(live_blocks),
                         }),
                         current_block,
                     } => {
-                        state.live_blocks = live_blocks;
+                        state.live_blocks = (id, live_blocks);
                         state.actions.push(BakerAction::Idle(IdleAction {}));
                         BakerState::HaveBlock { state, current_block }
                     },
@@ -494,16 +497,22 @@ impl BakerState {
                             }
                         }
                         Some(_) => {
-                            // the operation does not belong to live_blocks
-                            if !state.live_blocks.contains(&op.branch) {
-                                let description = format!("the op is outdated {op:?}");
-                                state.actions.push(BakerAction::LogWarning(LogWarningAction { description }));
-                                // state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
+                            if state.live_blocks.0 != state.tb_state.hash().as_ref().unwrap().clone() {
+                                state.new_operations.push(op);
                                 continue;
-                            };
-                            state
-                                .tb_state
-                                .handle(&state.tb_config, tb::Event::Operation(op));
+                            }
+                            for op in mem::take(&mut state.new_operations).into_iter().chain(std::iter::once(op)) {
+                                // the operation does not belong to live_blocks
+                                if !state.live_blocks.1.contains(&op.branch) {
+                                    let description = format!("the op is outdated {op:?}");
+                                    state.actions.push(BakerAction::LogWarning(LogWarningAction { description }));
+                                    // state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
+                                    continue;
+                                };
+                                state
+                                    .tb_state
+                                    .handle(&state.tb_config, tb::Event::Operation(op));
+                            }
                         }
                     }
                 }
