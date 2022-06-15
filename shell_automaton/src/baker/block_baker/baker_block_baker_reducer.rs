@@ -236,35 +236,38 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             Some(v) => v,
                             None => return,
                         };
-                        let current_slot = match state.current_head.round() {
+                        let slots_size = constants.consensus_committee_size;
+                        let (current_slot, slots_loop) = match state.current_head.round() {
                             Some(round) => {
-                                (round as u32 % constants.consensus_committee_size) as u16
+                                let round = round as u32 % slots_size;
+                                ((round % slots_size) as u16, round / slots_size)
                             }
-                            None => 0,
+                            None => (0, 0),
                         };
+
+                        let slot_index = slots.partition_point(|&s| s <= current_slot);
                         let next_round = slots
-                            .into_iter()
-                            .map(|slot| *slot)
-                            .find(|slot| *slot > current_slot)
-                            .and_then(|slot| {
+                            .get(slot_index)
+                            .map(|&slot| slots_size * slots_loop + (slot as u32))
+                            .or_else(|| {
+                                slots
+                                    .first()
+                                    .map(|&slot| slots_size * (slots_loop + 1) + (slot as u32))
+                            })
+                            .and_then(|round| {
                                 let pred = state.current_head.get()?;
-                                let round = pred.header.fitness().round()?;
+                                let curr_round = pred.header.fitness().round()? as u32;
                                 let timestamp = pred.header.timestamp().as_u64();
                                 let timestamp = timestamp * 1_000_000_000;
 
-                                let rounds_left = slot.checked_sub(current_slot)? as i32;
-                                let target_round = round + rounds_left;
                                 let time_left = calc_time_until_round(
+                                    curr_round as u64,
                                     round as u64,
-                                    target_round as u64,
                                     constants.min_block_delay,
                                     constants.delay_increment_per_round,
                                 );
                                 let timeout = timestamp + time_left;
-                                Some(BakingSlot {
-                                    round: target_round as u32,
-                                    timeout,
-                                })
+                                Some(BakingSlot { round, timeout })
                             });
 
                         let next_level = next_slots.get(0).cloned().and_then(|slot| {
@@ -274,14 +277,28 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             let timestamp = pred.header.timestamp().as_u64();
                             let timestamp = timestamp * 1_000_000_000;
 
-                            let time_left = constants.min_block_delay * 1_000_000_000
-                                + calc_time_until_round(
-                                    0,
-                                    slot as u64,
-                                    constants.min_block_delay,
-                                    constants.delay_increment_per_round,
-                                );
-                            let timeout = timestamp + time_left;
+                            let curr_round = state
+                                .current_head
+                                .get()?
+                                .header
+                                .fitness()
+                                .round()
+                                .unwrap_or(0) as u32;
+                            let time_to_next_level_round0 = calc_time_until_round(
+                                curr_round as u64,
+                                curr_round as u64 + 1,
+                                constants.min_block_delay,
+                                constants.delay_increment_per_round,
+                            );
+                            let time_to_next_level_target_round = calc_time_until_round(
+                                0,
+                                slot as u64,
+                                constants.min_block_delay,
+                                constants.delay_increment_per_round,
+                            );
+                            let timeout = timestamp
+                                + time_to_next_level_round0
+                                + time_to_next_level_target_round;
                             Some(BakingSlot {
                                 round: slot as u32,
                                 timeout,
@@ -388,10 +405,6 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
         Action::BakerBlockBakerBuildBlockSuccess(content) => {
             if let Some(baker) = state.bakers.get_mut(&content.baker) {
                 let head = match state.current_head.get() {
-                    Some(v) => v,
-                    None => return,
-                };
-                let constants = match state.current_head.constants() {
                     Some(v) => v,
                     None => return,
                 };
