@@ -702,6 +702,7 @@ impl Initialized {
             operations,
             timestamp,
             round: block.time_header.round,
+            level: block.level,
         }))
     }
 }

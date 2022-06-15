@@ -15,7 +15,10 @@ use tezos_messages::{
         encoding::operation::{DecodedOperation, Operation},
     },
     protocol::{
-        proto_005::operation::SeedNonceRevelationOperation, proto_012::operation::Contents,
+        proto_005::operation::SeedNonceRevelationOperation,
+        proto_012::operation::{
+            Contents, InlinedEndorsementMempoolContents, InlinedPreendorsementContents,
+        },
     },
 };
 
@@ -172,7 +175,19 @@ where
             }
         }
         Some(BakerAction::PreVote(PreVoteAction { op })) => {
-            let (data, _) = store.service.crypto().sign(0x12, &st.chain_id, op).unwrap();
+            let InlinedPreendorsementContents::Preendorsement(c) = &op.operations;
+            let (data, _) =
+                match store
+                    .service
+                    .crypto()
+                    .sign(0x12, &st.chain_id, op, c.level, c.round)
+                {
+                    Ok(v) => v,
+                    Err(err) => {
+                        slog::error!(store.service.log(), " .  {err}");
+                        return;
+                    }
+                };
             match store
                 .service
                 .client()
@@ -183,7 +198,19 @@ where
             }
         }
         Some(BakerAction::Vote(VoteAction { op })) => {
-            let (data, _) = store.service.crypto().sign(0x13, &st.chain_id, op).unwrap();
+            let InlinedEndorsementMempoolContents::Endorsement(c) = &op.operations;
+            let (data, _) =
+                match store
+                    .service
+                    .crypto()
+                    .sign(0x13, &st.chain_id, op, c.level, c.round)
+                {
+                    Ok(v) => v,
+                    Err(err) => {
+                        slog::error!(store.service.log(), " .  {err}");
+                        return;
+                    }
+                };
             match store
                 .service
                 .client()
@@ -199,33 +226,42 @@ where
             operations,
             timestamp,
             round,
+            level,
         })) => inject_block(
-            &store.service,
+            &mut store.service,
             st,
             protocol_header,
             predecessor_hash,
             operations,
             timestamp,
-            round,
+            *round,
+            *level,
         ),
     }
 }
 
 fn inject_block<Srv>(
-    srv: &Srv,
+    srv: &mut Srv,
     st: &Initialized,
     protocol_header: &ProtocolBlockHeader,
     predecessor_hash: &BlockHash,
     operations: &[Vec<OperationSimple>; 4],
     timestamp: &i64,
-    round: &i32,
+    round: i32,
+    level: i32,
 ) where
     Srv: TimeService + BakerService,
 {
-    let (_, signature) = srv
+    let (_, signature) = match srv
         .crypto()
-        .sign(0x11, &st.chain_id, protocol_header)
-        .unwrap();
+        .sign(0x11, &st.chain_id, protocol_header, level, round)
+    {
+        Ok(v) => v,
+        Err(err) => {
+            slog::error!(srv.log(), " .  {err}");
+            return;
+        }
+    };
     let mut protocol_header = protocol_header.clone();
     protocol_header.signature = signature;
 
@@ -290,7 +326,13 @@ fn inject_block<Srv>(
     let p = guess_proof_of_work(&header, st.proof_of_work_threshold);
     header.proof_of_work_nonce = SizedBytes(p);
     slog::info!(srv.log(), "{:?}", header);
-    let (data, _) = srv.crypto().sign(0x11, &st.chain_id, &header).unwrap();
+    let (data, _) = match srv.crypto().sign(0x11, &st.chain_id, &header, level, round) {
+        Ok(v) => v,
+        Err(err) => {
+            slog::error!(srv.log(), " .  {err}");
+            return;
+        }
+    };
 
     match srv
         .client()
@@ -323,6 +365,7 @@ fn inject_block<Srv>(
                             &operations,
                             timestamp,
                             round,
+                            level,
                         );
 
                         return;
