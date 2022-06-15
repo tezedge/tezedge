@@ -120,7 +120,7 @@ pub enum CurrentHeadState {
 
         constants: Option<ProtocolConstants>,
         /// Stores all applied blocks on last 2 levels.
-        applied_blocks: BTreeMap<BlockHash, BlockHeaderWithHash>,
+        applied_blocks: BTreeMap<BlockHash, (BlockHeaderWithHash, Option<i32>)>,
         /// Live blocks size equals to `operations_max_ttl`, which at
         /// the moment is last 120 blocks. So this will contain 118 blocks
         /// last cemented blocks so that
@@ -150,13 +150,13 @@ impl CurrentHeadState {
 
     pub fn rehydrated(head: BlockHeaderWithHash, head_pred: Option<BlockHeaderWithHash>) -> Self {
         let applied_blocks: BTreeMap<BlockHash, _> = IntoIterator::into_iter([
-            Some((head.hash.clone(), head.clone())),
+            Some((head.hash.clone(), (head.clone(), None))),
             head_pred
                 .as_ref()
-                .map(|pred| (pred.hash.clone(), pred.clone())),
+                .map(|pred| (pred.hash.clone(), (pred.clone(), None))),
         ])
         .flatten()
-        .filter(|(_, b)| b.header.level() + 1 >= head.header.level())
+        .filter(|(_, (b, _))| b.header.level() + 1 >= head.header.level())
         .collect();
 
         let payload_hash = head.header.payload_hash();
@@ -268,11 +268,15 @@ impl CurrentHeadState {
         self
     }
 
-    pub fn add_applied_block(&mut self, block: &BlockHeaderWithHash) -> &mut Self {
+    pub fn add_applied_block(
+        &mut self,
+        block: &BlockHeaderWithHash,
+        max_operations_ttl: Option<i32>,
+    ) -> &mut Self {
         if let Self::Rehydrated { applied_blocks, .. } = self {
             if !applied_blocks.contains_key(&block.hash) {
-                applied_blocks.insert(block.hash.clone(), block.clone());
-                applied_blocks.retain(|_, b| b.header.level() + 1 >= block.header.level());
+                applied_blocks.insert(block.hash.clone(), (block.clone(), max_operations_ttl));
+                applied_blocks.retain(|_, (b, _)| b.header.level() + 1 >= block.header.level());
             }
         }
         self
@@ -494,6 +498,30 @@ impl CurrentHeadState {
                     | SupportedProtocol::Proto013
             )
         })
+    }
+
+    pub fn max_operations_ttl(&self) -> Option<i32> {
+        match self {
+            Self::Rehydrated {
+                head,
+                applied_blocks,
+                ..
+            } => applied_blocks.get(&head.hash).and_then(|(_, v)| v.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn predecessor_max_operations_ttl(&self) -> Option<i32> {
+        match self {
+            Self::Rehydrated {
+                head_pred: Some(head_pred),
+                applied_blocks,
+                ..
+            } => applied_blocks
+                .get(&head_pred.hash)
+                .and_then(|(_, v)| v.clone()),
+            _ => None,
+        }
     }
 }
 
