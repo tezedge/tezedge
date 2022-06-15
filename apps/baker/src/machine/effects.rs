@@ -26,7 +26,10 @@ use crate::{
     machine::state::Initialized,
     proof_of_work::guess_proof_of_work,
     services::{
-        client::{Protocol, ProtocolBlockHeaderI, ProtocolBlockHeaderJ, RpcErrorInner},
+        client::{
+            LiquidityBakingToggleVote, Protocol, ProtocolBlockHeaderI, ProtocolBlockHeaderJ,
+            RpcErrorInner,
+        },
         event::OperationSimple,
         BakerService,
     },
@@ -236,6 +239,7 @@ where
             predecessor_hash,
             operations,
             timestamp,
+            st.liquidity_baking_toggle_vote,
             *round,
             *level,
         ),
@@ -250,6 +254,7 @@ fn inject_block<Srv>(
     predecessor_hash: &BlockHash,
     operations: &[Vec<OperationSimple>; 4],
     timestamp: &i64,
+    liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     round: i32,
     level: i32,
 ) where
@@ -284,6 +289,7 @@ fn inject_block<Srv>(
             predecessor_hash.clone(),
             *timestamp,
             operations.clone(),
+            liquidity_baking_toggle_vote,
         ),
         Protocol::Jakarta => srv.client().preapply_block::<ProtocolBlockHeaderJ>(
             payload_hash,
@@ -292,6 +298,7 @@ fn inject_block<Srv>(
             predecessor_hash.clone(),
             *timestamp,
             operations.clone(),
+            liquidity_baking_toggle_vote,
         ),
     };
     let (mut header, ops) = match r {
@@ -389,6 +396,7 @@ fn inject_block<Srv>(
                             predecessor_hash,
                             &operations,
                             timestamp,
+                            liquidity_baking_toggle_vote,
                             round,
                             level,
                         );

@@ -15,7 +15,9 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
-use baker::{EventWithTime, Protocol, ProtocolBlockHeaderI, ProtocolBlockHeaderJ};
+use baker::{
+    EventWithTime, LiquidityBakingToggleVote, Protocol, ProtocolBlockHeaderI, ProtocolBlockHeaderJ,
+};
 
 #[derive(StructOpt, Debug)]
 pub struct Arguments {
@@ -29,6 +31,8 @@ pub struct Arguments {
     archive: bool,
     #[structopt(long, default_value = "i")]
     protocol: Protocol,
+    #[structopt(long, default_value = "off")]
+    liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     // #[structopt(long)]
     // node_dir: Option<PathBuf>,
 }
@@ -43,6 +47,7 @@ fn main() {
         endpoint,
         archive,
         protocol,
+        liquidity_baking_toggle_vote,
     } = Arguments::from_args();
 
     let env = env_logger::Env::default().default_filter_or("info");
@@ -107,6 +112,7 @@ fn main() {
             constants,
             srv.crypto.public_key_hash().clone(),
             protocol,
+            liquidity_baking_toggle_vote,
         )
     };
 
