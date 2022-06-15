@@ -34,12 +34,16 @@ use crate::{
     persistent::{
         DBError, Flushable, KeyValueStoreBackend, Persistable, ReadStatistics, ReloadError,
     },
+    shapes::{DirectoryShapeId, ShapeStrings},
     working_tree::{
-        shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
+        shape::DirectoryShapes,
+        // shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
         storage::{DirEntryId, DirectoryOrInodeId, Storage},
         string_interner::{StringId, StringInterner},
         working_tree::{PostCommitData, SerializeOutput, WorkingTree},
-        Commit, Object, ObjectReference,
+        Commit,
+        Object,
+        ObjectReference,
     },
     ContextKeyValueStore, IndexApi, Map, Persistent, TezedgeIndex,
 };
@@ -349,17 +353,19 @@ impl KeyValueStoreBackend for InMemory {
     }
 
     fn get_shape(&self, shape_id: DirectoryShapeId) -> Result<ShapeStrings, DBError> {
-        self.shapes
-            .get_shape(shape_id)
-            .map(ShapeStrings::SliceIds)
-            .map_err(Into::into)
+        todo!()
+        // self.shapes
+        //     .get_shape(shape_id)
+        //     .map(ShapeStrings::SliceIds)
+        //     .map_err(Into::into)
     }
 
     fn make_shape(
         &mut self,
         dir: &[(StringId, DirEntryId)],
     ) -> Result<Option<DirectoryShapeId>, DBError> {
-        self.shapes.make_shape(dir).map_err(Into::into)
+        todo!()
+        // self.shapes.make_shape(dir).map_err(Into::into)
     }
 
     fn synchronize_strings_from(&mut self, string_interner: &StringInterner) {

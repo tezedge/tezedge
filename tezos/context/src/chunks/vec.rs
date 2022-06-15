@@ -224,6 +224,10 @@ impl<T, const CHUNK_CAPACITY: usize> ChunkedVec<T, CHUNK_CAPACITY> {
         CHUNK_CAPACITY * self.list_of_chunks.len()
     }
 
+    pub fn total_bytes(&self) -> usize {
+        self.capacity() * std::mem::size_of::<T>()
+    }
+
     /// Returns the last chunk with space available.
     ///
     /// Allocates one more chunk in 2 cases:

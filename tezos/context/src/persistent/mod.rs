@@ -26,12 +26,14 @@ use crate::{
         readonly_ipc::ContextServiceError, HashId, HashIdError, VacantObjectHash,
     },
     serialize::DeserializationError,
+    shapes::{DirectoryShapeError, DirectoryShapeId, ShapeStrings},
     working_tree::{
-        shape::{DirectoryShapeError, DirectoryShapeId, ShapeStrings},
+        // shape::{DirectoryShapeError, DirectoryShapeId, ShapeStrings},
         storage::{DirEntryId, DirectoryOrInodeId, Storage},
         string_interner::{StringId, StringInterner},
         working_tree::{MerkleError, SerializeOutput, WorkingTree},
-        Object, ObjectReference,
+        Object,
+        ObjectReference,
     },
     ContextError, ContextKeyValueStore, ObjectHash,
 };

@@ -13,6 +13,7 @@ use super::inline_boxed_slice::InlinedBoxedSlice;
 use crate::chunks::ChunkedVec;
 #[cfg(test)]
 use crate::serialize::persistent::AbsoluteOffset;
+use crate::shapes::{DirectoryShapeId, ShapeStrings};
 use crate::ContextKeyValueStore;
 
 use crypto::hash::ContextHash;
@@ -26,7 +27,7 @@ use crate::persistent::{
 };
 
 use crate::serialize::{in_memory, persistent, ObjectHeader};
-use crate::working_tree::shape::{DirectoryShapeId, ShapeStrings};
+// use crate::working_tree::shape::{DirectoryShapeId, ShapeStrings};
 use crate::working_tree::storage::{DirEntryId, DirectoryOrInodeId, Storage};
 use crate::working_tree::string_interner::{StringId, StringInterner};
 use crate::working_tree::working_tree::{PostCommitData, SerializeOutput, WorkingTree};

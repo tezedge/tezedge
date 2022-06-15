@@ -29,7 +29,8 @@ use crate::{
     persistent::{
         file::{
             get_persistent_base_path, File, TAG_BIG_STRINGS, TAG_COMMIT_INDEX, TAG_DATA,
-            TAG_HASHES, TAG_SHAPE, TAG_SHAPE_INDEX, TAG_SIZES, TAG_STRINGS,
+            TAG_HASHES, TAG_NEW_SHAPES, TAG_NEW_SHAPES_INDEX, TAG_SHAPE, TAG_SHAPE_INDEX,
+            TAG_SIZES, TAG_STRINGS,
         },
         get_commit_hash,
         lock::Lock,
@@ -40,12 +41,14 @@ use crate::{
         persistent::{self, read_object_length, AbsoluteOffset},
         DeserializationError, ObjectHeader,
     },
+    shapes::{DirectoryShapeId, ShapeStrings, ShapesOnDisk},
     working_tree::{
-        shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
+        // shape::{DirectoryShapeId, DirectoryShapes, ShapeStrings},
         storage::{DirEntryId, DirectoryOrInodeId, Storage},
         string_interner::{StringId, StringInterner},
         working_tree::{PostCommitData, SerializeOutput, WorkingTree},
-        Object, ObjectReference,
+        Object,
+        ObjectReference,
     },
     ContextKeyValueStore, Map, ObjectHash,
 };
@@ -71,23 +74,23 @@ pub struct Persistent {
     ///
     /// See `serialize::persistent`
     data_file: File<{ TAG_DATA }>,
-    /// Store shapes.
-    ///
-    /// File format:
-    /// Concatenation of `StringId` (u32):
-    /// [StringId(0), StringId(9), StringId(3), StringId(33), ..]
-    ///
-    shape_file: File<{ TAG_SHAPE }>,
-    /// Store shapes indexes.
-    ///
-    /// File format:
-    /// Concatenation of `ShapeSliceId` (u64):
-    /// [ShapeSliceId { start: 0, end: 2 }, ShapeSliceId { start: 2, end: 10}, ..]
-    ///
-    /// In this example, and with the documentation of `shape_file`, the first
-    /// shape (start: 0, end: 2) would be composed of the StringId `0`, `9` and `3`
-    ///
-    shape_index_file: File<{ TAG_SHAPE_INDEX }>,
+    // /// Store shapes.
+    // ///
+    // /// File format:
+    // /// Concatenation of `StringId` (u32):
+    // /// [StringId(0), StringId(9), StringId(3), StringId(33), ..]
+    // ///
+    // shape_file: File<{ TAG_SHAPE }>,
+    // /// Store shapes indexes.
+    // ///
+    // /// File format:
+    // /// Concatenation of `ShapeSliceId` (u64):
+    // /// [ShapeSliceId { start: 0, end: 2 }, ShapeSliceId { start: 2, end: 10}, ..]
+    // ///
+    // /// In this example, and with the documentation of `shape_file`, the first
+    // /// shape (start: 0, end: 2) would be composed of the StringId `0`, `9` and `3`
+    // ///
+    // shape_index_file: File<{ TAG_SHAPE_INDEX }>,
     /// Store commit indexes.
     ///
     /// File format:
@@ -114,7 +117,8 @@ pub struct Persistent {
     big_strings_file: File<{ TAG_BIG_STRINGS }>,
 
     hashes: Hashes,
-    pub shapes: DirectoryShapes,
+    pub shapes: ShapesOnDisk,
+    // pub shapes: DirectoryShapes,
     pub string_interner: StringInterner,
 
     pub context_hashes: Map<u64, ObjectReference>,
@@ -264,24 +268,23 @@ impl Persistent {
 
         let sizes_file = File::<{ TAG_SIZES }>::try_new(&base_path, read_mode)?;
         let data_file = File::<{ TAG_DATA }>::try_new(&base_path, read_mode)?;
-        let shape_file = File::<{ TAG_SHAPE }>::try_new(&base_path, read_mode)?;
-        let shape_index_file = File::<{ TAG_SHAPE_INDEX }>::try_new(&base_path, read_mode)?;
+        let shape_file = File::<{ TAG_NEW_SHAPES }>::try_new(&base_path, read_mode)?;
+        let shape_index_file = File::<{ TAG_NEW_SHAPES_INDEX }>::try_new(&base_path, read_mode)?;
         let commit_index_file = File::<{ TAG_COMMIT_INDEX }>::try_new(&base_path, read_mode)?;
         let strings_file = File::<{ TAG_STRINGS }>::try_new(&base_path, read_mode)?;
         let big_strings_file = File::<{ TAG_BIG_STRINGS }>::try_new(&base_path, read_mode)?;
         let hashes_file = File::<{ TAG_HASHES }>::try_new(&base_path, read_mode)?;
 
         let hashes = Hashes::try_new(hashes_file);
+        let shapes = ShapesOnDisk::new(shape_file, shape_index_file);
 
         Ok(Self {
             data_file,
-            shape_file,
-            shape_index_file,
             commit_index_file,
             strings_file,
             hashes,
             big_strings_file,
-            shapes: Default::default(),
+            shapes,
             string_interner: Default::default(),
             context_hashes: Default::default(),
             lock_file,
@@ -308,10 +311,14 @@ impl Persistent {
     pub fn compute_integrity(&mut self, output: &mut File<{ TAG_SIZES }>) -> std::io::Result<()> {
         self.data_file
             .update_checksum_until(self.data_file.offset().as_u64())?;
-        self.shape_file
-            .update_checksum_until(self.shape_file.offset().as_u64())?;
-        self.shape_index_file
-            .update_checksum_until(self.shape_index_file.offset().as_u64())?;
+        self.shapes
+            .shapes
+            .file
+            .update_checksum_until(self.shapes.shapes.file.offset().as_u64())?;
+        self.shapes
+            .shapes_index
+            .file
+            .update_checksum_until(self.shapes.shapes_index.file.offset().as_u64())?;
         self.commit_index_file
             .update_checksum_until(self.commit_index_file.offset().as_u64())?;
         self.strings_file
@@ -331,8 +338,8 @@ impl Persistent {
     fn truncate_files_with_correct_sizes(
         list_sizes: Option<&[FileSizes]>,
         data_file: &mut File<{ TAG_DATA }>,
-        shape_file: &mut File<{ TAG_SHAPE }>,
-        shape_index_file: &mut File<{ TAG_SHAPE_INDEX }>,
+        shape_file: &mut File<{ TAG_NEW_SHAPES }>,
+        shape_index_file: &mut File<{ TAG_NEW_SHAPES_INDEX }>,
         commit_index_file: &mut File<{ TAG_COMMIT_INDEX }>,
         strings_file: &mut File<{ TAG_STRINGS }>,
         big_strings_file: &mut File<{ TAG_BIG_STRINGS }>,
@@ -587,9 +594,12 @@ hashes_file={:?}, in sizes.db={:?}",
         self.strings_file.append(&strings.strings)?;
         self.big_strings_file.append(&strings.big_strings)?;
 
-        let shapes = self.shapes.serialize();
-        self.shape_file.append(&shapes.shapes)?;
-        self.shape_index_file.append(&shapes.index)?;
+        // TODO
+        self.shapes.write_to_disk()?;
+
+        // let shapes = self.shapes.serialize();
+        // self.shape_file.append(&shapes.shapes)?;
+        // self.shape_index_file.append(&shapes.index)?;
 
         self.hashes.commit()?;
 
@@ -601,11 +611,12 @@ hashes_file={:?}, in sizes.db={:?}",
 
         self.data_file.sync()?;
         self.strings_file.sync()?;
-        self.shape_file.sync()?;
-        self.shape_index_file.sync()?;
+        // self.shape_file.sync()?;
+        // self.shape_index_file.sync()?;
         self.big_strings_file.sync()?;
         self.hashes.hashes_file.sync()?;
         self.commit_index_file.sync()?;
+        self.shapes.sync()?;
 
         self.update_sizes_to_disk(None)?;
 
@@ -613,7 +624,7 @@ hashes_file={:?}, in sizes.db={:?}",
     }
 
     pub fn deallocate_strings_shapes(&mut self) {
-        self.shapes.deallocate_serialized();
+        // self.shapes.deallocate_serialized();
         self.string_interner.deallocate_serialized();
     }
 
@@ -651,8 +662,8 @@ hashes_file={:?}, in sizes.db={:?}",
         let commit_counter = Self::truncate_files_with_correct_sizes(
             list_sizes.as_ref().map(AsRef::as_ref),
             &mut self.data_file,
-            &mut self.shape_file,
-            &mut self.shape_index_file,
+            &mut self.shapes.shapes.file,
+            &mut self.shapes.shapes_index.file,
             &mut self.commit_index_file,
             &mut self.strings_file,
             &mut self.big_strings_file,
@@ -661,17 +672,20 @@ hashes_file={:?}, in sizes.db={:?}",
         )?;
 
         // Clone the `File` to deserialize them in other threads
-        let shape_file = self.shape_file.try_clone()?;
-        let shape_index_file = self.shape_index_file.try_clone()?;
+        let shape_file = self.shapes.shapes.file.try_clone()?;
+        let shape_index_file = self.shapes.shapes_index.file.try_clone()?;
         let strings_file = self.strings_file.try_clone()?;
         let big_strings_file = self.big_strings_file.try_clone()?;
         let commit_index_file = self.commit_index_file.try_clone()?;
         let hashes_file = self.hashes.hashes_file.try_clone()?;
 
+        let shapes = ShapesOnDisk::new(shape_file, shape_index_file);
+
         // Spawn the deserializers
         let thread_shapes = std::thread::spawn(move || {
             log_deserializing("Deserializing shapes..", "Shapes deserialized", || {
-                DirectoryShapes::deserialize(shape_file, shape_index_file)
+                shapes.reload()
+                // DirectoryShapes::deserialize(shape_file, shape_index_file)
             })
         });
         let thread_strings = std::thread::spawn(move || {
@@ -708,6 +722,7 @@ hashes_file={:?}, in sizes.db={:?}",
 
         // `Hashes` needs to be re-created because the size of the file might have changed
         self.hashes = Hashes::try_new(hashes_file);
+        // TODO
         self.shapes = shapes;
         self.string_interner = string_interner;
         self.context_hashes = context_hashes.index;
@@ -738,10 +753,10 @@ hashes_file={:?}, in sizes.db={:?}",
             commit_counter: self.commit_counter,
             data_size: self.data_file.offset().as_u64(),
             data_checksum: self.data_file.checksum(),
-            shape_size: self.shape_file.offset().as_u64(),
-            shape_checksum: self.shape_file.checksum(),
-            shape_index_size: self.shape_index_file.offset().as_u64(),
-            shape_index_checksum: self.shape_index_file.checksum(),
+            shape_size: self.shapes.shapes.file.offset().as_u64(),
+            shape_checksum: self.shapes.shapes.file.checksum(),
+            shape_index_size: self.shapes.shapes_index.file.offset().as_u64(),
+            shape_index_checksum: self.shapes.shapes_index.file.checksum(),
             commit_index_size: self.commit_index_file.offset().as_u64(),
             commit_index_checksum: self.commit_index_file.checksum(),
             strings_size: self.strings_file.offset().as_u64(),
@@ -1172,6 +1187,9 @@ impl KeyValueStoreBackend for Persistent {
 
         self.commit_to_disk(&output)
             .map_err(|err| DBError::CommitToDiskError { err })?;
+
+        self.shapes.shrink_to_fit();
+        eprintln!("Shapes={:#?}", self.shapes);
 
         Ok((commit_hash, serialize_stats))
     }
