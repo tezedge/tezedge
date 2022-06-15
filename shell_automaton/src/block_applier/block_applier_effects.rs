@@ -269,6 +269,7 @@ where
                                 })
                                 .ok()
                             });
+                    let max_operations_ttl = block_additional_data.max_operations_ttl().into();
                     store.dispatch(CurrentHeadUpdateAction {
                         new_head,
                         protocol,
@@ -281,6 +282,7 @@ where
                         cycle,
                         operations,
                         new_constants,
+                        max_operations_ttl,
                     });
                 }
                 _ => return,

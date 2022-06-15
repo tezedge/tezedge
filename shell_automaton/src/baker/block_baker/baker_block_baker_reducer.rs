@@ -365,6 +365,8 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                 .unwrap(),
                         )
                         .unwrap();
+                        let predecessor_max_operations_ttl =
+                            state.current_head.max_operations_ttl().unwrap_or(1);
                         BuiltBlock {
                             round: payload_round as i32,
                             payload_round: payload_round as i32,
@@ -375,7 +377,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             liquidity_baking_escape_vote: baker.liquidity_baking_escape_vote,
                             operations: elected_block.operations.clone(),
                             predecessor_header: elected_block.header().clone(),
-                            predecessor_max_operations_ttl: constants.max_operations_ttl,
+                            predecessor_max_operations_ttl,
                             pred_block_metadata_hash: elected_block.block_metadata_hash.clone(),
                             pred_ops_metadata_hash: elected_block.ops_metadata_hash.clone(),
                         }
@@ -385,6 +387,10 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                         block_timestamp,
                         ..
                     } => {
+                        let predecessor_max_operations_ttl = state
+                            .current_head
+                            .predecessor_max_operations_ttl()
+                            .unwrap_or(1);
                         let built_block = baker
                             .locked_payload
                             .as_ref()
@@ -399,7 +405,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                 liquidity_baking_escape_vote: baker.liquidity_baking_escape_vote,
                                 operations: p.operations.clone(),
                                 predecessor_header: p.pred_header.clone(),
-                                predecessor_max_operations_ttl: constants.max_operations_ttl,
+                                predecessor_max_operations_ttl,
                                 pred_block_metadata_hash: p.pred_block_metadata_hash.clone(),
                                 pred_ops_metadata_hash: p.pred_ops_metadata_hash.clone(),
                             })
@@ -416,7 +422,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                         .liquidity_baking_escape_vote,
                                     operations: current_head.operations()?.clone(),
                                     predecessor_header: (*current_head.get_pred()?.header).clone(),
-                                    predecessor_max_operations_ttl: constants.max_operations_ttl,
+                                    predecessor_max_operations_ttl,
                                     pred_block_metadata_hash: current_head
                                         .pred_block_metadata_hash()?
                                         .clone(),

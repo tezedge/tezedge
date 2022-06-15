@@ -80,10 +80,12 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 BlockApplierApplyState::Success { block, .. } => &**block,
                 _ => return,
             };
-            state.current_head.add_applied_block(block);
+            state.current_head.add_applied_block(block, None);
         }
         Action::CurrentHeadUpdate(content) => {
-            state.current_head.add_applied_block(&content.new_head);
+            state
+                .current_head
+                .add_applied_block(&content.new_head, Some(content.max_operations_ttl));
             let (applied_blocks, mut proto_cache) = match &mut state.current_head {
                 CurrentHeadState::Rehydrated {
                     applied_blocks,
@@ -115,7 +117,11 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 .filter(|pred| &pred.hash == head.header.predecessor())
                 .or_else(|| state.current_head.get_pred())
                 .filter(|pred| &pred.hash == head.header.predecessor())
-                .or_else(|| applied_blocks.get(head.header.predecessor()))
+                .or_else(|| {
+                    applied_blocks
+                        .get(head.header.predecessor())
+                        .map(|(b, _)| b)
+                })
                 .cloned();
             let payload_round = head.header.payload_round();
             let constants = content
