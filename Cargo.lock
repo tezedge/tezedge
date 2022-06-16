@@ -260,7 +260,7 @@ dependencies = [
 
 [[package]]
 name = "async_ipc"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "bincode",
@@ -298,7 +298,7 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
 name = "baker"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "crypto",
  "derive_more",
@@ -732,7 +732,7 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 
 [[package]]
 name = "context-tool"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "byte-unit",
  "clap 3.1.18",
@@ -895,7 +895,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
 name = "crypto"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "base58",
@@ -1078,7 +1078,7 @@ dependencies = [
 
 [[package]]
 name = "db-checker"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "clap 2.34.0",
  "edgekv",
@@ -1207,7 +1207,7 @@ dependencies = [
 
 [[package]]
 name = "edgekv"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "bincode",
  "crc",
@@ -1561,7 +1561,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_ack_message"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1570,7 +1570,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_advertise_message"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1579,7 +1579,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_block_header_message"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1588,7 +1588,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_connection_message"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1597,7 +1597,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_current_branch_message"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1606,7 +1606,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_current_head_message"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1615,7 +1615,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_metadata_message"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1624,7 +1624,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_operation_message"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1633,7 +1633,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_operations_for_blocks_message"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1642,7 +1642,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_peer_response_message"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1651,7 +1651,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_protocol_message"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "honggfuzz",
  "log",
@@ -2098,7 +2098,7 @@ dependencies = [
 
 [[package]]
 name = "ipc"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "bencher",
@@ -2377,7 +2377,7 @@ dependencies = [
 
 [[package]]
 name = "light-node"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "async_ipc",
  "clap 2.34.0",
@@ -2442,7 +2442,7 @@ dependencies = [
 
 [[package]]
 name = "logging"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "libflate",
  "nix 0.23.1",
@@ -2620,7 +2620,7 @@ dependencies = [
 
 [[package]]
 name = "monitoring"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "crypto",
  "erased-serde",
@@ -2683,7 +2683,7 @@ dependencies = [
 
 [[package]]
 name = "networking"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "async-std",
@@ -3304,7 +3304,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-runner"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "clap 2.34.0",
  "crypto",
@@ -3645,7 +3645,7 @@ dependencies = [
 
 [[package]]
 name = "rpc"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module)",
@@ -3760,7 +3760,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "clap 2.34.0",
@@ -3994,7 +3994,7 @@ dependencies = [
 
 [[package]]
 name = "shell"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "async_ipc",
@@ -4035,7 +4035,7 @@ dependencies = [
 
 [[package]]
 name = "shell_automaton"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module)",
@@ -4084,7 +4084,7 @@ dependencies = [
 
 [[package]]
 name = "shell_automaton_testing"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "bytes",
  "crypto",
@@ -4105,7 +4105,7 @@ dependencies = [
 
 [[package]]
 name = "shell_integration"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "crypto",
@@ -4324,7 +4324,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "storage"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4522,7 +4522,7 @@ dependencies = [
 
 [[package]]
 name = "tenderbake"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "crypto",
  "fuzzcheck",
@@ -4600,7 +4600,7 @@ dependencies = [
 
 [[package]]
 name = "tezos-sys"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "colored",
  "fs_extra",
@@ -4613,7 +4613,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_api"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -4638,7 +4638,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_context"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4678,7 +4678,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_context_api"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "crypto",
  "derive_builder",
@@ -4694,7 +4694,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_context_ipc_client"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "async_ipc",
  "crypto",
@@ -4705,7 +4705,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_conv"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "crypto",
  "num-bigint 0.3.3",
@@ -4719,7 +4719,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "bit-vec",
  "crypto",
@@ -4737,7 +4737,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding_derive"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "lazy_static",
  "once_cell",
@@ -4749,7 +4749,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_identity"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -4762,7 +4762,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -4792,7 +4792,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_lib_storage_ffi"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "ocaml-interop",
  "tempfile",
@@ -4802,7 +4802,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_messages"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "anyhow",
  "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -4835,7 +4835,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_protocol_ipc_client"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "async_ipc",
  "crypto",
@@ -4853,7 +4853,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_protocol_ipc_messages"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "crypto",
  "enum-kinds",
@@ -4867,14 +4867,14 @@ dependencies = [
 
 [[package]]
 name = "tezos_spsc"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "loom",
 ]
 
 [[package]]
 name = "tezos_timing"
-version = "2.3.4"
+version = "2.3.5"
 dependencies = [
  "crypto",
  "rusqlite",
