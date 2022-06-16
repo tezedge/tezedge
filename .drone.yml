@@ -1601,6 +1601,7 @@ defs:
     environment:
       SODIUM_USE_PKG_CONFIG: 1
       RUST_BACKTRACE: 1
+      RUN_TEZEDGE_BAKER: $${BAKER_KIND}
     commands:
       - cd tezos-src/tezos/tests_python
       - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
@@ -1657,6 +1658,7 @@ steps:
     - cp drone-cache/build_files/light-node tezos-src/tezos/
     - cp drone-cache/build_files/protocol-runner tezos-src/tezos/
     - cp drone-cache/build_files/ffi/libtezos.so tezos-src/tezos/
+    - cp drone-cache/build_files/tezedge-baker tezos-src/tezos/
     # copy zcash-params init files - see constants.py light-node params
     - cp drone-cache/build_files/ffi/sapling-spend.params tezos-src/tezos/
     - cp drone-cache/build_files/ffi/sapling-output.params tezos-src/tezos/
@@ -1670,6 +1672,12 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_baker_endorser.py
+
+- name: baker-endorser-ext-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_baker_endorser.py
+    BAKER_KIND: external
 
 - name: client-test
   <<: *python-test
@@ -1716,6 +1724,12 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_many_bakers.py
+
+- name: many-bakers-ext-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_many_bakers.py
+    BAKER_KIND: external
 
 - name: contract-test
   <<: *python-test
@@ -1788,10 +1802,24 @@ steps:
     PYTHON_TEST: test_tenderbake.py
   failure: ignore # TODO: remove once everything has been fixed
 
+- name: tenderbake-ext-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake.py
+    BAKER_KIND: external
+  failure: ignore # TODO: remove once everything has been fixed
+
 - name: tenderbake-manual-bake-test
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake_manual_bake.py
+  failure: ignore # TODO: remove once everything has been fixed
+
+- name: tenderbake-manual-bake-ext-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_manual_bake.py
+    BAKER_KIND: external
   failure: ignore # TODO: remove once everything has been fixed
 
 - name: tenderbake-long-dynamic-bake-test
@@ -1800,16 +1828,37 @@ steps:
     PYTHON_TEST: test_tenderbake_long_dynamic_bake.py
   failure: ignore # TODO: remove once everything has been fixed
 
+- name: tenderbake-long-dynamic-bake-ext-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_long_dynamic_bake.py
+    BAKER_KIND: external
+  failure: ignore # TODO: remove once everything has been fixed
+
 - name: tenderbake-long-bakers-restart-test
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake_bakers_restart.py
   failure: ignore # TODO: remove once everything has been fixed
 
+- name: tenderbake-long-bakers-restart-ext-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_bakers_restart.py
+    BAKER_KIND: external
+  failure: ignore # TODO: remove once everything has been fixed
+
 - name: tenderbake-incremental-start-test
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake_incremental_start.py
+  failure: ignore # TODO: remove once everything has been fixed
+
+- name: tenderbake-incremental-start-ext-test
+  <<: *python-test
+  environment:
+    PYTHON_TEST: test_tenderbake_incremental_start.py
+    BAKER_KIND: external
   failure: ignore # TODO: remove once everything has been fixed
 
 - name: basic-test

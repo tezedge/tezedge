@@ -436,6 +436,10 @@ class Sandbox:
         assert_msg = f'Already a baker for proto={proto} and id={node_id}'
         assert node_id not in self.bakers[proto], assert_msg
         baker_path = self._wrap_path(BAKER, branch, proto)
+        if os.environ.get("RUN_TEZEDGE_BAKER") == "external":
+            baker_path = os.path.join(self.binaries_path, 'tezedge-baker')
+            if proto == "013-PtJakart":
+                run_params.extend(['--protocol', "jakarta"])
         node = self.nodes[node_id]
         client = self.clients[node_id]
         rpc_node = node.rpc_port
