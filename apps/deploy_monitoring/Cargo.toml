@@ -1,6 +1,6 @@
 [package]
 name = "deploy-monitoring"
-version = "2.4.0"
+version = "2.3.5"
 authors = ["Adrian Nagy <adrian.nagy@viablesystems.io>"]
 edition = "2021"
 rust-version = "1.58"
