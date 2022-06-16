@@ -45,7 +45,7 @@ This is a daemon for creating, signing and injecting endorsements and blocks for
 
 Use the tool cargo, which is part of **Rust** already installed in the previous step:
 ```
-cargo install --git https://github.com/tezedge/tezedge --tag v2.3.5 baker
+cargo install --git https://github.com/tezedge/tezedge --tag v2.3.6 baker
 ```
 
 You can install the latest development version using `--branch develop` instead of `--tag v2.3.x`.
@@ -62,7 +62,7 @@ Clone sources and build:
 ```
 git clone https://github.com/tezedge/tezedge
 cd tezedge
-git checkout tags/v2.3.5 -b v2.3.5
+git checkout tags/v2.3.6 -b v2.3.6
 cargo build -p baker --release
 ```
 
@@ -81,7 +81,7 @@ Get the source code, and build the node
 ```
 git clone https://github.com/tezedge/tezedge
 cd tezedge
-git checkout tags/v2.3.5 -b v2.3.5
+git checkout tags/v2.3.6 -b v2.3.6
 cargo build -p light-node -p protocol-runner --release
 ```
 

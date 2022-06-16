@@ -32,6 +32,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Nothing.
 
+## [2.3.6] - 2022-06-16
+
+### Changed
+
+- Don't disconnect peers when in private mode.
+- Include `tezedge-baker` program in docker image.
+
 ## [2.3.5] - 2022-06-16
 
 ### Fixed
@@ -871,7 +878,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.3.5...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.3.6...develop
+[2.3.6]: https://github.com/tezedge/tezedge/releases/v2.3.6
 [2.3.5]: https://github.com/tezedge/tezedge/releases/v2.3.5
 [2.3.4]: https://github.com/tezedge/tezedge/releases/v2.3.4
 [2.3.3]: https://github.com/tezedge/tezedge/releases/v2.3.3

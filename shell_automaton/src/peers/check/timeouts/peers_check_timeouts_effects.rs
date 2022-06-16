@@ -94,6 +94,9 @@ where
                 .peers
                 .iter()
                 .filter_map(|(address, peer)| {
+                    if state.config.private_node {
+                        return None;
+                    }
                     let timeout = check_timeout(
                         peer,
                         current_time,
