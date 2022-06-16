@@ -32,6 +32,7 @@ COPY --from=build-env /tmp/tezedge /
 COPY --from=build-env /home/appuser/tezedge/target/release/light-node /
 COPY --from=build-env /home/appuser/tezedge/target/release/protocol-runner /
 COPY --from=build-env /home/appuser/tezedge/target/release/sandbox /
+COPY --from=build-env /home/appuser/tezedge/target/release/tezedge-baker /
 COPY --from=build-env /home/appuser/tezedge/sandbox/artifacts/tezos-client /
 
 COPY --from=build-env /home/appuser/tezedge/docker/distroless/tezedge.config /
