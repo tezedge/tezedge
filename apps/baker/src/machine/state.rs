@@ -301,8 +301,9 @@ impl BakerState {
                         current_block,
                     } => {
                         state.operations = operations;
-                        if state.tb_state.elected_block().is_none() {
-                            // if we have no elected block, ask a new live blocks list
+                        if state.tb_state.elected_block().is_none() || Some(current_block.level) > state.tb_state.level() {
+                            // if we have no elected block, or it is on previous level,
+                            // ask a new live blocks list
                             state.actions.push(BakerAction::GetLiveBlocks(GetLiveBlocksAction { block_hash: current_block.hash.clone() }));
                             BakerState::Gathering {
                                 state,
