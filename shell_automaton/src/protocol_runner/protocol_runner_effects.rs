@@ -83,13 +83,18 @@ where
             store.service.protocol_runner().notify_status(true);
         }
         Action::ProtocolRunnerShutdownInit(_) => {
+            println!("**** ProtocolRunnerShutdownInit");
             store.service.protocol_runner().notify_status(false);
             match &store.state().protocol_runner {
                 ProtocolRunnerState::Idle | ProtocolRunnerState::SpawnServer(_) => {
+                    println!("****** !! IDLE");
                     store.dispatch(ProtocolRunnerShutdownSuccessAction {});
                     return;
                 }
-                ProtocolRunnerState::ShutdownPending => return,
+                ProtocolRunnerState::ShutdownPending => {
+                    println!("****** !! PENDING");
+                    return
+                },
                 _ => {}
             };
 
