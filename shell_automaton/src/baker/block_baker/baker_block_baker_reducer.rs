@@ -277,13 +277,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             let timestamp = pred.header.timestamp().as_u64();
                             let timestamp = timestamp * 1_000_000_000;
 
-                            let curr_round = state
-                                .current_head
-                                .get()?
-                                .header
-                                .fitness()
-                                .round()
-                                .unwrap_or(0) as u32;
+                            let curr_round = pred.header.fitness().round().unwrap_or(0) as u32;
                             let time_to_next_level_round0 = calc_time_until_round(
                                 curr_round as u64,
                                 curr_round as u64 + 1,
