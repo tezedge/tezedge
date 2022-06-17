@@ -4720,7 +4720,7 @@ steps:
         drone-cache/build_files/light-node
         --config-file=drone-cache/build_files/tezedge/tezedge_drone.config
         --identity-file=drone-cache/build_files/identities/identity_2.json
-        --protocol-runner=drone-cache/build_files/protocol-runner
+        --protocol-runner=drone-cache/build_files/protocol-runner --log-level=debug
         --init-sapling-spend-params-file=drone-cache/build_files/ffi/sapling-spend.params
         --init-sapling-output-params-file=drone-cache/build_files/ffi/sapling-output.params
         --rpc-port=18732 --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
@@ -6023,7 +6023,7 @@ steps:
       - >
         valgrind --tool=massif --massif-out-file=new-node.massif.out
         target/debug/light-node --protocol-runner target/debug/protocol-runner
-        --network ithacanet --peers $${OCTEZ_IP}:9732
+        --network ithacanet --peers $${OCTEZ_IP}:9732 --log-level=debug
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 18732
         --websocket-address 0.0.0.0:4927
