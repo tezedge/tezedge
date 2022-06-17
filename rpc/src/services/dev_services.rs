@@ -853,7 +853,7 @@ pub(crate) async fn get_shell_automaton_block_stats_graph(
         None => return Ok(None),
     };
 
-    let times_sub = |a: Option<u64>, b: Option<u64>| a.and_then(|a| b.map(|b| a - b));
+    let times_sub = |a: Option<u64>, b: Option<u64>| a.and_then(|a| b.map(|b| a.saturating_sub(b)));
 
     let mut result = stats
         .into_iter()
