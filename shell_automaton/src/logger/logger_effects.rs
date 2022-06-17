@@ -183,6 +183,18 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
             slog::error!(log, "Block application failed";
                 "error" => format!("{:?}", content.error));
         }
+        Action::BlockApplierApplyProtocolRunnerApplySuccess(response) => {
+            if let Some(json) = &response.apply_result.new_protocol_constants_json {
+                slog::info!(log, "Got new protocol constants JSON in block apply result"; "json" => json);
+            }
+            if let Some(json) = &response.apply_result.new_cycle_eras_json {
+                slog::info!(log, "Got new cycle eras JSON in block apply result"; "json" => json);
+            }
+            if !response.apply_result.cycle_rolls_owner_snapshots.is_empty() {
+                let count = response.apply_result.cycle_rolls_owner_snapshots.len();
+                slog::info!(log, "Got new cycle roll owner snapshots in block apply result"; "count" => count);
+            }
+        }
         Action::ProtocolRunnerReady(_) => {
             slog::info!(log, "Protocol Runner initialized");
         }
