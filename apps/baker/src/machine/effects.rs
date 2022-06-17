@@ -247,6 +247,7 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn inject_block<Srv>(
     srv: &mut Srv,
     st: &Initialized,
@@ -271,7 +272,7 @@ fn inject_block<Srv>(
             .collect::<Vec<_>>();
         let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
         BlockPayloadHash::calculate(
-            &predecessor_hash,
+            predecessor_hash,
             payload_round as u32,
             &operation_list_hash,
         )
@@ -283,6 +284,7 @@ fn inject_block<Srv>(
         .map(|ops_list| ops_list.len())
         .sum::<usize>();
 
+    slog::info!(srv.log(), "begin preapply");
     let r = match st.protocol {
         Protocol::Ithaca => srv.client().preapply_block::<ProtocolBlockHeaderI>(
             payload_hash,
@@ -303,6 +305,7 @@ fn inject_block<Srv>(
             liquidity_baking_toggle_vote,
         ),
     };
+    slog::info!(srv.log(), "end preapply");
     let (mut header, ops) = match r {
         Ok(v) => v,
         Err(err) => {
@@ -344,7 +347,7 @@ fn inject_block<Srv>(
         let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
         header.set_payload_hash(
             BlockPayloadHash::calculate(
-                &predecessor_hash,
+                predecessor_hash,
                 header.payload_round() as u32,
                 &operation_list_hash,
             )
@@ -381,36 +384,33 @@ fn inject_block<Srv>(
         ),
         Err(err) => {
             slog::error!(srv.log(), " .  {err}");
-            match err.as_ref() {
-                RpcErrorInner::NodeError(err, _) => {
-                    let invalid_ops = extract_invalid_ops(&err);
-                    if !invalid_ops.is_empty() {
-                        let mut operations = operations.clone();
-                        for ops_list in &mut operations {
-                            ops_list.retain(|op| match &op.hash {
-                                None => true,
-                                Some(hash) => !invalid_ops.contains(hash),
-                            });
-                        }
-                        // try again recursively
-                        inject_block(
-                            srv,
-                            st,
-                            header.payload_round(),
-                            seed_nonce_hash,
-                            predecessor_hash,
-                            &operations,
-                            timestamp,
-                            liquidity_baking_toggle_vote,
-                            round,
-                            level,
-                            true,
-                        );
-
-                        return;
+            if let RpcErrorInner::NodeError(err, _) = err.as_ref() {
+                let invalid_ops = extract_invalid_ops(err);
+                if !invalid_ops.is_empty() {
+                    let mut operations = operations.clone();
+                    for ops_list in &mut operations {
+                        ops_list.retain(|op| match &op.hash {
+                            None => true,
+                            Some(hash) => !invalid_ops.contains(hash),
+                        });
                     }
+                    // try again recursively
+                    inject_block(
+                        srv,
+                        st,
+                        header.payload_round(),
+                        seed_nonce_hash,
+                        predecessor_hash,
+                        &operations,
+                        timestamp,
+                        liquidity_baking_toggle_vote,
+                        round,
+                        level,
+                        true,
+                    );
+
+                    return;
                 }
-                _ => (),
             }
             slog::error!(srv.log(), " .  {}", serde_json::to_string(&ops).unwrap());
         }
@@ -442,3 +442,42 @@ fn extract_invalid_ops_test() {
     let ops = extract_invalid_ops(err);
     assert_eq!(ops.len(), 1);
 }
+
+// #[cfg(test)]
+// #[test]
+// fn preapply_time() {
+//     let (tx, _) = std::sync::mpsc::channel();
+//     let endpoint = "http://trace.dev.tezedge.com:8732".parse().unwrap();
+//     let client = crate::services::client::RpcClient::new(endpoint, tx.clone());
+
+//     let ProposeAction {
+//         payload_round,
+//         seed_nonce_hash,
+//         predecessor_hash,
+//         operations,
+//         timestamp,
+//         ..
+//     } = serde_json::from_str::<ProposeAction>(include_str!("test_data.json")).unwrap();
+
+//     let payload_hash = {
+//         let hashes = operations[1..]
+//             .as_ref()
+//             .iter()
+//             .flatten()
+//             .filter_map(|op| op.hash.as_ref().cloned())
+//             .collect::<Vec<_>>();
+//         let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
+//         BlockPayloadHash::calculate(
+//             &predecessor_hash,
+//             payload_round as u32,
+//             &operation_list_hash,
+//         )
+//         .unwrap()
+//     };
+
+//     let instant = std::time::Instant::now();
+//     let (header, ops) = client.preapply_block::<ProtocolBlockHeaderI>(payload_hash, payload_round, &seed_nonce_hash, predecessor_hash, timestamp, operations, LiquidityBakingToggleVote::Off).unwrap();
+//     println!("elapsed {:?}", instant.elapsed());
+//     println!("{header:?}");
+//     println!("{}", serde_json::to_string(&ops).unwrap());
+// }
