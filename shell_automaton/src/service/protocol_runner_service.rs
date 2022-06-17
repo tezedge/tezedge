@@ -420,6 +420,7 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
         self.channel
             .blocking_send(ProtocolRunnerRequest::ShutdownServer(()))
             .unwrap();
+        println!("**** DONE PROTO RUNNER SENDING SHUTDOWN");
     }
 }
 
