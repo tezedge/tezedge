@@ -271,10 +271,14 @@ impl ShellAutomatonManager {
     }
 
     pub fn shutdown_and_wait(self) {
+        slog::info!(self.log, "Sending shutdown signal");
         self.send_shutdown_signal();
+        slog::info!(self.log, "DONE Sending shutdown signal");
 
         if let Some(ShellAutomatonThreadHandle::Running(th)) = self.shell_automaton_thread_handle {
+            slog::info!(self.log, "Join thread handle");
             th.join().unwrap();
+            slog::info!(self.log, "DONE thread handle");
         }
     }
 }
