@@ -6036,7 +6036,7 @@ steps:
       - |
         sh -c '
         block=0
-        while [ $block -lt 1000 ]; do
+        while [ $block -lt 100 ]; do
           sleep 5
           b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
           block=$${b:-$block}
