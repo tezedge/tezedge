@@ -237,9 +237,10 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             None => return,
                         };
                         let slots_size = constants.consensus_committee_size;
-                        let (current_slot, slots_loop) = match state.current_head.round() {
+                        let current_round = state.current_head.round();
+                        let (current_slot, slots_loop) = match current_round {
                             Some(round) => {
-                                let round = round as u32 % slots_size;
+                                let round = round as u32;
                                 ((round % slots_size) as u16, round / slots_size)
                             }
                             None => (0, 0),
