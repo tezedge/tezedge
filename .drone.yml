@@ -6024,7 +6024,7 @@ steps:
       - >
         valgrind --tool=massif --massif-out-file=new-node.massif.out
         target/debug/light-node --protocol-runner target/debug/protocol-runner
-        --network ithacanet --peers $${OCTEZ_IP}:9732 --log-level=debug
+        --network ithacanet --peers $${OCTEZ_IP}:9732
         --config-file ./light_node/etc/tezedge/tezedge_drone.config
         --identity-file ./light_node/etc/drone/identities/identity_2.json --rpc-port 18732
         --websocket-address 0.0.0.0:4927
@@ -6036,7 +6036,7 @@ steps:
       - |
         sh -c '
         block=0
-        while [ $block -lt 10 ]; do
+        while [ $block -lt 1000 ]; do
           sleep 5
           b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
           block=$${b:-$block}
