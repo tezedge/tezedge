@@ -4538,8 +4538,8 @@ name: corr/indexer-tzkt-octez-012-ithaca
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 clone:
   disable: true
@@ -4638,7 +4638,8 @@ trigger:
 
 environment:
   NETWORK: ithacanet
-  BLOCK_HEAD: 20000
+  #BLOCK_HEAD: 20000
+  BLOCK_HEAD: 5000
 
 volumes:
   - name: tools
@@ -4768,7 +4769,7 @@ steps:
         && mv new_settings appsettings.json
       - cat appsettings.json
       - mkfifo /tmp/tzkt
-      - time -f "%e" -o /cache/time /tools/output-filter --kill="Applied 20000 of" -- dotnet Tzkt.Sync.dll
+      - time -f "%e" -o /cache/time /tools/output-filter --kill="Applied 5000 of" -- dotnet Tzkt.Sync.dll
       - echo "Done in $(cat /cache/time) seconds"
 
   - name: report-time
