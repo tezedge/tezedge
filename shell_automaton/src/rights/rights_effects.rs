@@ -510,11 +510,11 @@ where
         Action::RightsCycleReady(RightsCycleReadyAction { key, .. }) => {
             if let Some(RightsRequest::CycleReady { protocol, .. }) = requests.get(key) {
                 println!("**** RightsCycleReadyAction -> CycleReady protocol = {:?}", protocol);
-                //if protocol < &SupportedProtocol::Proto012 {
-                //    store.dispatch(RightsGetCycleDataAction { key: key.clone() });
-                //} else {
+                if protocol < &SupportedProtocol::Proto012 {
+                    store.dispatch(RightsGetCycleDataAction { key: key.clone() });
+                } else {
                     store.dispatch(RightsGetCycleDelegatesAction { key: key.clone() });
-                //}
+                }
             }
         }
 
