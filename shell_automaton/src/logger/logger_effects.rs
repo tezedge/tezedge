@@ -10,6 +10,7 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
     // eprintln!("[+] Action: {}", action.action.as_ref());
     // eprintln!("[+] Action: {:#?}", &action);
     // eprintln!("[+] State: {:#?}\n", store.state());
+    eprintln!("[+] Action Kind: {}", action.action.kind());
 
     let state = store.state.get();
     let log = &state.log;
