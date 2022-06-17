@@ -131,8 +131,8 @@ name: build-tezedge-binaries
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 workspace:
   path: /drone/src
@@ -250,8 +250,8 @@ name: build-old-tezedge-binaries
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
   ref:
     - refs/pull/*/head
 
@@ -360,8 +360,8 @@ name: corr/real-time-environment-cyclictest-latencies
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 clone:
   disable: true
@@ -4087,8 +4087,8 @@ name: corr/indexer-tz-tezos-009-florence
 
 trigger:
   branch:
-    - develop
-    - master
+    - xdevelop
+    - xmaster
 
 clone:
   disable: true
@@ -4156,8 +4156,8 @@ name: corr/indexer-tz-tezedge-009-florence
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: florencenet
@@ -4633,8 +4633,8 @@ name: corr/indexer-tzkt-tezedge-012-ithaca
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 environment:
   NETWORK: ithacanet
@@ -5392,8 +5392,8 @@ name: perf/dynamic-memory-allocation-decoding
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 workspace:
   path: /drone/src
@@ -6238,8 +6238,8 @@ name: corr/mitten-tezedge-node-octez-baker
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 clone:
   disable: true
@@ -6455,8 +6455,8 @@ name: corr/mitten-tezedge-node-external-baker
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 clone:
   disable: true
@@ -6673,8 +6673,8 @@ name: corr/mitten-octez-node-external-baker
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 clone:
   disable: true
