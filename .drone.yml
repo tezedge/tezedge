@@ -4791,8 +4791,8 @@ name: corr/monitoring-cpu-measurement-test
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 steps:
 
@@ -4872,8 +4872,8 @@ name: corr/monitoring-memory-measurement-test
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 steps:
 
@@ -4954,8 +4954,8 @@ name: corr/monitoring-io-and-network-measurement-test
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 steps:
 
@@ -5035,8 +5035,8 @@ name: corr/monitoring-disk-size-measurement-test
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 steps:
 
