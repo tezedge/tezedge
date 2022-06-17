@@ -6036,7 +6036,7 @@ steps:
       - |
         sh -c '
         block=0
-        while [ $block -lt 800 ]; do
+        while [ $block -lt 900 ]; do
           sleep 5
           b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
           block=$${b:-$block}
@@ -6046,7 +6046,6 @@ steps:
       - echo "Bootstrapped. Killing the node and waiting for 10 seconds."
       # terminate the node gracefully and wait to allow `valgrind` dump data
       - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
-      - curl -s localhost:18732/dev/shell/automaton/actions_stats | jq .
       # convert `massif` output to human-readable form
       - ms_print new-node.massif.out > new-node.msp.out
 

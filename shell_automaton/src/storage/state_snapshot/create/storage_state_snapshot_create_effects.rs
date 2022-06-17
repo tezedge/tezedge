@@ -15,7 +15,7 @@ where
             let req_payload =
                 StorageRequestPayload::StateSnapshotPut(Box::new(store.state().clone()));
             let req = StorageRequest::new(None, req_payload).subscribe();
-            let _ = store.service.storage().request_send(req);
+            let _ = store.service.storage().request_send(req).unwrap_or_else(|_| panic!("snapshot"));
 
             let action = StorageStateSnapshotCreatePendingAction {
                 action_id: store.state().last_action.id(),

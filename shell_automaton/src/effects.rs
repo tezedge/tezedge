@@ -89,7 +89,7 @@ fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta
     let _ = store.service.storage().request_send(StorageRequest::new(
         None,
         StorageRequestPayload::ActionPut(Box::new(action.clone())),
-    ));
+    )).unwrap_or_else(|_| panic!("effects"));
 }
 
 fn applied_actions_count_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
