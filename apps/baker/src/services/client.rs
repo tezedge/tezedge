@@ -760,6 +760,7 @@ impl RpcClient {
             })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn preapply_block<H>(
         &self,
         payload_hash: BlockPayloadHash,
@@ -787,7 +788,7 @@ impl RpcClient {
         }
 
         let protocol_header = H::new(
-            payload_hash.clone(),
+            payload_hash,
             payload_round,
             seed_nonce_hash.clone(),
             liquidity_baking_toggle_vote,
