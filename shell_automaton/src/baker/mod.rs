@@ -28,6 +28,9 @@ impl crate::EnablingCondition<crate::State> for BakerAddAction {
 pub fn baker_reducer(state: &mut crate::State, action: &crate::ActionWithMeta) {
     match &action.action {
         crate::Action::BakerAdd(content) => {
+            slog::debug!(state.log, "Adding baker";
+                         "pkh" => slog::FnValue(|_| content.baker.to_string()),
+            );
             state
                 .bakers
                 .insert(content.baker.clone(), BakerState::new());
