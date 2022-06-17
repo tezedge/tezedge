@@ -5,9 +5,8 @@ use std::{convert::TryFrom, mem, time::Duration};
 
 use redux_rs::{ActionWithMeta, Store, TimeService};
 
-use crypto::hash::{BlockHash, BlockPayloadHash, NonceHash, OperationHash, OperationListHash};
+use crypto::hash::{BlockHash, BlockPayloadHash, NonceHash, OperationListHash};
 use serde::Deserialize;
-use tenderbake as tb;
 use tezos_encoding::{enc::BinWriter, types::SizedBytes};
 use tezos_messages::{
     p2p::{
@@ -30,9 +29,9 @@ use crate::{
             LiquidityBakingToggleVote, Protocol, ProtocolBlockHeaderI, ProtocolBlockHeaderJ,
             RpcErrorInner,
         },
-        event::OperationSimple,
         BakerService,
     },
+    tenderbake_new::{self as tb, hash},
 };
 
 use super::{actions::*, state::BakerState};
@@ -91,7 +90,7 @@ where
         })) => {
             slog::info!(store.service.log(), " .  {description}");
         }
-        Some(BakerAction::LogTenderbake(LogTenderbakeAction { record })) => match record.level() {
+        Some(BakerAction::LogTenderbake(LogTenderbakeAction { record, level })) => match level {
             tb::LogLevel::Info => slog::info!(store.service.log(), "{record}"),
             tb::LogLevel::Warn => slog::warn!(store.service.log(), "{record}"),
         },
@@ -164,7 +163,7 @@ where
                 level: *level,
                 nonce: SizedBytes(nonce.as_slice().try_into().unwrap()),
             });
-            let mut bytes = branch.0.clone();
+            let BlockHash(mut bytes) = branch.clone().into();
             content.bin_write(&mut bytes).unwrap();
             bytes.extend_from_slice(&[0; 64]);
             let op_hex = hex::encode(bytes);
@@ -236,7 +235,7 @@ where
             st,
             *payload_round,
             seed_nonce_hash,
-            predecessor_hash,
+            predecessor_hash.clone().into(),
             operations,
             timestamp,
             st.liquidity_baking_toggle_vote,
@@ -252,8 +251,8 @@ fn inject_block<Srv>(
     st: &Initialized,
     payload_round: i32,
     seed_nonce_hash: &Option<NonceHash>,
-    predecessor_hash: &BlockHash,
-    operations: &[Vec<OperationSimple>; 4],
+    predecessor_hash: BlockHash,
+    operations: &[Vec<tb::OperationSimple>; 4],
     timestamp: &i64,
     liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     round: i32,
@@ -267,7 +266,7 @@ fn inject_block<Srv>(
             .as_ref()
             .iter()
             .flatten()
-            .filter_map(|op| op.hash.as_ref().cloned())
+            .map(|op| op.hash().unwrap().clone().into())
             .collect::<Vec<_>>();
         let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
         BlockPayloadHash::calculate(
@@ -342,13 +341,14 @@ fn inject_block<Srv>(
             })
             .collect::<Vec<_>>();
         let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
+        let predecessor_hash = predecessor_hash.clone().into();
         header.set_payload_hash(
             BlockPayloadHash::calculate(
                 &predecessor_hash,
                 header.payload_round() as u32,
                 &operation_list_hash,
             )
-            .unwrap(),
+            .unwrap()
         );
     }
 
@@ -386,7 +386,7 @@ fn inject_block<Srv>(
                     if !invalid_ops.is_empty() {
                         let mut operations = operations.clone();
                         for ops_list in &mut operations {
-                            ops_list.retain(|op| match &op.hash {
+                            ops_list.retain(|op| match op.hash() {
                                 None => true,
                                 Some(hash) => !invalid_ops.contains(hash),
                             });
@@ -416,11 +416,11 @@ fn inject_block<Srv>(
     }
 }
 
-fn extract_invalid_ops(err: &str) -> Vec<OperationHash> {
+fn extract_invalid_ops(err: &str) -> Vec<hash::OperationHash> {
     #[derive(Deserialize)]
     struct NodeError {
         error: String,
-        operation: OperationHash,
+        operation: hash::OperationHash,
     }
 
     let mut ops = vec![];
@@ -440,13 +440,4 @@ fn extract_invalid_ops_test() {
     let err = r#"[{"kind":"permanent","id":"validator.invalid_block","invalid_block":"BM8EPrBCqLzxNxqWkctjREMqNzjfiHNFMssvS4fhJXZLeLTZTf6","error":"outdated_operation","operation":"oo5qFAHchTG9rpNDbRBmSaJbSsiCqHBtfmKwk9Atiavhih9hYbC","originating_block":"BMExe9wTeATNPfXpymKc7iCLD3oDrw1zHCwXTVK261qf9MevmAo"}]"#;
     let ops = extract_invalid_ops(err);
     assert_eq!(ops.len(), 1);
-}
-
-#[cfg(test)]
-#[test]
-fn ph_() {
-    let predecessor = BlockHash::from_base58_check("BM76V7ruQpqqbo3qZXjAJgMdhD3RD42NkjA1YCAcJyNnbmE6o9L").unwrap();
-    let operation_list_hash = OperationListHash::calculate(&[]).unwrap();
-    let payload_hash = BlockPayloadHash::calculate(&predecessor, 0, &operation_list_hash).unwrap();
-    println!("{payload_hash}");
 }

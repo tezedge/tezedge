@@ -16,9 +16,8 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 use redux_rs::TimeService;
-use tenderbake as tb;
 
-use crate::machine::BakerAction;
+use crate::{machine::BakerAction, tenderbake_new as tb};
 
 pub struct Services {
     pub client: client::RpcClient,
@@ -30,7 +29,7 @@ pub struct Services {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct EventWithTime {
     pub action: BakerAction,
-    pub now: tenderbake::Timestamp,
+    pub now: tb::Timestamp,
 }
 
 impl Services {
@@ -55,7 +54,7 @@ impl Services {
                 let unix_epoch = SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap();
-                let now = tb::Timestamp { unix_epoch };
+                let now = tb::Timestamp::from_unix_epoch(unix_epoch);
                 EventWithTime { now, action: event }
             }),
         )

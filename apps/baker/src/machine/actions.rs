@@ -6,11 +6,14 @@ use std::collections::BTreeMap;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ContractTz1Hash, NonceHash};
+use crypto::hash::NonceHash;
 use redux_rs::EnablingCondition;
 use tezos_messages::protocol::proto_012::operation::{InlinedEndorsement, InlinedPreendorsement};
 
-use crate::services::event::{Block, OperationSimple, Slots};
+use crate::{
+    services::event::{Block, Slots},
+    tenderbake_new::{self as tb, hash},
+};
 
 use super::{state::Gathering, BakerState};
 
@@ -61,7 +64,7 @@ where
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SlotsEventAction {
     pub level: i32,
-    pub delegates: BTreeMap<ContractTz1Hash, Slots>,
+    pub delegates: BTreeMap<hash::ContractTz1Hash, Slots>,
 }
 
 impl<S> EnablingCondition<S> for SlotsEventAction
@@ -80,8 +83,8 @@ where
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OperationsForBlockEventAction {
-    pub block_hash: BlockHash,
-    pub operations: Vec<Vec<OperationSimple>>,
+    pub block_hash: hash::BlockHash,
+    pub operations: Vec<Vec<tb::OperationSimple>>,
 }
 
 impl<S> EnablingCondition<S> for OperationsForBlockEventAction
@@ -99,8 +102,8 @@ where
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LiveBlocksEventAction {
-    pub block_hash: BlockHash,
-    pub live_blocks: Vec<BlockHash>,
+    pub block_hash: hash::BlockHash,
+    pub live_blocks: Vec<hash::BlockHash>,
 }
 
 impl<S> EnablingCondition<S> for LiveBlocksEventAction
@@ -118,7 +121,7 @@ where
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OperationsEventAction {
-    pub operations: Vec<OperationSimple>,
+    pub operations: Vec<tb::OperationSimple>,
 }
 
 impl<S> EnablingCondition<S> for OperationsEventAction
@@ -211,7 +214,8 @@ where
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LogTenderbakeAction {
-    pub record: tenderbake::LogRecord,
+    pub record: String,
+    pub level: tb::LogLevel,
 }
 
 impl<S> EnablingCondition<S> for LogTenderbakeAction
@@ -241,7 +245,7 @@ where
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GetOperationsForBlockAction {
-    pub block_hash: BlockHash,
+    pub block_hash: hash::BlockHash,
 }
 
 impl<S> EnablingCondition<S> for GetOperationsForBlockAction
@@ -256,7 +260,7 @@ where
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GetLiveBlocksAction {
-    pub block_hash: BlockHash,
+    pub block_hash: hash::BlockHash,
 }
 
 impl<S> EnablingCondition<S> for GetLiveBlocksAction
@@ -284,7 +288,7 @@ where
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ScheduleTimeoutAction {
-    pub deadline: tenderbake::Timestamp,
+    pub deadline: tb::Timestamp,
 }
 
 impl<S> EnablingCondition<S> for ScheduleTimeoutAction
@@ -299,7 +303,7 @@ where
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RevealNonceAction {
-    pub branch: BlockHash,
+    pub branch: hash::BlockHash,
     pub level: i32,
     pub nonce: Vec<u8>,
 }
@@ -348,8 +352,8 @@ where
 pub struct ProposeAction {
     pub payload_round: i32,
     pub seed_nonce_hash: Option<NonceHash>,
-    pub predecessor_hash: BlockHash,
-    pub operations: [Vec<OperationSimple>; 4],
+    pub predecessor_hash: hash::BlockHash,
+    pub operations: [Vec<tb::OperationSimple>; 4],
     pub timestamp: i64,
     pub round: i32,
     pub level: i32,

@@ -18,7 +18,7 @@ mod validator;
 pub use self::validator::{Validator, Votes, ProposerMap};
 
 mod timeout;
-pub use self::timeout::{Config, TimeHeader};
+pub use self::timeout::{Config, TimeHeader, Timeout};
 
 mod block;
 pub use self::block::{PreCertificate, Certificate, Block, Payload};

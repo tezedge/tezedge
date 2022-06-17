@@ -39,9 +39,9 @@ crypto = { path = "../../crypto" }
 tezos_messages = { path = "../../tezos/messages" }
 tezos_encoding = { path = "../../tezos/encoding" }
 tezos_encoding_derive = { path = "../../tezos/encoding-derive" }
-tenderbake = { path = "../tenderbake" }
 
 [features]
+testing-mock = []
 fuzzing = [
     "fuzzcheck",
     "fuzzcheck_mutators_derive",
@@ -49,6 +49,5 @@ fuzzing = [
     "crypto/fuzzing",
     "tezos_encoding/fuzzing",
     "tezos_messages/fuzzing",
-    "tenderbake/fuzzing",
 ]
-# default = ["fuzzing"]
+default = ["testing-mock"]

@@ -4,7 +4,8 @@
 use std::time::Duration;
 
 use redux_rs::ActionWithMeta;
-use tenderbake as tb;
+
+use crate::tenderbake_new as tb;
 
 use crate::services::EventWithTime;
 
@@ -20,9 +21,8 @@ where
         None => (),
         Some(baker_action) => {
             if baker_action.is_event() {
-                let now = tb::Timestamp {
-                    unix_epoch: Duration::from_nanos(action.time_as_nanos()),
-                };
+                let now =
+                    tb::Timestamp::from_unix_epoch(Duration::from_nanos(action.time_as_nanos()));
 
                 let event = EventWithTime {
                     action: baker_action.clone(),

@@ -9,6 +9,9 @@ mod cycle_nonce;
 mod request;
 mod state;
 
+#[cfg(all(test, feature = "testing-mock"))]
+mod tests;
+
 pub use self::{
     actions::*,
     effects::baker_effects,
@@ -16,12 +19,12 @@ pub use self::{
     state::{BakerState, BakerStateEjectable},
 };
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod tests {
-    use tenderbake::Timing;
+    use crate::tenderbake_new::Timing;
 
     use super::{BakerAction, BakerState, OperationsEventAction};
-    use crate::{services::event::OperationSimple, EventWithTime};
+    use crate::{tenderbake_new::OperationSimple, EventWithTime};
 
     fn test_initialized<F>(f: F)
     where
@@ -341,3 +344,4 @@ mod tests {
         }
     }
 }
+*/

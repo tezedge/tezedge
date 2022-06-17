@@ -3,7 +3,7 @@
 
 use std::{sync::mpsc, thread, time::SystemTime};
 
-use tenderbake as tb;
+use crate::tenderbake_new as tb;
 
 use crate::machine::{BakerAction, TickEventAction};
 
@@ -40,8 +40,8 @@ impl Timer {
                 let now = SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .expect("the unix epoch has begun");
-                if next.unix_epoch > now && l >= scheduled_at_level {
-                    timeout_duration = Some((next.unix_epoch - now, next));
+                if next.unix_epoch() > now && l >= scheduled_at_level {
+                    timeout_duration = Some((next.unix_epoch() - now, next));
                     scheduled_at_level = l;
                     scheduled_at_round = r;
                 } else if l >= scheduled_at_level {
@@ -49,10 +49,10 @@ impl Timer {
                         scheduled_at_level: l,
                         scheduled_at_round: r,
                     }));
-                } else if next.unix_epoch > now {
+                } else if next.unix_epoch() > now {
                     // next timeout remains the same still the same
                     let next = timeout_duration.map(|(_, t)| t).unwrap_or(next);
-                    timeout_duration = Some((next.unix_epoch - now, next));
+                    timeout_duration = Some((next.unix_epoch() - now, next));
                 }
             }
         });
@@ -83,16 +83,16 @@ impl Drop for Timer {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "testing-mock")))]
 mod tests {
     use std::{
         sync::mpsc,
         thread,
         time::{Duration, SystemTime},
     };
-    use tenderbake as tb;
 
     use crate::machine::{BakerAction, TickEventAction};
+    use crate::tenderbake_new as tb;
 
     use super::Timer;
 
@@ -102,7 +102,7 @@ mod tests {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("the unix epoch has begun");
-        let timestamp = tb::Timestamp { unix_epoch: now };
+        let timestamp = tb::Timestamp::from_unix_epoch(now);
 
         let collector = thread::spawn(move || {
             let mut actions = vec![];
@@ -137,7 +137,7 @@ mod tests {
         thread::sleep(Duration::from_millis(3000));
         drop(timer);
 
-        let actions = collector.join().unwrap();
+        let actions = dbg!(collector.join().unwrap());
         assert!(matches!(
             actions[0],
             BakerAction::TickEvent(TickEventAction {

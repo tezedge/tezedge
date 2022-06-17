@@ -9,19 +9,19 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, Signature};
-use tenderbake as tb;
+use crypto::hash::{ChainId, Signature};
 use tezos_messages::protocol::proto_012::operation::{
-    EndorsementOperation, InlinedEndorsement, InlinedEndorsementMempoolContents,
+    InlinedEndorsement, InlinedEndorsementMempoolContents,
     InlinedEndorsementMempoolContentsEndorsementVariant, InlinedPreendorsement,
     InlinedPreendorsementContents, InlinedPreendorsementVariant,
 };
 
 use crate::services::{
     client::{Constants, LiquidityBakingToggleVote, Protocol},
-    event::{Block, OperationKind, OperationSimple, Slots},
+    event::{Block, Slots},
     EventWithTime,
 };
+use crate::tenderbake_new::{self as tb, hash, NoValue};
 
 use super::{
     actions::*,
@@ -32,22 +32,22 @@ use super::{
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SlotsInfo {
     pub committee_size: u32,
-    pub ours: Vec<ContractTz1Hash>,
+    pub ours: Vec<hash::ContractTz1Hash>,
     pub level: i32,
-    pub delegates: BTreeMap<i32, BTreeMap<ContractTz1Hash, Slots>>,
+    pub delegates: BTreeMap<i32, BTreeMap<hash::ContractTz1Hash, Slots>>,
 }
 
 #[derive(Serialize, Deserialize)]
 #[allow(clippy::enum_variant_names)]
 pub enum Gathering {
-    GetCornerSlots(Request<i32, BTreeMap<ContractTz1Hash, Slots>, String>),
+    GetCornerSlots(Request<i32, BTreeMap<hash::ContractTz1Hash, Slots>, String>),
     // for some `level: i32` we request a collection of public key hash
     // and corresponding slots
-    GetSlots(Request<i32, BTreeMap<ContractTz1Hash, Slots>, String>),
+    GetSlots(Request<i32, BTreeMap<hash::ContractTz1Hash, Slots>, String>),
     // for some `BlockHash` we request its operations
-    GetOperations(Request<BlockHash, Vec<Vec<OperationSimple>>, String>),
+    GetOperations(Request<hash::BlockHash, Vec<Vec<tb::OperationSimple>>, String>),
     // for some `BlockHash` we request a list of live blocks
-    GetLiveBlocks(Request<BlockHash, Vec<BlockHash>, String>),
+    GetLiveBlocks(Request<hash::BlockHash, Vec<hash::BlockHash>, String>),
 }
 
 impl fmt::Display for Gathering {
@@ -104,18 +104,18 @@ pub struct Initialized {
     pub liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     pub chain_id: ChainId,
     pub proof_of_work_threshold: u64,
-    pub this: ContractTz1Hash,
+    pub this: hash::ContractTz1Hash,
     // cycle state
     pub nonces: CycleNonce,
     // live blocks
-    pub live_blocks: (BlockHash, Vec<BlockHash>),
+    pub live_blocks: (hash::BlockHash, Vec<hash::BlockHash>),
     // operations in this proposal
-    pub operations: Vec<Vec<OperationSimple>>,
+    pub operations: Vec<Vec<tb::OperationSimple>>,
     #[serde(default)]
-    pub new_operations: Vec<OperationSimple>,
+    pub new_operations: Vec<tb::OperationSimple>,
     // tenderbake machine
     pub tb_config: tb::Config<tb::TimingLinearGrow, SlotsInfo>,
-    pub tb_state: tb::Machine<ContractTz1Hash, OperationSimple, 200>,
+    pub tb_state: tb::Machine,
 
     pub actions: Vec<BakerAction>,
 }
@@ -160,7 +160,7 @@ impl BakerState {
     pub fn new(
         chain_id: ChainId,
         constants: Constants,
-        this: ContractTz1Hash,
+        this: hash::ContractTz1Hash,
         protocol: Protocol,
         liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     ) -> Self {
@@ -195,11 +195,11 @@ impl BakerState {
                 previous: BTreeMap::new(),
                 this: BTreeMap::new(),
             },
-            live_blocks: (BlockHash(vec![0x55; 32]), Vec::new()),
+            live_blocks: (hash::BlockHash::no_value(), Vec::new()),
             operations: Vec::new(),
             new_operations: Vec::new(),
             tb_config,
-            tb_state: tb::Machine::<ContractTz1Hash, OperationSimple, 200>::default(),
+            tb_state: tb::Machine::default(),
             actions: vec![],
         })
     }
@@ -342,11 +342,9 @@ impl BakerState {
                     BakerState::HaveBlock { mut state, current_block } => {
                         state.actions.push(BakerAction::MonitorOperations(MonitorOperationsAction {}));
                         let operations = mem::take(&mut state.operations);
-                        let proposal = Box::new(proposal(&current_block, operations, &state.tb_config));
-                        let (tb_actions, records) = state.tb_state.handle(&state.tb_config, tb::Event::Proposal(proposal, now));
-                        state.actions.extend(records.into_iter().map(|record| {
-                            BakerAction::LogTenderbake(LogTenderbakeAction { record })
-                        }));
+                        let proposal = proposal(&current_block, operations, &state.tb_config);
+                        let mut tb_actions = vec![];
+                        state.tb_state.handle(&state.tb_config, tb::Event::Proposal(proposal, now), &mut tb_actions);
                         let description = format!("hash: {}, predecessor: {}", current_block.hash, current_block.predecessor);
                         state.actions.push(BakerAction::LogInfo(LogInfoAction {
                             with_prefix: true,
@@ -463,51 +461,52 @@ impl BakerState {
             BakerAction::OperationsEvent(OperationsEventAction { operations }) => {
                 let state = self.as_mut();
                 for op in operations {
-                    match op.kind() {
-                        None => {
-                            let description = format!("unclassified operation {op:?}");
-                            state.actions.push(BakerAction::LogError(LogErrorAction { description }));
-                        }
-                        Some(OperationKind::Preendorsement(content)) => {
-                            if let Some(validator) =
+                    match op {
+                        tb::OperationSimple::Preendorsement(op) => {
+                            if let Some((id, power)) =
                                 state
                                     .tb_config
                                     .map
-                                    .validator(content.level, content.slot, op)
+                                    .validator(op.contents.level, op.contents.slot)
                             {
-                                let event = tb::Event::Preendorsed(block_id(&content), validator, now);
-                                let (tb_actions, records) =
-                                    state.tb_state.handle(&state.tb_config, event);
-                                state.actions.extend(records.into_iter().map(|record| {
-                                    BakerAction::LogTenderbake(LogTenderbakeAction { record })
-                                }));
+                                let vote = tb::Vote {
+                                    id,
+                                    power,
+                                    op: op.map(tb::ConsensusBody::block_id),
+                                };
+                                let event = tb::Event::Preendorsed { vote };
+                                let mut tb_actions = vec![];
+                                state.tb_state.handle(&state.tb_config, event, &mut tb_actions);
                                 state.handle_tb_actions(tb_actions);
                             }
                         }
-                        Some(OperationKind::Endorsement(content)) => {
-                            if let Some(validator) =
+                        tb::OperationSimple::Endorsement(op) => {
+                            if let Some((id, power)) =
                                 state
                                     .tb_config
                                     .map
-                                    .validator(content.level, content.slot, op)
+                                    .validator(op.contents.level, op.contents.slot)
                             {
-                                let event = tb::Event::Endorsed(block_id(&content), validator, now);
-                                let (tb_actions, records) =
-                                    state.tb_state.handle(&state.tb_config, event);
-                                state.actions.extend(records.into_iter().map(|record| {
-                                    BakerAction::LogTenderbake(LogTenderbakeAction { record })
-                                }));
+                                let vote = tb::Vote {
+                                    id,
+                                    power,
+                                    op: op.map(tb::ConsensusBody::block_id),
+                                };
+                                let event = tb::Event::Endorsed { vote, now };
+                                let mut tb_actions = vec![];
+                                state.tb_state.handle(&state.tb_config, event, &mut tb_actions);
                                 state.handle_tb_actions(tb_actions);
                             }
                         }
-                        Some(_) => {
+                        #[cfg(not(feature = "testing-mock"))]
+                        _ => {
                             if state.live_blocks.0 != state.tb_state.hash().as_ref().unwrap().clone() {
                                 state.new_operations.push(op);
                                 continue;
                             }
                             for op in mem::take(&mut state.new_operations).into_iter().chain(std::iter::once(op)) {
                                 // the operation does not belong to live_blocks
-                                if !state.live_blocks.1.contains(&op.branch) {
+                                if !state.live_blocks.1.contains(&op.branch()) {
                                     let description = format!("the op is outdated {op:?}");
                                     state.actions.push(BakerAction::LogWarning(LogWarningAction { description }));
                                     // state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
@@ -515,7 +514,7 @@ impl BakerState {
                                 };
                                 state
                                     .tb_state
-                                    .handle(&state.tb_config, tb::Event::Operation(op));
+                                    .handle(&state.tb_config, tb::Event::Operation(op), &mut vec![]);
                             }
                         }
                     }
@@ -525,11 +524,8 @@ impl BakerState {
             BakerAction::TickEvent(TickEventAction { scheduled_at_level, scheduled_at_round }) => {
                 let state = self.as_mut();
                 if scheduled_at_level == state.tb_state.level().unwrap_or(1) && scheduled_at_round == state.tb_state.round().unwrap_or(0) {
-                    let (tb_actions, records) =
-                        state.tb_state.handle(&state.tb_config, tb::Event::Timeout);
-                    state.actions.extend(records.into_iter().map(|record| {
-                        BakerAction::LogTenderbake(LogTenderbakeAction { record })
-                    }));
+                    let mut tb_actions = vec![];
+                    state.tb_state.handle(&state.tb_config, tb::Event::Timeout, &mut tb_actions);
                     state.handle_tb_actions(tb_actions);
                 }
                 self
@@ -549,7 +545,7 @@ impl BakerState {
 }
 
 impl Initialized {
-    fn handle_tb_actions(&mut self, tb_actions: Vec<tb::Action<ContractTz1Hash, OperationSimple>>) {
+    fn handle_tb_actions(&mut self, tb_actions: Vec<tb::Action>) {
         for tb_action in tb_actions {
             match tb_action {
                 tb::Action::ScheduleTimeout(deadline) => {
@@ -559,25 +555,21 @@ impl Initialized {
                         }));
                 }
                 tb::Action::Propose(block, _, _) => {
-                    self.propose(*block);
+                    self.propose(block);
                 }
-                tb::Action::Preendorse {
-                    pred_hash,
-                    block_id,
-                } => {
-                    self.pre_vote(pred_hash, block_id);
+                tb::Action::Preendorse(branch, op) => {
+                    self.pre_vote(branch, op);
                 }
-                tb::Action::Endorse {
-                    pred_hash,
-                    block_id,
-                } => {
-                    self.vote(pred_hash, block_id);
+                tb::Action::Endorse(branch, op) => {
+                    self.vote(branch, op);
                 }
+                // TODO: log
+                _ => (),
             }
         }
     }
 
-    fn pre_vote(&mut self, pred_hash: BlockHash, block_id: tb::BlockId) {
+    fn pre_vote(&mut self, pred_hash: hash::BlockHash, block_id: tb::BlockId) {
         let slot = self
             .tb_config
             .map
@@ -590,13 +582,13 @@ impl Initialized {
             None => return,
         };
         let preendorsement = InlinedPreendorsement {
-            branch: BlockHash(pred_hash.0.to_vec()),
+            branch: pred_hash.into(),
             operations: InlinedPreendorsementContents::Preendorsement(
                 InlinedPreendorsementVariant {
                     slot,
                     level: block_id.level,
                     round: block_id.round,
-                    block_payload_hash: BlockPayloadHash(block_id.payload_hash.0.to_vec()),
+                    block_payload_hash: block_id.block_payload_hash.into(),
                 },
             ),
             signature: Signature(vec![0x55; 64]),
@@ -605,7 +597,7 @@ impl Initialized {
             .push(BakerAction::PreVote(PreVoteAction { op: preendorsement }));
     }
 
-    fn vote(&mut self, pred_hash: BlockHash, block_id: tb::BlockId) {
+    fn vote(&mut self, pred_hash: hash::BlockHash, block_id: tb::BlockId) {
         let slot = self
             .tb_config
             .map
@@ -618,13 +610,13 @@ impl Initialized {
             None => return,
         };
         let endorsement = InlinedEndorsement {
-            branch: BlockHash(pred_hash.0.to_vec()),
+            branch: pred_hash.into(),
             operations: InlinedEndorsementMempoolContents::Endorsement(
                 InlinedEndorsementMempoolContentsEndorsementVariant {
                     slot,
                     level: block_id.level,
                     round: block_id.round,
-                    block_payload_hash: BlockPayloadHash(block_id.payload_hash.0.to_vec()),
+                    block_payload_hash: block_id.block_payload_hash.into(),
                 },
             ),
             signature: Signature(vec![0x55; 64]),
@@ -633,62 +625,76 @@ impl Initialized {
             .push(BakerAction::Vote(VoteAction { op: endorsement }));
     }
 
-    fn propose(&mut self, block: tb::Block<ContractTz1Hash, OperationSimple>) {
+    fn propose(&mut self, block: tb::Block) {
         let payload = match block.payload {
             Some(v) => v,
             None => return,
         };
 
-        let predecessor_hash = BlockHash(block.pred_hash.0.to_vec());
+        let predecessor_hash = block.pred_hash;
         let endorsements = payload
             .cer
-            .map(|q| q.votes.ids.into_values())
+            .map(|q| q.votes.ids)
             .into_iter()
-            .flatten();
+            .flatten()
+            .filter_map(|(id, op)| {
+                let slot = self
+                    .tb_config
+                    .map
+                    .slot(op.contents.level, &id)
+                    .unwrap_or(u16::MAX);
+                Some(tb::OperationSimple::Endorsement(
+                    op.map(|block_id| tb::ConsensusBody::new(block_id, slot)),
+                ))
+            });
         let preendorsements = payload
             .pre_cer
-            .map(|q| q.votes.ids.into_values())
+            .map(|q| q.votes.ids)
             .into_iter()
-            .flatten();
+            .flatten()
+            .filter_map(|(id, op)| {
+                let slot = self
+                    .tb_config
+                    .map
+                    .slot(op.contents.level, &id)
+                    .unwrap_or(u16::MAX);
+                Some(tb::OperationSimple::Preendorsement(
+                    op.map(|block_id| tb::ConsensusBody::new(block_id, slot)),
+                ))
+            });
         let mut operations = [
             endorsements.chain(preendorsements).collect::<Vec<_>>(),
             vec![],
             vec![],
             vec![],
         ];
+        #[cfg(feature = "testing-mock")]
+        let _ = &mut operations;
         let mut hashes = BTreeSet::new();
-        for op in payload.operations {
-            op.hash.as_ref().unwrap();
-            if let Some(hash) = &op.hash {
+        for mut op in payload.operations {
+            if let Some(hash) = op.hash() {
                 if !hashes.insert(hash.clone()) {
                     continue;
                 }
             }
-            match op.kind() {
-                None => {
-                    let description = format!("unclassified operation {op:?}");
-                    self.actions
-                        .push(BakerAction::LogWarning(LogWarningAction { description }));
-                }
-                Some(OperationKind::Endorsement(_) | OperationKind::Preendorsement(_)) => {
+            op.strip_signature();
+            match &op {
+                tb::OperationSimple::Preendorsement(_) | tb::OperationSimple::Endorsement(_) => {
                     let description = format!("unexpected consensus operation {op:?}");
                     self.actions
                         .push(BakerAction::LogWarning(LogWarningAction { description }));
                 }
-                Some(OperationKind::Votes) => operations[1].push(op),
-                Some(OperationKind::Anonymous) => {
-                    let mut op = op;
-                    if op.signature.is_none() {
-                        op.signature = Some(Signature(vec![0x55; 64]));
-                    }
-                    operations[2].push(op)
-                }
-                Some(OperationKind::Managers) => operations[3].push(op),
+                #[cfg(not(feature = "testing-mock"))]
+                tb::OperationSimple::Votes(_) => operations[1].push(op),
+                #[cfg(not(feature = "testing-mock"))]
+                tb::OperationSimple::Anonymous(_) => operations[2].push(op),
+                #[cfg(not(feature = "testing-mock"))]
+                tb::OperationSimple::Managers(_) => operations[3].push(op),
             }
         }
         let payload_round = payload.payload_round;
         let seed_nonce_hash = self.nonces.gen_nonce(block.level);
-        let timestamp = block.time_header.timestamp.unix_epoch.as_secs() as i64;
+        let timestamp = block.time_header.timestamp.unix_epoch().as_secs() as i64;
 
         self.actions.push(BakerAction::Propose(ProposeAction {
             payload_round,
@@ -703,9 +709,7 @@ impl Initialized {
 }
 
 impl tb::ProposerMap for SlotsInfo {
-    type Id = ContractTz1Hash;
-
-    fn proposer(&self, level: i32, round: i32) -> Option<(i32, Self::Id)> {
+    fn proposer(&self, level: i32, round: i32) -> Option<(i32, hash::ContractTz1Hash)> {
         let c = self.committee_size as i32;
         let m = round / c;
         let round = round % c;
@@ -732,44 +736,29 @@ impl tb::ProposerMap for SlotsInfo {
 }
 
 impl SlotsInfo {
-    fn validator(
-        &self,
-        level: i32,
-        slot: u16,
-        operation: OperationSimple,
-    ) -> Option<tb::Validator<ContractTz1Hash, OperationSimple>> {
+    fn validator(&self, level: i32, slot: u16) -> Option<(hash::ContractTz1Hash, u32)> {
         let i = self.delegates.get(&level)?;
         let (id, s) = i.iter().find(|&(_, v)| v.0.first() == Some(&slot))?;
-        Some(tb::Validator {
-            id: id.clone(),
-            power: s.0.len() as u32,
-            operation,
-        })
+        Some((id.clone(), s.0.len() as u32))
     }
-}
 
-fn block_id(content: &EndorsementOperation) -> tb::BlockId {
-    tb::BlockId {
-        level: content.level,
-        round: content.round,
-        payload_hash: content.block_payload_hash.clone(),
+    fn slot(&self, level: i32, id: &hash::ContractTz1Hash) -> Option<u16> {
+        self.delegates.get(&level)?.get(id)?.0.first().cloned()
     }
 }
 
 fn proposal(
     block: &Block,
-    operations: Vec<Vec<OperationSimple>>,
+    operations: Vec<Vec<tb::OperationSimple>>,
     tb_config: &tb::Config<tb::TimingLinearGrow, SlotsInfo>,
-) -> tb::Block<ContractTz1Hash, OperationSimple> {
+) -> tb::Block {
     tb::Block {
         pred_hash: block.predecessor.clone(),
         level: block.level,
         hash: block.hash.clone(),
         time_header: tb::TimeHeader {
             round: block.round,
-            timestamp: tb::Timestamp {
-                unix_epoch: Duration::from_secs(block.timestamp),
-            },
+            timestamp: tb::Timestamp::from_unix_epoch(Duration::from_secs(block.timestamp)),
         },
         payload: {
             if !block.transition {
@@ -777,22 +766,28 @@ fn proposal(
                     hash: block.payload_hash.clone(),
                     payload_round: block.payload_round,
                     pre_cer: operations.first().and_then(|ops| {
-                        let v = ops
+                        let ops = ops
                             .iter()
-                            .filter_map(|op| match op.kind()? {
-                                OperationKind::Preendorsement(v) => Some((v, op.clone())),
+                            .filter_map(|op| match op {
+                                tb::OperationSimple::Preendorsement(v) => Some(v.clone()),
                                 _ => None,
                             })
                             .collect::<Vec<_>>();
-                        let (first, _) = v.first()?;
-                        let level = first.level;
+                        let first = ops.first()?;
                         Some(tb::PreCertificate {
-                            payload_hash: first.block_payload_hash.clone(),
-                            payload_round: first.round,
+                            payload_hash: first.contents.block_payload_hash.clone(),
+                            payload_round: first.contents.round,
                             votes: {
-                                v.into_iter()
-                                    .filter_map(|(v, op)| {
-                                        tb_config.map.validator(level, v.slot, op)
+                                ops.into_iter()
+                                    .filter_map(|op| {
+                                        let (id, power) = tb_config
+                                            .map
+                                            .validator(op.contents.level, op.contents.slot)?;
+                                        Some(tb::Vote {
+                                            id,
+                                            power,
+                                            op: op.map(tb::ConsensusBody::block_id),
+                                        })
                                     })
                                     .collect()
                             },
@@ -801,9 +796,16 @@ fn proposal(
                     cer: operations.first().map(|ops| tb::Certificate {
                         votes: {
                             ops.iter()
-                                .filter_map(|op| match op.kind()? {
-                                    OperationKind::Endorsement(v) => {
-                                        tb_config.map.validator(v.level, v.slot, op.clone())
+                                .filter_map(|op| match op {
+                                    tb::OperationSimple::Endorsement(op) => {
+                                        let (id, power) = tb_config
+                                            .map
+                                            .validator(op.contents.level, op.contents.slot)?;
+                                        Some(tb::Vote {
+                                            id,
+                                            power,
+                                            op: op.clone().map(tb::ConsensusBody::block_id),
+                                        })
                                     }
                                     _ => None,
                                 })
@@ -821,26 +823,31 @@ fn proposal(
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        machine::state::SlotsInfo,
-        services::event::{OperationKind, OperationSimple},
-    };
-
-    use tenderbake as tb;
-
     #[test]
+    #[cfg(not(feature = "testing-mock"))]
     fn convert_proposal() {
+        use crate::machine::state::SlotsInfo;
+
+        use crate::tenderbake_new as tb;
+
         let map_str = include_str!("test_data/delegates.json");
         let ops_str = include_str!("test_data/operations.json");
 
-        let operations = serde_json::from_str::<Vec<Vec<OperationSimple>>>(ops_str).unwrap();
+        let operations = serde_json::from_str::<Vec<Vec<tb::OperationSimple>>>(ops_str).unwrap();
         let map = serde_json::from_str::<SlotsInfo>(map_str).unwrap();
 
         let cer = operations.first().map(|ops| tb::Certificate {
             votes: {
                 ops.iter()
-                    .filter_map(|op| match op.kind()? {
-                        OperationKind::Endorsement(v) => map.validator(v.level, v.slot, op.clone()),
+                    .filter_map(|op| match op {
+                        tb::OperationSimple::Endorsement(op) => {
+                            let (id, power) = map.validator(op.contents.level, op.contents.slot)?;
+                            Some(tb::Vote {
+                                id,
+                                power,
+                                op: op.clone().map(tb::ConsensusBody::block_id),
+                            })
+                        }
                         _ => None,
                     })
                     .collect()

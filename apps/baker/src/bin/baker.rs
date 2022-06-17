@@ -110,7 +110,7 @@ fn main() {
         BakerState::new(
             chain_id,
             constants,
-            srv.crypto.public_key_hash().clone(),
+            srv.crypto.public_key_hash().clone().into(),
             protocol,
             liquidity_baking_toggle_vote,
         )

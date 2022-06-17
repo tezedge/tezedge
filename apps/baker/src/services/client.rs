@@ -22,7 +22,7 @@ use thiserror::Error;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crypto::hash::{
-    BlockHash, BlockPayloadHash, ChainId, ContextHash, ContractTz1Hash, NonceHash, OperationHash,
+    BlockHash, BlockPayloadHash, ChainId, ContextHash, NonceHash, OperationHash,
     OperationListListHash, ProtocolHash, Signature,
 };
 use tezos_encoding::{binary_reader::BinaryReaderError, types::SizedBytes};
@@ -38,8 +38,9 @@ use tezos_messages::{
 #[cfg(feature = "fuzzing")]
 use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
 
-use super::event::{Block, OperationSimple, Slots};
+use super::event::{Block, Slots};
 use crate::machine::{BakerAction, OperationsEventAction, ProposalEventAction, RpcErrorAction};
+use crate::tenderbake_new::{self as tb, hash};
 
 #[derive(Clone)]
 pub struct RpcClient {
@@ -591,7 +592,10 @@ impl RpcClient {
         })
     }
 
-    pub fn validators(&self, level: i32) -> Result<BTreeMap<ContractTz1Hash, Slots>, RpcError> {
+    pub fn validators(
+        &self,
+        level: i32,
+    ) -> Result<BTreeMap<hash::ContractTz1Hash, Slots>, RpcError> {
         let mut url = self
             .endpoint
             .join("chains/main/blocks/head/helpers/validators")
@@ -601,7 +605,7 @@ impl RpcClient {
 
         #[derive(Deserialize)]
         struct Validator {
-            delegate: ContractTz1Hash,
+            delegate: hash::ContractTz1Hash,
             slots: Vec<u16>,
         }
 
@@ -621,18 +625,13 @@ impl RpcClient {
         let mut url = self.endpoint.join(&s).expect("valid constant url");
         url.query_pairs_mut().append_pair("next_protocol", H::NAME);
 
-        #[allow(dead_code)]
         #[derive(Deserialize)]
         struct BlockHeaderJsonGeneric {
-            hash: BlockHash,
+            hash: hash::BlockHash,
             level: i32,
-            proto: u8,
-            predecessor: BlockHash,
+            predecessor: hash::BlockHash,
             timestamp: String,
-            validation_pass: u8,
-            operations_hash: OperationListListHash,
             fitness: Vec<String>,
-            context: ContextHash,
             protocol_data: String,
         }
 
@@ -693,7 +692,7 @@ impl RpcClient {
                     level: header.level,
                     predecessor: header.predecessor,
                     timestamp,
-                    payload_hash,
+                    payload_hash: payload_hash.into(),
                     payload_round,
                     round,
                     transition,
@@ -705,14 +704,27 @@ impl RpcClient {
 
     pub fn get_operations_for_block(
         &self,
-        block_hash: &BlockHash,
-    ) -> Result<Vec<Vec<OperationSimple>>, RpcError> {
+        block_hash: &hash::BlockHash,
+    ) -> Result<Vec<Vec<tb::OperationSimple>>, RpcError> {
         let s = format!("chains/main/blocks/{block_hash}/operations");
         let url = self.endpoint.join(&s).expect("valid url");
         self.single_response_blocking(&url, None, Some(Duration::from_secs(30)))
     }
 
-    pub fn get_live_blocks(&self, block_hash: &BlockHash) -> Result<Vec<BlockHash>, RpcError> {
+    pub fn get_operations_for_level(
+        &self,
+        level: i32,
+        index: u8,
+    ) -> Result<Vec<tb::OperationSimple>, RpcError> {
+        let s = format!("chains/main/blocks/{level}/operations/{index}");
+        let url = self.endpoint.join(&s).expect("valid url");
+        self.single_response_blocking(&url, None, Some(Duration::from_secs(30)))
+    }
+
+    pub fn get_live_blocks(
+        &self,
+        block_hash: &hash::BlockHash,
+    ) -> Result<Vec<hash::BlockHash>, RpcError> {
         let s = format!("chains/main/blocks/{block_hash}/live_blocks");
         let url = self.endpoint.join(&s).expect("valid url");
         self.single_response_blocking(&url, None, Some(Duration::from_secs(30)))
@@ -767,7 +779,7 @@ impl RpcClient {
         seed_nonce_hash: &Option<NonceHash>,
         predecessor_hash: BlockHash,
         timestamp: i64,
-        mut operations: [Vec<OperationSimple>; 4],
+        mut operations: [Vec<tb::OperationSimple>; 4],
         liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     ) -> Result<(Box<dyn ProtocolHeaderFull>, Vec<serde_json::Value>), RpcError>
     where
@@ -777,7 +789,7 @@ impl RpcClient {
         #[derive(Serialize)]
         struct BlockData {
             protocol_data: serde_json::Value,
-            operations: [Vec<OperationSimple>; 4],
+            operations: [Vec<tb::OperationSimple>; 4],
         }
 
         #[derive(Deserialize)]
@@ -811,12 +823,7 @@ impl RpcClient {
 
         for ops_list in &mut operations {
             for op in ops_list {
-                op.hash = None;
-                for content in &mut op.contents {
-                    if let Some(content_obj) = content.as_object_mut() {
-                        content_obj.remove("metadata");
-                    }
-                }
+                op.strip();
             }
         }
         let block_data = BlockData {
