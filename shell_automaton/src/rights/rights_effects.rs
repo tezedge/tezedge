@@ -509,11 +509,12 @@ where
         }
         Action::RightsCycleReady(RightsCycleReadyAction { key, .. }) => {
             if let Some(RightsRequest::CycleReady { protocol, .. }) = requests.get(key) {
-                if protocol < &SupportedProtocol::Proto012 {
-                    store.dispatch(RightsGetCycleDataAction { key: key.clone() });
-                } else {
+                println!("**** RightsCycleReadyAction -> CycleReady protocol = {:?}", protocol);
+                //if protocol < &SupportedProtocol::Proto012 {
+                //    store.dispatch(RightsGetCycleDataAction { key: key.clone() });
+                //} else {
                     store.dispatch(RightsGetCycleDelegatesAction { key: key.clone() });
-                }
+                //}
             }
         }
 
@@ -592,7 +593,7 @@ where
                 position,
             }) = requests.get(key)
             {
-                trace!(&store.state.get().log, "calculating rights"; "level" => level, "key" => FnValue(|_| format!("{:#?}", key)));
+                slog::info!(&store.state.get().log, "calculating rights"; "level" => level, "key" => FnValue(|_| format!("{:#?}", key)));
                 let prereq_dur = action.id.duration_since(*start);
 
                 let time = Instant::now();
@@ -603,7 +604,7 @@ where
                             Ok(priorities) => {
                                 let dur = Instant::now() - time;
                                 let log = &store.state.get().log;
-                                trace!(log, "Baking rights successfully calculated";
+                                slog::info!(log, "Baking rights successfully calculated";
                                        "level" => level,
                                        "prerequisites duration" => FnValue(|_| prereq_dur.as_millis()),
                                        "duration" => FnValue(|_| dur.as_millis())
@@ -628,7 +629,7 @@ where
                             Ok((delegate_to_slots, slot_to_delegate)) => {
                                 let dur = Instant::now() - time;
                                 let log = &store.state.get().log;
-                                trace!(log, "Endorsing rights successfully calculated";
+                                slog::info!(log, "Endorsing rights successfully calculated";
                                        "level" => level,
                                        "prerequisites duration" => FnValue(|_| prereq_dur.as_millis()),
                                        "duration" => FnValue(|_| dur.as_millis())

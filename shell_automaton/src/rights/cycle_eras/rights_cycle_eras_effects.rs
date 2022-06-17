@@ -80,6 +80,7 @@ where
                         meth: RpcMethod::GET,
                     },
                 };
+                println!("***** get_context_raw_bytes called for rights data");
                 let token = store.service.protocol_runner().get_context_raw_bytes(req);
                 store.dispatch(RightsCycleErasContextRequestedAction {
                     protocol_hash: protocol_hash.clone(),
