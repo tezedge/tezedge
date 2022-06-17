@@ -299,7 +299,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             for op in operations_in_block {
                 ops.remove(&op);
             }
-            slog::debug!(state.log, "validated_operations: removed applied operations"; "time" => format!("{:?}", Instant::now() - t));
+            //slog::debug!(state.log, "validated_operations: removed applied operations"; "time" => format!("{:?}", Instant::now() - t));
         }
         Action::PeerCurrentHeadUpdate(_) => {
             if state.is_bootstrapped() {
@@ -384,7 +384,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             ) {
                 mempool_state.validated_operations.ops.remove(&v.hash);
             }
-            slog::debug!(state.log, "validated_operations: updated consensus operations"; "time" => format!("{:?}", Instant::now() - t));
+            //slog::debug!(state.log, "validated_operations: updated consensus operations"; "time" => format!("{:?}", Instant::now() - t));
 
             let t = Instant::now();
             // update last 120 predecessor blocks map.
@@ -445,7 +445,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .as_ref()
                         .map_or(true, |c| c.is_endorsement() || c.is_preendorsement())
             });
-            slog::debug!(state.log, "validated_operations: removed old operations"; "time" => format!("{:?}", Instant::now() - t));
+            //slog::debug!(state.log, "validated_operations: removed old operations"; "time" => format!("{:?}", Instant::now() - t));
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,

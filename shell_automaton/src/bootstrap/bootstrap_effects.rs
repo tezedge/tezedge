@@ -134,9 +134,9 @@ where
             store.dispatch(BootstrapPeerBlockHeaderGetPendingAction { peer: content.peer });
         }
         Action::BootstrapPeerBlockHeaderGetSuccess(content) => {
-            slog::debug!(&store.state().log, "BlockHeader downloaded";
-                "block_hash" => format!("{:?}", content.block.hash),
-                "block_level" => content.block.header.level());
+            //slog::debug!(&store.state().log, "BlockHeader downloaded";
+            //    "block_hash" => format!("{:?}", content.block.hash),
+            //    "block_level" => content.block.header.level());
             store
                 .service
                 .actors()
@@ -277,9 +277,9 @@ where
                 }
                 _ => return,
             };
-            slog::debug!(&store.state().log, "BlockOperations downloaded";
-                "block_hash" => format!("{:?}", content.block_hash),
-                "block_level" => level);
+            //slog::debug!(&store.state().log, "BlockOperations downloaded";
+            //    "block_hash" => format!("{:?}", content.block_hash),
+            //    "block_level" => level);
             store
                 .service
                 .actors()
@@ -305,8 +305,8 @@ where
             }
         }
         Action::BootstrapScheduleBlockForApply(content) => {
-            slog::debug!(&store.state().log, "Scheduled BlockForApply";
-                "block_hash" => format!("{:?}", content.block_hash));
+            //slog::debug!(&store.state().log, "Scheduled BlockForApply";
+            //    "block_hash" => format!("{:?}", content.block_hash));
             store.dispatch(BlockApplierEnqueueBlockAction {
                 block_hash: content.block_hash.clone().into(),
                 injector_rpc_id: None,
