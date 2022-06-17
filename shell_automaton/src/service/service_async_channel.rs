@@ -27,7 +27,7 @@ pub struct ServiceWorkerAsyncRequester<Req, Resp> {
 
 impl<Req, Resp> ServiceWorkerAsyncRequester<Req, Resp> {
     pub fn blocking_send(&self, req: Req) -> Result<(), RequestSendError<Req>> {
-        self.sender.blocking_send(req)
+        Ok(self.sender.try_send(req).expect("Blocking send failed"))
     }
 
     pub fn try_send(&self, req: Req) -> Result<(), RequestTrySendError<Req>> {

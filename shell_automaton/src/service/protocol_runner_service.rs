@@ -416,6 +416,7 @@ impl ProtocolRunnerService for ProtocolRunnerServiceDefault {
     }
 
     fn shutdown(&mut self) {
+        println!("**** PROTO RUNNER SENDING SHUTDOWN");
         self.channel
             .blocking_send(ProtocolRunnerRequest::ShutdownServer(()))
             .unwrap();
