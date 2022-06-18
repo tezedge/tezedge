@@ -192,7 +192,7 @@ pub fn logger_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta)
             }
             if !response.apply_result.cycle_rolls_owner_snapshots.is_empty() {
                 let count = response.apply_result.cycle_rolls_owner_snapshots.len();
-                slog::info!(log, "Got new cycle roll owner snapshots in block apply result"; "count" => count);
+                slog::info!(log, "Got new cycle roll owner snapshots in block apply result"; "count" => count, "data" => format!("{:?}", response.apply_result.cycle_rolls_owner_snapshots));
             }
         }
         Action::ProtocolRunnerReady(_) => {
