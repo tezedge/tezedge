@@ -26,6 +26,7 @@ use crate::peers::PeersState;
 use crate::prechecker::PrecheckerState;
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::rights::RightsState;
+use crate::service::rpc_service::RpcId;
 use crate::shutdown::ShutdownState;
 use crate::storage::StorageState;
 use crate::{ActionId, ActionKind, ActionWithMeta};

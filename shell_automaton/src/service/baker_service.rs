@@ -8,6 +8,7 @@ use std::sync::Arc;
 use derive_more::From;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
+use tezos_messages::p2p::binary_message::BinaryRead;
 use thiserror::Error;
 
 use crypto::base58::FromBase58CheckError;
@@ -15,12 +16,14 @@ use crypto::hash::{
     ChainId, Ed25519Signature, SecretKeyEd25519, SeedEd25519, Signature, TryFromPKError,
 };
 use crypto::{blake2b, CryptoError, PublicKeyWithHash};
+use storage::BlockHeaderWithHash;
 use tezos_encoding::enc::{BinError, BinWriter};
 use tezos_encoding::types::SizedBytes;
 use tezos_messages::base::signature_public_key::{SignaturePublicKey, SignaturePublicKeyHash};
 use tezos_messages::base::ConversionError;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
+use super::rpc_service::RpcId;
 use super::service_channel::{
     worker_channel, ResponseTryRecvError, ServiceWorkerRequester, ServiceWorkerResponder,
     ServiceWorkerResponderSender,
@@ -76,6 +79,8 @@ impl BakerSignTarget {
 }
 
 pub trait BakerService {
+    fn data(&mut self) -> &mut Data;
+
     /// Try to receive/read queued message from baker worker, if there is any.
     fn try_recv(&mut self) -> Result<(RequestId, BakerWorkerMessage), ResponseTryRecvError>;
 
@@ -131,11 +136,105 @@ impl<T> Channel<T> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Data {
+    pub external_baker_injected_block: Option<(RpcId, BlockHeaderWithHash)>,
+    pub internal_baker_injected_block: Option<BlockHeaderWithHash>,
+}
+
+impl Data {
+    pub fn is_same(&self) -> Option<Result<(), String>> {
+        use tezos_messages::protocol::proto_012::block_header::BlockHeader as FullHeader;
+
+        let ext = &self.external_baker_injected_block.as_ref()?.1;
+        let int = self.internal_baker_injected_block.as_ref()?;
+
+        let ext_hash = &ext.hash;
+        let int_hash = &int.hash;
+
+        let (ext, ext_bin) = {
+            let mut v = vec![];
+            ext.header.bin_write(&mut v).unwrap();
+            (FullHeader::from_bytes(&v).unwrap(), v)
+        };
+        let (int, int_bin) = {
+            let mut v = vec![];
+            int.header.bin_write(&mut v).unwrap();
+            (FullHeader::from_bytes(&v).unwrap(), v)
+        };
+
+        let err_str = |summary: &str| {
+            format!(
+                "{summary}\nExternal: {}\n{:#?}\nInternal: {}\n{:#?}",
+                ext_hash.to_base58_check(),
+                ext,
+                int_hash.to_base58_check(),
+                int
+            )
+        };
+
+        Some(
+            // if ext_bin[0..(ext_bin.len() - 64)] == int_bin[0..(int_bin.len() - 64)] {
+            //     Ok(())
+            if ext.level != int.level {
+                Err(err_str(".level Mismatch"))
+            } else if ext.proto != int.proto {
+                Err(err_str(".proto Mismatch"))
+            } else if ext.predecessor != int.predecessor {
+                Err(err_str(".predecessor Mismatch"))
+            } else if ext.timestamp != int.timestamp {
+                Err(err_str(".timestamp Mismatch"))
+            } else if ext.validation_pass != int.validation_pass {
+                Err(err_str(".validation_pass Mismatch"))
+            } else if ext.operations_hash != int.operations_hash {
+                Err(err_str(".operations_hash Mismatch"))
+            } else if ext.fitness != int.fitness {
+                Err(err_str(".fitness Mismatch"))
+            } else if ext.context != int.context {
+                Err(err_str(".context Mismatch"))
+            } else if ext.payload_hash != int.payload_hash {
+                Err(err_str(".payload_hash Mismatch"))
+            } else if ext.payload_round != int.payload_round {
+                Err(err_str(".payload_round Mismatch"))
+            } else if ext.seed_nonce_hash.is_some() != int.seed_nonce_hash.is_some() {
+                Err(err_str(".seed_nonce_hash Mismatch"))
+            } else if ext.liquidity_baking_escape_vote != int.liquidity_baking_escape_vote {
+                Err(err_str(".liquidity_baking_escape_vote Mismatch"))
+            } else {
+                Ok(())
+            },
+        )
+    }
+
+    pub fn level(&self) -> Option<i32> {
+        self.external_baker_injected_block
+            .as_ref()
+            .map(|(_, b)| b)
+            .or(self.internal_baker_injected_block.as_ref())
+            .map(|b| b.header.level())
+    }
+
+    pub fn reset(&mut self) {
+        self.external_baker_injected_block = None;
+        self.internal_baker_injected_block = None;
+    }
+}
+
+impl Default for Data {
+    fn default() -> Self {
+        Self {
+            external_baker_injected_block: Default::default(),
+            internal_baker_injected_block: Default::default(),
+        }
+    }
+}
+
 pub struct BakerServiceDefault {
     counter: usize,
     bakers: BTreeMap<SignaturePublicKeyHash, BakerSigner>,
     bakers_compute_pow_tasks: BTreeMap<SignaturePublicKeyHash, Arc<RequestId>>,
     worker_channel: Channel<(RequestId, BakerWorkerMessage)>,
+    data: Data,
 }
 
 #[derive(Debug, Error, From)]
@@ -206,6 +305,7 @@ impl BakerServiceDefault {
             bakers: Default::default(),
             bakers_compute_pow_tasks: Default::default(),
             worker_channel: Channel::new(mio_waker),
+            data: Default::default(),
         }
     }
 
@@ -288,6 +388,10 @@ impl BakerServiceDefault {
 }
 
 impl BakerService for BakerServiceDefault {
+    fn data(&mut self) -> &mut Data {
+        &mut self.data
+    }
+
     fn try_recv(&mut self) -> Result<(RequestId, BakerWorkerMessage), ResponseTryRecvError> {
         self.worker_channel.try_recv()
     }

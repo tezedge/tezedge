@@ -6,7 +6,7 @@ use shell_automaton::baker::block_endorser::{
     EndorsementWithForgedBytes, PreendorsementWithForgedBytes,
 };
 use shell_automaton::request::RequestId;
-use shell_automaton::service::baker_service::{BakerService, BakerWorkerMessage};
+use shell_automaton::service::baker_service::{BakerService, BakerWorkerMessage, Data};
 use shell_automaton::service::service_channel::ResponseTryRecvError;
 use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
@@ -15,11 +15,15 @@ use tezos_messages::p2p::encoding::block_header::BlockHeader;
 ///
 /// Does nothing.
 #[derive(Debug, Clone)]
-pub struct BakerServiceDummy {}
+pub struct BakerServiceDummy {
+    data: Data,
+}
 
 impl BakerServiceDummy {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            data: Default::default(),
+        }
     }
 }
 
@@ -30,6 +34,10 @@ impl Default for BakerServiceDummy {
 }
 
 impl BakerService for BakerServiceDummy {
+    fn data(&mut self) -> &mut Data {
+        &mut self.data
+    }
+
     fn try_recv(&mut self) -> Result<(RequestId, BakerWorkerMessage), ResponseTryRecvError> {
         Err(ResponseTryRecvError::Empty)
     }

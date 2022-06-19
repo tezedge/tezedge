@@ -13,7 +13,7 @@ use crate::rights::rights_actions::RightsGetAction;
 use crate::rights::RightsKey;
 use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::service::storage_service::StorageRequestPayload;
-use crate::service::{BakerService, ProtocolRunnerService, RandomnessService};
+use crate::service::{BakerService, ProtocolRunnerService, RandomnessService, RpcService};
 use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
 use crate::{Action, ActionWithMeta, Service, Store};
 
@@ -38,7 +38,22 @@ where
     S: Service,
 {
     match &action.action {
-        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+        Action::CurrentHeadRehydrated(_) => {
+            store.dispatch(BakerBlockBakerRightsGetInitAction {});
+        }
+        Action::CurrentHeadUpdate(content) => {
+            let data = store.service.baker().data();
+            if data.internal_baker_injected_block.is_some()
+                != data.external_baker_injected_block.is_some()
+                && data.level().unwrap() < content.new_head.header.level()
+            {
+                slog::error!(
+                    &store.state.get().log,
+                    "BAKER MISMATCH: one baked but other didn't\n{:#?}",
+                    data
+                );
+            }
+            data.reset();
             store.dispatch(BakerBlockBakerRightsGetInitAction {});
         }
         Action::BakerBlockBakerRightsGetInit(_) => {
@@ -350,6 +365,7 @@ where
                 block_hash: block.hash.clone(),
             });
             let block_hash = block.hash.clone();
+            store.service.baker().data().internal_baker_injected_block = Some(block.clone());
             let chain_id = store.state().config.chain_id.clone();
             store.dispatch(StorageRequestCreateAction {
                 payload: StorageRequestPayload::BlockHeaderPut(chain_id, block),
@@ -370,12 +386,43 @@ where
                 });
             }
 
+            store.dispatch(BakerBlockBakerInjectSuccessAction {
+                baker: content.baker.clone(),
+            });
+            match store.service.baker().data().is_same() {
+                Some(Ok(_)) => {}
+                Some(Err(mismatch)) => {
+                    slog::error!(&store.state.get().log, "BAKER BLOCK MISMATCH\n{}", mismatch);
+                }
+                None => return,
+            };
+            // if let Some((rpc_id, _)) = store
+            //     .service
+            //     .baker()
+            //     .data()
+            //     .external_baker_injected_block
+            //     .as_ref()
+            // {
+            //     let rpc_id = *rpc_id;
+            //     store.service.rpc().respond(rpc_id, serde_json::Value::Null);
+            // }
             store.dispatch(BlockApplierEnqueueBlockAction {
                 block_hash: block_hash.into(),
                 injector_rpc_id: None,
             });
-            store.dispatch(BakerBlockBakerInjectSuccessAction {
-                baker: content.baker.clone(),
+            let block_hash = store
+                .service
+                .baker()
+                .data()
+                .external_baker_injected_block
+                .as_ref()
+                .unwrap()
+                .1
+                .hash
+                .clone();
+            store.dispatch(BlockApplierEnqueueBlockAction {
+                block_hash: block_hash.into(),
+                injector_rpc_id: None,
             });
         }
         Action::ProtocolRunnerResponse(content) => match &content.result {

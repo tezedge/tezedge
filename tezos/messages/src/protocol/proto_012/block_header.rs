@@ -26,7 +26,7 @@ use crate::{
 use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Serialize, Deserialize, Clone, HasEncoding, NomReader, BinWriter)]
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader, BinWriter)]
 pub struct BlockHeader {
     #[encoding(builtin = "Int32")]
     pub level: Level,

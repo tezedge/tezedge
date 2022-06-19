@@ -17,7 +17,7 @@ use crate::mempool::mempool_actions::{
 use crate::mempool::OperationKind;
 use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
 use crate::service::rpc_service::{BakingState, RpcRequest, RpcRequestStream};
-use crate::service::{RpcService, Service};
+use crate::service::{BakerService, RpcService, Service};
 use crate::storage::request::StorageRequestStatus;
 use crate::{Action, ActionWithMeta, Store};
 
@@ -202,6 +202,47 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         let _ = channel.send(data);
                     }
                     RpcRequest::InjectBlock { block } => {
+                        store.service.baker().data().external_baker_injected_block =
+                            Some((rpc_id, block.clone()));
+                        match store.service.baker().data().is_same() {
+                            Some(Ok(_)) => {}
+                            Some(Err(mismatch)) => {
+                                slog::error!(
+                                    &store.state.get().log,
+                                    "BAKER BLOCK MISMATCH\n{}",
+                                    mismatch
+                                );
+                            }
+                            None => {
+                                store
+                                    .service()
+                                    .rpc()
+                                    .respond(rpc_id, serde_json::Value::Null);
+                                return;
+                            }
+                        };
+                        let block_hash = store
+                            .service
+                            .baker()
+                            .data()
+                            .internal_baker_injected_block
+                            .as_ref()
+                            .unwrap()
+                            .hash
+                            .clone();
+                        store.dispatch(BlockApplierEnqueueBlockAction {
+                            block_hash: block_hash.into(),
+                            injector_rpc_id: None,
+                        });
+                        store.dispatch(BlockApplierEnqueueBlockAction {
+                            block_hash: block.hash.clone().into(),
+                            injector_rpc_id: None,
+                        });
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
+                        return;
                         if !store.dispatch(RpcInjectBlockAction {
                             rpc_id,
                             block: block.clone(),
@@ -234,6 +275,11 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         operation_hash,
                         injected,
                     } => {
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Null);
+                        return;
                         let now = Instant::now();
                         slog::debug!(
                             store.state().log,
