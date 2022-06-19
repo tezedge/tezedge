@@ -293,6 +293,34 @@ pub struct PreFilterOperationResponse {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PassedPrecheckResult {
+    NoReplace,
+    Replace(OperationHash, OperationClassification),
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum PreCheckOperationResult {
+    Fail(OperationClassification),
+    PassedPrecheck(PassedPrecheckResult),
+    Undecided,
+    Unparseable,
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PreCheckOperationResponse {
+    pub prevalidator: PrevalidatorWrapper,
+    pub operation_hash: OperationHash,
+    pub result: PreCheckOperationResult,
+    pub pre_check_operation_started_at: f64,
+    pub parse_operation_started_at: f64,
+    pub parse_operation_ended_at: f64,
+    pub pre_check_operation_ended_at: f64,
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ValidateOperationResponse {
     pub prevalidator: PrevalidatorWrapper,
     pub operation_hash: OperationHash,
@@ -718,7 +746,7 @@ impl From<CallError> for BeginConstructionError {
 #[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum PreFilterOperationError {
     #[error("Failed to pre-filter operation - message: {message}!")]
-    FailedToPreFiltereOperation { message: String },
+    FailedToPreFilterOperation { message: String },
     #[error("Invalid request/response data - message: {message}!")]
     InvalidRequestResponseData { message: String },
 }
@@ -727,7 +755,7 @@ impl From<CallError> for PreFilterOperationError {
     fn from(error: CallError) -> Self {
         match error {
             CallError::FailedToCall { trace_message, .. } => {
-                PreFilterOperationError::FailedToPreFiltereOperation {
+                PreFilterOperationError::FailedToPreFilterOperation {
                     message: trace_message,
                 }
             }
@@ -736,6 +764,33 @@ impl From<CallError> for PreFilterOperationError {
             }
             CallError::InvalidResponseData { message } => {
                 PreFilterOperationError::InvalidRequestResponseData { message }
+            }
+        }
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Error, Serialize, Deserialize, Debug, Clone)]
+pub enum PreCheckOperationError {
+    #[error("Failed to pre-check operation - message: {message}!")]
+    FailedToPreCheckOperation { message: String },
+    #[error("Invalid request/response data - message: {message}!")]
+    InvalidRequestResponseData { message: String },
+}
+
+impl From<CallError> for PreCheckOperationError {
+    fn from(error: CallError) -> Self {
+        match error {
+            CallError::FailedToCall { trace_message, .. } => {
+                PreCheckOperationError::FailedToPreCheckOperation {
+                    message: trace_message,
+                }
+            }
+            CallError::InvalidRequestData { message } => {
+                PreCheckOperationError::InvalidRequestResponseData { message }
+            }
+            CallError::InvalidResponseData { message } => {
+                PreCheckOperationError::InvalidRequestResponseData { message }
             }
         }
     }
@@ -1144,6 +1199,8 @@ pub enum ProtocolError {
     BeginConstructionError { reason: BeginConstructionError },
     #[error("Pre-filter operation error: {reason}")]
     PreFilterOperationError { reason: PreFilterOperationError },
+    #[error("Pre-check operation error: {reason}")]
+    PreCheckOperationError { reason: PreCheckOperationError },
     #[error("Validate operation error: {reason}")]
     ValidateOperationError { reason: ValidateOperationError },
     #[error("Preapply block error: {reason}")]

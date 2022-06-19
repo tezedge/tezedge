@@ -7,6 +7,7 @@ use crate::{
     OCamlApplyBlockExecutionTimestamps, OCamlBlockPayloadHash, OCamlClassifiedOperation,
     OCamlCommitGenesisResult, OCamlComputePathResponse, OCamlCycleRollsOwnerSnapshot,
     OCamlInitProtocolContextResult, OCamlNodeMessage, OCamlOperationListListHash,
+    OCamlPassedPrecheckResult, OCamlPreCheckOperationResponse, OCamlPreCheckOperationResult,
     OCamlPreFilterOperationResponse, OCamlPreFilterOperationResult, OCamlPreapplyBlockResponse,
     OCamlRationalString, OCamlTezosContextTezedgeOnDiskBackendOptions,
 };
@@ -36,10 +37,11 @@ use tezos_api::ffi::{
     DumpContextError, Errored, FfiJsonEncoderError, ForkingTestchainData, GetDataError,
     GetLastContextHashesError, HelpersPreapplyError, HelpersPreapplyResponse,
     InitProtocolContextResult, IntegrityCheckContextError, OperationClassification,
-    PreFilterOperationError, PreFilterOperationResponse, PreFilterOperationResult,
-    PreapplyBlockResponse, PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError,
-    ProtocolRpcResponse, Rational, RestoreContextError, RpcArgDesc, RpcMethod, TezosErrorTrace,
-    TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
+    PassedPrecheckResult, PreCheckOperationError, PreCheckOperationResponse,
+    PreCheckOperationResult, PreFilterOperationError, PreFilterOperationResponse,
+    PreFilterOperationResult, PreapplyBlockResponse, PrevalidatorWrapper, ProtocolDataError,
+    ProtocolRpcError, ProtocolRpcResponse, Rational, RestoreContextError, RpcArgDesc, RpcMethod,
+    TezosErrorTrace, TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
     ValidateOperationResult,
 };
 use tezos_context_api::{
@@ -260,7 +262,27 @@ impl_from_ocaml_polymorphic_variant! {
         Drop => PreFilterOperationResult::Drop,
         High => PreFilterOperationResult::High,
         Medium => PreFilterOperationResult::Medium,
-        Low(weights: OCamlList<OCamlRationalString>) => PreFilterOperationResult::Low(weights),
+        Low(weights: OCamlList<OCamlRationalString>)
+            => PreFilterOperationResult::Low(weights),
+    }
+}
+
+impl_from_ocaml_polymorphic_variant! {
+    OCamlPreCheckOperationResult => PreCheckOperationResult {
+        Fail(error: OCamlOperationClassification)
+            => PreCheckOperationResult::Fail(error),
+        Passed_precheck(res: OCamlPassedPrecheckResult)
+            => PreCheckOperationResult::PassedPrecheck(res),
+        Undecided => PreCheckOperationResult::Undecided,
+        Unparseable => PreCheckOperationResult::Unparseable,
+    }
+}
+
+impl_from_ocaml_polymorphic_variant! {
+    OCamlPassedPrecheckResult => PassedPrecheckResult {
+        No_replace => PassedPrecheckResult::NoReplace,
+        Replace(hash: OCamlOperationHash, classification: OCamlOperationClassification)
+            => PassedPrecheckResult::Replace(hash, classification),
     }
 }
 
@@ -280,6 +302,18 @@ impl_from_ocaml_record! {
         parse_operation_started_at: OCamlFloat,
         parse_operation_ended_at: OCamlFloat,
         pre_filter_operation_ended_at: OCamlFloat,
+    }
+}
+
+impl_from_ocaml_record! {
+    OCamlPreCheckOperationResponse => PreCheckOperationResponse {
+        prevalidator: OCamlPrevalidatorWrapper,
+        operation_hash: OCamlOperationHash,
+        result: OCamlPreCheckOperationResult,
+        pre_check_operation_started_at: OCamlFloat,
+        parse_operation_started_at: OCamlFloat,
+        parse_operation_ended_at: OCamlFloat,
+        pre_check_operation_ended_at: OCamlFloat,
     }
 }
 
@@ -476,6 +510,8 @@ impl_from_ocaml_polymorphic_variant! {
             NodeMessage::BeginConstructionResult(result),
         PreFilterOperationResult(result: Result<OCamlPreFilterOperationResponse, OCamlTezosErrorTrace>) =>
             NodeMessage::PreFilterOperationResult(result),
+        PreCheckOperationResult(result: Result<OCamlPreCheckOperationResponse, OCamlTezosErrorTrace>) =>
+            NodeMessage::PreCheckOperationResult(result),
         ValidateOperationResponse(result: Result<OCamlValidateOperationResponse, OCamlTezosErrorTrace>) =>
             NodeMessage::ValidateOperationResponse(result),
         PreapplyBlockResponse(result: Result<OCamlPreapplyBlockResponse, OCamlTezosErrorTrace>) =>
@@ -547,6 +583,7 @@ from_ocaml_tezos_error_trace!(ProtocolDataError);
 from_ocaml_tezos_error_trace!(BeginApplicationError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(BeginConstructionError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(PreFilterOperationError, tezos_api::ffi::CallError);
+from_ocaml_tezos_error_trace!(PreCheckOperationError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(ValidateOperationError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(HelpersPreapplyError, tezos_api::ffi::CallError);
 from_ocaml_tezos_error_trace!(TezosStorageInitError);
