@@ -959,6 +959,12 @@ fn test_begin_application_on_empty_storage_with_first_blocks() {
 
     assert_eq!(expected_new_constants, obtained_new_constants);
 
+    // Ensure that we got cycle roll owners snapshot data
+    assert!(!apply_block_result.cycle_rolls_owner_snapshots.is_empty());
+    assert!(!apply_block_result.cycle_rolls_owner_snapshots[0]
+        .rolls_data
+        .is_empty());
+
     // begin application for second block - level 2 - now it should work on first level
     let result = apply_encoded_message(ProtocolMessage::BeginApplicationCall(
         BeginApplicationRequest {
