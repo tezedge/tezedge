@@ -131,10 +131,13 @@ pub struct OCamlRpcMethod {}
 pub struct OCamlTezosContextTezEdgeStorageConfiguration {}
 pub struct OCamlTezosErrorTrace {}
 pub struct OCamlPreFilterOperationResponse {}
+pub struct OCamlPreCheckOperationResponse {}
 pub struct OCamlValidateOperationResponse {}
 pub struct OCamlPreapplyBlockResponse {}
 pub struct OCamlClassifiedOperation {}
 pub struct OCamlPreFilterOperationResult {}
+pub struct OCamlPreCheckOperationResult {}
+pub struct OCamlPassedPrecheckResult {}
 pub struct OCamlValidateOperationResult {}
 pub struct OCamlOperationClassification {}
 pub struct OCamlInitProtocolContextResult {}

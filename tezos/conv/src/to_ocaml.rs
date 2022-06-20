@@ -585,6 +585,7 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::BeginApplicationCall(req: OCamlBeginApplicationRequest),
         ProtocolMessage::BeginConstruction(req: OCamlBeginConstructionRequest),
         ProtocolMessage::PreFilterOperation(req: OCamlValidateOperationRequest),
+        ProtocolMessage::PreCheckOperation(req: OCamlValidateOperationRequest),
         ProtocolMessage::ValidateOperation(req: OCamlValidateOperationRequest),
         ProtocolMessage::PreapplyBlock(req: OCamlPreapplyBlockRequest),
         ProtocolMessage::ProtocolRpcCall(req: OCamlProtocolRpcRequest),
