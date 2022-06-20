@@ -75,6 +75,7 @@ where
                         cycle: data.cycle.clone(),
                         operations: data.operations.clone(),
                         constants: data.constants.clone(),
+                        cemented_live_blocks: data.cemented_live_blocks.clone(),
                     });
                 }
                 Err(StorageResponseError::CurrentHeadGetError(error)) => {

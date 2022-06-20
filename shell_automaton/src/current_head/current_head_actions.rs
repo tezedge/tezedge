@@ -1,12 +1,15 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{
-    BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash, ProtocolHash,
+    BlockHash, BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash, ProtocolHash,
 };
 use storage::BlockHeaderWithHash;
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::protocol_runner::ProtocolRunnerState;
@@ -81,6 +84,7 @@ pub struct CurrentHeadRehydrateSuccessAction {
 
     pub operations: Vec<Vec<Operation>>,
     pub constants: Option<ProtocolConstants>,
+    pub cemented_live_blocks: BTreeMap<BlockHash, Level>,
 }
 
 impl EnablingCondition<State> for CurrentHeadRehydrateSuccessAction {

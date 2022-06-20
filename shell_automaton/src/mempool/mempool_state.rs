@@ -63,11 +63,6 @@ pub struct MempoolState {
     // TODO operation_json: BTreeMap<OperationHash, OperationJson>
     // Unparseable operations
     pub unparseable_operations: BTreeSet<OperationHash>,
-    // track ttl
-    pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
-
-    /// Last 120 (TTL) predecessor blocks.
-    pub last_predecessor_blocks: BTreeMap<BlockHash, i32>,
 
     pub operation_stats: OperationsStats,
 
@@ -264,6 +259,8 @@ pub type OperationsStats = BTreeMap<OperationHash, OperationStats>;
 pub struct OperationStats {
     /// First time we saw this operation in the current head.
     pub kind: Option<OperationKind>,
+    /// Current head's block level when we saw this operation.
+    pub level: Level,
     pub min_time: Option<u64>,
     pub first_block_timestamp: Option<u64>,
     pub validation_started: Option<u64>,
@@ -276,8 +273,11 @@ pub struct OperationStats {
 }
 
 impl OperationStats {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(level: Level) -> Self {
+        Self {
+            level,
+            ..Default::default()
+        }
     }
 
     /// Sets operation kind if not already set.
