@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::OperationHash;
-use tezos_api::ffi::PrevalidatorWrapper;
+use tezos_api::ffi::{OperationClassification, PrevalidatorWrapper};
 use tezos_messages::p2p::encoding::prelude::Operation;
 
 use crate::{EnablingCondition, State};
@@ -100,5 +100,19 @@ impl EnablingCondition<State> for MempoolValidatorValidateSuccessAction {
             .validator
             .validate_pending_op_hash()
             .map_or(false, |hash| hash == &self.op_hash)
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolValidatorReclassifyOperationAction {
+    pub op_hash: OperationHash,
+    pub classification: OperationClassification,
+}
+
+impl EnablingCondition<State> for MempoolValidatorReclassifyOperationAction {
+    fn is_enabled(&self, _state: &State) -> bool {
+        // TODO: what is the proper enabling condition? check that it is already classified?
+        true
     }
 }

@@ -9,7 +9,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
-use tezos_api::ffi::{Applied, Errored};
+use tezos_api::ffi::{ErrorListJson, Errored, OperationClassification, Validated};
 use tezos_messages::p2p::encoding::{
     block_header::{BlockHeader, Level},
     operation::Operation,
@@ -54,6 +54,7 @@ pub struct MempoolState {
     pub(super) prechecking_operations: BTreeMap<OperationHash, u8>,
     pub(super) prechecking_delayed_operations: BTreeSet<OperationHash>,
     pub validated_operations: ValidatedOperations,
+    // TODO operation_json: BTreeMap<OperationHash, OperationJson>
     // Unparseable operations
     pub unparseable_operations: BTreeSet<OperationHash>,
     // track ttl
@@ -155,13 +156,78 @@ pub struct ValidatedOperations {
     pub ops: BTreeMap<OperationHash, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
-    pub applied: Vec<Applied>,
+    pub applied: Vec<Validated>,
     // cannot be included in the next head of the chain, but it could be included in a descendant
     pub branch_delayed: VecDeque<Errored>,
     // might be applied on a different branch if a reorganization happens
     pub branch_refused: VecDeque<Errored>,
     pub refused: VecDeque<Errored>,
     pub outdated: VecDeque<Errored>,
+}
+
+impl ValidatedOperations {
+    fn errored_of_validated(validated: Validated, error_json: &ErrorListJson) -> Errored {
+        Errored {
+            hash: validated.hash,
+            is_endorsement: false, // NOTE: We assume it is a manager operation
+            protocol_data_json: validated.protocol_data_json,
+            error_json: error_json.clone(),
+        }
+    }
+
+    fn enforce_max_refused_operations_helper(
+        vd: &mut VecDeque<Errored>,
+        ops: &mut BTreeMap<OperationHash, Operation>,
+    ) {
+        while vd.len() > MAX_REFUSED_OPERATIONS {
+            let hash = match vd.pop_front() {
+                Some(v) => v.hash,
+                None => break,
+            };
+            ops.remove(&hash);
+        }
+    }
+
+    /// Operations can be reclassifier by the prechecker when a manager operation
+    /// gets replaced by a newer one. In that case the old operation needs to be removed
+    /// from the "applied" classification and added to the new (error) classification.
+    pub fn reclassify_manager_operation(
+        &mut self,
+        op_hash: &OperationHash,
+        classification: &OperationClassification,
+    ) {
+        for nth in 0..self.applied.len() {
+            if &self.applied[nth].hash == op_hash {
+                let validated = self.applied.remove(nth);
+
+                match classification {
+                    // These two cannot happen, the new classification is always an error class
+                    OperationClassification::Applied | OperationClassification::Prechecked => {}
+                    OperationClassification::BranchDelayed(error_json) => self
+                        .branch_delayed
+                        .push_back(Self::errored_of_validated(validated, error_json)),
+                    OperationClassification::BranchRefused(error_json) => self
+                        .branch_refused
+                        .push_back(Self::errored_of_validated(validated, error_json)),
+                    OperationClassification::Refused(error_json) => self
+                        .refused
+                        .push_back(Self::errored_of_validated(validated, error_json)),
+                    OperationClassification::Outdated(error_json) => self
+                        .outdated
+                        .push_back(Self::errored_of_validated(validated, error_json)),
+                }
+                break;
+            }
+        }
+    }
+
+    /// Enforces the `MAX_REFUSED_OPERATIONS` limit
+    pub fn enforce_max_refused_operations(&mut self) {
+        Self::enforce_max_refused_operations_helper(&mut self.branch_delayed, &mut self.ops);
+        Self::enforce_max_refused_operations_helper(&mut self.branch_refused, &mut self.ops);
+        Self::enforce_max_refused_operations_helper(&mut self.refused, &mut self.ops);
+        Self::enforce_max_refused_operations_helper(&mut self.outdated, &mut self.ops);
+    }
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -452,7 +518,7 @@ pub enum OperationValidationResult {
 
 impl OperationValidationResult {
     pub fn is_applied(&self) -> bool {
-        matches!(self, Self::Applied)
+        matches!(self, Self::Applied | Self::Prechecked)
     }
 }
 

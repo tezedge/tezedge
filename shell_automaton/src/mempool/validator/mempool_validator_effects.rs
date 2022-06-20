@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use tezos_api::ffi::{
-    Applied, BeginConstructionRequest, ClassifiedOperation, Errored, OperationClassification,
-    ValidateOperationRequest, ValidateOperationResult,
+    BeginConstructionRequest, ClassifiedOperation, Errored, OperationClassification,
+    ValidateOperationRequest, ValidateOperationResult, Validated,
 };
 
 use crate::current_head::CurrentHeadState;
@@ -12,7 +12,8 @@ use crate::service::ProtocolRunnerService;
 use crate::{Action, ActionWithMeta, Service, Store};
 
 use super::{
-    MempoolValidatorPendingAction, MempoolValidatorReadyAction, MempoolValidatorSuccessAction,
+    MempoolValidatorPendingAction, MempoolValidatorReadyAction,
+    MempoolValidatorReclassifyOperationAction, MempoolValidatorSuccessAction,
     MempoolValidatorValidatePendingAction, MempoolValidatorValidateResult,
     MempoolValidatorValidateSuccessAction,
 };
@@ -49,6 +50,7 @@ where
                 prevalidator,
                 operation_hash: content.op_hash.clone(),
                 operation: content.op_content.clone(),
+                include_operation_data_json: true,
             };
             store
                 .service()
@@ -90,22 +92,28 @@ where
                         is_endorsement,
                     }) => {
                         let is_endorsement = *is_endorsement;
+                        // NOTE: should not happen right now, because we include the json data
+                        // when validating an operation. In the future this will be done during prefilter
+                        let protocol_data_json = operation_data_json
+                            .clone()
+                            .unwrap_or_else(|| "null".to_string());
                         match classification {
                             OperationClassification::Applied => {
-                                MempoolValidatorValidateResult::Applied(Applied {
+                                MempoolValidatorValidateResult::Applied(Validated {
                                     hash: res.operation_hash.clone(),
-                                    protocol_data_json: operation_data_json.clone(),
+                                    protocol_data_json,
                                 })
                             }
                             OperationClassification::Prechecked => {
-                                // NOTE: this cannot happen right now, because the protocol-runner
-                                // doesn't currently do prechecking
-                                return;
+                                MempoolValidatorValidateResult::Prechecked(Validated {
+                                    hash: res.operation_hash.clone(),
+                                    protocol_data_json,
+                                })
                             }
                             OperationClassification::BranchDelayed(error_json) => {
                                 MempoolValidatorValidateResult::BranchDelayed(Errored {
                                     hash: res.operation_hash.clone(),
-                                    protocol_data_json: operation_data_json.clone(),
+                                    protocol_data_json,
                                     error_json: error_json.clone(),
                                     is_endorsement,
                                 })
@@ -113,7 +121,7 @@ where
                             OperationClassification::BranchRefused(error_json) => {
                                 MempoolValidatorValidateResult::BranchRefused(Errored {
                                     hash: res.operation_hash.clone(),
-                                    protocol_data_json: operation_data_json.clone(),
+                                    protocol_data_json,
                                     error_json: error_json.clone(),
                                     is_endorsement,
                                 })
@@ -121,7 +129,7 @@ where
                             OperationClassification::Refused(error_json) => {
                                 MempoolValidatorValidateResult::Refused(Errored {
                                     hash: res.operation_hash.clone(),
-                                    protocol_data_json: operation_data_json.clone(),
+                                    protocol_data_json,
                                     error_json: error_json.clone(),
                                     is_endorsement,
                                 })
@@ -129,7 +137,7 @@ where
                             OperationClassification::Outdated(error_json) => {
                                 MempoolValidatorValidateResult::Outdated(Errored {
                                     hash: res.operation_hash.clone(),
-                                    protocol_data_json: operation_data_json.clone(),
+                                    protocol_data_json,
                                     error_json: error_json.clone(),
                                     is_endorsement,
                                 })
@@ -144,6 +152,14 @@ where
                     protocol_preapply_start: res.validate_operation_started_at,
                     protocol_preapply_end: res.validate_operation_ended_at,
                 });
+
+                // An old operation was reclassified by the prechecker
+                if let Some((reclassified_op_hash, classification)) = &res.to_reclassify {
+                    store.dispatch(MempoolValidatorReclassifyOperationAction {
+                        op_hash: reclassified_op_hash.clone(),
+                        classification: classification.clone(),
+                    });
+                }
             }
             _ => (),
         },

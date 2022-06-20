@@ -330,6 +330,7 @@ impl_to_ocaml_record! {
         prevalidator: OCamlPrevalidatorWrapper,
         operation_hash: OCamlOperationHash,
         operation: OCamlOperation => FfiOperation::from(operation),
+        include_operation_data_json: bool,
     }
 }
 
@@ -585,7 +586,6 @@ impl_to_ocaml_polymorphic_variant! {
         ProtocolMessage::BeginApplicationCall(req: OCamlBeginApplicationRequest),
         ProtocolMessage::BeginConstruction(req: OCamlBeginConstructionRequest),
         ProtocolMessage::PreFilterOperation(req: OCamlValidateOperationRequest),
-        ProtocolMessage::PreCheckOperation(req: OCamlValidateOperationRequest),
         ProtocolMessage::ValidateOperation(req: OCamlValidateOperationRequest),
         ProtocolMessage::PreapplyBlock(req: OCamlPreapplyBlockRequest),
         ProtocolMessage::ProtocolRpcCall(req: OCamlProtocolRpcRequest),

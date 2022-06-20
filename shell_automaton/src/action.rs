@@ -522,6 +522,7 @@ pub enum Action {
     MempoolValidatorValidateInit(MempoolValidatorValidateInitAction),
     MempoolValidatorValidatePending(MempoolValidatorValidatePendingAction),
     MempoolValidatorValidateSuccess(MempoolValidatorValidateSuccessAction),
+    MempoolValidatorReclassifyOperation(MempoolValidatorReclassifyOperationAction),
 
     BlockInject(BlockInjectAction),
 
