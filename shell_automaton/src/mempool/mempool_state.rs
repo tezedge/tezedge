@@ -783,13 +783,8 @@ pub struct QuorumState {
 
 impl QuorumState {
     /// Whether or not quorum is reached.
-    ///
-    /// TODO(zura): at the moment quorum constant is hardcoded here,
-    /// read from context storage instead.
     pub fn is_reached(&self) -> bool {
-        // TODO(zura): check if it should be strictly greater or greater
-        // or equal.
-        self.total > self.threshold
+        self.total >= self.threshold
     }
 
     pub fn reset(&mut self, new_threshold: Option<u16>) {
