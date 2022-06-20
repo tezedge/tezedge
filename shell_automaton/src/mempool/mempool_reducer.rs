@@ -58,7 +58,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
@@ -90,7 +93,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
@@ -123,7 +129,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
@@ -159,7 +168,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
@@ -195,7 +207,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
@@ -231,7 +246,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
@@ -318,15 +336,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
         Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
-            let ttl = match state.current_head.constants() {
-                Some(v) => v.max_operations_ttl,
-                None => 120,
-            };
-
             let block = match state.current_head.get() {
                 Some(v) => v,
                 None => return,
             };
+            let level = block.header.level();
             let old_head_state = mempool_state.local_head_state.clone();
             mempool_state.branch_changed = old_head_state
                 .as_ref()
@@ -387,59 +401,48 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
 
             let t = Instant::now();
-            // update last 120 predecessor blocks map.
-            let last_predecessor_blocks = &mut mempool_state.last_predecessor_blocks;
-            last_predecessor_blocks
-                .insert(block.header.predecessor().clone(), block.header.level() - 1);
-            if last_predecessor_blocks.len() as i32 > ttl {
-                if let Some((oldest, _)) = last_predecessor_blocks
-                    .iter()
-                    .min_by(|(_, l0), (_, l1)| l0.cmp(l1))
-                {
-                    let oldest = oldest.clone();
-                    last_predecessor_blocks.remove(&oldest);
-                }
-            }
 
-            let level = block.header.level().saturating_sub(ttl);
+            let current_head = &state.current_head;
 
             // `drain_filter` is unstable for now
-            for (_, ops) in mempool_state.level_to_operation.range(..level) {
-                for op in ops {
-                    mempool_state.pending_full_content.remove(op);
-                    mempool_state.pending_operations.remove(op);
-                    mempool_state.validated_operations.ops.remove(op);
-                    mempool_state
-                        .validated_operations
-                        .applied
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .refused
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .branch_delayed
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .branch_refused
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .outdated
-                        .retain(|v| v.hash.ne(op));
-                    for peer_state in mempool_state.peer_state.values_mut() {
-                        peer_state.seen_operations.remove(op);
-                    }
-
-                    // remove operation from stats
-                    mempool_state.operation_stats.remove(op);
-                }
+            let ops = &mut mempool_state.validated_operations.ops;
+            // TODO: replace with drain_filter once it's stable.
+            let outdated_ops = ops
+                .iter()
+                .filter(|(_, op)| !current_head.is_live_block(op.branch()))
+                .map(|(op_hash, _)| op_hash.clone())
+                .collect::<BTreeSet<_>>();
+            ops.retain(|hash, _| !outdated_ops.contains(hash));
+            for hash in outdated_ops.iter() {
+                mempool_state.pending_operations.remove(hash);
             }
-            mempool_state.level_to_operation.retain(|x, _| *x >= level);
+            mempool_state
+                .validated_operations
+                .refused
+                .retain(|v| !outdated_ops.contains(&v.hash));
+            mempool_state
+                .validated_operations
+                .branch_delayed
+                .retain(|v| !outdated_ops.contains(&v.hash));
+            mempool_state
+                .validated_operations
+                .branch_refused
+                .retain(|v| !outdated_ops.contains(&v.hash));
+            mempool_state
+                .validated_operations
+                .outdated
+                .retain(|v| !outdated_ops.contains(&v.hash));
+            mempool_state
+                .operation_stats
+                .retain(|_, s| s.level + 120 >= level);
+            for peer_state in mempool_state.peer_state.values_mut() {
+                peer_state
+                    .seen_operations
+                    .retain(|hash| !outdated_ops.contains(hash));
+            }
+
             mempool_state.operations_state.retain(|_, operation| {
-                level - operation.level < OPERATION_STATUS_RETAIN_LEVELS
+                level.saturating_sub(operation.level) < OPERATION_STATUS_RETAIN_LEVELS
                     && operation
                         .operation_decoded_contents
                         .as_ref()
@@ -466,7 +469,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             let known_valid = message.known_valid().iter().cloned();
 
             let peer = mempool_state.peer_state.entry(*address).or_default();
-            let ops = mempool_state.level_to_operation.entry(level).or_default();
 
             for hash in pending.chain(known_valid) {
                 let known = mempool_state.pending_operations.contains_key(&hash)
@@ -474,7 +476,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     || mempool_state.validated_operations.ops.contains_key(&hash);
 
                 if !known {
-                    ops.push(hash.clone());
                     if !mempool_state.pending_full_content.contains_key(&hash) {
                         peer.requesting_full_content.insert(hash.clone());
                         mempool_state
@@ -499,6 +500,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             if mempool_state.pending_full_content.remove(hash).is_none() {
                 // TODO(vlad): received operation, but we did not requested it, what should we do?
                 // We might already processed it.
+                return;
+            }
+            if !state.current_head.is_live_block(operation.branch()) {
+                mempool_state.operations_state.remove(hash);
                 return;
             }
             if let Some(head) = state.current_head.get() {
@@ -536,8 +541,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .as_ref()
                 .map(|state| state.header.level())
                 .unwrap_or(0);
-            let ops = mempool_state.level_to_operation.entry(level).or_default();
-            ops.push(operation_hash.clone());
             if let Some(rpc_id) = rpc_id.as_ref() {
                 mempool_state
                     .injecting_rpc_ids
@@ -580,7 +583,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state
                 .operation_stats
                 .entry(operation_hash.clone())
-                .or_insert_with(OperationStats::new)
+                .or_insert_with(|| OperationStats::new(level))
                 .received_via_rpc(
                     &pkh,
                     OperationNodeCurrentHeadStats {
@@ -624,7 +627,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 mempool_state
                     .operation_stats
                     .entry(hash.clone())
-                    .or_insert_with(OperationStats::new)
+                    .or_insert_with(|| {
+                        let level = current_head_level.unwrap_or(0);
+                        OperationStats::new(level)
+                    })
                     .validation_finished(
                         action.time_as_nanos(),
                         None,
@@ -746,7 +752,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .mempool
                 .operation_stats
                 .entry(hash.clone())
-                .or_insert_with(OperationStats::new)
+                .or_insert_with(|| {
+                    let level = current_head_level.unwrap_or(0);
+                    OperationStats::new(level)
+                })
                 .validation_finished(
                     action.time_as_nanos(),
                     None,
@@ -804,11 +813,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
         Action::MempoolValidatorValidateInit(content) => {
-            let current_head_level = state.current_head.get().map(|v| v.header.level());
+            let current_head_level = state.current_head.level();
             mempool_state
                 .operation_stats
                 .entry(content.op_hash.clone())
-                .or_insert_with(OperationStats::new)
+                .or_insert_with(|| {
+                    let level = current_head_level.unwrap_or(0);
+                    OperationStats::new(level)
+                })
                 .validation_started(action.time_as_nanos(), current_head_level);
         }
         Action::PeerMessageReadSuccess(content) => {
@@ -826,6 +838,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             };
             let peer_pkh = &peer.public_key_hash;
             let time = action.time_as_nanos();
+            let current_head_level = state.current_head.level();
 
             match content.message.message() {
                 PeerMessage::CurrentHead(msg) => {
@@ -842,7 +855,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(op_hash)
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .received_in_current_head(
                                 peer_pkh,
                                 block_hash.clone(),
@@ -859,7 +875,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(op_hash)
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .content_requested_remote(peer_pkh, time);
                     }
                 }
@@ -872,7 +891,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     mempool_state
                         .operation_stats
                         .entry(op_hash)
-                        .or_insert_with(OperationStats::new)
+                        .or_insert_with(|| {
+                            let level = current_head_level.unwrap_or(0);
+                            OperationStats::new(level)
+                        })
                         .content_received(peer_pkh, time, msg.operation().data().as_ref());
                 }
                 _ => {}
@@ -1022,7 +1044,7 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                     .mempool
                     .operation_stats
                     .entry(op_hash)
-                    .or_insert_with(OperationStats::new)
+                    .or_default()
                     .sent_in_current_head(
                         pkh,
                         OperationNodeCurrentHeadStats {
@@ -1039,7 +1061,7 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                     .mempool
                     .operation_stats
                     .entry(op_hash)
-                    .or_insert_with(OperationStats::new)
+                    .or_default()
                     .content_requested(&peer.public_key_hash, time);
             }
         }
@@ -1053,7 +1075,7 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                 .mempool
                 .operation_stats
                 .entry(op_hash)
-                .or_insert_with(OperationStats::new)
+                .or_default()
                 .content_sent(&peer.public_key_hash, time);
         }
         _ => {}

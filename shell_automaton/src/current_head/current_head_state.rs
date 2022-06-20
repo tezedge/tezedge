@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::BTreeMap;
-// use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -93,6 +92,8 @@ pub enum CurrentHeadState {
         operations: Vec<Vec<Operation>>,
 
         constants: Option<ProtocolConstants>,
+        /// Last `TTL - 2` cemented blocks.
+        cemented_live_blocks: BTreeMap<BlockHash, Level>,
     },
 
     Rehydrated {
@@ -115,21 +116,21 @@ pub enum CurrentHeadState {
         constants: Option<ProtocolConstants>,
         /// Stores all applied blocks on last 2 levels.
         applied_blocks: BTreeMap<BlockHash, BlockHeaderWithHash>,
-        ///// Live blocks size equals to `operations_max_ttl`, which at
-        ///// the moment is last 120 blocks. So this will contain 118 blocks
-        ///// last cemented blocks so that
-        ///// `cemented_live_blocks` -> `HEAD~1` -> `HEAD` = last 120 blocks.
-        /////
-        ///// `Set` is used as a container instead of `Vec`, because we
-        ///// only need this data in memory for two things:
-        ///// 1. Return it in `live_blocks` rpc (this along with the
-        /////    `head` and `head_pred`). Blocks in the result must be
-        /////    sorted in a lexicographical order. That is exactly how
-        /////    `BTreeSet` will sort them and `BTreeSet::iter()` will
-        /////    give us already sorted values.
-        ///// 2. To check if the operation's branch is included in the
-        /////    live blocks.
-        //cemented_live_blocks: BTreeSet<BlockHash>,
+        /// Live blocks size equals to `operations_max_ttl`, which at
+        /// the moment is last 120 blocks. So this will contain 118 blocks
+        /// last cemented blocks so that
+        /// `cemented_live_blocks` -> `HEAD~1` -> `HEAD` = last 120 blocks.
+        ///
+        /// `Map` is used as a container instead of `Vec`, because we
+        /// only need this data in memory for two things:
+        /// 1. Return it in `live_blocks` rpc (this along with the
+        ///    `head` and `head_pred`). Blocks in the result must be
+        ///    sorted in a lexicographical order. That is exactly how
+        ///    `BTreeSet` will sort them and `BTreeSet::iter()` will
+        ///    give us already sorted values.
+        /// 2. To check if the operation's branch is included in the
+        ///    live blocks.
+        cemented_live_blocks: BTreeMap<BlockHash, Level>,
     },
 }
 
@@ -166,6 +167,7 @@ impl CurrentHeadState {
             operations: vec![],
             constants: None,
             applied_blocks,
+            cemented_live_blocks: Default::default(),
         }
     }
 
@@ -239,11 +241,50 @@ impl CurrentHeadState {
         self
     }
 
+    pub fn set_cemented_live_blocks(&mut self, value: BTreeMap<BlockHash, Level>) -> &mut Self {
+        if let Self::Rehydrated {
+            cemented_live_blocks,
+            ..
+        } = self
+        {
+            *cemented_live_blocks = value;
+        }
+        self
+    }
+
     pub fn add_applied_block(&mut self, block: &BlockHeaderWithHash) -> &mut Self {
         if let Self::Rehydrated { applied_blocks, .. } = self {
             if !applied_blocks.contains_key(&block.hash) {
                 applied_blocks.insert(block.hash.clone(), block.clone());
                 applied_blocks.retain(|_, b| b.header.level() + 1 >= block.header.level());
+            }
+        }
+        self
+    }
+
+    pub fn add_cemented_live_block(&mut self, hash: BlockHash, level: Level) -> &mut Self {
+        if let Self::Rehydrated {
+            cemented_live_blocks,
+            constants,
+            ..
+        } = self
+        {
+            if !cemented_live_blocks.contains_key(&hash) {
+                cemented_live_blocks.insert(hash, level);
+                let ttl = constants
+                    .as_ref()
+                    .map(|v| v.max_operations_ttl)
+                    .unwrap_or(120) as usize;
+                let target_len = ttl - 1;
+                while cemented_live_blocks.len() > target_len {
+                    let min = cemented_live_blocks
+                        .iter()
+                        .min_by_key(|(_, level)| *level)
+                        .map(|(hash, _)| hash.clone());
+                    if let Some(hash) = min {
+                        cemented_live_blocks.remove(&hash);
+                    }
+                }
             }
         }
         self
@@ -381,6 +422,32 @@ impl CurrentHeadState {
     pub fn is_applied(&self, block_hash: &BlockHash) -> bool {
         match self {
             Self::Rehydrated { applied_blocks, .. } => applied_blocks.contains_key(block_hash),
+            _ => false,
+        }
+    }
+
+    pub fn is_cemented_live_block(&self, block_hash: &BlockHash) -> bool {
+        match self {
+            Self::Rehydrated {
+                cemented_live_blocks,
+                ..
+            } => cemented_live_blocks.contains_key(block_hash),
+            _ => false,
+        }
+    }
+
+    pub fn is_live_block(&self, block_hash: &BlockHash) -> bool {
+        match self {
+            Self::Rehydrated {
+                cemented_live_blocks,
+                head,
+                head_pred,
+                ..
+            } => {
+                &head.hash == block_hash
+                    || head_pred.as_ref().map_or(false, |p| &p.hash == block_hash)
+                    || cemented_live_blocks.contains_key(block_hash)
+            }
             _ => false,
         }
     }

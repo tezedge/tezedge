@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use std::{fmt, thread};
 
@@ -124,6 +124,7 @@ pub struct CurrentHeadData {
     pub cycle: Option<BlockCycleInfo>,
     pub operations: Vec<Vec<Operation>>,
     pub constants: Option<ProtocolConstants>,
+    pub cemented_live_blocks: BTreeMap<BlockHash, Level>,
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
@@ -432,9 +433,12 @@ impl StorageServiceDefault {
                                         .map(|v| v.as_operations())
                                         .collect::<Vec<_>>()
                                 })?;
-                            let constants = constants_storage
+                            let constants: Option<ProtocolConstants> = constants_storage
                                 .get(additional_data.next_protocol_hash())?
                                 .and_then(|json| serde_json::from_str(&json).ok());
+                            let ttl = constants.as_ref().map_or(120, |v| v.max_operations_ttl);
+                            let cemented_live_blocks = block_meta_storage
+                                .get_cemented_live_blocks(head.hash.clone(), ttl as usize)?;
                             Ok(CurrentHeadData {
                                 head,
                                 pred,
@@ -443,6 +447,7 @@ impl StorageServiceDefault {
                                 cycle: cycle_info,
                                 operations,
                                 constants,
+                                cemented_live_blocks,
                             })
                         });
                     match result {

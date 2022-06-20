@@ -37,6 +37,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 cycle: content.cycle.clone(),
                 operations: content.operations.clone(),
                 constants: content.constants.clone(),
+                cemented_live_blocks: content.cemented_live_blocks.clone(),
             };
         }
         Action::CurrentHeadRehydrated(_) => match &mut state.current_head {
@@ -50,6 +51,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 cycle,
                 operations,
                 constants,
+                cemented_live_blocks,
                 ..
             } => {
                 let mut new_head = CurrentHeadState::rehydrated(head.clone(), head_pred.clone());
@@ -60,7 +62,8 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                     .set_pred_ops_metadata_hash(pred_ops_metadata_hash.clone())
                     .set_cycle(cycle.clone())
                     .set_operations(std::mem::take(operations))
-                    .set_constants(constants.clone());
+                    .set_constants(constants.clone())
+                    .set_cemented_live_blocks(cemented_live_blocks.clone());
                 state.current_head = new_head;
             }
             _ => {}
@@ -95,6 +98,20 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 .as_ref()
                 .or(state.current_head.constants())
                 .cloned();
+            if let Some(pred) = head_pred.as_ref() {
+                let level = pred.header.level();
+                if level > 0 {
+                    let hash = pred.header.predecessor().clone();
+                    state.current_head.add_cemented_live_block(hash, level - 1);
+                }
+            }
+            let cemented_live_blocks = match &mut state.current_head {
+                CurrentHeadState::Rehydrated {
+                    cemented_live_blocks,
+                    ..
+                } => std::mem::take(cemented_live_blocks),
+                _ => return,
+            };
 
             state.current_head = CurrentHeadState::Rehydrated {
                 head,
@@ -109,6 +126,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 operations: content.operations.clone(),
                 constants,
                 applied_blocks,
+                cemented_live_blocks,
             };
         }
         _ => {}
