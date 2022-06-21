@@ -103,7 +103,12 @@ impl State {
         let bakers = config
             .bakers
             .iter()
-            .map(|baker| (baker.pkh.clone(), BakerState::new()))
+            .map(|baker| {
+                (
+                    baker.pkh.clone(),
+                    BakerState::new(baker.liquidity_baking_escape_vote),
+                )
+            })
             .collect();
         Self {
             log: Default::default(),

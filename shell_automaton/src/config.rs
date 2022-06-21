@@ -16,6 +16,7 @@ use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_protocol_ipc_client::ProtocolRunnerConfiguration;
 
+use crate::baker::block_baker::LiquidityBakingToggleVote;
 use crate::shell_compatibility_version::ShellCompatibilityVersion;
 use crypto::{
     crypto_box::{CryptoKey, PublicKey, SecretKey},
@@ -134,6 +135,7 @@ impl Config {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerConfig {
     pub pkh: SignaturePublicKeyHash,
+    pub liquidity_baking_escape_vote: LiquidityBakingToggleVote,
 }
 
 pub fn default_test_config() -> Config {

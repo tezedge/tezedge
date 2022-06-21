@@ -384,8 +384,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             payload_hash,
                             proof_of_work_nonce: SizedBytes([0; 8]),
                             seed_nonce_hash: content.seed_nonce_hash.clone(),
-                            // TODO(zura): should be in config.
-                            liquidity_baking_escape_vote: false,
+                            liquidity_baking_escape_vote: baker.liquidity_baking_escape_vote,
                             operations: elected_block.operations.clone(),
                             predecessor_header: elected_block.header().clone(),
                             predecessor_max_operations_ttl: constants.max_operations_ttl,
@@ -409,8 +408,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                 payload_hash: p.payload_hash.clone(),
                                 proof_of_work_nonce: SizedBytes([0; 8]),
                                 seed_nonce_hash: content.seed_nonce_hash.clone(),
-                                // TODO(zura): should be in config.
-                                liquidity_baking_escape_vote: false,
+                                liquidity_baking_escape_vote: baker.liquidity_baking_escape_vote,
                                 operations: p.operations.clone(),
                                 predecessor_header: p.pred_header.clone(),
                                 predecessor_max_operations_ttl: constants.max_operations_ttl,
@@ -426,8 +424,8 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                     payload_hash: current_head.payload_hash()?.clone(),
                                     proof_of_work_nonce: SizedBytes([0; 8]),
                                     seed_nonce_hash: content.seed_nonce_hash.clone(),
-                                    // TODO(zura): should be in config.
-                                    liquidity_baking_escape_vote: false,
+                                    liquidity_baking_escape_vote: baker
+                                        .liquidity_baking_escape_vote,
                                     operations: current_head.operations()?.clone(),
                                     predecessor_header: (*current_head.get_pred()?.header).clone(),
                                     predecessor_max_operations_ttl: constants.max_operations_ttl,

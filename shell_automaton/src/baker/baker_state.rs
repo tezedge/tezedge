@@ -12,7 +12,7 @@ use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_messages::p2p::encoding::operation::Operation;
 
-use super::block_baker::BakerBlockBakerState;
+use super::block_baker::{BakerBlockBakerState, LiquidityBakingToggleVote};
 use super::block_endorser::BakerBlockEndorserState;
 use super::seed_nonce::BakerSeedNonceState;
 
@@ -89,6 +89,8 @@ impl ElectedBlock {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerState {
+    pub liquidity_baking_escape_vote: LiquidityBakingToggleVote,
+
     pub block_endorser: BakerBlockEndorserState,
     pub block_baker: BakerBlockBakerState,
     pub seed_nonces: BTreeMap<Level, BakerSeedNonceState>,
@@ -97,8 +99,9 @@ pub struct BakerState {
 }
 
 impl BakerState {
-    pub fn new() -> Self {
+    pub fn new(liquidity_baking_escape_vote: LiquidityBakingToggleVote) -> Self {
         Self {
+            liquidity_baking_escape_vote,
             block_endorser: BakerBlockEndorserState::Idle { time: 0 },
             block_baker: BakerBlockBakerState::Idle { time: 0 },
             seed_nonces: Default::default(),

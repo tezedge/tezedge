@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{
@@ -14,6 +16,7 @@ use tezos_encoding::types::SizedBytes;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::operation::Operation;
 use tezos_messages::p2p::encoding::operations_for_blocks::Path;
+use tezos_messages::protocol::SupportedProtocol;
 use tezos_messages::Timestamp;
 
 use crate::protocol_runner::ProtocolRunnerToken;
@@ -141,6 +144,74 @@ impl BakerBlockBakerState {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum LiquidityBakingToggleVote {
+    On,
+    Off,
+    Pass,
+}
+
+impl LiquidityBakingToggleVote {
+    /// Encode for 012-PsIthaca protocol.
+    pub fn bin_write_v012(self) -> u8 {
+        match self {
+            Self::On => 0xff,
+            // `Pass` option wasn't there for ithaca.
+            Self::Off | Self::Pass => 0x00,
+        }
+    }
+
+    /// Encode for 013-PtJakarta protocol.
+    pub fn bin_write_v013(self) -> u8 {
+        match self {
+            Self::On => 0x00,
+            Self::Off => 0x01,
+            Self::Pass => 0x02,
+        }
+    }
+
+    pub fn bin_write_for_protocol(self, protocol: SupportedProtocol) -> u8 {
+        match protocol {
+            SupportedProtocol::Proto001 => 0x00,
+            SupportedProtocol::Proto002 => 0x00,
+            SupportedProtocol::Proto003 => 0x00,
+            SupportedProtocol::Proto004 => 0x00,
+            SupportedProtocol::Proto005 => 0x00,
+            SupportedProtocol::Proto005_2 => 0x00,
+            SupportedProtocol::Proto006 => 0x00,
+            SupportedProtocol::Proto007 => 0x00,
+            SupportedProtocol::Proto008 => 0x00,
+            SupportedProtocol::Proto008_2 => 0x00,
+            SupportedProtocol::Proto009 => 0x00,
+            SupportedProtocol::Proto010 => 0x00,
+            SupportedProtocol::Proto011 => 0x00,
+            // ^ unsupported protocols.
+            SupportedProtocol::Proto012 => self.bin_write_v012(),
+            SupportedProtocol::Proto013 => self.bin_write_v013(),
+        }
+    }
+}
+
+impl Default for LiquidityBakingToggleVote {
+    fn default() -> Self {
+        LiquidityBakingToggleVote::Off
+    }
+}
+
+impl FromStr for LiquidityBakingToggleVote {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "on" => Ok(LiquidityBakingToggleVote::On),
+            "off" => Ok(LiquidityBakingToggleVote::Off),
+            "pass" => Ok(LiquidityBakingToggleVote::Pass),
+            _ => Err("unknown value".to_string()),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BuiltBlock {
     pub round: i32,
@@ -149,7 +220,7 @@ pub struct BuiltBlock {
     pub payload_hash: BlockPayloadHash,
     pub proof_of_work_nonce: SizedBytes<8>,
     pub seed_nonce_hash: Option<NonceHash>,
-    pub liquidity_baking_escape_vote: bool,
+    pub liquidity_baking_escape_vote: LiquidityBakingToggleVote,
     pub operations: Vec<Vec<Operation>>,
 
     pub predecessor_header: BlockHeader,
@@ -159,7 +230,10 @@ pub struct BuiltBlock {
 }
 
 impl BuiltBlock {
-    pub fn bin_encode_protocol_data(&self) -> Result<Vec<u8>, BinError> {
+    pub fn bin_encode_protocol_data(
+        &self,
+        protocol: SupportedProtocol,
+    ) -> Result<Vec<u8>, BinError> {
         #[derive(BinWriter, HasEncoding, Serialize)]
         pub struct ProtocolData {
             pub payload_hash: BlockPayloadHash,
@@ -167,7 +241,7 @@ impl BuiltBlock {
             pub proof_of_work_nonce: SizedBytes<8>,
             #[serde(skip_serializing_if = "Option::is_none")]
             pub seed_nonce_hash: Option<NonceHash>,
-            pub liquidity_baking_escape_vote: bool,
+            pub liquidity_baking_escape_vote: u8,
             pub signature: Signature,
         }
 
@@ -177,7 +251,9 @@ impl BuiltBlock {
             payload_round: self.payload_round,
             proof_of_work_nonce: self.proof_of_work_nonce.clone(),
             seed_nonce_hash: self.seed_nonce_hash.clone(),
-            liquidity_baking_escape_vote: self.liquidity_baking_escape_vote,
+            liquidity_baking_escape_vote: self
+                .liquidity_baking_escape_vote
+                .bin_write_for_protocol(protocol),
             signature: Signature(vec![0; 64]),
         };
 

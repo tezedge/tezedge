@@ -260,14 +260,14 @@ where
                             .as_ref()
                             .and_then(|json| {
                                 serde_json::from_str(json)
-                                    .map_err(|e| {
-                                        slog::warn!(store.state().log, "error parsing constants JSON";
-                                            "error" => e.to_string(),
-                                            "constants" => json,
-                                        );
-                                        e
-                                    })
-                                    .ok()
+                                .map_err(|e| {
+                                    slog::warn!(store.state().log, "error parsing constants JSON";
+                                        "error" => e.to_string(),
+                                        "constants" => json,
+                                    );
+                                    e
+                                })
+                                .ok()
                             });
                     store.dispatch(CurrentHeadUpdateAction {
                         new_head,
