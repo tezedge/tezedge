@@ -271,12 +271,8 @@ fn inject_block<Srv>(
             .filter_map(|op| op.hash.as_ref().cloned())
             .collect::<Vec<_>>();
         let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
-        BlockPayloadHash::calculate(
-            predecessor_hash,
-            payload_round as u32,
-            &operation_list_hash,
-        )
-        .unwrap()
+        BlockPayloadHash::calculate(predecessor_hash, payload_round as u32, &operation_list_hash)
+            .unwrap()
     };
 
     let sum_before = operations[1..]
