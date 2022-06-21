@@ -16,7 +16,7 @@ use tezos_messages::{
     protocol::{
         proto_010, proto_011,
         proto_012::{self, operation::OperationVerifyError},
-        SupportedProtocol, UnsupportedProtocolError,
+        proto_013, SupportedProtocol, UnsupportedProtocolError,
     },
 };
 
@@ -168,6 +168,7 @@ impl<'a> PrecheckerResult<'a> {
             Some(OperationDecodedContents::Proto010(_)) => proto_010::PROTOCOL_HASH,
             Some(OperationDecodedContents::Proto011(_)) => proto_011::PROTOCOL_HASH,
             Some(OperationDecodedContents::Proto012(_)) => proto_012::PROTOCOL_HASH,
+            Some(OperationDecodedContents::Proto013(_)) => proto_013::PROTOCOL_HASH,
             None => "<no protocol>",
         }
     }

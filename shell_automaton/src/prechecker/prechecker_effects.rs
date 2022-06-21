@@ -64,7 +64,8 @@ where
                     store.dispatch(PrecheckerCategorizeOperationAction::from(&action.hash));
                 }
                 Some(Err(_)) => {
-                    store.dispatch(PrecheckerErrorAction::from(&action.hash));
+                    store.dispatch(PrecheckerProtocolNeededAction::from(&action.hash));
+                    // store.dispatch(PrecheckerErrorAction::from(&action.hash));
                     store.dispatch(PrecheckerPruneOperationAction::from(&action.hash));
                 }
                 _ => {}

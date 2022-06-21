@@ -14,7 +14,7 @@ use tezos_messages::p2p::encoding::peer::PeerMessage;
 
 use crate::block_applier::BlockApplierApplyState;
 use crate::peers::remove::PeersRemoveAction;
-use crate::prechecker::{prechecking_enabled, OperationDecodedContents, PrecheckerResult};
+use crate::prechecker::{prechecking_enabled, PrecheckerResult};
 use crate::{Action, ActionWithMeta, State};
 
 use super::validator::{MempoolValidatorReclassifyOperationAction, MempoolValidatorValidateResult};
@@ -1138,32 +1138,22 @@ fn update_quorum_state_with_validated_operation(
     hash: &OperationHash,
 ) -> Option<()> {
     let operation_state = state.mempool.operations_state.get(hash)?;
-    let op = operation_state
+    let (is_preendorsement, op) = operation_state
         .operation_decoded_contents
         .as_ref()
-        .and_then(|op| match op {
-            OperationDecodedContents::Proto012(operation) => Some(operation),
-            _ => None,
-        })?;
-
-    let (level, round, slot) = op
-        .as_preendorsement()
-        .map(|op| (op.level, op.round, op.slot))
-        .or_else(|| {
-            let op = op.as_endorsement()?;
-            Some((op.level, op.round, op.slot))
-        })?;
+        .filter(|op| op.is_preendorsement() || op.is_endorsement())
+        .and_then(|op| Some((op.is_preendorsement(), op.as_tenderbake_consensus()?)))?;
 
     let head_level = state.current_head.level()?;
     let head_round = state.current_head.round()?;
-    if level != head_level || round != head_round {
+    if op.level != head_level || op.round != head_round {
         return None;
     }
-    let rights = state.rights.tenderbake_validators(level)?;
-    let delegate = rights.validators.get(slot as usize)?;
+    let rights = state.rights.tenderbake_validators(op.level)?;
+    let delegate = rights.validators.get(op.slot as usize)?;
     let endorsing_power = rights.slots.get(delegate)?.len() as u16;
 
-    if op.is_preendorsement() {
+    if is_preendorsement {
         state
             .mempool
             .prequorum
