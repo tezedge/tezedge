@@ -195,7 +195,16 @@ where
                 BakerBlockBakerState::BuildBlock { block, .. } => block,
                 _ => return,
             };
-            let protocol_data = match block.bin_encode_protocol_data() {
+
+            let head = store.state().current_head.get();
+            let protocol = match head
+                .map(|b| b.header.proto())
+                .and_then(|p| store.state().prechecker.proto_cache.get(&p))
+            {
+                Some(v) => *v,
+                None => return,
+            };
+            let protocol_data = match block.bin_encode_protocol_data(protocol) {
                 Ok(v) => v,
                 Err(_) => return,
             };

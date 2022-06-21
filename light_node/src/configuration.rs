@@ -612,6 +612,14 @@ pub fn tezos_app() -> App<'static, 'static> {
             .help("Baker name.
                        Can accept multiple comma(,) separated names in order to run multiple bakers.
                        If local keys are used, must match the name in key files(.tezos-client/secret_keys) which are in --baker-data-dir"))
+        .arg(Arg::with_name("liquidity-baking-escape-vote")
+            .long("liquidity-baking-escape-vote")
+            .global(true)
+            .takes_value(true)
+            .help("Liquidity baking escape vote. Default: false.
+                       Possible values:
+                       - Proto012_Ithaca: on, off.
+                       - After Proto013_Jakarta: on, off, pass."))
         .subcommand(
             clap::SubCommand::with_name("replay")
                 .arg(Arg::with_name("from-block")
@@ -1240,6 +1248,11 @@ impl Environment {
                     .value_of("baker-name")
                     .map(|v| v.split(",").map(|s| s.to_owned()).collect())
                     .unwrap_or(vec![]),
+                liquidity_baking_escape_vote: args
+                    .value_of("liquidity-baking-escape-vote")
+                    .unwrap_or("off")
+                    .parse()
+                    .expect("incorrect value"),
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args

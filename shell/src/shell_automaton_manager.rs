@@ -24,6 +24,7 @@ use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
+use shell_automaton::baker::block_baker::LiquidityBakingToggleVote;
 pub use shell_automaton::service::actors_service::{
     ActorsMessageFrom as ShellAutomatonMsg, AutomatonSyncSender as ShellAutomatonSender,
 };
@@ -73,6 +74,7 @@ pub struct P2p {
 
     pub baker_data_dir: PathBuf,
     pub baker_names: Vec<String>,
+    pub liquidity_baking_escape_vote: LiquidityBakingToggleVote,
 }
 
 impl P2p {
@@ -183,7 +185,10 @@ impl ShellAutomatonManager {
 
         let bakers_config = bakers_pkhs
             .into_iter()
-            .map(|pkh| shell_automaton::config::BakerConfig { pkh })
+            .map(|pkh| shell_automaton::config::BakerConfig {
+                pkh,
+                liquidity_baking_escape_vote: p2p_config.liquidity_baking_escape_vote,
+            })
             .collect();
         let mut initial_state = shell_automaton::State::new(shell_automaton::Config {
             initial_time: SystemTime::now(),
