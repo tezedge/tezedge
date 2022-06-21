@@ -22,10 +22,11 @@ use tezos_messages::Timestamp;
 use crate::protocol_runner::ProtocolRunnerToken;
 use crate::request::RequestId;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub struct BakingSlot {
     pub round: u32,
-    pub timeout: u64,
+    pub start_time: u64,
+    pub end_time: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
