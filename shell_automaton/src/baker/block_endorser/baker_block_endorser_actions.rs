@@ -27,20 +27,17 @@ fn current_head_level_round_payload(state: &State) -> Option<(Level, i32, &Block
     }
 }
 
-fn is_payload_new(state: &State, baker: &BakerState) -> Option<bool> {
+fn is_payload_outdated(state: &State, baker: &BakerState) -> Option<bool> {
     let (level, round, _) = current_head_level_round_payload(state)?;
     let locked_payload = match baker.locked_payload.as_ref() {
         Some(v) => v,
-        None => return Some(true),
+        None => return Some(false),
     };
-    Some(
-        locked_payload.level() < level
-            || (locked_payload.level() == level && round > locked_payload.round()),
-    )
-}
 
-fn is_payload_outdated(state: &State, baker: &BakerState) -> Option<bool> {
-    is_payload_new(state, baker).map(|v| !v)
+    Some(
+        level < locked_payload.level()
+            || (level == locked_payload.level() && round < locked_payload.round()),
+    )
 }
 
 fn should_preendorse(state: &State, baker: &BakerState) -> Option<bool> {
@@ -54,7 +51,7 @@ fn should_preendorse(state: &State, baker: &BakerState) -> Option<bool> {
         || locked_payload.payload_hash().eq(payload_hash)
         || state.mempool.prequorum.is_reached();
 
-    is_payload_new(state, baker).map(|v| v && can_accept_payload)
+    is_payload_outdated(state, baker).map(|v| !v && can_accept_payload)
 }
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]

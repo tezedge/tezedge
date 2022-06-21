@@ -24,7 +24,10 @@ pub(crate) fn prechecking_enabled(state: &PrecheckerState, proto: u8) -> bool {
     state.proto_cache.get(&proto).map_or(false, |protocol| {
         matches!(
             protocol,
-            SupportedProtocol::Proto010 | SupportedProtocol::Proto011 | SupportedProtocol::Proto012
+            SupportedProtocol::Proto010
+                | SupportedProtocol::Proto011
+                | SupportedProtocol::Proto012
+                | SupportedProtocol::Proto013
         )
     })
 }
