@@ -11,6 +11,7 @@ use crypto::hash::{
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operation::Operation;
+use tezos_messages::protocol::SupportedProtocol;
 
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::request::RequestId;
@@ -85,6 +86,7 @@ pub struct CurrentHeadRehydrateSuccessAction {
     pub operations: Vec<Vec<Operation>>,
     pub constants: Option<ProtocolConstants>,
     pub cemented_live_blocks: BTreeMap<BlockHash, Level>,
+    pub proto_cache: BTreeMap<u8, SupportedProtocol>,
 }
 
 impl EnablingCondition<State> for CurrentHeadRehydrateSuccessAction {
