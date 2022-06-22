@@ -1874,6 +1874,8 @@ environment:
   PYTHON_LOGS_SERVER_ADDRESS: 65.21.119.66
   PYTHON_LOGS_SERVER_PATH: /sftp-data/tezedgeci/upload/tezedge
 
+clone:
+  disabled: true
 
 defs:
   - &python-test
