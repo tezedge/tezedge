@@ -5,9 +5,7 @@ use crypto::hash::{BlockHash, BlockPayloadHash, ChainId};
 use tezos_messages::{
     base::signature_public_key::SignaturePublicKey,
     p2p::encoding::operation::Operation,
-    protocol::{
-        proto_012::operation::OperationVerifyError, SupportedProtocol, UnsupportedProtocolError,
-    },
+    protocol::{proto_012::operation::OperationVerifyError, SupportedProtocol},
 };
 
 use crate::rights::Slot;
@@ -67,11 +65,7 @@ impl OperationDecodedContents {
                 )?,
             ),
             _ => {
-                return Err(PrecheckerError::UnsupportedProtocol(
-                    UnsupportedProtocolError {
-                        protocol: proto.protocol_hash(),
-                    },
-                ));
+                return Err(PrecheckerError::UnsupportedProtocol(proto.protocol_hash()));
             }
         })
     }

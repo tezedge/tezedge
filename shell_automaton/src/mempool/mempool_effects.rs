@@ -244,7 +244,7 @@ where
             } = &store.state.get().block_applier.current
             {
                 let head = block.clone();
-                let protocol = block_additional_data.protocol_hash().clone();
+                let protocol = block_additional_data.next_protocol_hash().clone();
                 let payload_hash = payload_hash.clone();
                 store.dispatch(PrecheckerCurrentHeadUpdateAction {
                     head,
