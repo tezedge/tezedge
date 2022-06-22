@@ -67,7 +67,7 @@ impl BakerService for BakerServiceDummy {
         &mut self,
         _baker: SignaturePublicKeyHash,
         _header: BlockHeader,
-        _proof_of_work_threshold: u64,
+        _proof_of_work_threshold: i64,
     ) -> RequestId {
         RequestId::new_unchecked(0, 0)
     }
