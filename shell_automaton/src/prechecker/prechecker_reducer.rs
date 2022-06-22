@@ -19,15 +19,9 @@ use super::{
 };
 
 pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
-    // let PrecheckerState {
-    //     cached_operations,
-    //     operations,
-    //     proto_cache,
-    //     ..
-    // } = &mut state.prechecker;
     let operations = &mut state.prechecker.operations;
     let cached_operations = &mut state.prechecker.cached_operations;
-    let proto_cache = &mut state.prechecker.proto_cache;
+    let current_protocol = &mut state.prechecker.current_protocol;
     //let rights = &mut state.prechecker.rights;
     let rights = &mut state.rights;
     match &action.action {
@@ -70,22 +64,44 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             hash,
             proto,
         }) => {
-            let protocol = if let Some(p) = proto_cache.get(proto) {
-                p
-            } else {
-                slog::error!(state.log, "Undefined protocol for proto `{proto}`");
-                return;
+            let state = match current_protocol {
+                None => PrecheckerOperation {
+                    operation: operation.clone(),
+                    state: PrecheckerOperationState::Init { proto: *proto },
+                },
+                Some((p, _)) if *p + 1 == *proto => PrecheckerOperation {
+                    operation: operation.clone(),
+                    state: PrecheckerOperationState::Init { proto: *proto },
+                },
+                Some((_, Ok(protocol))) => PrecheckerOperation {
+                    operation: operation.clone(),
+                    state: PrecheckerOperationState::Supported {
+                        protocol: protocol.clone(),
+                    },
+                },
+                Some((_, Err(_))) => PrecheckerOperation {
+                    operation: operation.clone(),
+                    state: PrecheckerOperationState::ProtocolNeeded,
+                },
             };
 
-            slog::debug!(state.log, "Prechecking operation `{hash}`");
+            operations.insert(hash.clone(), Ok(state));
+        }
 
-            operations.insert(
-                hash.clone(),
-                Ok(PrecheckerOperation::new(
-                    operation.clone(),
-                    protocol.clone(),
-                )),
-            );
+        Action::PrecheckerProtocolSupported(action) => {
+            let protocol = if let Some((_, Ok(protocol))) = current_protocol {
+                protocol
+            } else {
+                return;
+            };
+            if let Some(Ok(PrecheckerOperation {
+                state: op_state, ..
+            })) = operations.get_mut(&action.hash)
+            {
+                *op_state = PrecheckerOperationState::Supported {
+                    protocol: protocol.clone(),
+                }
+            }
         }
 
         Action::PrecheckerRevalidateOperation(action) => {
@@ -135,7 +151,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             if let Some(Ok(PrecheckerOperation { operation, state })) =
                 operations.get_mut(&action.hash)
             {
-                if let PrecheckerOperationState::Init { protocol } = state {
+                if let PrecheckerOperationState::Supported { protocol } = state {
                     *state = match OperationDecodedContents::parse(operation, protocol) {
                         Ok(operation_decoded_contents) => PrecheckerOperationState::Decoded {
                             operation_decoded_contents,
@@ -277,21 +293,6 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
 
-        Action::PrecheckerCacheProtocol(PrecheckerCacheProtocolAction {
-            proto,
-            protocol_hash,
-        }) => match SupportedProtocol::try_from(protocol_hash) {
-            Ok(protocol) => {
-                proto_cache.insert(*proto, protocol);
-            }
-            Err(err) => {
-                slog::error!(
-                    state.log,
-                    "Failed to cache supported protocol `{proto}`: `{err}`"
-                );
-            }
-        },
-
         Action::PrecheckerPruneOperation(PrecheckerPruneOperationAction { hash }) => {
             operations.remove(hash);
         }
@@ -302,6 +303,18 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                     cached_operations.insert(level, hash.clone());
                 }
             }
+        }
+
+        Action::PrecheckerCacheProtocol(action) => {
+            let protocol_result = match SupportedProtocol::try_from(&action.protocol_hash) {
+                Ok(p) if state.prechecker.supported_protocols.contains(&p) => Ok(p),
+                Ok(p) => Err(p.into()),
+                Err(err) => Err(err.into()),
+            };
+            if protocol_result.is_err() {
+                slog::warn!(state.log, "Unsupported protocol {}", action.protocol_hash);
+            }
+            *current_protocol = Some((action.proto, protocol_result));
         }
 
         _ => (),

@@ -14,7 +14,7 @@ use tezos_messages::p2p::encoding::peer::PeerMessage;
 
 use crate::block_applier::BlockApplierApplyState;
 use crate::peers::remove::PeersRemoveAction;
-use crate::prechecker::{prechecking_enabled, OperationDecodedContents, PrecheckerResult};
+use crate::prechecker::{OperationDecodedContents, PrecheckerResult};
 use crate::{Action, ActionWithMeta, State};
 
 use super::validator::MempoolValidatorValidateResult;
@@ -494,7 +494,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             if let Some(head) = state.current_head.get() {
                 let proto = head.header.proto();
-                if prechecking_enabled(&state.prechecker, proto) && is_consensus_op(operation) {
+                if is_consensus_op(operation) {
                     mempool_state
                         .prechecking_operations
                         .insert(hash.clone(), proto);
@@ -537,7 +537,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
 
             if let Some(head) = state.current_head.get() {
                 let proto = head.header.proto();
-                if prechecking_enabled(&state.prechecker, proto) && is_consensus_op(operation) {
+                if is_consensus_op(operation) {
                     mempool_state
                         .prechecking_operations
                         .insert(operation_hash.clone(), proto);

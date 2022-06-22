@@ -537,6 +537,7 @@ pub enum Action {
     PrecheckerStoreEndorsementBranch(PrecheckerStoreEndorsementBranchAction),
     PrecheckerPrecheckOperation(PrecheckerPrecheckOperationAction),
     PrecheckerRevalidateOperation(PrecheckerPrecheckDelayedOperationAction),
+    PrecheckerProtocolSupported(PrecheckerProtocolSupportedAction),
     PrecheckerDecodeOperation(PrecheckerDecodeOperationAction),
     PrecheckerProtocolNeeded(PrecheckerProtocolNeededAction),
     PrecheckerCategorizeOperation(PrecheckerCategorizeOperationAction),

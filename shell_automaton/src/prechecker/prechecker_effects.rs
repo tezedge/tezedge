@@ -25,7 +25,10 @@ where
     match &action.action {
         Action::PrecheckerPrecheckOperation(action) => {
             match prechecker_state_operations.get(&action.hash) {
-                Some(Ok(_)) => {
+                Some(Ok(PrecheckerOperation {
+                    state: PrecheckerOperationState::Supported { .. },
+                    ..
+                })) => {
                     store.dispatch(PrecheckerDecodeOperationAction::from(&action.hash));
                 }
                 Some(Err(_)) => {
@@ -39,6 +42,21 @@ where
             match prechecker_state_operations.get(&action.hash) {
                 Some(Ok(_)) => {
                     store.dispatch(PrecheckerValidateOperationAction::from(&action.hash));
+                }
+                Some(Err(_)) => {
+                    store.dispatch(PrecheckerErrorAction::from(&action.hash));
+                    store.dispatch(PrecheckerPruneOperationAction::from(&action.hash));
+                }
+                _ => {}
+            }
+        }
+        Action::PrecheckerProtocolSupported(action) => {
+            match prechecker_state_operations.get(&action.hash) {
+                Some(Ok(PrecheckerOperation {
+                    state: PrecheckerOperationState::Init { .. },
+                    ..
+                })) => {
+                    store.dispatch(PrecheckerDecodeOperationAction::from(&action.hash));
                 }
                 Some(Err(_)) => {
                     store.dispatch(PrecheckerErrorAction::from(&action.hash));
@@ -145,7 +163,7 @@ where
                     .cloned()
                     .collect::<Vec<_>>()
                 {
-                    store.dispatch(PrecheckerValidateOperationAction { hash });
+                    store.dispatch(PrecheckerValidateOperationAction::from(hash));
                 }
             }
         }
@@ -183,6 +201,43 @@ where
                 key: RightsKey::endorsing(block_hash, Some(level + 1)),
             });
         }
+
+        Action::PrecheckerCacheProtocol(_) => match prechecker_state.current_protocol.as_ref() {
+            Some((_, Ok(_))) => {
+                for hash in prechecker_state_operations
+                    .iter()
+                    .filter_map(|(hash, op)| {
+                        if matches!(&op, Ok(PrecheckerOperation { .. })) {
+                            Some(hash)
+                        } else {
+                            None
+                        }
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>()
+                {
+                    store.dispatch(PrecheckerProtocolSupportedAction::from(hash));
+                }
+            }
+            Some((_, Err(_))) => {
+                for hash in prechecker_state_operations
+                    .iter()
+                    .filter_map(|(hash, op)| {
+                        if matches!(&op, Ok(PrecheckerOperation { .. })) {
+                            Some(hash)
+                        } else {
+                            None
+                        }
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>()
+                {
+                    store.dispatch(PrecheckerProtocolNeededAction::from(&hash));
+                    store.dispatch(PrecheckerPruneOperationAction::from(hash));
+                }
+            }
+            _ => {}
+        },
 
         _ => (),
     }

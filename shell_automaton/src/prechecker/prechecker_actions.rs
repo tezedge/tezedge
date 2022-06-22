@@ -49,6 +49,16 @@ macro_rules! from_hash_ref {
     };
 }
 
+macro_rules! from_hash {
+    ($action:ident) => {
+        impl From<OperationHash> for $action {
+            fn from(source: OperationHash) -> Self {
+                Self { hash: source }
+            }
+        }
+    };
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct PrecheckerPrecheckOperationAction {
@@ -61,7 +71,12 @@ impl EnablingCondition<State> for PrecheckerPrecheckOperationAction {
     fn is_enabled(&self, state: &State) -> bool {
         let prechecker_state = &state.prechecker;
         !prechecker_state.operations.contains_key(&self.hash)
-            && prechecker_state.proto_cache.contains_key(&self.proto)
+            && prechecker_state
+                .current_protocol
+                .as_ref()
+                .map_or(true, |(proto, protocol)| {
+                    proto == &self.proto && protocol.is_ok()
+                })
     }
 }
 
@@ -79,6 +94,30 @@ impl EnablingCondition<State> for PrecheckerPrecheckDelayedOperationAction {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct PrecheckerProtocolSupportedAction {
+    pub hash: OperationHash,
+}
+
+impl EnablingCondition<State> for PrecheckerProtocolSupportedAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        let prechecker_state = &state.prechecker;
+        prechecker_state
+            .current_protocol
+            .as_ref()
+            .map_or(false, |(p, protocol)| {
+                matches!(
+                    (prechecker_state.state(&self.hash), protocol),
+                    (Some(PrecheckerOperationState::Init { proto }), Ok(_)) if proto == p
+                )
+            })
+    }
+}
+
+from_hash!(PrecheckerProtocolSupportedAction);
+from_hash_ref!(PrecheckerProtocolSupportedAction);
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 pub struct PrecheckerDecodeOperationAction {
     pub hash: OperationHash,
 }
@@ -88,7 +127,7 @@ impl EnablingCondition<State> for PrecheckerDecodeOperationAction {
         let prechecker_state = &state.prechecker;
         matches!(
             prechecker_state.state(&self.hash),
-            Some(PrecheckerOperationState::Init { .. })
+            Some(PrecheckerOperationState::Supported { .. })
         )
     }
 }
@@ -145,6 +184,7 @@ impl EnablingCondition<State> for PrecheckerValidateOperationAction {
     }
 }
 
+from_hash!(PrecheckerValidateOperationAction);
 from_hash_ref!(PrecheckerValidateOperationAction);
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -191,7 +231,11 @@ pub struct PrecheckerCacheProtocolAction {
 
 impl EnablingCondition<State> for PrecheckerCacheProtocolAction {
     fn is_enabled(&self, state: &State) -> bool {
-        !state.prechecker.proto_cache.contains_key(&self.proto)
+        state
+            .prechecker
+            .current_protocol
+            .as_ref()
+            .map_or(true, |(proto, _)| proto + 1 == self.proto)
     }
 }
 
@@ -228,3 +272,4 @@ impl EnablingCondition<State> for PrecheckerPruneOperationAction {
 }
 
 from_hash_ref!(PrecheckerPruneOperationAction);
+from_hash!(PrecheckerPruneOperationAction);

@@ -14,36 +14,14 @@ pub use prechecker_effects::prechecker_effects;
 
 mod prechecker_validator;
 pub use prechecker_validator::*;
-use tezos_messages::protocol::SupportedProtocol;
 
 mod operation_contents;
 pub use operation_contents::*;
+use tezos_messages::protocol::SupportedProtocol;
 
-/// Checks if prechecking is enabled for the block that is a successor of the block with `prev_block` hash.
-pub(crate) fn prechecking_enabled(state: &PrecheckerState, proto: u8) -> bool {
-    state.proto_cache.get(&proto).map_or(false, |protocol| {
-        matches!(
-            protocol,
-            SupportedProtocol::Proto010 | SupportedProtocol::Proto011 | SupportedProtocol::Proto012
-        )
-    })
+fn supported_protocols() -> Vec<SupportedProtocol> {
+    vec![SupportedProtocol::Proto012, SupportedProtocol::Proto013]
 }
-
-// pub(super) fn protocol_for_block(
-//     block: &BlockHeader,
-//     prechecker_state: &PrecheckerState,
-// ) -> Option<SupportedProtocol> {
-//     prechecker_state
-//         .proto_cache
-//         .get(&block.proto())
-//         .or_else(|| {
-//             prechecker_state
-//                 .protocol_cache
-//                 .get(block.predecessor())
-//                 .map(|(_, _, next_protocol_hash)| next_protocol_hash)
-//         })
-//         .and_then(|protocol| SupportedProtocol::try_from(protocol).ok())
-// }
 
 /// Tenderbake round.
 pub type Round = i32;
