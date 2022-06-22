@@ -8,7 +8,7 @@ use crypto::{
     PublicKeyWithHash,
 };
 use slog::Logger;
-use tezos_messages::{p2p::encoding::block_header::Level, protocol::SupportedProtocol};
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::{rights::Validators, Action, ActionWithMeta, State};
 
@@ -22,12 +22,10 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
     // let PrecheckerState {
     //     cached_operations,
     //     operations,
-    //     proto_cache,
     //     ..
     // } = &mut state.prechecker;
     let operations = &mut state.prechecker.operations;
     let cached_operations = &mut state.prechecker.cached_operations;
-    let proto_cache = &mut state.prechecker.proto_cache;
     //let rights = &mut state.prechecker.rights;
     let rights = &mut state.rights;
     match &action.action {
@@ -70,7 +68,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             hash,
             proto,
         }) => {
-            let protocol = if let Some(p) = proto_cache.get(proto) {
+            let protocol = if let Some(p) = state.current_head.protocol_from_id(*proto) {
                 p
             } else {
                 slog::error!(state.log, "Undefined protocol for proto `{proto}`");
@@ -276,21 +274,6 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
         }
-
-        Action::PrecheckerCacheProtocol(PrecheckerCacheProtocolAction {
-            proto,
-            protocol_hash,
-        }) => match SupportedProtocol::try_from(protocol_hash) {
-            Ok(protocol) => {
-                proto_cache.insert(*proto, protocol);
-            }
-            Err(err) => {
-                slog::error!(
-                    state.log,
-                    "Failed to cache supported protocol `{proto}`: `{err}`"
-                );
-            }
-        },
 
         Action::PrecheckerPruneOperation(PrecheckerPruneOperationAction { hash }) => {
             operations.remove(hash);

@@ -543,7 +543,6 @@ pub enum Action {
     PrecheckerValidateOperation(PrecheckerValidateOperationAction),
     PrecheckerOperationValidated(PrecheckerOperationValidatedAction),
     PrecheckerError(PrecheckerErrorAction),
-    PrecheckerCacheProtocol(PrecheckerCacheProtocolAction),
     PrecheckerCacheDelayedOperation(PrecheckerCacheDelayedOperationAction),
     PrecheckerPruneOperation(PrecheckerPruneOperationAction),
 

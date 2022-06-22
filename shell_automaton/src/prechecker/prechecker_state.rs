@@ -38,7 +38,6 @@ pub struct PrecheckerState {
     pub endorsement_branch: Option<EndorsementBranch>,
     pub operations: HashMap<OperationHash, Result<PrecheckerOperation, PrecheckerError>>,
     pub cached_operations: CachedOperations,
-    pub proto_cache: BTreeMap<u8, SupportedProtocol>,
 }
 
 impl PrecheckerState {

@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use tezos_messages::protocol::SupportedProtocol;
+
 use crate::block_applier::BlockApplierApplyState;
 use crate::{Action, ActionWithMeta, State};
 
@@ -38,6 +40,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 operations: content.operations.clone(),
                 constants: content.constants.clone(),
                 cemented_live_blocks: content.cemented_live_blocks.clone(),
+                proto_cache: content.proto_cache.clone(),
             };
         }
         Action::CurrentHeadRehydrated(_) => match &mut state.current_head {
@@ -52,6 +55,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 operations,
                 constants,
                 cemented_live_blocks,
+                proto_cache,
                 ..
             } => {
                 let mut new_head = CurrentHeadState::rehydrated(head.clone(), head_pred.clone());
@@ -63,7 +67,8 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                     .set_cycle(cycle.clone())
                     .set_operations(std::mem::take(operations))
                     .set_constants(constants.clone())
-                    .set_cemented_live_blocks(cemented_live_blocks.clone());
+                    .set_cemented_live_blocks(cemented_live_blocks.clone())
+                    .set_proto_cache(std::mem::take(proto_cache));
                 state.current_head = new_head;
             }
             _ => {}
@@ -77,12 +82,30 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::CurrentHeadUpdate(content) => {
             state.current_head.add_applied_block(&content.new_head);
-            let applied_blocks = match &mut state.current_head {
-                CurrentHeadState::Rehydrated { applied_blocks, .. } => {
-                    std::mem::take(applied_blocks)
-                }
+            let (applied_blocks, mut proto_cache) = match &mut state.current_head {
+                CurrentHeadState::Rehydrated {
+                    applied_blocks,
+                    proto_cache,
+                    ..
+                } => (std::mem::take(applied_blocks), std::mem::take(proto_cache)),
                 _ => return,
             };
+            let proto = content.new_head.header.proto();
+            if !proto_cache.contains_key(&proto) {
+                match SupportedProtocol::try_from(&content.next_protocol) {
+                    Ok(protocol) => {
+                        proto_cache.insert(proto, protocol);
+                    }
+                    Err(err) => {
+                        slog::error!(&state.log, "Detected unknown protocol while updating current head";
+                            "protocol_hash" => content.next_protocol.to_base58_check(),
+                            "proto" => proto,
+                            "new_current_head" => format!("{:?}", content.new_head),
+                            "err" => format!("{:?}", err));
+                    }
+                }
+            }
+
             let head = content.new_head.clone();
             let head_pred = state
                 .current_head
@@ -127,6 +150,7 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 constants,
                 applied_blocks,
                 cemented_live_blocks,
+                proto_cache,
             };
         }
         _ => {}

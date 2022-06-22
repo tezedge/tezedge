@@ -9,6 +9,7 @@ use crypto::hash::{BlockHash, BlockMetadataHash, BlockPayloadHash, OperationMeta
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operation::Operation;
+use tezos_messages::protocol::SupportedProtocol;
 
 use crate::request::RequestId;
 use crate::service::storage_service::{BlockCycleInfo, StorageError};
@@ -94,6 +95,9 @@ pub enum CurrentHeadState {
         constants: Option<ProtocolConstants>,
         /// Last `TTL - 2` cemented blocks.
         cemented_live_blocks: BTreeMap<BlockHash, Level>,
+
+        /// `block_header.proto` -> `SupportedProtocol`
+        proto_cache: BTreeMap<u8, SupportedProtocol>,
     },
 
     Rehydrated {
@@ -131,6 +135,9 @@ pub enum CurrentHeadState {
         /// 2. To check if the operation's branch is included in the
         ///    live blocks.
         cemented_live_blocks: BTreeMap<BlockHash, Level>,
+
+        /// `block_header.proto` -> `SupportedProtocol`
+        proto_cache: BTreeMap<u8, SupportedProtocol>,
     },
 }
 
@@ -168,6 +175,7 @@ impl CurrentHeadState {
             constants: None,
             applied_blocks,
             cemented_live_blocks: Default::default(),
+            proto_cache: Default::default(),
         }
     }
 
@@ -248,6 +256,13 @@ impl CurrentHeadState {
         } = self
         {
             *cemented_live_blocks = value;
+        }
+        self
+    }
+
+    pub fn set_proto_cache(&mut self, value: BTreeMap<u8, SupportedProtocol>) -> &mut Self {
+        if let Self::Rehydrated { proto_cache, .. } = self {
+            *proto_cache = value;
         }
         self
     }
@@ -450,6 +465,34 @@ impl CurrentHeadState {
             }
             _ => false,
         }
+    }
+
+    pub fn protocol(&self) -> Option<SupportedProtocol> {
+        match self {
+            Self::Rehydrated {
+                head, proto_cache, ..
+            } => proto_cache.get(&head.header.proto()).cloned(),
+            _ => None,
+        }
+    }
+
+    pub fn protocol_from_id(&self, proto: u8) -> Option<SupportedProtocol> {
+        match self {
+            Self::Rehydrated { proto_cache, .. } => proto_cache.get(&proto).cloned(),
+            _ => None,
+        }
+    }
+
+    pub fn is_precheckable(&self) -> bool {
+        self.protocol().map_or(false, |protocol| {
+            matches!(
+                protocol,
+                SupportedProtocol::Proto010
+                    | SupportedProtocol::Proto011
+                    | SupportedProtocol::Proto012
+                    | SupportedProtocol::Proto013
+            )
+        })
     }
 }
 

@@ -14,7 +14,7 @@ use tezos_messages::p2p::encoding::peer::PeerMessage;
 
 use crate::block_applier::BlockApplierApplyState;
 use crate::peers::remove::PeersRemoveAction;
-use crate::prechecker::{prechecking_enabled, PrecheckerResult};
+use crate::prechecker::PrecheckerResult;
 use crate::{Action, ActionWithMeta, State};
 
 use super::validator::{MempoolValidatorReclassifyOperationAction, MempoolValidatorValidateResult};
@@ -507,11 +507,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 return;
             }
             if let Some(head) = state.current_head.get() {
-                let proto = head.header.proto();
-                if prechecking_enabled(&state.prechecker, proto) && is_consensus_op(operation) {
+                if state.current_head.is_precheckable() && is_consensus_op(operation) {
                     mempool_state
                         .prechecking_operations
-                        .insert(hash.clone(), proto);
+                        .insert(hash.clone(), head.header.proto());
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
                         if let MempoolOperation {
                             state: OperationState::ReceivedHash,
@@ -548,11 +547,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
 
             if let Some(head) = state.current_head.get() {
-                let proto = head.header.proto();
-                if prechecking_enabled(&state.prechecker, proto) && is_consensus_op(operation) {
+                if state.current_head.is_precheckable() && is_consensus_op(operation) {
                     mempool_state
                         .prechecking_operations
-                        .insert(operation_hash.clone(), proto);
+                        .insert(operation_hash.clone(), head.header.proto());
                     mempool_state.operations_state.insert(
                         operation_hash.clone(),
                         MempoolOperation::injected(level, *injected_timestamp, action),

@@ -152,9 +152,9 @@ where
         }
 
         Action::PrecheckerCurrentHeadUpdate(PrecheckerCurrentHeadUpdateAction {
-            protocol,
             payload_hash,
             head,
+            ..
         }) => {
             if !store.state().is_bootstrapped() {
                 return;
@@ -175,10 +175,6 @@ where
             } else {
                 None
             };
-            store.dispatch(PrecheckerCacheProtocolAction {
-                proto: head.header.proto(),
-                protocol_hash: protocol.clone(),
-            });
             store.dispatch(PrecheckerStoreEndorsementBranchAction { endorsement_branch });
             store.dispatch(RightsGetAction {
                 key: RightsKey::endorsing(block_hash, Some(level + 1)),

@@ -14,23 +14,9 @@ pub use prechecker_effects::prechecker_effects;
 
 mod prechecker_validator;
 pub use prechecker_validator::*;
-use tezos_messages::protocol::SupportedProtocol;
 
 mod operation_contents;
 pub use operation_contents::*;
-
-/// Checks if prechecking is enabled for the block that is a successor of the block with `prev_block` hash.
-pub(crate) fn prechecking_enabled(state: &PrecheckerState, proto: u8) -> bool {
-    state.proto_cache.get(&proto).map_or(false, |protocol| {
-        matches!(
-            protocol,
-            SupportedProtocol::Proto010
-                | SupportedProtocol::Proto011
-                | SupportedProtocol::Proto012
-                | SupportedProtocol::Proto013
-        )
-    })
-}
 
 // pub(super) fn protocol_for_block(
 //     block: &BlockHeader,
