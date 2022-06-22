@@ -22,7 +22,7 @@ use tezos_messages::{
 
 use crate::rights::{Delegate, RightsError, Slot};
 
-use super::{operation_contents::OperationDecodedContents, Round};
+use super::{operation_contents::OperationDecodedContents, supported_protocols, Round};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
@@ -33,11 +33,39 @@ pub struct EndorsementBranch {
     pub payload_hash: BlockPayloadHash,
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, thiserror::Error)]
+pub enum PrecheckerUnsupportedProtocol {
+    #[error("Unsupported protocol {0}")]
+    Unsupported(String),
+    #[error(transparent)]
+    Unknown(#[from] UnsupportedProtocolError),
+}
+
+impl From<&SupportedProtocol> for PrecheckerUnsupportedProtocol {
+    fn from(protocol: &SupportedProtocol) -> Self {
+        Self::Unsupported(protocol.protocol_hash())
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerState {
     pub endorsement_branch: Option<EndorsementBranch>,
+    pub current_protocol: Option<(u8, Result<SupportedProtocol, PrecheckerUnsupportedProtocol>)>,
     pub operations: HashMap<OperationHash, Result<PrecheckerOperation, PrecheckerError>>,
     pub cached_operations: CachedOperations,
+    pub supported_protocols: Vec<SupportedProtocol>,
+}
+
+impl Default for PrecheckerState {
+    fn default() -> Self {
+        Self {
+            endorsement_branch: Default::default(),
+            current_protocol: Default::default(),
+            operations: Default::default(),
+            cached_operations: Default::default(),
+            supported_protocols: supported_protocols(),
+        }
+    }
 }
 
 impl PrecheckerState {
@@ -192,13 +220,6 @@ pub struct PrecheckerOperation {
 }
 
 impl PrecheckerOperation {
-    pub(super) fn new(operation: Operation, protocol: SupportedProtocol) -> Self {
-        Self {
-            operation,
-            state: PrecheckerOperationState::Init { protocol },
-        }
-    }
-
     fn operation(&self) -> &Operation {
         &self.operation
     }
@@ -222,6 +243,9 @@ pub struct TenderbakeConsensusContents {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, strum_macros::AsRefStr)]
 pub enum PrecheckerOperationState {
     Init {
+        proto: u8,
+    },
+    Supported {
         protocol: SupportedProtocol,
     },
     Decoded {

@@ -396,7 +396,6 @@ fn check_proof_of_work(header_bytes: &[u8], proof_of_work_threshold: i64) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crypto::hash::{BlockHash, BlockPayloadHash, ContextHash, OperationListListHash};
     use tezos_messages::protocol::proto_012::operation::{
         InlinedEndorsement, InlinedEndorsementMempoolContents,
         InlinedEndorsementMempoolContentsEndorsementVariant, InlinedPreendorsement,

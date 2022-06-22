@@ -93,7 +93,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                OperationStats::new(current_head_level.unwrap_or(-1))
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
@@ -504,7 +506,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 return;
             }
             if let Some(head) = state.current_head.get() {
-                if state.current_head.is_precheckable() && is_consensus_op(operation) {
+                if is_consensus_op(operation) {
                     mempool_state
                         .prechecking_operations
                         .insert(hash.clone(), head.header.proto());
@@ -544,7 +546,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
 
             if let Some(head) = state.current_head.get() {
-                if state.current_head.is_precheckable() && is_consensus_op(operation) {
+                if is_consensus_op(operation) {
                     mempool_state
                         .prechecking_operations
                         .insert(operation_hash.clone(), head.header.proto());

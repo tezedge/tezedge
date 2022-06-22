@@ -19,13 +19,9 @@ use super::{
 };
 
 pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
-    // let PrecheckerState {
-    //     cached_operations,
-    //     operations,
-    //     ..
-    // } = &mut state.prechecker;
     let operations = &mut state.prechecker.operations;
     let cached_operations = &mut state.prechecker.cached_operations;
+    let current_protocol = &mut state.prechecker.current_protocol;
     //let rights = &mut state.prechecker.rights;
     let rights = &mut state.rights;
     match &action.action {
@@ -68,22 +64,44 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             hash,
             proto,
         }) => {
-            let protocol = if let Some(p) = state.current_head.protocol_from_id(*proto) {
-                p
-            } else {
-                slog::error!(state.log, "Undefined protocol for proto `{proto}`");
-                return;
+            let state = match current_protocol {
+                None => PrecheckerOperation {
+                    operation: operation.clone(),
+                    state: PrecheckerOperationState::Init { proto: *proto },
+                },
+                Some((p, _)) if *p + 1 == *proto => PrecheckerOperation {
+                    operation: operation.clone(),
+                    state: PrecheckerOperationState::Init { proto: *proto },
+                },
+                Some((_, Ok(protocol))) => PrecheckerOperation {
+                    operation: operation.clone(),
+                    state: PrecheckerOperationState::Supported {
+                        protocol: protocol.clone(),
+                    },
+                },
+                Some((_, Err(_))) => PrecheckerOperation {
+                    operation: operation.clone(),
+                    state: PrecheckerOperationState::ProtocolNeeded,
+                },
             };
 
-            slog::debug!(state.log, "Prechecking operation `{hash}`");
+            operations.insert(hash.clone(), Ok(state));
+        }
 
-            operations.insert(
-                hash.clone(),
-                Ok(PrecheckerOperation::new(
-                    operation.clone(),
-                    protocol.clone(),
-                )),
-            );
+        Action::PrecheckerProtocolSupported(action) => {
+            let protocol = if let Some((_, Ok(protocol))) = current_protocol {
+                protocol
+            } else {
+                return;
+            };
+            if let Some(Ok(PrecheckerOperation {
+                state: op_state, ..
+            })) = operations.get_mut(&action.hash)
+            {
+                *op_state = PrecheckerOperationState::Supported {
+                    protocol: protocol.clone(),
+                }
+            }
         }
 
         Action::PrecheckerRevalidateOperation(action) => {
@@ -133,7 +151,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             if let Some(Ok(PrecheckerOperation { operation, state })) =
                 operations.get_mut(&action.hash)
             {
-                if let PrecheckerOperationState::Init { protocol } = state {
+                if let PrecheckerOperationState::Supported { protocol } = state {
                     *state = match OperationDecodedContents::parse(operation, protocol) {
                         Ok(operation_decoded_contents) => PrecheckerOperationState::Decoded {
                             operation_decoded_contents,
@@ -285,6 +303,25 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                     cached_operations.insert(level, hash.clone());
                 }
             }
+        }
+
+        Action::PrecheckerCacheProtocol(_) => {
+            let proto = if let Some(head) = state.current_head.get() {
+                head.header.proto()
+            } else {
+                return;
+            };
+            let protocol_result = match state.current_head.protocol().as_ref() {
+                Some(protocol) if state.prechecker.supported_protocols.contains(protocol) => {
+                    Ok(protocol.clone())
+                }
+                Some(protocol) => Err(protocol.into()),
+                _ => return,
+            };
+            if let Err(ref err) = protocol_result {
+                slog::warn!(state.log, "Unsupported protocol: {err}");
+            }
+            *current_protocol = Some((proto, protocol_result));
         }
 
         _ => (),

@@ -534,9 +534,11 @@ pub enum Action {
     BlockInject(BlockInjectAction),
 
     PrecheckerCurrentHeadUpdate(PrecheckerCurrentHeadUpdateAction),
+    PrecheckerCacheProtocol(PrecheckerCacheProtocolAction),
     PrecheckerStoreEndorsementBranch(PrecheckerStoreEndorsementBranchAction),
     PrecheckerPrecheckOperation(PrecheckerPrecheckOperationAction),
     PrecheckerRevalidateOperation(PrecheckerPrecheckDelayedOperationAction),
+    PrecheckerProtocolSupported(PrecheckerProtocolSupportedAction),
     PrecheckerDecodeOperation(PrecheckerDecodeOperationAction),
     PrecheckerProtocolNeeded(PrecheckerProtocolNeededAction),
     PrecheckerCategorizeOperation(PrecheckerCategorizeOperationAction),
