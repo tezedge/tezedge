@@ -137,7 +137,16 @@ trigger:
 workspace:
   path: /drone/src
 
+clone:
+  disable: true
+
 steps:
+
+- name: clone
+  image: alpine/git
+  commands:
+  - git clone https://github.com/tezedge/tezedge.git .
+  - git checkout $DRONE_COMMIT
 
 - name: build-artifacts
   image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
