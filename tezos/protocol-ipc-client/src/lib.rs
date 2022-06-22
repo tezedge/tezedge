@@ -443,20 +443,6 @@ impl ProtocolRunnerConnection {
         )
     }
 
-    /// Pre-check operation
-    pub async fn pre_check_operation(
-        &mut self,
-        request: ValidateOperationRequest,
-    ) -> Result<PreCheckOperationResponse, ProtocolServiceError> {
-        handle_request!(
-            self.io,
-            PreCheckOperation(request),
-            PreCheckOperationResult(result),
-            PreCheckOperationError,
-            Some(Self::VALIDATE_OPERATION_TIMEOUT),
-        )
-    }
-
     /// Validate operation
     pub async fn validate_operation(
         &mut self,

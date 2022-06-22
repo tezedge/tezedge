@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crypto::hash::{BlockHash, OperationHash, ProtocolHash};
-use tezos_api::ffi::{Applied, Errored};
+use tezos_api::ffi::{Errored, Validated};
 use tezos_messages::p2p::encoding::operation::Operation;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -22,7 +22,7 @@ pub struct MempoolOperations {
 }
 
 fn convert_applied(
-    applied: &[Applied],
+    applied: &[Validated],
     operations: &BTreeMap<OperationHash, Operation>,
 ) -> Vec<HashMap<String, Value>> {
     applied
@@ -97,7 +97,7 @@ fn convert_errored<'a>(
 
 impl MempoolOperations {
     pub fn collect<'a>(
-        applied: &[Applied],
+        applied: &[Validated],
         refused: impl IntoIterator<Item = &'a Errored>,
         branch_delayed: impl IntoIterator<Item = &'a Errored>,
         branch_refused: impl IntoIterator<Item = &'a Errored>,
@@ -149,7 +149,7 @@ impl<'a> MonitoredOperation<'a> {
     }
 
     pub fn collect_applied(
-        applied: impl IntoIterator<Item = &'a Applied> + 'a,
+        applied: impl IntoIterator<Item = &'a Validated> + 'a,
         operations: &'a BTreeMap<OperationHash, Operation>,
         protocol_hash: &'a str,
     ) -> impl Iterator<Item = MonitoredOperation<'a>> + 'a {
@@ -205,7 +205,7 @@ mod tests {
     use assert_json_diff::assert_json_eq;
     use serde_json::json;
 
-    use tezos_api::ffi::{Applied, Errored};
+    use tezos_api::ffi::{Errored, Validated};
     use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::operation::Operation;
 
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn test_convert_applied() {
         let data = vec![
-            Applied {
+            Validated {
                 hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into().unwrap(),
                 protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
             }

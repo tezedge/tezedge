@@ -4,13 +4,14 @@
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, OperationHash};
-use tezos_api::ffi::{Applied, Errored, PrevalidatorWrapper};
+use tezos_api::ffi::{Errored, PrevalidatorWrapper, Validated};
 use tezos_messages::p2p::encoding::prelude::Operation;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum MempoolValidatorValidateResult {
-    Applied(Applied),
+    Applied(Validated),
+    Prechecked(Validated),
     Refused(Errored),
     BranchRefused(Errored),
     BranchDelayed(Errored),
@@ -19,8 +20,8 @@ pub enum MempoolValidatorValidateResult {
 }
 
 impl MempoolValidatorValidateResult {
-    pub fn is_applied(&self) -> bool {
-        matches!(self, Self::Applied(_))
+    pub fn is_validated(&self) -> bool {
+        matches!(self, Self::Applied(_) | Self::Prechecked(_))
     }
 }
 

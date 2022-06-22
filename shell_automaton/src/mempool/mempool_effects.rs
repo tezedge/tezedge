@@ -85,7 +85,7 @@ where
             store.dispatch(MempoolOperationValidateNextAction {});
         }
         Action::MempoolValidatorValidateSuccess(content) => {
-            if content.result.is_applied() {
+            if content.result.is_validated() {
                 let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
 
                 for address in addresses {
@@ -125,10 +125,14 @@ where
                 };
                 let prot = prevalidator.protocol.to_base58_check();
                 let resp: Vec<_> = match &content.result {
-                    MempoolValidatorValidateResult::Applied(applied) if stream.applied => {
+                    MempoolValidatorValidateResult::Applied(applied)
+                    | MempoolValidatorValidateResult::Prechecked(applied)
+                        if stream.applied =>
+                    {
                         MonitoredOperation::collect_applied([applied], ops, &prot).collect()
                     }
-                    MempoolValidatorValidateResult::Applied(_) => {
+                    MempoolValidatorValidateResult::Applied(_)
+                    | MempoolValidatorValidateResult::Prechecked(_) => {
                         MonitoredOperation::collect_applied([], ops, &prot).collect()
                     }
                     MempoolValidatorValidateResult::Refused(errored) if stream.refused => {
@@ -147,7 +151,13 @@ where
                     MempoolValidatorValidateResult::Outdated(errored) if stream.outdated => {
                         MonitoredOperation::collect_errored([errored], ops, &prot).collect()
                     }
-                    _ => MonitoredOperation::collect_errored([], ops, &prot).collect(),
+                    MempoolValidatorValidateResult::Unparseable(_)
+                    | MempoolValidatorValidateResult::Outdated(_)
+                    | MempoolValidatorValidateResult::BranchDelayed(_)
+                    | MempoolValidatorValidateResult::BranchRefused(_)
+                    | MempoolValidatorValidateResult::Refused(_) => {
+                        MonitoredOperation::collect_errored([], ops, &prot).collect()
+                    }
                 };
                 if resp.is_empty() {
                     return;
