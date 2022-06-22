@@ -203,6 +203,8 @@ steps:
     - cp ./light_node/etc/tezedge/tezedge_drone.config drone-cache/build_files/tezedge/
     - cp ./light_node/etc/drone/nginx/default drone-cache/nginx/default
     # copy test binaries
+    - cp target/release/deps/baker-???????????????? drone-cache/tests
+    - cp target/release/deps/baker_integration-???????????????? drone-cache/tests
     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` drone-cache/tests/rpc_integration_test
     # collect modified python tests stuff
     - mkdir -p drone-cache/python-tests/daemons
@@ -597,16 +599,6 @@ steps:
   commands:
     - cargo test --release --workspace
 
-- name: run-unit-tests-baker
-  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
-  pull: if-not-exists
-  user: root
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cargo test -p baker
-
 # NOTE: right now rocksdb is the default, so the default unit tests run
 # above already includes these tests.
 # - name: run-unit-tests-multibackend-rockdb
@@ -699,6 +691,21 @@ steps:
     cache_key: 'build-{{ .Build.Number }}'
     mount:
       - 'drone-cache' # <- builds a cache from this directory
+
+- name: run-tests-baker
+  image: tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+    LD_LIBRARY_PATH: drone-cache/build_files/ffi
+    PROTOCOL_RUNNER: drone-cache/build_files/protocol-runner
+    SAPLING_PARAMS_DIR: drone-cache/build_files/ffi
+  commands:
+    - ./drone-cache/tests/baker-???????????????? --nocapture
+    - export PATH=$${PATH}:drone-cache/build_files
+    - ./drone-cache/tests/baker_integration-???????????????? progress_10 progress_10_missing_baker --nocapture
 
 depends_on:
   - build-tezedge-binaries

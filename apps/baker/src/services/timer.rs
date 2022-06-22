@@ -13,7 +13,7 @@ pub struct Timer {
 }
 
 impl Timer {
-    pub fn spawn(event_sender: mpsc::Sender<BakerAction>) -> Self {
+    pub fn spawn(id: u8, event_sender: mpsc::Sender<(u8, BakerAction)>) -> Self {
         let (task_tx, task_rx) = mpsc::channel::<(tb::Timestamp, i32, i32)>();
         let handle = thread::spawn(move || {
             let mut timeout_duration = None;
@@ -24,10 +24,11 @@ impl Timer {
                     Some((duration, _)) => match task_rx.recv_timeout(duration) {
                         Ok(next) => next,
                         Err(mpsc::RecvTimeoutError::Timeout) => {
-                            let _ = event_sender.send(BakerAction::TickEvent(TickEventAction {
+                            let act = BakerAction::TickEvent(TickEventAction {
                                 scheduled_at_level,
                                 scheduled_at_round,
-                            }));
+                            });
+                            let _ = event_sender.send((id, act));
                             continue;
                         }
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -45,10 +46,11 @@ impl Timer {
                     scheduled_at_level = l;
                     scheduled_at_round = r;
                 } else if l >= scheduled_at_level {
-                    let _ = event_sender.send(BakerAction::TickEvent(TickEventAction {
+                    let act = BakerAction::TickEvent(TickEventAction {
                         scheduled_at_level: l,
                         scheduled_at_round: r,
-                    }));
+                    });
+                    let _ = event_sender.send((id, act));
                 } else if next.unix_epoch > now {
                     // next timeout remains the same still the same
                     let next = timeout_duration.map(|(_, t)| t).unwrap_or(next);
@@ -98,7 +100,7 @@ mod tests {
 
     fn new_timer_and_collector() -> (Timer, tb::Timestamp, thread::JoinHandle<Vec<BakerAction>>) {
         let (tx, rx) = mpsc::channel();
-        let timer = Timer::spawn(tx);
+        let timer = Timer::spawn(0, tx);
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("the unix epoch has begun");
@@ -106,7 +108,7 @@ mod tests {
 
         let collector = thread::spawn(move || {
             let mut actions = vec![];
-            while let Ok(action) = rx.recv() {
+            while let Ok((_, action)) = rx.recv() {
                 actions.push(action);
             }
             actions

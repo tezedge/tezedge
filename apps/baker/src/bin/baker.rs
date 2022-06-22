@@ -29,7 +29,7 @@ pub struct Arguments {
     endpoint: Url,
     #[structopt(short, long)]
     archive: bool,
-    #[structopt(long, default_value = "i")]
+    #[structopt(long, default_value = "j")]
     protocol: Protocol,
     #[structopt(long, default_value = "off")]
     liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
@@ -67,12 +67,14 @@ fn main() {
             Err(_) => std::thread::sleep(std::time::Duration::from_millis(200)),
         }
     };
+    slog::info!(srv.log, "chain_id: {chain_id}");
     loop {
         match srv.client.wait_bootstrapped() {
             Ok(_) => break,
             Err(_) => std::thread::sleep(std::time::Duration::from_millis(200)),
         }
     }
+    slog::info!(srv.log, "bootstrapped");
     let constants = loop {
         match srv.client.get_constants() {
             Ok(v) => break v,

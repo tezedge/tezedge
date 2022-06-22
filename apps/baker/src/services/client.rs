@@ -43,7 +43,8 @@ use crate::machine::{BakerAction, OperationsEventAction, ProposalEventAction, Rp
 
 #[derive(Clone)]
 pub struct RpcClient {
-    tx: mpsc::Sender<BakerAction>,
+    id: u8,
+    tx: mpsc::Sender<(u8, BakerAction)>,
     endpoint: Url,
     inner: Client,
 }
@@ -481,6 +482,7 @@ impl ProtocolHeader for ProtocolBlockHeaderJ {
     }
 }
 
+#[derive(Clone)]
 pub struct Constants {
     pub nonce_length: usize,
     pub blocks_per_cycle: u32,
@@ -492,8 +494,9 @@ pub struct Constants {
 }
 
 impl RpcClient {
-    pub fn new(endpoint: Url, tx: mpsc::Sender<BakerAction>) -> Self {
+    pub fn new(endpoint: Url, id: u8, tx: mpsc::Sender<(u8, BakerAction)>) -> Self {
         RpcClient {
+            id,
             tx,
             endpoint,
             inner: ClientBuilder::new()
@@ -894,6 +897,7 @@ impl RpcClient {
         let url = url.clone();
         let response = request.send()?;
         let tx = self.tx.clone();
+        let id = self.id;
         let handle = thread::spawn(move || {
             let status = response.status();
 
@@ -915,7 +919,7 @@ impl RpcClient {
                             error: err.to_string(),
                         }),
                     };
-                    let _ = tx.send(action);
+                    let _ = tx.send((id, action));
                 }
             } else {
                 let status = response.status();
@@ -923,9 +927,10 @@ impl RpcClient {
                 match read_error(&mut response, status) {
                     Ok(()) => unreachable!(),
                     Err(inner) => {
-                        let _ = tx.send(BakerAction::RpcError(RpcErrorAction {
+                        let act = BakerAction::RpcError(RpcErrorAction {
                             error: RpcError::WithContext { url, inner }.to_string(),
-                        }));
+                        });
+                        let _ = tx.send((id, act));
                     }
                 }
             }
