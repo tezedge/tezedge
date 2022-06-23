@@ -54,17 +54,41 @@ fn should_preendorse(state: &State, baker: &BakerState) -> Option<bool> {
     is_payload_outdated(state, baker).map(|v| !v && can_accept_payload)
 }
 
+fn should_start(state: &State, baker: &BakerState) -> bool {
+    fn _should_start(state: &State, baker: &BakerState) -> Option<bool> {
+        if !baker.persisted.is_rehydrated() {
+            return Some(false);
+        }
+        match &baker.block_endorser {
+            BakerBlockEndorserState::Idle { .. }
+            | BakerBlockEndorserState::EndorsementInjectSuccess { .. } => {}
+            _ => return Some(false),
+        }
+        let persisted = baker.persisted.current_state()?;
+        let head = state.current_head.get()?;
+        let last_endorsement = match persisted.last_endorsement {
+            Some(v) => v.operation.operation(),
+            None => return Some(true),
+        };
+
+        let head_level = head.header.level();
+        let head_round = head.header.fitness().round()?;
+        Some(
+            last_endorsement.level < head_level
+                || (last_endorsement.level == head_level && last_endorsement.round < head_round),
+        )
+    }
+    _should_start(state, baker).unwrap_or(false)
+}
+
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockEndorserRightsGetInitAction {}
 
 impl EnablingCondition<State> for BakerBlockEndorserRightsGetInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        let is_any_rehydrated_and_idle = state
-            .bakers
-            .iter()
-            .any(|(_, b)| b.persisted.is_rehydrated() && b.block_baker.is_idle());
-        is_any_rehydrated_and_idle && state.is_bootstrapped()
+        let is_ready = state.bakers.iter().any(|(_, b)| should_start(state, b));
+        is_ready && state.is_bootstrapped()
     }
 }
 
@@ -76,9 +100,10 @@ pub struct BakerBlockEndorserRightsGetPendingAction {
 
 impl EnablingCondition<State> for BakerBlockEndorserRightsGetPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state.bakers.get(&self.baker).map_or(false, |baker| {
-            baker.persisted.is_rehydrated() && baker.block_endorser.is_idle()
-        })
+        state
+            .bakers
+            .get(&self.baker)
+            .map_or(false, |baker| should_start(state, baker))
     }
 }
 

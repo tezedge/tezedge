@@ -395,6 +395,9 @@ where
                 baker: content.baker.clone(),
             });
         }
+        Action::BakerBlockBakerInjectSuccess(_) => {
+            store.dispatch(BakerBlockBakerRightsGetInitAction {});
+        }
         Action::ProtocolRunnerResponse(content) => match &content.result {
             ProtocolRunnerResult::PreapplyBlock((token, result)) => {
                 let bakers_iter = store.state().bakers.iter();

@@ -397,7 +397,9 @@ where
                 _ => {}
             };
         }
-
+        Action::BakerBlockEndorserEndorsementInjectSuccess(_) => {
+            store.dispatch(BakerBlockEndorserRightsGetInitAction {});
+        }
         _ => {}
     }
 }

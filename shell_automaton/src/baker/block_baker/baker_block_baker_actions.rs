@@ -9,11 +9,33 @@ use tezos_encoding::types::SizedBytes;
 use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::operations_for_blocks::Path;
 
+use crate::baker::BakerState;
 use crate::protocol_runner::ProtocolRunnerToken;
 use crate::request::RequestId;
 use crate::{EnablingCondition, State};
 
 use super::{BakerBlockBakerState, BlockPreapplyRequest, BlockPreapplyResponse};
+
+fn should_start(state: &State, baker: &BakerState) -> bool {
+    fn _should_start(state: &State, baker: &BakerState) -> Option<bool> {
+        if !baker.persisted.is_rehydrated() {
+            return Some(false);
+        }
+        match &baker.block_baker {
+            BakerBlockBakerState::Idle { .. } | BakerBlockBakerState::InjectSuccess { .. } => {}
+            _ => return Some(false),
+        }
+        let persisted = baker.persisted.current_state()?;
+        let head = state.current_head.get()?;
+        let last_baked_block = match persisted.last_baked_block {
+            Some(v) => v,
+            None => return Some(true),
+        };
+
+        Some(last_baked_block.header.fitness() <= head.header.fitness())
+    }
+    _should_start(state, baker).unwrap_or(false)
+}
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -21,11 +43,8 @@ pub struct BakerBlockBakerRightsGetInitAction {}
 
 impl EnablingCondition<State> for BakerBlockBakerRightsGetInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        let is_any_rehydrated_and_idle = state
-            .bakers
-            .iter()
-            .any(|(_, b)| b.persisted.is_rehydrated() && b.block_baker.is_idle());
-        is_any_rehydrated_and_idle && state.is_bootstrapped()
+        let is_ready = state.bakers.iter().any(|(_, b)| should_start(state, b));
+        is_ready && state.is_bootstrapped()
     }
 }
 
@@ -37,9 +56,10 @@ pub struct BakerBlockBakerRightsGetPendingAction {
 
 impl EnablingCondition<State> for BakerBlockBakerRightsGetPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state.bakers.get(&self.baker).map_or(false, |baker| {
-            baker.persisted.is_rehydrated() && baker.block_baker.is_idle()
-        })
+        state
+            .bakers
+            .get(&self.baker)
+            .map_or(false, |baker| should_start(state, baker))
     }
 }
 
