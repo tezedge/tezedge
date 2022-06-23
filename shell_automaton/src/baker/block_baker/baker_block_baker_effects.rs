@@ -432,9 +432,10 @@ where
                             response: response.clone(),
                         });
                     }
-                    Err(_) => {
-                        // TODO(zura)
-                        return;
+                    Err(err) => {
+                        slog::warn!(&store.state().log, "Failed to preapply baked block";
+                            "baker" => baker.to_base58_check(),
+                            "error" => format!("{:?}", err));
                     }
                 }
             }
@@ -461,8 +462,10 @@ where
                             operations_paths: resp.operations_hashes_path.clone(),
                         });
                     }
-                    Err(_) => {
-                        todo!();
+                    Err(err) => {
+                        slog::warn!(&store.state().log, "Failed to compute operation paths for baked block";
+                            "baker" => baker.to_base58_check(),
+                            "error" => format!("{:?}", err));
                     }
                 }
             }

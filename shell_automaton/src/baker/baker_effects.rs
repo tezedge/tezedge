@@ -66,7 +66,11 @@ where
                                     signature,
                                 });
                             }
-                            Err(err) => todo!("PreendorsementSignError: {:?}", err),
+                            Err(err) => {
+                                slog::warn!(&store.state().log, "Failed to sign preendorsement";
+                                    "baker" => baker.to_base58_check(),
+                                    "error" => format!("{:?}", err));
+                            }
                         }
                     }
                     BakerWorkerMessage::EndorsementSign(result) => {
@@ -89,7 +93,11 @@ where
                                     signature,
                                 });
                             }
-                            Err(err) => todo!("EndorsementSignError: {:?}", err),
+                            Err(err) => {
+                                slog::warn!(&store.state().log, "Failed to sign endorsement";
+                                    "baker" => baker.to_base58_check(),
+                                    "error" => format!("{:?}", err));
+                            }
                         }
                     }
                     BakerWorkerMessage::BlockSign(result) => {
@@ -112,7 +120,11 @@ where
                                     signature,
                                 });
                             }
-                            Err(err) => todo!("BlockSignError: {:?}", err),
+                            Err(err) => {
+                                slog::warn!(&store.state().log, "Failed to sign block";
+                                    "baker" => baker.to_base58_check(),
+                                    "error" => format!("{:?}", err));
+                            }
                         }
                     }
                     BakerWorkerMessage::StateRehydrate(result) => {
@@ -135,7 +147,11 @@ where
                                     result,
                                 });
                             }
-                            Err(err) => todo!("StateRehydrateError: {:?}", err),
+                            Err(err) => {
+                                slog::warn!(&store.state().log, "Failed to rehydrate baker state";
+                                    "baker" => baker.to_base58_check(),
+                                    "error" => format!("{:?}", err));
+                            }
                         }
                     }
                     BakerWorkerMessage::StatePersist(result) => {
@@ -155,7 +171,11 @@ where
                             Ok(_) => {
                                 store.dispatch(BakerPersistedPersistSuccessAction { baker });
                             }
-                            Err(err) => todo!("StatePersistError: {:?}", err),
+                            Err(err) => {
+                                slog::warn!(&store.state().log, "Failed to persist baker state";
+                                    "baker" => baker.to_base58_check(),
+                                    "error" => format!("{:?}", err));
+                            }
                         }
                     }
                 }

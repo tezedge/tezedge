@@ -176,7 +176,7 @@ impl BakerBlockEndorserState {
     }
 
     pub fn first_slot(&self) -> Option<u16> {
-        // TODO(zura)
+        // TODO: should be exhaustive.
         match self {
             Self::RightsGetSuccess { first_slot, .. }
             | Self::PayloadOutdated { first_slot, .. }

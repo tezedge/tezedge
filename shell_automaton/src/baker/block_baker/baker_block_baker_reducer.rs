@@ -65,13 +65,7 @@ fn set_elected_block_operations(baker: &mut BakerState, mempool: &MempoolState) 
                     | OperationKind::DoublePreendorsementEvidence
                     | OperationKind::DoubleEndorsementEvidence
                     | OperationKind::DoubleBakingEvidence
-                    | OperationKind::ActivateAccount => {
-                        // TODO(zura): do we need it???
-                        // if op.signature.is_none() {
-                        //     op.signature = Some(Signature(vec![0; 64]));
-                        // }
-                        &mut r[2]
-                    }
+                    | OperationKind::ActivateAccount => &mut r[2],
                     OperationKind::Reveal
                     | OperationKind::Transaction
                     | OperationKind::Origination
