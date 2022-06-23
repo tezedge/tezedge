@@ -8,7 +8,7 @@ use crypto::{
     PublicKeyWithHash,
 };
 use slog::Logger;
-use tezos_messages::{p2p::encoding::block_header::Level, protocol::SupportedProtocol};
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::{rights::Validators, Action, ActionWithMeta, State};
 
@@ -22,12 +22,10 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
     // let PrecheckerState {
     //     cached_operations,
     //     operations,
-    //     proto_cache,
     //     ..
     // } = &mut state.prechecker;
     let operations = &mut state.prechecker.operations;
     let cached_operations = &mut state.prechecker.cached_operations;
-    let proto_cache = &mut state.prechecker.proto_cache;
     //let rights = &mut state.prechecker.rights;
     let rights = &mut state.rights;
     match &action.action {
@@ -70,7 +68,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             hash,
             proto,
         }) => {
-            let protocol = if let Some(p) = proto_cache.get(proto) {
+            let protocol = if let Some(p) = state.current_head.protocol_from_id(*proto) {
                 p
             } else {
                 slog::error!(state.log, "Undefined protocol for proto `{proto}`");
@@ -81,10 +79,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
 
             operations.insert(
                 hash.clone(),
-                Ok(PrecheckerOperation::new(
-                    operation.clone(),
-                    protocol.clone(),
-                )),
+                Ok(PrecheckerOperation::new(operation.clone(), protocol)),
             );
         }
 
@@ -277,21 +272,6 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
 
-        Action::PrecheckerCacheProtocol(PrecheckerCacheProtocolAction {
-            proto,
-            protocol_hash,
-        }) => match SupportedProtocol::try_from(protocol_hash) {
-            Ok(protocol) => {
-                proto_cache.insert(*proto, protocol);
-            }
-            Err(err) => {
-                slog::error!(
-                    state.log,
-                    "Failed to cache supported protocol `{proto}`: `{err}`"
-                );
-            }
-        },
-
         Action::PrecheckerPruneOperation(PrecheckerPruneOperationAction { hash }) => {
             operations.remove(hash);
         }
@@ -362,8 +342,8 @@ fn validate_tenderbake_consensus_operation_contents<'a>(
     actual: &'a TenderbakeConsensusContents,
     actual_branch: &'a BlockHash,
 ) -> Result<(), TenderbakeConsensusResult<'a>> {
-    let expected = endorsement_branch
-        .ok_or_else(|| TenderbakeConsensusResult::LevelInFuture(-1, actual.level))?;
+    let expected =
+        endorsement_branch.ok_or(TenderbakeConsensusResult::LevelInFuture(-1, actual.level))?;
 
     match actual.level.cmp(&expected.level) {
         Ordering::Less => {
@@ -424,13 +404,13 @@ fn validate_tenderbake_consensus_operation_signature(
 ) -> Result<(), ConsensusOperationError> {
     let TenderbakeConsensusContents { slot, .. } = consensus_contents;
 
-    let delegate = if let Some(d) = tenderbake_validators.validators.get(*slot as usize) {
+    let delegate = if let Some(d) = tenderbake_validators.validators_by_pk.get(*slot as usize) {
         d
     } else {
         return Err(ConsensusOperationError::IncorrectSlot(*slot));
     };
     if tenderbake_validators
-        .slots
+        .slots_by_pk
         .get(delegate)
         .and_then(|slots| slots.first())
         != Some(slot)

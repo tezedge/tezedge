@@ -3,14 +3,17 @@
 
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::time::{Duration, SystemTime};
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 
 use ::storage::persistent::SchemaError;
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
+use crate::baker::BakerState;
 use crate::block_applier::BlockApplierState;
 use crate::bootstrap::BootstrapState;
 use crate::config::Config;
@@ -85,6 +88,8 @@ pub struct State {
     pub last_action: ActionIdWithKind,
     pub applied_actions_count: u64,
 
+    pub bakers: BTreeMap<SignaturePublicKeyHash, BakerState>,
+
     pub shutdown: ShutdownState,
 }
 
@@ -95,6 +100,16 @@ impl State {
 
     pub fn new(config: Config) -> Self {
         let block_applier = BlockApplierState::new(&config);
+        let bakers = config
+            .bakers
+            .iter()
+            .map(|baker| {
+                (
+                    baker.pkh.clone(),
+                    BakerState::new(baker.liquidity_baking_escape_vote),
+                )
+            })
+            .collect();
         Self {
             log: Default::default(),
             config,
@@ -127,6 +142,8 @@ impl State {
                 kind: ActionKind::Init,
             },
             applied_actions_count: 0,
+
+            bakers,
 
             shutdown: ShutdownState::new(),
         }
@@ -212,8 +229,8 @@ impl State {
             .peers
             .handshaked_iter()
             .filter_map(|(_, peer)| peer.current_head.as_ref())
-            .map(|current_head| (current_head_timestamp - current_head.header.timestamp()).i64())
-            .filter(|latency: &i64| latency.saturating_abs() < SYNC_LATENCY)
+            .map(|peer_head| (peer_head.header.timestamp() - current_head_timestamp).i64())
+            .filter(|latency| *latency < SYNC_LATENCY)
             .count();
 
         bootstrapped_peers_len >= self.config.peers_bootstrapped_min
@@ -279,6 +296,10 @@ impl State {
     /// If shutdown was initiated and finished or not.
     pub fn is_shutdown(&self) -> bool {
         matches!(self.shutdown, ShutdownState::Success { .. })
+    }
+
+    pub fn baker_keys_iter<'a>(&'a self) -> impl 'a + Iterator<Item = &'a SignaturePublicKeyHash> {
+        self.bakers.iter().map(|(key, _)| key)
     }
 }
 

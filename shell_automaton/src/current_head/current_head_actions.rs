@@ -1,20 +1,25 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{
-    BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash, ProtocolHash,
+    BlockHash, BlockMetadataHash, BlockPayloadHash, OperationMetadataListListHash, ProtocolHash,
 };
 use storage::BlockHeaderWithHash;
+use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::encoding::operation::Operation;
+use tezos_messages::protocol::SupportedProtocol;
 
 use crate::protocol_runner::ProtocolRunnerState;
 use crate::request::RequestId;
-use crate::service::storage_service::StorageError;
+use crate::service::storage_service::{BlockCycleInfo, StorageError};
 use crate::storage::blocks::genesis::init::StorageBlocksGenesisInitState;
 use crate::{EnablingCondition, State};
 
-use super::CurrentHeadState;
+use super::{CurrentHeadState, ProtocolConstants};
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -72,6 +77,16 @@ pub struct CurrentHeadRehydrateSuccessAction {
 
     pub block_metadata_hash: Option<BlockMetadataHash>,
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
+
+    pub pred_block_metadata_hash: Option<BlockMetadataHash>,
+    pub pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
+
+    pub cycle: Option<BlockCycleInfo>,
+
+    pub operations: Vec<Vec<Operation>>,
+    pub constants: Option<ProtocolConstants>,
+    pub cemented_live_blocks: BTreeMap<BlockHash, Level>,
+    pub proto_cache: BTreeMap<u8, SupportedProtocol>,
 }
 
 impl EnablingCondition<State> for CurrentHeadRehydrateSuccessAction {
@@ -105,10 +120,20 @@ pub struct CurrentHeadUpdateAction {
     pub payload_hash: Option<BlockPayloadHash>,
     pub block_metadata_hash: Option<BlockMetadataHash>,
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
+    pub pred_block_metadata_hash: Option<BlockMetadataHash>,
+    pub pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
+    pub cycle: Option<BlockCycleInfo>,
+    pub operations: Vec<Vec<Operation>>,
+    pub new_constants: Option<ProtocolConstants>,
 }
 
 impl EnablingCondition<State> for CurrentHeadUpdateAction {
     fn is_enabled(&self, state: &State) -> bool {
-        matches!(&state.current_head, CurrentHeadState::Rehydrated { .. })
+        match &state.current_head {
+            CurrentHeadState::Rehydrated { head, .. } => {
+                self.new_head.header.fitness().gt(head.header.fitness())
+            }
+            _ => false,
+        }
     }
 }

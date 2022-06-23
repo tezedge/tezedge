@@ -10,13 +10,19 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
 use tezos_api::ffi::{ErrorListJson, Errored, OperationClassification, Validated};
-use tezos_messages::p2p::encoding::{
-    block_header::{BlockHeader, Level},
-    operation::Operation,
+use tezos_messages::{
+    base::signature_public_key::SignaturePublicKeyHash,
+    p2p::encoding::{
+        block_header::{BlockHeader, Level},
+        operation::Operation,
+    },
 };
 
 use crate::{
-    prechecker::OperationDecodedContents, rights::Slot, service::rpc_service::RpcId, ActionWithMeta,
+    prechecker::OperationDecodedContents,
+    rights::{EndorsingPower, Slot},
+    service::rpc_service::RpcId,
+    ActionWithMeta,
 };
 
 use super::{map_with_timestamps::BTreeMapWithTimestamps, validator::MempoolValidatorState};
@@ -57,15 +63,13 @@ pub struct MempoolState {
     // TODO operation_json: BTreeMap<OperationHash, OperationJson>
     // Unparseable operations
     pub unparseable_operations: BTreeSet<OperationHash>,
-    // track ttl
-    pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
-
-    /// Last 120 (TTL) predecessor blocks.
-    pub last_predecessor_blocks: BTreeMap<BlockHash, i32>,
 
     pub operation_stats: OperationsStats,
 
     pub operations_state: BTreeMap<OperationHash, MempoolOperation>,
+
+    pub prequorum: QuorumState,
+    pub quorum: QuorumState,
 }
 
 impl MempoolState {
@@ -228,6 +232,17 @@ impl ValidatedOperations {
         Self::enforce_max_refused_operations_helper(&mut self.refused, &mut self.ops);
         Self::enforce_max_refused_operations_helper(&mut self.outdated, &mut self.ops);
     }
+
+    pub fn collect_preendorsements(&self) -> Vec<Operation> {
+        self.applied
+            .iter()
+            .filter_map(|op| self.ops.get(&op.hash))
+            .filter(|op| {
+                OperationKind::from_operation_content_raw(op.data().as_ref()).is_preendorsement()
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -244,6 +259,8 @@ pub type OperationsStats = BTreeMap<OperationHash, OperationStats>;
 pub struct OperationStats {
     /// First time we saw this operation in the current head.
     pub kind: Option<OperationKind>,
+    /// Current head's block level when we saw this operation.
+    pub level: Level,
     pub min_time: Option<u64>,
     pub first_block_timestamp: Option<u64>,
     pub validation_started: Option<u64>,
@@ -256,8 +273,11 @@ pub struct OperationStats {
 }
 
 impl OperationStats {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(level: Level) -> Self {
+        Self {
+            level,
+            ..Default::default()
+        }
     }
 
     /// Sets operation kind if not already set.
@@ -573,7 +593,7 @@ pub enum OperationKind {
 impl OperationKind {
     pub fn from_operation_content_raw(bytes: &[u8]) -> Self {
         bytes
-            .get(0)
+            .first()
             .map_or(Self::Unknown, |tag| Self::from_tag(*tag))
     }
 
@@ -621,6 +641,10 @@ impl OperationKind {
             111 => Self::RegisterGlobalConstant,
             _ => Self::Unknown,
         }
+    }
+
+    pub fn is_preendorsement(&self) -> bool {
+        matches!(self, Self::Preendorsement)
     }
 
     pub fn is_consensus_operation(&self) -> bool {
@@ -746,5 +770,55 @@ pub enum OperationState {
 impl OperationState {
     fn time_name(&self) -> String {
         self.to_string() + "_time"
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct QuorumState {
+    pub threshold: u16,
+    pub delegates: BTreeMap<SignaturePublicKeyHash, EndorsingPower>,
+    pub total: EndorsingPower,
+    pub notified: bool,
+}
+
+impl QuorumState {
+    /// Whether or not quorum is reached.
+    ///
+    /// TODO(zura): at the moment quorum constant is hardcoded here,
+    /// read from context storage instead.
+    pub fn is_reached(&self) -> bool {
+        // TODO(zura): check if it should be strictly greater or greater
+        // or equal.
+        self.total > self.threshold
+    }
+
+    pub fn reset(&mut self, new_threshold: Option<u16>) {
+        if let Some(threshold) = new_threshold {
+            self.threshold = threshold;
+        }
+        self.delegates.clear();
+        self.total = 0;
+        self.notified = false;
+    }
+
+    pub fn add(&mut self, delegate: SignaturePublicKeyHash, endorsing_power: EndorsingPower) {
+        if self.delegates.insert(delegate, endorsing_power).is_none() {
+            self.total += endorsing_power;
+        }
+    }
+
+    pub fn set_notified(&mut self) {
+        self.notified = true;
+    }
+}
+
+impl Default for QuorumState {
+    fn default() -> Self {
+        Self {
+            threshold: 4667,
+            delegates: Default::default(),
+            total: Default::default(),
+            notified: false,
+        }
     }
 }

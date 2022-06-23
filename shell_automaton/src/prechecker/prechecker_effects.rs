@@ -64,7 +64,8 @@ where
                     store.dispatch(PrecheckerCategorizeOperationAction::from(&action.hash));
                 }
                 Some(Err(_)) => {
-                    store.dispatch(PrecheckerErrorAction::from(&action.hash));
+                    store.dispatch(PrecheckerProtocolNeededAction::from(&action.hash));
+                    // store.dispatch(PrecheckerErrorAction::from(&action.hash));
                     store.dispatch(PrecheckerPruneOperationAction::from(&action.hash));
                 }
                 _ => {}
@@ -151,9 +152,9 @@ where
         }
 
         Action::PrecheckerCurrentHeadUpdate(PrecheckerCurrentHeadUpdateAction {
-            protocol,
             payload_hash,
             head,
+            ..
         }) => {
             if !store.state().is_bootstrapped() {
                 return;
@@ -174,16 +175,10 @@ where
             } else {
                 None
             };
-            store.dispatch(PrecheckerCacheProtocolAction {
-                proto: head.header.proto(),
-                protocol_hash: protocol.clone(),
+            store.dispatch(PrecheckerStoreEndorsementBranchAction { endorsement_branch });
+            store.dispatch(RightsGetAction {
+                key: RightsKey::endorsing(block_hash, Some(level + 1)),
             });
-            if !store.state.get().config.disable_endorsements_precheck {
-                store.dispatch(PrecheckerStoreEndorsementBranchAction { endorsement_branch });
-                store.dispatch(RightsGetAction {
-                    key: RightsKey::endorsing(block_hash, Some(level + 1)),
-                });
-            }
         }
 
         _ => (),

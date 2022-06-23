@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::current_head::CurrentHeadUpdateAction;
 use crate::service::protocol_runner_service::ProtocolRunnerResult;
 use crate::service::storage_service::{
-    StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
+    BlockCycleInfo, StorageRequestPayload, StorageResponseError, StorageResponseSuccess,
 };
 use crate::service::{ActorsService, ProtocolRunnerService, RpcService};
 use crate::storage::request::{StorageRequestCreateAction, StorageRequestor};
@@ -223,6 +223,10 @@ where
                     injector_rpc_id,
                     block_additional_data,
                     payload_hash,
+                    pred_block_metadata_hash,
+                    pred_ops_metadata_hash,
+                    block_operations,
+                    apply_result,
                     ..
                 } => {
                     let chain_id = store.state().config.chain_id.clone();
@@ -243,6 +247,28 @@ where
                     let next_protocol = block_additional_data.next_protocol_hash.clone();
                     let block_metadata_hash = block_additional_data.block_metadata_hash().clone();
                     let ops_metadata_hash = block_additional_data.ops_metadata_hash().clone();
+                    let pred_block_metadata_hash = pred_block_metadata_hash.clone();
+                    let pred_ops_metadata_hash = pred_ops_metadata_hash.clone();
+                    let cycle = apply_result
+                        .cycle
+                        .and_then(|cycle| apply_result.cycle_position.map(|pos| (cycle, pos)))
+                        .map(|(cycle, position)| BlockCycleInfo { cycle, position });
+                    let operations = block_operations.clone();
+                    let new_constants =
+                        apply_result
+                            .new_protocol_constants_json
+                            .as_ref()
+                            .and_then(|json| {
+                                serde_json::from_str(json)
+                                .map_err(|e| {
+                                    slog::warn!(store.state().log, "error parsing constants JSON";
+                                        "error" => e.to_string(),
+                                        "constants" => json,
+                                    );
+                                    e
+                                })
+                                .ok()
+                            });
                     store.dispatch(CurrentHeadUpdateAction {
                         new_head,
                         protocol,
@@ -250,6 +276,11 @@ where
                         payload_hash,
                         block_metadata_hash,
                         ops_metadata_hash,
+                        pred_block_metadata_hash,
+                        pred_ops_metadata_hash,
+                        cycle,
+                        operations,
+                        new_constants,
                     });
                 }
                 _ => return,

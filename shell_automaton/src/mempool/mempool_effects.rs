@@ -29,7 +29,7 @@ use crate::{
         },
         PrecheckerResultKind,
     },
-    rights::Slot,
+    rights::{rights_actions::RightsGetAction, RightsKey, Slot},
     service::{RandomnessService, RpcService},
     Action, ActionWithMeta, Service, State,
 };
@@ -53,8 +53,10 @@ where
     if store.state().config.disable_mempool {
         match &action.action {
             Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, .. }) => {
-                let json = serde_json::Value::String("disabled".to_string());
-                store.service().rpc().respond(*rpc_id, json);
+                if let Some(rpc_id) = rpc_id.as_ref() {
+                    let json = serde_json::Value::String("disabled".to_string());
+                    store.service().rpc().respond(*rpc_id, json);
+                }
             }
             Action::MempoolGetPendingOperations(MempoolGetPendingOperationsAction { rpc_id }) => {
                 store
@@ -86,6 +88,9 @@ where
         }
         Action::MempoolValidatorValidateSuccess(content) => {
             if content.result.is_validated() {
+                store.dispatch(MempoolPrequorumReachedAction {});
+                store.dispatch(MempoolQuorumReachedAction {});
+
                 let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
 
                 for address in addresses {
@@ -258,6 +263,14 @@ where
         }
         Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
             if store.state().mempool.running_since.is_some() {
+                let head_hash = match store.state().current_head.hash() {
+                    Some(v) => v.clone(),
+                    None => return,
+                };
+                // Needed for calculating (pre)quorum.
+                store.dispatch(RightsGetAction {
+                    key: RightsKey::endorsing(head_hash, None),
+                });
                 store.dispatch(MempoolBroadcastAction {
                     send_operations: false,
                 });
@@ -383,6 +396,9 @@ where
             store.dispatch(MempoolOperationValidateNextAction {});
         }
         Action::PrecheckerOperationValidated(action) => {
+            store.dispatch(MempoolPrequorumReachedAction {});
+            store.dispatch(MempoolQuorumReachedAction {});
+
             if let Some(result) = store.state.get().prechecker.result(&action.hash) {
                 let kind = result.kind();
                 let is_applied = matches!(kind, PrecheckerResultKind::Applied { .. });
@@ -636,6 +652,10 @@ where
         }
         Action::MempoolRequestFullContent(MempoolRequestFullContentAction { address, .. }) => {
             store.dispatch(MempoolGetOperationsAction { address: *address });
+        }
+        Action::RightsValidatorsReady(_) => {
+            store.dispatch(MempoolPrequorumReachedAction {});
+            store.dispatch(MempoolQuorumReachedAction {});
         }
         _ => (),
     }

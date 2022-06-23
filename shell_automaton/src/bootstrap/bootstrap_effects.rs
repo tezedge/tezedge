@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crypto::hash::BlockHash;
 use networking::network_channel::{AllBlockOperationsReceived, BlockReceived};
 use tezos_messages::p2p::encoding::block_header::GetBlockHeadersMessage;
+use tezos_messages::p2p::encoding::current_head::GetCurrentHeadMessage;
 use tezos_messages::p2p::encoding::operations_for_blocks::{
     GetOperationsForBlocksMessage, OperationsForBlock,
 };
@@ -64,6 +65,11 @@ where
             store.dispatch(PeerMessageWriteInitAction {
                 address: content.address,
                 message: Arc::new(PeerMessage::GetCurrentBranch(message).into()),
+            });
+            let message = GetCurrentHeadMessage::new(store.state().config.chain_id.clone());
+            store.dispatch(PeerMessageWriteInitAction {
+                address: content.address,
+                message: Arc::new(PeerMessage::GetCurrentHead(message).into()),
             });
 
             if let BootstrapState::PeersBlockOperationsGetPending { pending, .. } =
@@ -314,7 +320,7 @@ where
             store.dispatch(BootstrapPeersBlockOperationsGetNextAllAction {});
             store.dispatch(BootstrapPeersBlockOperationsGetSuccessAction {});
         }
-        Action::CurrentHeadUpdate(_) => {
+        Action::BlockApplierApplySuccess(_) | Action::CurrentHeadUpdate(_) => {
             if store.state().bootstrap.is_finished() {
                 restart_bootstrap(store);
             } else {

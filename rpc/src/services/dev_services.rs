@@ -9,7 +9,7 @@
 use crypto::hash::{BlockPayloadHash, ContractKt1Hash, OperationHash};
 use serde::{Deserialize, Serialize};
 use shell_automaton::mempool::{OperationKind, OperationValidationResult};
-use shell_automaton::service::rpc_service::RpcShellAutomatonActionsRaw;
+use shell_automaton::service::rpc_service::{BakingState, RpcShellAutomatonActionsRaw};
 use shell_automaton::service::statistics_service::ActionKindStatsForBlock;
 use shell_automaton::{Action, ActionWithMeta};
 use slog::Logger;
@@ -1136,6 +1136,18 @@ fn map_operations_stats(
             (op_hash.to_base58_check(), op_stats)
         })
         .collect()
+}
+
+pub(crate) async fn get_shell_automaton_baking_state(
+    env: &RpcServiceEnvironment,
+) -> Option<BakingState> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetBakingState { channel: tx })
+        .await;
+
+    rx.await.ok()?
 }
 
 // get_best_remote_level

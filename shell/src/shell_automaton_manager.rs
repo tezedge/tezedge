@@ -5,30 +5,36 @@
 
 use std::collections::HashSet;
 use std::env;
+use std::fs::File;
 use std::iter::FromIterator;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
+use serde::Deserialize;
 use slog::{info, warn, Logger};
-use storage::{PersistentStorage, StorageInitInfo};
 
 use networking::network_channel::NetworkChannelRef;
+use storage::{PersistentStorage, StorageInitInfo};
 use tezos_identity::Identity;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_protocol_ipc_client::{ProtocolRunnerApi, ProtocolRunnerConfiguration};
 
+use shell_automaton::baker::block_baker::LiquidityBakingToggleVote;
 pub use shell_automaton::service::actors_service::{
     ActorsMessageFrom as ShellAutomatonMsg, AutomatonSyncSender as ShellAutomatonSender,
 };
 pub use shell_automaton::service::actors_service::{ApplyBlockCallback, ApplyBlockResult};
+use shell_automaton::service::baker_service::BakerSigner;
 use shell_automaton::service::mio_service::MioInternalEventsContainer;
 use shell_automaton::service::rpc_service::RpcShellAutomatonSender;
 use shell_automaton::service::{
-    ActorsServiceDefault, DnsServiceDefault, MioServiceDefault, ProtocolRunnerServiceDefault,
-    RpcServiceDefault, ServiceDefault, StorageServiceDefault,
+    ActorsServiceDefault, BakerServiceDefault, DnsServiceDefault, MioServiceDefault,
+    ProtocolRunnerServiceDefault, RpcServiceDefault, ServiceDefault, StorageServiceDefault,
 };
 use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 use shell_automaton::ShellAutomaton;
@@ -65,6 +71,10 @@ pub struct P2p {
 
     pub record_shell_automaton_state_snapshots: bool,
     pub record_shell_automaton_actions: bool,
+
+    pub baker_data_dir: PathBuf,
+    pub baker_names: Vec<String>,
+    pub liquidity_baking_escape_vote: LiquidityBakingToggleVote,
 }
 
 impl P2p {
@@ -147,6 +157,17 @@ impl ShellAutomatonManager {
             log.new(slog::o!("service" => "protocol_runner")),
         );
 
+        let bakers_cfg = read_bakers_config(&p2p_config.baker_data_dir, &p2p_config.baker_names);
+        let bakers_pkhs = bakers_cfg
+            .iter()
+            .map(|(_, pkh)| pkh.clone())
+            .collect::<Vec<_>>();
+        let mut baker_service =
+            BakerServiceDefault::new(mio_service.waker(), p2p_config.baker_data_dir.clone());
+        for (signer, pkh) in bakers_cfg {
+            baker_service.add_signer(pkh, signer);
+        }
+
         let service = ServiceDefault {
             randomness: StdRng::seed_from_u64(seed),
             dns: DnsServiceDefault::default(),
@@ -155,12 +176,21 @@ impl ShellAutomatonManager {
             storage: storage_service,
             rpc: rpc_service,
             actors: ActorsServiceDefault::new(automaton_receiver, network_channel),
+            baker: baker_service,
             statistics: Some(Default::default()),
         };
 
         let events = MioInternalEventsContainer::with_capacity(1024);
 
         let chain_id = init_storage_data.chain_id.clone();
+
+        let bakers_config = bakers_pkhs
+            .into_iter()
+            .map(|pkh| shell_automaton::config::BakerConfig {
+                pkh,
+                liquidity_baking_escape_vote: p2p_config.liquidity_baking_escape_vote,
+            })
+            .collect();
         let mut initial_state = shell_automaton::State::new(shell_automaton::Config {
             initial_time: SystemTime::now(),
 
@@ -207,17 +237,13 @@ impl ShellAutomatonManager {
             },
             record_actions: p2p_config.record_shell_automaton_actions,
 
-            quota: shell_automaton::Quota {
-                restore_duration_millis: env_variable("QUOTA_RESTORE_DURATION_MILLIS")
-                    .unwrap_or(1000),
-                read_quota: env_variable("QUOTA_READ_BYTES").unwrap_or(3 * 1024 * 1024), // 3MB
-                write_quota: env_variable("QUOTA_WRITE_BYTES").unwrap_or(3 * 1024 * 1024), // 3MB
-            },
             disable_block_precheck: p2p_config.disable_block_precheck,
             disable_endorsements_precheck: p2p_config.disable_endorsements_precheck,
             mempool_get_operation_timeout: Duration::from_millis(
                 env_variable("MEMPOOL_GET_OPERATIONS_TIMEOUT_SECS").unwrap_or(1),
             ),
+
+            bakers: bakers_config,
         });
 
         initial_state.set_logger(log.clone());
@@ -281,4 +307,34 @@ impl ShellAutomatonManager {
 
 fn env_variable<T: FromStr>(name: &str) -> Option<T> {
     env::var(name).ok().and_then(|v| v.parse().ok())
+}
+
+pub fn read_bakers_config(
+    base_dir: &PathBuf,
+    baker_names: &[String],
+) -> Vec<(BakerSigner, SignaturePublicKeyHash)> {
+    #[derive(Deserialize)]
+    struct SecretKeyRecord {
+        name: String,
+        value: String,
+    }
+
+    if baker_names.is_empty() {
+        return vec![];
+    }
+
+    let secret_keys = File::open(base_dir.join("secret_keys")).expect(&format!(
+        "Failed to read baker 'secret_keys' file {:?}",
+        base_dir.join("secret_keys")
+    ));
+    let secret_keys = serde_json::from_reader::<_, Vec<SecretKeyRecord>>(secret_keys)
+        .expect("Failed to parse baker 'secret_keys' file");
+    secret_keys
+        .iter()
+        .filter(|v| baker_names.contains(&v.name))
+        .map(|v| {
+            BakerSigner::parse_config_str(&v.value)
+                .expect("Failed to parse baker's value in 'secret_keys' file")
+        })
+        .collect()
 }

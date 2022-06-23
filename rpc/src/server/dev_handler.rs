@@ -761,6 +761,16 @@ pub async fn dev_shell_automaton_endrosement_stats(
 ) -> ServiceResult {
     make_json_response(&dev_services::get_shell_automaton_endrosement_stats(&env).await?)
 }
+
+pub(crate) async fn dev_shell_automaton_baking_state(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    make_json_response(&dev_services::get_shell_automaton_baking_state(&env).await)
+}
+
 // best_remote_level
 
 pub async fn best_remote_level(

@@ -16,7 +16,7 @@ use tezos_messages::{
     protocol::{
         proto_010, proto_011,
         proto_012::{self, operation::OperationVerifyError},
-        SupportedProtocol, UnsupportedProtocolError,
+        proto_013, SupportedProtocol, UnsupportedProtocolError,
     },
 };
 
@@ -38,7 +38,6 @@ pub struct PrecheckerState {
     pub endorsement_branch: Option<EndorsementBranch>,
     pub operations: HashMap<OperationHash, Result<PrecheckerOperation, PrecheckerError>>,
     pub cached_operations: CachedOperations,
-    pub proto_cache: BTreeMap<u8, SupportedProtocol>,
 }
 
 impl PrecheckerState {
@@ -77,6 +76,12 @@ pub(crate) enum PrecheckerResultKind<'a> {
     Refused(&'a PrecheckerError),
     BranchRefused,
     BranchDelayed,
+}
+
+impl<'a> PrecheckerResultKind<'a> {
+    pub fn is_applied(&self) -> bool {
+        matches!(self, Self::Applied)
+    }
 }
 
 impl<'a> TryFrom<&'a PrecheckerOperation> for PrecheckerResult<'a> {
@@ -162,6 +167,7 @@ impl<'a> PrecheckerResult<'a> {
             Some(OperationDecodedContents::Proto010(_)) => proto_010::PROTOCOL_HASH,
             Some(OperationDecodedContents::Proto011(_)) => proto_011::PROTOCOL_HASH,
             Some(OperationDecodedContents::Proto012(_)) => proto_012::PROTOCOL_HASH,
+            Some(OperationDecodedContents::Proto013(_)) => proto_013::PROTOCOL_HASH,
             None => "<no protocol>",
         }
     }

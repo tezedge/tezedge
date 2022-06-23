@@ -264,7 +264,7 @@ where
                         store.dispatch(RightsProtocolHashReadyAction {
                             key: rights_key.clone(),
                             proto_hash: proto_hash.clone(),
-                            protocol: protocol.clone(),
+                            protocol,
                         });
                     }
                 }
