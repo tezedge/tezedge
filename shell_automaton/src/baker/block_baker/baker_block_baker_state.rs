@@ -274,6 +274,7 @@ impl BuiltBlock {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockPreapplyRequest {
     pub chain_id: ChainId,

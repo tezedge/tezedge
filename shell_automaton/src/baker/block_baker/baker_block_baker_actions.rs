@@ -16,6 +16,9 @@ use crate::{EnablingCondition, State};
 
 use super::{BakerBlockBakerState, BlockPreapplyRequest, BlockPreapplyResponse};
 
+#[cfg(feature = "fuzzing")]
+use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
+
 fn should_start(state: &State, baker: &BakerState) -> bool {
     fn _should_start(state: &State, baker: &BakerState) -> Option<bool> {
         if !baker.persisted.is_rehydrated() {
@@ -402,6 +405,7 @@ impl EnablingCondition<State> for BakerBlockBakerComputeProofOfWorkPendingAction
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerComputeProofOfWorkSuccessAction {
     pub baker: SignaturePublicKeyHash,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<8>))]
     pub proof_of_work_nonce: SizedBytes<8>,
 }
 

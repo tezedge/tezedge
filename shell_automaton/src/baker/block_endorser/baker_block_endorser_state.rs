@@ -11,6 +11,7 @@ use tezos_messages::protocol::proto_012::operation::{
 
 use crate::request::RequestId;
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OperationWithForgedBytes<T> {
     branch: BlockHash,

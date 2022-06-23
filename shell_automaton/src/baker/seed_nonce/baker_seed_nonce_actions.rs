@@ -11,6 +11,8 @@ use crate::baker::block_baker::BakerBlockBakerState;
 use crate::mempool::OperationKind;
 use crate::{EnablingCondition, State};
 
+#[cfg(feature = "fuzzing")]
+use super::SeedNonceMutator;
 use super::{
     BakerSeedNonceState, SeedNonce, SeedNonceHash, SeedNonceRevelationOperationWithForgedBytes,
 };
@@ -20,6 +22,7 @@ use super::{
 pub struct BakerSeedNonceGeneratedAction {
     pub baker: SignaturePublicKeyHash,
     pub level: Level,
+    #[cfg_attr(feature = "fuzzing", field_mutator(SeedNonceMutator))]
     pub nonce: SeedNonce,
     pub nonce_hash: SeedNonceHash,
 }

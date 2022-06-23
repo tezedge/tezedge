@@ -10,17 +10,16 @@ use tezos_encoding::enc::BinWriter;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::operation::Operation;
 
-#[cfg(feature = "fuzzing")]
-use tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator;
-
 pub type SeedNonceHash = crypto::hash::NonceHash;
 pub type SeedNonce = tezos_encoding::types::SizedBytes<32>;
+#[cfg(feature = "fuzzing")]
+pub type SeedNonceMutator = tezos_encoding::fuzzing::sizedbytes::SizedBytesMutator<32>;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SeedNonceRevelationOperationWithForgedBytes {
     level: Level,
-    #[cfg_attr(feature = "fuzzing", field_mutator(SizedBytesMutator<32>))]
+    #[cfg_attr(feature = "fuzzing", field_mutator(SeedNonceMutator))]
     nonce: SeedNonce,
     forged: Vec<u8>,
 }
@@ -53,11 +52,13 @@ impl SeedNonceRevelationOperationWithForgedBytes {
     }
 }
 
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum BakerSeedNonceState {
     Generated {
         time: u64,
         cycle: i32,
+        #[cfg_attr(feature = "fuzzing", field_mutator(SeedNonceMutator))]
         nonce: SeedNonce,
         nonce_hash: SeedNonceHash,
     },
@@ -65,6 +66,7 @@ pub enum BakerSeedNonceState {
     Committed {
         time: u64,
         cycle: i32,
+        #[cfg_attr(feature = "fuzzing", field_mutator(SeedNonceMutator))]
         nonce: SeedNonce,
         nonce_hash: SeedNonceHash,
     },
@@ -74,6 +76,7 @@ pub enum BakerSeedNonceState {
         time: u64,
         /// Next cycle in which we should reveal the seed nonce.
         cycle: i32,
+        #[cfg_attr(feature = "fuzzing", field_mutator(SeedNonceMutator))]
         nonce: SeedNonce,
         nonce_hash: SeedNonceHash,
     },
