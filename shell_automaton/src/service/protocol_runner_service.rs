@@ -667,7 +667,7 @@ pub(super) fn validators_from_rpc_response(res: ProtocolRpcResponse) -> Validato
         .enumerate()
         .map(|(i, d)| {
             d.cloned()
-                .ok_or_else(|| ValidatorsError::MissingDelegate(i as Slot))
+                .ok_or(ValidatorsError::MissingDelegate(i as Slot))
         })
         .collect::<Result<_, _>>()?;
     let slots = rpc_validators

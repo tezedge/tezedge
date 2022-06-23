@@ -195,7 +195,7 @@ impl BakerBlockEndorserState {
             | Self::EndorsementSignSuccess { first_slot, .. }
             | Self::EndorsementInjectPending { first_slot, .. }
             | Self::EndorsementInjectSuccess { first_slot, .. } => Some(*first_slot),
-            _ => return None,
+            _ => None,
         }
     }
 

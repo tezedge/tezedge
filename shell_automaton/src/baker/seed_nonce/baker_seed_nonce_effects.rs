@@ -36,23 +36,23 @@ where
             for (baker, level) in bakers {
                 store.dispatch(BakerSeedNonceRevealInitAction {
                     baker: baker.clone(),
-                    level: level.clone(),
+                    level,
                 });
                 store.dispatch(BakerSeedNonceRevealIncludedAction {
                     baker: baker.clone(),
-                    level: level.clone(),
+                    level,
                 });
                 store.dispatch(BakerSeedNonceRevealSuccessAction {
                     baker: baker.clone(),
-                    level: level.clone(),
+                    level,
                 });
                 store.dispatch(BakerSeedNonceFinishAction {
                     baker: baker.clone(),
-                    level: level.clone(),
+                    level,
                 });
                 store.dispatch(BakerSeedNonceRevealMempoolInjectAction {
                     baker: baker.clone(),
-                    level: level.clone(),
+                    level,
                 });
             }
         }

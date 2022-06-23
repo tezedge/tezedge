@@ -10,23 +10,23 @@ use super::BakerPersistedRehydrateState;
 pub fn baker_persisted_rehydrate_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::BakerPersistedRehydratePending(content) => {
-            state.bakers.get_mut(&content.baker).and_then(|baker| {
+            state.bakers.get_mut(&content.baker).map(|baker| {
                 baker.persisted.rehydrate = BakerPersistedRehydrateState::Pending {
                     time: action.time_as_nanos(),
                     req_id: content.req_id,
                 };
 
-                Some(())
+                ()
             });
         }
         Action::BakerPersistedRehydrateSuccess(content) => {
-            state.bakers.get_mut(&content.baker).and_then(|baker| {
+            state.bakers.get_mut(&content.baker).map(|baker| {
                 baker.persisted.rehydrate = BakerPersistedRehydrateState::Success {
                     time: action.time_as_nanos(),
                     result: content.result.clone(),
                 };
 
-                Some(())
+                ()
             });
         }
         Action::BakerPersistedRehydrated(content) => {

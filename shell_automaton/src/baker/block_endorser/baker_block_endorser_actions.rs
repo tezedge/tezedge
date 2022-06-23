@@ -229,7 +229,7 @@ impl BakerBlockEndorserPreendorsementSignInitAction {
         baker: &SignaturePublicKeyHash,
         operation: &PreendorsementWithForgedBytes,
     ) -> bool {
-        let baker_state = match state.bakers.get(&baker) {
+        let baker_state = match state.bakers.get(baker) {
             Some(v) => v,
             None => return false,
         };
@@ -402,7 +402,7 @@ impl BakerBlockEndorserEndorsementSignInitAction {
         baker: &SignaturePublicKeyHash,
         operation: &EndorsementWithForgedBytes,
     ) -> bool {
-        let baker_state = match state.bakers.get(&baker) {
+        let baker_state = match state.bakers.get(baker) {
             Some(v) => v,
             None => return false,
         };

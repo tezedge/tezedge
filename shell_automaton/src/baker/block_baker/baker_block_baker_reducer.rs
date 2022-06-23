@@ -16,9 +16,9 @@ use crate::{Action, ActionWithMeta, State};
 use super::{BakerBlockBakerState, BakingSlot, BuiltBlock};
 
 fn set_elected_block_operations(baker: &mut BakerState, mempool: &MempoolState) {
-    baker.elected_block = baker.elected_block.take().and_then(|mut block| {
+    baker.elected_block = baker.elected_block.take().map(|mut block| {
         if !block.operations.is_empty() {
-            return Some(block);
+            return block;
         }
         let applied = &mempool.validated_operations.applied;
         let applied = applied
@@ -79,7 +79,7 @@ fn set_elected_block_operations(baker: &mut BakerState, mempool: &MempoolState) 
 
         block.operations = operations
             .iter()
-            .map(|ops| ops.into_iter().map(|(op, _)| (*op).clone()).collect())
+            .map(|ops| ops.iter().map(|(op, _)| (*op).clone()).collect())
             .collect();
         block.non_consensus_op_hashes = operations
             .into_iter()
@@ -88,7 +88,7 @@ fn set_elected_block_operations(baker: &mut BakerState, mempool: &MempoolState) 
             .map(|(_, hash)| hash)
             .collect();
 
-        Some(block)
+        block
     });
 }
 
@@ -96,7 +96,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::BlockApplierApplySuccess(_) => {
             let new_block = match &state.block_applier.current {
-                BlockApplierApplyState::Success { block, .. } => &*block,
+                BlockApplierApplyState::Success { block, .. } => block,
                 _ => return,
             };
             let mempool = &state.mempool;
@@ -196,7 +196,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             None => return,
                         };
                         let next_round = slots
-                            .into_iter()
+                            .iter()
                             .map(|slot| *slot)
                             .find(|slot| *slot > current_slot)
                             .and_then(|slot| {
@@ -220,7 +220,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                     timeout,
                                 })
                             });
-                        let next_level = next_slots.get(0).cloned().and_then(|slot| {
+                        let next_level = next_slots.first().cloned().and_then(|slot| {
                             let constants = state.current_head.constants()?;
                             let pred = baker
                                 .elected_block_header_with_hash()
@@ -494,7 +494,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                     } => {
                         baker.block_baker = BakerBlockBakerState::ComputeProofOfWorkPending {
                             time: action.time_as_nanos(),
-                            req_id: content.req_id.clone(),
+                            req_id: content.req_id,
                             header: header.clone(),
                             operations: operations.clone(),
                         };
@@ -575,7 +575,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                 operations: operations.clone(),
                             });
                             if let Some(seed_nonces) = seed_nonces {
-                                *p.seed_nonces = seed_nonces.clone();
+                                *p.seed_nonces = seed_nonces;
                             }
                         });
                         let state_counter = match counter {

@@ -202,7 +202,7 @@ pub fn baker_block_endorser_reducer(state: &mut State, action: &ActionWithMeta) 
                     } => {
                         let signed_operation_bytes = operation
                             .forged()
-                            .into_iter()
+                            .iter()
                             .chain(&signature.0)
                             .cloned()
                             .collect::<Vec<_>>();
@@ -384,7 +384,7 @@ pub fn baker_block_endorser_reducer(state: &mut State, action: &ActionWithMeta) 
                     } => {
                         let signed_operation_bytes = operation
                             .forged()
-                            .into_iter()
+                            .iter()
                             .chain(&signature.0)
                             .cloned()
                             .collect::<Vec<_>>();

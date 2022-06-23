@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::btree_map::Entry as BTreeMapEntry;
+
 use tezos_messages::protocol::SupportedProtocol;
 
 use crate::block_applier::BlockApplierApplyState;
@@ -91,10 +93,10 @@ pub fn current_head_reducer(state: &mut State, action: &ActionWithMeta) {
                 _ => return,
             };
             let proto = content.new_head.header.proto();
-            if !proto_cache.contains_key(&proto) {
+            if let BTreeMapEntry::Vacant(e) = proto_cache.entry(proto) {
                 match SupportedProtocol::try_from(&content.next_protocol) {
                     Ok(protocol) => {
-                        proto_cache.insert(proto, protocol);
+                        e.insert(protocol);
                     }
                     Err(err) => {
                         slog::error!(&state.log, "Detected unknown protocol while updating current head";

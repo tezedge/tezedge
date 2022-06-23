@@ -83,7 +83,7 @@ where
                     rights
                         .slots
                         .get(&baker)
-                        .and_then(|slots| Some((baker, *slots.get(0)?, slots.len() as u16)))
+                        .and_then(|slots| Some((baker, *slots.first()?, slots.len() as u16)))
                         .ok_or(baker_key)
                 })
                 .collect::<Vec<_>>();

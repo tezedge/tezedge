@@ -73,7 +73,7 @@ where
                     ];
                     let log = &store.state().log;
                     let proto_cache = IntoIterator::into_iter(protocols)
-                        .filter_map(|v| v)
+                        .flatten()
                         .filter_map(|(id, hash)| match SupportedProtocol::try_from(hash) {
                             Ok(protocol) => Some((id, protocol)),
                             Err(err) => {

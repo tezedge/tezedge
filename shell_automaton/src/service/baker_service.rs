@@ -366,7 +366,7 @@ impl BakerService for BakerServiceDefault {
         let raw_req_id = self.new_req_id();
         let req_id = Arc::new(raw_req_id);
         let weak_req_id = Arc::downgrade(&req_id);
-        self.bakers_compute_pow_tasks.insert(baker.clone(), req_id);
+        self.bakers_compute_pow_tasks.insert(baker, req_id);
 
         let mut sender = self.worker_channel.responder_sender();
 
@@ -391,7 +391,7 @@ impl BakerService for BakerServiceDefault {
         std::thread::spawn(move || {
             let res = Result::<_, StorageError>::Ok(()).and_then(|_| {
                 use std::io::ErrorKind;
-                if !std::fs::metadata(&filepath)
+                let file_exists = std::fs::metadata(&filepath)
                     .map(|_| true)
                     .or_else(|error| {
                         if error.kind() == ErrorKind::NotFound {
@@ -399,8 +399,8 @@ impl BakerService for BakerServiceDefault {
                         } else {
                             Err(error)
                         }
-                    })?
-                {
+                    })?;
+                if !file_exists {
                     return Ok(PersistedState::default());
                 }
                 let file = File::open(filepath)?;
@@ -432,7 +432,7 @@ impl BakerService for BakerServiceDefault {
                 {
                     let mut writer = BufWriter::new(&mut file);
                     serde_json::to_writer(&mut writer, &state)?;
-                    writer.write(b"\n")?;
+                    writer.write_all(b"\n")?;
                     writer.flush()?;
                 }
                 file.sync_all()?;
@@ -480,7 +480,7 @@ fn check_proof_of_work(header_bytes: &[u8], proof_of_work_threshold: i64) -> boo
     } else {
         return true;
     };
-    let hash = blake2b::digest_256(&header_bytes).unwrap();
+    let hash = blake2b::digest_256(header_bytes).unwrap();
     let stamp = u64::from_be_bytes(hash[0..8].try_into().unwrap());
     stamp < proof_of_work_threshold
 }
@@ -488,7 +488,7 @@ fn check_proof_of_work(header_bytes: &[u8], proof_of_work_threshold: i64) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crypto::hash::{BlockHash, BlockPayloadHash, ContextHash, OperationListListHash};
+
     use tezos_messages::protocol::proto_012::operation::{
         InlinedEndorsement, InlinedEndorsementMempoolContents,
         InlinedEndorsementMempoolContentsEndorsementVariant, InlinedPreendorsement,

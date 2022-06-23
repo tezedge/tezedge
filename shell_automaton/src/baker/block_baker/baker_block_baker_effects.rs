@@ -211,7 +211,7 @@ where
             let request = BlockPreapplyRequest {
                 chain_id,
                 protocol_data,
-                timestamp: block.timestamp.clone(),
+                timestamp: block.timestamp,
                 operations: block.operations.clone(),
                 predecessor_header: block.predecessor_header.clone(),
                 predecessor_block_metadata_hash: block.pred_block_metadata_hash.clone(),
@@ -469,7 +469,7 @@ where
                     }
                 }
             }
-            _ => return,
+            _ => {}
         },
         _ => {}
     }

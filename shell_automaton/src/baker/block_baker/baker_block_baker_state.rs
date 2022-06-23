@@ -297,7 +297,7 @@ impl From<BlockPreapplyRequest> for tezos_api::ffi::PreapplyBlockRequest {
             predecessor_header: req.predecessor_header.clone(),
             predecessor_block_metadata_hash: Some(req.predecessor_block_metadata_hash.clone()),
             predecessor_ops_metadata_hash: Some(req.predecessor_ops_metadata_hash.clone()),
-            predecessor_max_operations_ttl: req.predecessor_max_operations_ttl.clone(),
+            predecessor_max_operations_ttl: req.predecessor_max_operations_ttl,
         }
     }
 }

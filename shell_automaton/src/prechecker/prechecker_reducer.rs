@@ -79,10 +79,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
 
             operations.insert(
                 hash.clone(),
-                Ok(PrecheckerOperation::new(
-                    operation.clone(),
-                    protocol.clone(),
-                )),
+                Ok(PrecheckerOperation::new(operation.clone(), protocol)),
             );
         }
 
@@ -345,8 +342,8 @@ fn validate_tenderbake_consensus_operation_contents<'a>(
     actual: &'a TenderbakeConsensusContents,
     actual_branch: &'a BlockHash,
 ) -> Result<(), TenderbakeConsensusResult<'a>> {
-    let expected = endorsement_branch
-        .ok_or_else(|| TenderbakeConsensusResult::LevelInFuture(-1, actual.level))?;
+    let expected =
+        endorsement_branch.ok_or(TenderbakeConsensusResult::LevelInFuture(-1, actual.level))?;
 
     match actual.level.cmp(&expected.level) {
         Ordering::Less => {

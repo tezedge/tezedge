@@ -593,7 +593,7 @@ pub enum OperationKind {
 impl OperationKind {
     pub fn from_operation_content_raw(bytes: &[u8]) -> Self {
         bytes
-            .get(0)
+            .first()
             .map_or(Self::Unknown, |tag| Self::from_tag(*tag))
     }
 

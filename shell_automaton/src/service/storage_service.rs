@@ -148,8 +148,8 @@ pub struct BlockCycleInfo {
 
 impl BlockCycleInfo {
     pub fn calculate(level: Level, era: &CycleEra) -> Self {
-        let cycle = (&level - era.first_level()) / era.blocks_per_cycle() + era.first_cycle();
-        let position = (&level - era.first_level()) % era.blocks_per_cycle();
+        let cycle = (level - era.first_level()) / era.blocks_per_cycle() + era.first_cycle();
+        let position = (level - era.first_level()) % era.blocks_per_cycle();
         Self { cycle, position }
     }
 }
@@ -384,7 +384,7 @@ impl StorageServiceDefault {
                     .map_err(|err| BlockAdditionalDataGetError(block_hash, err.into())),
                 OperationsGet(block_hash) => operations_storage
                     .get_operations(&block_hash)
-                    .map(|data| data.into_iter().map(Vec::from).flatten().collect())
+                    .map(|data| data.into_iter().flat_map(Vec::from).collect())
                     .map(|ops| OperationsGetSuccess(block_hash.clone(), Some(ops)))
                     .map_err(|err| OperationsGetError(block_hash.clone(), err.into())),
                 ConstantsGet(protocol_hash) => constants_storage

@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::btree_map::Entry as BTreeMapEntry;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -284,8 +285,8 @@ impl CurrentHeadState {
             ..
         } = self
         {
-            if !cemented_live_blocks.contains_key(&hash) {
-                cemented_live_blocks.insert(hash, level);
+            if let BTreeMapEntry::Vacant(e) = cemented_live_blocks.entry(hash) {
+                e.insert(level);
                 let ttl = constants
                     .as_ref()
                     .map(|v| v.max_operations_ttl)
@@ -344,7 +345,7 @@ impl CurrentHeadState {
 
     pub fn payload_round(&self) -> Option<i32> {
         match self {
-            Self::Rehydrated { payload_round, .. } => payload_round.clone(),
+            Self::Rehydrated { payload_round, .. } => *payload_round,
             _ => None,
         }
     }

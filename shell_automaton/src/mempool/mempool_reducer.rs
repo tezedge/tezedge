@@ -475,13 +475,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     || mempool_state.prechecking_operations.contains_key(&hash)
                     || mempool_state.validated_operations.ops.contains_key(&hash);
 
-                if !known {
-                    if !mempool_state.pending_full_content.contains_key(&hash) {
-                        peer.requesting_full_content.insert(hash.clone());
-                        mempool_state
-                            .operations_state
-                            .insert(hash.clone(), MempoolOperation::received(level, action));
-                    }
+                if !known && !mempool_state.pending_full_content.contains_key(&hash) {
+                    peer.requesting_full_content.insert(hash.clone());
+                    mempool_state
+                        .operations_state
+                        .insert(hash.clone(), MempoolOperation::received(level, action));
                 }
                 // of course peer knows about it, because he sent us it
                 peer.seen_operations.insert(hash);

@@ -8,18 +8,18 @@ use super::BakerPersistedPersistState;
 pub fn baker_persisted_persist_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
         Action::BakerPersistedPersistPending(content) => {
-            state.bakers.get_mut(&content.baker).and_then(|baker| {
+            state.bakers.get_mut(&content.baker).map(|baker| {
                 baker.persisted.persist = BakerPersistedPersistState::Pending {
                     time: action.time_as_nanos(),
                     req_id: content.req_id,
                     counter: content.counter,
                 };
 
-                Some(())
+                ()
             });
         }
         Action::BakerPersistedPersistSuccess(content) => {
-            state.bakers.get_mut(&content.baker).and_then(|baker| {
+            state.bakers.get_mut(&content.baker).map(|baker| {
                 let counter = baker.persisted.persist.counter();
                 baker.persisted.set_last_persisted_counter(counter);
                 baker.persisted.persist = BakerPersistedPersistState::Success {
@@ -27,7 +27,7 @@ pub fn baker_persisted_persist_reducer(state: &mut State, action: &ActionWithMet
                     counter,
                 };
 
-                Some(())
+                ()
             });
         }
         _ => {}
