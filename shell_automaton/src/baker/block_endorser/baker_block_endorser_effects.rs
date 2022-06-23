@@ -7,6 +7,7 @@ use tezos_messages::protocol::proto_012::operation::{
     InlinedPreendorsementContents, InlinedPreendorsementVariant,
 };
 
+use crate::baker::persisted::persist::BakerPersistedPersistInitAction;
 use crate::mempool::MempoolOperationInjectAction;
 use crate::prechecker::PrecheckerResultKind;
 use crate::rights::rights_actions::RightsGetAction;
@@ -26,7 +27,8 @@ use super::{
     BakerBlockEndorserPreendorsementSignPendingAction, BakerBlockEndorserPrequorumPendingAction,
     BakerBlockEndorserPrequorumSuccessAction, BakerBlockEndorserRightsGetInitAction,
     BakerBlockEndorserRightsGetPendingAction, BakerBlockEndorserRightsGetSuccessAction,
-    BakerBlockEndorserRightsNoRightsAction, BakerBlockEndorserState, EndorsementWithForgedBytes,
+    BakerBlockEndorserRightsNoRightsAction, BakerBlockEndorserState,
+    BakerBlockEndorserStatePersistPendingAction, EndorsementWithForgedBytes,
     PreendorsementWithForgedBytes,
 };
 
@@ -356,6 +358,16 @@ where
             });
         }
         Action::BakerBlockEndorserEndorsementSignSuccess(content) => {
+            store.dispatch(BakerBlockEndorserStatePersistPendingAction {
+                baker: content.baker.clone(),
+            });
+        }
+        Action::BakerBlockEndorserStatePersistPending(content) => {
+            store.dispatch(BakerPersistedPersistInitAction {
+                baker: content.baker.clone(),
+            });
+        }
+        Action::BakerBlockEndorserStatePersistSuccess(content) => {
             store.dispatch(BakerBlockEndorserEndorsementInjectPendingAction {
                 baker: content.baker.clone(),
             });

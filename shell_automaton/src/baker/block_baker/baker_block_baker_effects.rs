@@ -7,6 +7,7 @@ use tezos_messages::p2p::encoding::operations_for_blocks::{
     OperationsForBlock, OperationsForBlocksMessage,
 };
 
+use crate::baker::persisted::persist::BakerPersistedPersistInitAction;
 use crate::baker::seed_nonce::{BakerSeedNonceCommittedAction, BakerSeedNonceGeneratedAction};
 use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::rights::rights_actions::RightsGetAction;
@@ -30,7 +31,8 @@ use super::{
     BakerBlockBakerRightsGetNextLevelSuccessAction, BakerBlockBakerRightsGetPendingAction,
     BakerBlockBakerRightsGetSuccessAction, BakerBlockBakerRightsNoRightsAction,
     BakerBlockBakerSignInitAction, BakerBlockBakerSignPendingAction, BakerBlockBakerState,
-    BakerBlockBakerTimeoutPendingAction, BlockPreapplyRequest,
+    BakerBlockBakerStatePersistPendingAction, BakerBlockBakerTimeoutPendingAction,
+    BlockPreapplyRequest,
 };
 
 pub fn baker_block_baker_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
@@ -285,6 +287,16 @@ where
             });
         }
         Action::BakerBlockBakerSignSuccess(content) => {
+            store.dispatch(BakerBlockBakerStatePersistPendingAction {
+                baker: content.baker.clone(),
+            });
+        }
+        Action::BakerBlockBakerStatePersistPending(content) => {
+            store.dispatch(BakerPersistedPersistInitAction {
+                baker: content.baker.clone(),
+            });
+        }
+        Action::BakerBlockBakerStatePersistSuccess(content) => {
             store.dispatch(BakerBlockBakerComputeOperationsPathsInitAction {
                 baker: content.baker.clone(),
             });
@@ -295,7 +307,7 @@ where
                 None => return,
             };
             let req = match &baker_state.block_baker {
-                BakerBlockBakerState::SignSuccess { operations, .. } => {
+                BakerBlockBakerState::StatePersistSuccess { operations, .. } => {
                     match ComputePathRequest::try_from(operations) {
                         Ok(v) => v,
                         Err(_) => return,

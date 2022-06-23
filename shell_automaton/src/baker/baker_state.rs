@@ -14,6 +14,7 @@ use tezos_messages::p2p::encoding::operation::Operation;
 
 use super::block_baker::{BakerBlockBakerState, LiquidityBakingToggleVote};
 use super::block_endorser::BakerBlockEndorserState;
+use super::persisted::BakerPersistedState;
 use super::seed_nonce::BakerSeedNonceState;
 
 /// Locked payload by endorser.
@@ -96,6 +97,8 @@ pub struct BakerState {
     pub seed_nonces: BTreeMap<Level, BakerSeedNonceState>,
     pub locked_payload: Option<LockedPayload>,
     pub elected_block: Option<ElectedBlock>,
+
+    pub persisted: BakerPersistedState,
 }
 
 impl BakerState {
@@ -107,6 +110,8 @@ impl BakerState {
             seed_nonces: Default::default(),
             locked_payload: None,
             elected_block: None,
+
+            persisted: BakerPersistedState::new(),
         }
     }
 

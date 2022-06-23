@@ -83,6 +83,8 @@ use crate::baker::block_baker::{
     BakerBlockBakerBakeNextRoundAction, BakerBlockBakerNextLevelTimeoutSuccessQuorumPendingAction,
 };
 use crate::baker::block_endorser::baker_block_endorser_effects;
+use crate::baker::persisted::persist::baker_persisted_persist_effects;
+use crate::baker::persisted::rehydrate::baker_persisted_rehydrate_effects;
 use crate::baker::seed_nonce::baker_seed_nonce_effects;
 
 fn last_action_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
@@ -220,6 +222,8 @@ pub fn effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
     kv_operations_effects(store, action);
 
     baker_effects(store, action);
+    baker_persisted_rehydrate_effects(store, action);
+    baker_persisted_persist_effects(store, action);
     baker_block_endorser_effects(store, action);
     baker_block_baker_effects(store, action);
     baker_seed_nonce_effects(store, action);

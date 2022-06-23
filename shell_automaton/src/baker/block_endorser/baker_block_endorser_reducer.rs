@@ -6,6 +6,7 @@ use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::Operation;
 
+use crate::baker::persisted::LastEndorsement;
 use crate::baker::LockedPayload;
 use crate::mempool::OperationKind;
 use crate::{Action, ActionWithMeta, State};
@@ -321,10 +322,61 @@ pub fn baker_block_endorser_reducer(state: &mut State, action: &ActionWithMeta) 
                 }
             }
         }
-        Action::BakerBlockEndorserEndorsementInjectPending(content) => {
+        Action::BakerBlockEndorserStatePersistPending(content) => {
             if let Some(baker) = state.bakers.get_mut(&content.baker) {
                 match &baker.block_endorser {
                     BakerBlockEndorserState::EndorsementSignSuccess {
+                        first_slot,
+                        operation,
+                        signature,
+                        ..
+                    } => {
+                        let counter = baker.persisted.update(|p| {
+                            *p.last_endorsement = Some(LastEndorsement {
+                                operation: operation.clone(),
+                                signature: signature.clone(),
+                            });
+                        });
+                        let state_counter = match counter {
+                            Some(v) => v,
+                            None => return,
+                        };
+                        baker.block_endorser = BakerBlockEndorserState::StatePersistPending {
+                            time: action.time_as_nanos(),
+                            state_counter,
+                            first_slot: *first_slot,
+                            operation: operation.clone(),
+                            signature: signature.clone(),
+                        };
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Action::BakerBlockEndorserStatePersistSuccess(content) => {
+            if let Some(baker) = state.bakers.get_mut(&content.baker) {
+                match &baker.block_endorser {
+                    BakerBlockEndorserState::StatePersistPending {
+                        first_slot,
+                        operation,
+                        signature,
+                        ..
+                    } => {
+                        baker.block_endorser = BakerBlockEndorserState::StatePersistSuccess {
+                            time: action.time_as_nanos(),
+                            first_slot: *first_slot,
+                            operation: operation.clone(),
+                            signature: signature.clone(),
+                        };
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Action::BakerBlockEndorserEndorsementInjectPending(content) => {
+            if let Some(baker) = state.bakers.get_mut(&content.baker) {
+                match &baker.block_endorser {
+                    BakerBlockEndorserState::StatePersistSuccess {
                         first_slot,
                         operation,
                         signature,

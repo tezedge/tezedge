@@ -162,7 +162,8 @@ impl ShellAutomatonManager {
             .iter()
             .map(|(_, pkh)| pkh.clone())
             .collect::<Vec<_>>();
-        let mut baker_service = BakerServiceDefault::new(mio_service.waker());
+        let mut baker_service =
+            BakerServiceDefault::new(mio_service.waker(), p2p_config.baker_data_dir.clone());
         for (signer, pkh) in bakers_cfg {
             baker_service.add_signer(pkh, signer);
         }

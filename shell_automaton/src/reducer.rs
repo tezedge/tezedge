@@ -75,6 +75,8 @@ use crate::storage::{
 
 use crate::baker::block_baker::baker_block_baker_reducer;
 use crate::baker::block_endorser::baker_block_endorser_reducer;
+use crate::baker::persisted::persist::baker_persisted_persist_reducer;
+use crate::baker::persisted::rehydrate::baker_persisted_rehydrate_reducer;
 use crate::baker::seed_nonce::baker_seed_nonce_reducer;
 
 pub fn last_action_reducer(state: &mut State, action: &ActionWithMeta) {
@@ -154,6 +156,8 @@ pub fn reducer(state: &mut State, action: &ActionWithMeta) {
         kv_cycle_meta_reducer,
         kv_operations_reducer,
         shutdown_reducer,
+        baker_persisted_rehydrate_reducer,
+        baker_persisted_persist_reducer,
         baker_block_endorser_reducer,
         baker_block_baker_reducer,
         baker_seed_nonce_reducer,

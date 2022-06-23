@@ -114,6 +114,17 @@ pub enum BakerBlockBakerState {
         header: BlockHeader,
         operations: Vec<Vec<Operation>>,
     },
+    StatePersistPending {
+        time: u64,
+        state_counter: u64,
+        header: BlockHeader,
+        operations: Vec<Vec<Operation>>,
+    },
+    StatePersistSuccess {
+        time: u64,
+        header: BlockHeader,
+        operations: Vec<Vec<Operation>>,
+    },
     ComputeOperationsPathsPending {
         time: u64,
         protocol_req_id: ProtocolRunnerToken,

@@ -160,6 +160,8 @@ use crate::storage::{
 
 use crate::baker::block_baker::*;
 use crate::baker::block_endorser::*;
+use crate::baker::persisted::persist::*;
+use crate::baker::persisted::rehydrate::*;
 use crate::baker::seed_nonce::*;
 
 use crate::shutdown::{ShutdownInitAction, ShutdownPendingAction, ShutdownSuccessAction};
@@ -713,6 +715,15 @@ pub enum Action {
 
     StorageBlocksGenesisInitSuccess(StorageBlocksGenesisInitSuccessAction),
 
+    BakerPersistedRehydrateInit(BakerPersistedRehydrateInitAction),
+    BakerPersistedRehydratePending(BakerPersistedRehydratePendingAction),
+    BakerPersistedRehydrateSuccess(BakerPersistedRehydrateSuccessAction),
+    BakerPersistedRehydrated(BakerPersistedRehydratedAction),
+
+    BakerPersistedPersistInit(BakerPersistedPersistInitAction),
+    BakerPersistedPersistPending(BakerPersistedPersistPendingAction),
+    BakerPersistedPersistSuccess(BakerPersistedPersistSuccessAction),
+
     BakerBlockEndorserRightsGetInit(BakerBlockEndorserRightsGetInitAction),
     BakerBlockEndorserRightsGetPending(BakerBlockEndorserRightsGetPendingAction),
     BakerBlockEndorserRightsGetSuccess(BakerBlockEndorserRightsGetSuccessAction),
@@ -742,6 +753,8 @@ pub enum Action {
     BakerBlockEndorserEndorsementSignInit(BakerBlockEndorserEndorsementSignInitAction),
     BakerBlockEndorserEndorsementSignPending(BakerBlockEndorserEndorsementSignPendingAction),
     BakerBlockEndorserEndorsementSignSuccess(BakerBlockEndorserEndorsementSignSuccessAction),
+    BakerBlockEndorserStatePersistPending(BakerBlockEndorserStatePersistPendingAction),
+    BakerBlockEndorserStatePersistSuccess(BakerBlockEndorserStatePersistSuccessAction),
     BakerBlockEndorserEndorsementInjectPending(BakerBlockEndorserEndorsementInjectPendingAction),
     BakerBlockEndorserEndorsementInjectSuccess(BakerBlockEndorserEndorsementInjectSuccessAction),
 
@@ -768,6 +781,8 @@ pub enum Action {
     BakerBlockBakerSignInit(BakerBlockBakerSignInitAction),
     BakerBlockBakerSignPending(BakerBlockBakerSignPendingAction),
     BakerBlockBakerSignSuccess(BakerBlockBakerSignSuccessAction),
+    BakerBlockBakerStatePersistPending(BakerBlockBakerStatePersistPendingAction),
+    BakerBlockBakerStatePersistSuccess(BakerBlockBakerStatePersistSuccessAction),
     BakerBlockBakerComputeOperationsPathsInit(BakerBlockBakerComputeOperationsPathsInitAction),
     BakerBlockBakerComputeOperationsPathsPending(
         BakerBlockBakerComputeOperationsPathsPendingAction,

@@ -139,6 +139,19 @@ pub enum BakerBlockEndorserState {
         operation: EndorsementWithForgedBytes,
         signature: Signature,
     },
+    StatePersistPending {
+        time: u64,
+        state_counter: u64,
+        first_slot: u16,
+        operation: EndorsementWithForgedBytes,
+        signature: Signature,
+    },
+    StatePersistSuccess {
+        time: u64,
+        first_slot: u16,
+        operation: EndorsementWithForgedBytes,
+        signature: Signature,
+    },
     EndorsementInjectPending {
         time: u64,
         first_slot: u16,

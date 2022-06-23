@@ -229,7 +229,7 @@ impl State {
             .peers
             .handshaked_iter()
             .filter_map(|(_, peer)| peer.current_head.as_ref())
-            .map(|peer_head| (current_head_timestamp - peer_head.header.timestamp()).i64())
+            .map(|peer_head| (peer_head.header.timestamp() - current_head_timestamp).i64())
             .filter(|latency| *latency < SYNC_LATENCY)
             .count();
 

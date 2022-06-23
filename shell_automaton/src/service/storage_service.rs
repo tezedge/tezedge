@@ -70,6 +70,18 @@ impl From<storage::StorageError> for StorageError {
     }
 }
 
+impl From<std::io::Error> for StorageError {
+    fn from(err: std::io::Error) -> Self {
+        Self(format!("io error: {}", err))
+    }
+}
+
+impl From<serde_json::Error> for StorageError {
+    fn from(err: serde_json::Error) -> Self {
+        Self(format!("json error: {}", err))
+    }
+}
+
 #[derive(EnumKind, Serialize, Deserialize, Debug, Clone)]
 #[enum_kind(
     StorageRequestPayloadKind,

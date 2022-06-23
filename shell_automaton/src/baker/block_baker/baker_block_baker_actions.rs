@@ -21,7 +21,11 @@ pub struct BakerBlockBakerRightsGetInitAction {}
 
 impl EnablingCondition<State> for BakerBlockBakerRightsGetInitAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state.is_bootstrapped()
+        let is_any_rehydrated_and_idle = state
+            .bakers
+            .iter()
+            .any(|(_, b)| b.persisted.is_rehydrated() && b.block_baker.is_idle());
+        is_any_rehydrated_and_idle && state.is_bootstrapped()
     }
 }
 
@@ -33,10 +37,9 @@ pub struct BakerBlockBakerRightsGetPendingAction {
 
 impl EnablingCondition<State> for BakerBlockBakerRightsGetPendingAction {
     fn is_enabled(&self, state: &State) -> bool {
-        state
-            .bakers
-            .get(&self.baker)
-            .map_or(false, |baker| baker.block_baker.is_idle())
+        state.bakers.get(&self.baker).map_or(false, |baker| {
+            baker.persisted.is_rehydrated() && baker.block_baker.is_idle()
+        })
     }
 }
 
@@ -452,6 +455,44 @@ impl EnablingCondition<State> for BakerBlockBakerSignSuccessAction {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BakerBlockBakerStatePersistPendingAction {
+    pub baker: SignaturePublicKeyHash,
+}
+
+impl EnablingCondition<State> for BakerBlockBakerStatePersistPendingAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        state
+            .bakers
+            .get(&self.baker)
+            .map_or(false, |baker| match &baker.block_baker {
+                BakerBlockBakerState::SignSuccess { .. } => true,
+                _ => false,
+            })
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BakerBlockBakerStatePersistSuccessAction {
+    pub baker: SignaturePublicKeyHash,
+}
+
+impl EnablingCondition<State> for BakerBlockBakerStatePersistSuccessAction {
+    fn is_enabled(&self, state: &State) -> bool {
+        state
+            .bakers
+            .get(&self.baker)
+            .map_or(false, |baker| match &baker.block_baker {
+                BakerBlockBakerState::StatePersistPending { state_counter, .. } => {
+                    baker.persisted.last_persisted_counter() >= *state_counter
+                }
+                _ => false,
+            })
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BakerBlockBakerComputeOperationsPathsInitAction {
     pub baker: SignaturePublicKeyHash,
 }
@@ -462,7 +503,7 @@ impl EnablingCondition<State> for BakerBlockBakerComputeOperationsPathsInitActio
             .bakers
             .get(&self.baker)
             .map_or(false, |baker| match &baker.block_baker {
-                BakerBlockBakerState::SignSuccess { .. } => true,
+                BakerBlockBakerState::StatePersistSuccess { .. } => true,
                 _ => false,
             })
     }
@@ -481,7 +522,7 @@ impl EnablingCondition<State> for BakerBlockBakerComputeOperationsPathsPendingAc
             .bakers
             .get(&self.baker)
             .map_or(false, |baker| match &baker.block_baker {
-                BakerBlockBakerState::SignSuccess { .. } => true,
+                BakerBlockBakerState::StatePersistSuccess { .. } => true,
                 _ => false,
             })
     }

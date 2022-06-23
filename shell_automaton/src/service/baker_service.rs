@@ -3,6 +3,9 @@
 
 use std::collections::BTreeMap;
 use std::convert::TryInto;
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Write};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use derive_more::From;
@@ -25,7 +28,9 @@ use super::service_channel::{
     worker_channel, ResponseTryRecvError, ServiceWorkerRequester, ServiceWorkerResponder,
     ServiceWorkerResponderSender,
 };
+use super::storage_service::StorageError;
 use crate::baker::block_endorser::{EndorsementWithForgedBytes, PreendorsementWithForgedBytes};
+use crate::baker::persisted::PersistedState;
 use crate::request::RequestId;
 
 #[derive(Error, From, Debug)]
@@ -48,6 +53,8 @@ pub enum BakerWorkerMessage {
     PreendorsementSign(BakerSignResult),
     EndorsementSign(BakerSignResult),
     BlockSign(BakerSignResult),
+    StateRehydrate(Result<PersistedState, StorageError>),
+    StatePersist(Result<(), StorageError>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
@@ -106,6 +113,15 @@ pub trait BakerService {
         header: BlockHeader,
         proof_of_work_threshold: i64,
     ) -> RequestId;
+
+    fn state_rehydrate(&mut self, baker: SignaturePublicKeyHash, chain_id: &ChainId) -> RequestId;
+
+    fn state_persist(
+        &mut self,
+        baker: SignaturePublicKeyHash,
+        chain_id: &ChainId,
+        state: PersistedState,
+    ) -> RequestId;
 }
 
 struct Channel<T> {
@@ -132,6 +148,7 @@ impl<T> Channel<T> {
 }
 
 pub struct BakerServiceDefault {
+    data_dir: PathBuf,
     counter: usize,
     bakers: BTreeMap<SignaturePublicKeyHash, BakerSigner>,
     bakers_compute_pow_tasks: BTreeMap<SignaturePublicKeyHash, Arc<RequestId>>,
@@ -200,8 +217,9 @@ impl BakerSigner {
 }
 
 impl BakerServiceDefault {
-    pub fn new(mio_waker: Arc<mio::Waker>) -> Self {
+    pub fn new(mio_waker: Arc<mio::Waker>, data_dir: PathBuf) -> Self {
         Self {
+            data_dir,
             counter: 0,
             bakers: Default::default(),
             bakers_compute_pow_tasks: Default::default(),
@@ -285,6 +303,19 @@ impl BakerServiceDefault {
 
         req_id
     }
+
+    fn baker_state_filename(baker: &SignaturePublicKeyHash, chain_id: &ChainId) -> String {
+        format!(
+            "{}-{}-baker-state.json",
+            chain_id.to_base58_check(),
+            baker.to_base58_check()
+        )
+    }
+
+    fn baker_state_filepath(&self, baker: &SignaturePublicKeyHash, chain_id: &ChainId) -> PathBuf {
+        self.data_dir
+            .join(Self::baker_state_filename(baker, chain_id))
+    }
 }
 
 impl BakerService for BakerServiceDefault {
@@ -350,6 +381,67 @@ impl BakerService for BakerServiceDefault {
         });
 
         raw_req_id
+    }
+
+    fn state_rehydrate(&mut self, baker: SignaturePublicKeyHash, chain_id: &ChainId) -> RequestId {
+        let req_id = self.new_req_id();
+        let mut sender = self.worker_channel.responder_sender();
+        let filepath = self.baker_state_filepath(&baker, chain_id);
+
+        std::thread::spawn(move || {
+            let res = Result::<_, StorageError>::Ok(()).and_then(|_| {
+                use std::io::ErrorKind;
+                if !std::fs::metadata(&filepath)
+                    .map(|_| true)
+                    .or_else(|error| {
+                        if error.kind() == ErrorKind::NotFound {
+                            Ok(false)
+                        } else {
+                            Err(error)
+                        }
+                    })?
+                {
+                    return Ok(PersistedState::default());
+                }
+                let file = File::open(filepath)?;
+                let reader = BufReader::new(file);
+                Ok(serde_json::from_reader(reader)?)
+            });
+            let _ = sender.send((req_id, BakerWorkerMessage::StateRehydrate(res)));
+        });
+
+        req_id
+    }
+
+    fn state_persist(
+        &mut self,
+        baker: SignaturePublicKeyHash,
+        chain_id: &ChainId,
+        state: PersistedState,
+    ) -> RequestId {
+        let req_id = self.new_req_id();
+        let mut sender = self.worker_channel.responder_sender();
+        let data_dir = self.data_dir.clone();
+        let filename = Self::baker_state_filename(&baker, chain_id);
+        let filepath = self.baker_state_filepath(&baker, chain_id);
+
+        std::thread::spawn(move || {
+            let res = Result::<_, StorageError>::Ok(()).and_then(|_| {
+                let tmp_filepath = data_dir.join(format!(".tmp-{}", filename));
+                let mut file = File::create(&tmp_filepath)?;
+                {
+                    let mut writer = BufWriter::new(&mut file);
+                    serde_json::to_writer(&mut writer, &state)?;
+                    writer.write(b"\n")?;
+                    writer.flush()?;
+                }
+                file.sync_all()?;
+                Ok(std::fs::rename(tmp_filepath, filepath)?)
+            });
+            let _ = sender.send((req_id, BakerWorkerMessage::StatePersist(res)));
+        });
+
+        req_id
     }
 }
 

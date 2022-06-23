@@ -7,6 +7,7 @@ use crypto::hash::{BlockPayloadHash, OperationListHash};
 use tezos_encoding::types::SizedBytes;
 use tezos_messages::p2p::encoding::block_header::BlockHeaderBuilder;
 
+use crate::baker::persisted::LastBakedBlock;
 use crate::baker::{BakerState, ElectedBlock};
 use crate::block_applier::BlockApplierApplyState;
 use crate::mempool::{MempoolState, OperationKind};
@@ -559,17 +560,60 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
         }
+        Action::BakerBlockBakerStatePersistPending(content) => {
+            if let Some(baker) = state.bakers.get_mut(&content.baker) {
+                match &mut baker.block_baker {
+                    BakerBlockBakerState::SignSuccess {
+                        header, operations, ..
+                    } => {
+                        let counter = baker.persisted.update(|p| {
+                            *p.last_baked_block = Some(LastBakedBlock {
+                                header: header.clone(),
+                                operations: operations.clone(),
+                            });
+                        });
+                        let state_counter = match counter {
+                            Some(v) => v,
+                            None => return,
+                        };
+                        baker.block_baker = BakerBlockBakerState::StatePersistPending {
+                            time: action.time_as_nanos(),
+                            state_counter,
+                            header: header.clone(),
+                            operations: std::mem::take(operations),
+                        };
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Action::BakerBlockBakerStatePersistSuccess(content) => {
+            if let Some(baker) = state.bakers.get_mut(&content.baker) {
+                match &mut baker.block_baker {
+                    BakerBlockBakerState::StatePersistPending {
+                        header, operations, ..
+                    } => {
+                        baker.block_baker = BakerBlockBakerState::StatePersistSuccess {
+                            time: action.time_as_nanos(),
+                            header: header.clone(),
+                            operations: std::mem::take(operations),
+                        };
+                    }
+                    _ => {}
+                }
+            }
+        }
         Action::BakerBlockBakerComputeOperationsPathsPending(content) => {
             if let Some(baker) = state.bakers.get_mut(&content.baker) {
-                match &baker.block_baker {
-                    BakerBlockBakerState::SignSuccess {
+                match &mut baker.block_baker {
+                    BakerBlockBakerState::StatePersistSuccess {
                         header, operations, ..
                     } => {
                         baker.block_baker = BakerBlockBakerState::ComputeOperationsPathsPending {
                             time: action.time_as_nanos(),
                             protocol_req_id: content.protocol_req_id,
                             header: header.clone(),
-                            operations: operations.clone(),
+                            operations: std::mem::take(operations),
                         };
                     }
                     _ => {}
@@ -578,7 +622,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::BakerBlockBakerComputeOperationsPathsSuccess(content) => {
             if let Some(baker) = state.bakers.get_mut(&content.baker) {
-                match &baker.block_baker {
+                match &mut baker.block_baker {
                     BakerBlockBakerState::ComputeOperationsPathsPending {
                         header,
                         operations,
@@ -587,7 +631,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                         baker.block_baker = BakerBlockBakerState::ComputeOperationsPathsSuccess {
                             time: action.time_as_nanos(),
                             header: header.clone(),
-                            operations: operations.clone(),
+                            operations: std::mem::take(operations),
                             operations_paths: content.operations_paths.clone(),
                         };
                     }
@@ -597,7 +641,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
         }
         Action::BakerBlockBakerInjectPending(content) => {
             if let Some(baker) = state.bakers.get_mut(&content.baker) {
-                match &baker.block_baker {
+                match &mut baker.block_baker {
                     BakerBlockBakerState::ComputeOperationsPathsSuccess {
                         operations,
                         operations_paths,
@@ -606,7 +650,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                         baker.block_baker = BakerBlockBakerState::InjectPending {
                             time: action.time_as_nanos(),
                             block: content.block.clone(),
-                            operations: operations.clone(),
+                            operations: std::mem::take(operations),
                             operations_paths: operations_paths.clone(),
                         };
                     }

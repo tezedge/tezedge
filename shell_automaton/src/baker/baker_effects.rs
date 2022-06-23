@@ -12,6 +12,10 @@ use super::block_endorser::{
     BakerBlockEndorserEndorsementSignSuccessAction,
     BakerBlockEndorserPreendorsementSignSuccessAction, BakerBlockEndorserState,
 };
+use super::persisted::persist::{BakerPersistedPersistState, BakerPersistedPersistSuccessAction};
+use super::persisted::rehydrate::{
+    BakerPersistedRehydrateState, BakerPersistedRehydrateSuccessAction,
+};
 
 pub fn baker_effects<S>(store: &mut Store<S>, action: &ActionWithMeta)
 where
@@ -109,6 +113,49 @@ where
                                 });
                             }
                             Err(err) => todo!("BlockSignError: {:?}", err),
+                        }
+                    }
+                    BakerWorkerMessage::StateRehydrate(result) => {
+                        let baker = bakers_iter
+                            .find(|(_, v)| match &v.persisted.rehydrate {
+                                BakerPersistedRehydrateState::Pending { req_id, .. } => {
+                                    result_req_id == *req_id
+                                }
+                                _ => false,
+                            })
+                            .map(|(baker, _)| baker.clone());
+                        let baker = match baker {
+                            Some(v) => v,
+                            None => continue,
+                        };
+                        match result {
+                            Ok(result) => {
+                                store.dispatch(BakerPersistedRehydrateSuccessAction {
+                                    baker,
+                                    result,
+                                });
+                            }
+                            Err(err) => todo!("StateRehydrateError: {:?}", err),
+                        }
+                    }
+                    BakerWorkerMessage::StatePersist(result) => {
+                        let baker = bakers_iter
+                            .find(|(_, v)| match &v.persisted.persist {
+                                BakerPersistedPersistState::Pending { req_id, .. } => {
+                                    result_req_id == *req_id
+                                }
+                                _ => false,
+                            })
+                            .map(|(baker, _)| baker.clone());
+                        let baker = match baker {
+                            Some(v) => v,
+                            None => continue,
+                        };
+                        match result {
+                            Ok(_) => {
+                                store.dispatch(BakerPersistedPersistSuccessAction { baker });
+                            }
+                            Err(err) => todo!("StatePersistError: {:?}", err),
                         }
                     }
                 }

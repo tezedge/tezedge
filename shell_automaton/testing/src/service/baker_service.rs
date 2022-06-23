@@ -5,6 +5,7 @@ use crypto::hash::ChainId;
 use shell_automaton::baker::block_endorser::{
     EndorsementWithForgedBytes, PreendorsementWithForgedBytes,
 };
+use shell_automaton::baker::persisted::PersistedState;
 use shell_automaton::request::RequestId;
 use shell_automaton::service::baker_service::{BakerService, BakerWorkerMessage};
 use shell_automaton::service::service_channel::ResponseTryRecvError;
@@ -66,6 +67,23 @@ impl BakerService for BakerServiceDummy {
         _baker: SignaturePublicKeyHash,
         _header: BlockHeader,
         _proof_of_work_threshold: i64,
+    ) -> RequestId {
+        RequestId::new_unchecked(0, 0)
+    }
+
+    fn state_rehydrate(
+        &mut self,
+        _baker: SignaturePublicKeyHash,
+        _chain_id: &ChainId,
+    ) -> RequestId {
+        RequestId::new_unchecked(0, 0)
+    }
+
+    fn state_persist(
+        &mut self,
+        _baker: SignaturePublicKeyHash,
+        _chain_id: &ChainId,
+        _state: PersistedState,
     ) -> RequestId {
         RequestId::new_unchecked(0, 0)
     }
