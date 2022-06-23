@@ -298,10 +298,7 @@ pub(crate) async fn get_cycle_delegate_rewards(
         &get_additional_data_or_fail(chain_id, &current_head_hash, env.persistent_storage())?
             .protocol_hash;
 
-    // Note: (Assumption, needs to be verifed) There is a bug in cycle era storage that won't save the era data on a new protocol change if there was no change
-    let saved_cycle_era_in_proto_hash =
-        ProtocolHash::from_base58_check(&SupportedProtocol::Proto011.protocol_hash())?;
-    let cycle_era = get_cycle_era(&saved_cycle_era_in_proto_hash, cycle_num, env)?;
+    let cycle_era = get_cycle_era(protocol_hash, cycle_num, env)?;
     let (_, end) = cycle_range(&cycle_era, cycle_num);
 
     let constants = get_constants(protocol_hash, env)?;
@@ -316,7 +313,7 @@ pub(crate) async fn get_cycle_delegate_rewards(
                 cycle_num,
                 end_hash,
                 end,
-                &saved_cycle_era_in_proto_hash,
+                protocol_hash,
                 chain_id,
                 &constants,
                 env,
@@ -358,10 +355,7 @@ pub(crate) async fn get_cycle_rewards_distribution(
         &get_additional_data_or_fail(chain_id, &current_head_hash, env.persistent_storage())?
             .protocol_hash;
 
-    // Note: (Assumption, needs to be verifed) There is a bug in cycle era storage that won't save the era data on a new protocol change if there was no change
-    let saved_cycle_era_in_proto_hash =
-        ProtocolHash::from_base58_check(&SupportedProtocol::Proto011.protocol_hash())?;
-    let cycle_era = get_cycle_era(&saved_cycle_era_in_proto_hash, cycle_num, env)?;
+    let cycle_era = get_cycle_era(protocol_hash, cycle_num, env)?;
     let (_, end) = cycle_range(&cycle_era, cycle_num);
 
     let constants = get_constants(protocol_hash, env)?;
@@ -376,7 +370,7 @@ pub(crate) async fn get_cycle_rewards_distribution(
                 cycle_num,
                 end_hash,
                 end,
-                &saved_cycle_era_in_proto_hash,
+                protocol_hash,
                 chain_id,
                 &constants,
                 env,
@@ -444,10 +438,42 @@ impl SnapshotCycleInfo {
         constants: &Constants,
         env: &RpcServiceEnvironment,
     ) -> Result<Self, anyhow::Error> {
-        // was there a protocol switch in the last PERSERVED CYCLES
+        const FIXED_SNAPSHOT_BLOCK_FOR_PRESERVED_CYCLES_PLUS_ONE: i32 = 1;
 
         // for the interogated cycle the delegate stuff was set at the end of current_cycle - PRESERVED_CYCLES - 1
         let cycle = interrogated_cycle - constants.preserved_cycles - 1;
+
+        // the snapshot data is generated from the first block for PRESERVED_CYCLES + 1
+        if cycle <= 0 {
+            let frozen_cycle_era = get_cycle_era(protocol_hash, 0, env)?;
+            let snapshot_block_level = if let Some(offset_cycle) =
+                SnapshotCycleInfo::switched_to_ithaca(
+                    constants.preserved_cycles,
+                    chain_id,
+                    interrogated_cycle,
+                    &frozen_cycle_era,
+                    env,
+                )? {
+                // Note: we subtract 1 because we want the last block of the previous cycle (last non ithaca block)
+                cycle_range(&frozen_cycle_era, offset_cycle).0 - 1
+            } else {
+                FIXED_SNAPSHOT_BLOCK_FOR_PRESERVED_CYCLES_PLUS_ONE
+            };
+
+            let snapshot_block_hash =
+                parse_block_hash(chain_id, &snapshot_block_level.to_string(), env)?;
+            let snapshot_block_hash_predecessor =
+                parse_block_hash(chain_id, &(snapshot_block_level - 1).to_string(), env)?;
+            let fixed_snapshot_data = Self {
+                snapshot_block_level,
+                snapshot_block_hash,
+                snapshot_block_hash_predecessor,
+                edge_case_data: None,
+            };
+
+            return Ok(fixed_snapshot_data);
+        }
+
         let frozen_cycle_era = get_cycle_era(protocol_hash, cycle, env)?;
         let (first_block_level, _) = cycle_range(&frozen_cycle_era, cycle);
 
@@ -467,7 +493,7 @@ impl SnapshotCycleInfo {
                 constants.preserved_cycles,
                 chain_id,
                 interrogated_cycle,
-                &frozen_cycle_era, // TODO: is this correct?
+                &frozen_cycle_era,
                 env,
             )? {
             // Note: we subtract 1 because we want the last block of the previous cycle (last non ithaca block)
@@ -646,6 +672,10 @@ impl SnapshotCycleInfo {
         let block_meta_storage = BlockMetaStorage::new(env.persistent_storage());
         for cycle_offset in (0..=preserved_cycles).rev() {
             let offset_cycle = interrogated_cycle - cycle_offset;
+            if offset_cycle < 0 {
+                continue;
+            }
+
             let (offset_cycle_start, _) = cycle_range(cycle_era, offset_cycle);
 
             let offset_cycle_start_predecessor_hash =
@@ -721,7 +751,7 @@ async fn get_delegate_reward_distribution(
             // this is the last endorsement of the cycle, so checking wether this last endorsement power surpassed the
             // remaining_allowed_missed_slots is sufficient
             if endorsing_data_at_snapshot.remaining_allowed_missed_slots
-                > delegate_endorsing_rights.endorsing_power
+                < delegate_endorsing_rights.endorsing_power
             {
                 BigInt::from_str("0")?
             } else {
@@ -797,11 +827,30 @@ fn get_cycle_era(
     cycle_num: i32,
     env: &RpcServiceEnvironment,
 ) -> Result<CycleEra, anyhow::Error> {
+    let saved_cycle_era_in_proto_hash =
+        ProtocolHash::from_base58_check(&SupportedProtocol::Proto011.protocol_hash())?;
+    let ithaca_proto_hash =
+        ProtocolHash::from_base58_check(&SupportedProtocol::Proto012.protocol_hash())?;
     if let Some(eras) = CycleErasStorage::new(env.persistent_storage()).get(protocol_hash)? {
-        if let Some(era) = eras.into_iter().find(|era| era.first_cycle() < &cycle_num) {
+        if let Some(era) = eras.into_iter().find(|era| era.first_cycle() <= &cycle_num) {
             Ok(era)
         } else {
             anyhow::bail!("No matching cycle era found")
+        }
+    // Note (mainnet): There was a bug in cycle era storage that didn't save the era data on the ithaca protocol change.
+    //                 This is eliminated on a brand new sync from level 0
+    // fallback to proto 11 era data (there are the same so it is safe)
+    } else if protocol_hash == &ithaca_proto_hash {
+        if let Some(eras) =
+            CycleErasStorage::new(env.persistent_storage()).get(&saved_cycle_era_in_proto_hash)?
+        {
+            if let Some(era) = eras.into_iter().find(|era| era.first_cycle() <= &cycle_num) {
+                Ok(era)
+            } else {
+                anyhow::bail!("No matching cycle era found")
+            }
+        } else {
+            anyhow::bail!("No saved cycle eras found for protocol")
         }
     } else {
         anyhow::bail!("No saved cycle eras found for protocol")

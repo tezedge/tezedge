@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
-- Nothing.
+- Jakarta support in rewards RPC.
 ### Deprecated
 
 - Nothing.
@@ -22,7 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
-- Nothing.
+- Fixed rewards RPC edge cases when the interrogated cycle was lower than preserved_cycles.
 
 ### Security
 

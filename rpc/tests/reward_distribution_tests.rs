@@ -275,7 +275,9 @@ async fn get_tzkt_rewards_split(
     delegate: &str,
 ) -> Result<TzktRewardSplitResponse, anyhow::Error> {
     // https://api.ithacanet.tzkt.io/v1/rewards/split/tz1RuHDSj9P7mNNhfKxsyLGRDahTX5QD1DdP/124
+    // const TZKT_API_SPLIT_ENDPOINT: &str = "https://api.tzkt.io/v1/rewards/split";
     const TZKT_API_SPLIT_ENDPOINT: &str = "https://api.ithacanet.tzkt.io/v1/rewards/split";
+    // const TZKT_API_SPLIT_ENDPOINT: &str = "https://api.jakartanet.tzkt.io/v1/rewards/split";
 
     let url_as_string = format!(
         "{}/{}/{}?limit=10000",
