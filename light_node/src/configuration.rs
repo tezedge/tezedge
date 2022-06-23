@@ -1239,7 +1239,7 @@ impl Environment {
                 record_shell_automaton_actions: args.is_present("record-shell-automaton-actions"),
 
                 baker_data_dir: args
-                    .value_of("baker-base-dir")
+                    .value_of("baker-data-dir")
                     .unwrap_or("")
                     .parse::<PathBuf>()
                     .map(|p| get_final_path(&tezos_data_dir, p))

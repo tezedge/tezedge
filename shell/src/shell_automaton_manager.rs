@@ -323,8 +323,10 @@ pub fn read_bakers_config(
         return vec![];
     }
 
-    let secret_keys =
-        File::open(base_dir.join("secret_keys")).expect("Failed to read baker 'secret_keys' file");
+    let secret_keys = File::open(base_dir.join("secret_keys")).expect(&format!(
+        "Failed to read baker 'secret_keys' file {:?}",
+        base_dir.join("secret_keys")
+    ));
     let secret_keys = serde_json::from_reader::<_, Vec<SecretKeyRecord>>(secret_keys)
         .expect("Failed to parse baker 'secret_keys' file");
     secret_keys
