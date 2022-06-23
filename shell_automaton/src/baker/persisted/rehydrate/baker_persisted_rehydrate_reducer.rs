@@ -63,6 +63,8 @@ pub fn baker_persisted_rehydrate_reducer(state: &mut State, action: &ActionWithM
                     };
                 }
 
+                baker.seed_nonces = rehydrated_state.seed_nonces.clone();
+
                 Some(())
             });
         }

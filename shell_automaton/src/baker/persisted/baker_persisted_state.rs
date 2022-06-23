@@ -1,13 +1,16 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::Signature;
-use tezos_messages::p2p::encoding::block_header::BlockHeader;
+use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
 use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::baker::block_endorser::EndorsementWithForgedBytes;
+use crate::baker::seed_nonce::BakerSeedNonceState;
 
 use super::persist::BakerPersistedPersistState;
 use super::rehydrate::BakerPersistedRehydrateState;
@@ -32,6 +35,8 @@ pub struct PersistedState {
     counter: u64,
     last_baked_block: Option<LastBakedBlock>,
     last_endorsement: Option<LastEndorsement>,
+    #[serde(default)]
+    seed_nonces: BTreeMap<Level, BakerSeedNonceState>,
 }
 
 impl PersistedState {
@@ -46,6 +51,7 @@ impl Default for PersistedState {
             counter: 0,
             last_baked_block: None,
             last_endorsement: None,
+            seed_nonces: Default::default(),
         }
     }
 }
@@ -55,6 +61,7 @@ pub struct PersistedStateRef<'a> {
     pub counter: u64,
     pub last_baked_block: Option<&'a LastBakedBlock>,
     pub last_endorsement: Option<&'a LastEndorsement>,
+    pub seed_nonces: &'a BTreeMap<Level, BakerSeedNonceState>,
 }
 
 impl<'a> PersistedStateRef<'a> {
@@ -63,6 +70,7 @@ impl<'a> PersistedStateRef<'a> {
             counter: self.counter,
             last_baked_block: self.last_baked_block.cloned(),
             last_endorsement: self.last_endorsement.cloned(),
+            seed_nonces: self.seed_nonces.clone(),
         }
     }
 }
@@ -72,6 +80,7 @@ pub struct PersistedStateMut<'a> {
     pub counter: u64,
     pub last_baked_block: &'a mut Option<LastBakedBlock>,
     pub last_endorsement: &'a mut Option<LastEndorsement>,
+    pub seed_nonces: &'a mut BTreeMap<Level, BakerSeedNonceState>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -99,6 +108,7 @@ impl BakerPersistedState {
                     counter: current_state.counter,
                     last_baked_block: current_state.last_baked_block.as_ref(),
                     last_endorsement: current_state.last_endorsement.as_ref(),
+                    seed_nonces: &current_state.seed_nonces,
                 })
             }
             _ => None,
@@ -116,6 +126,7 @@ impl BakerPersistedState {
                     counter: current_state.counter,
                     last_baked_block: &mut current_state.last_baked_block,
                     last_endorsement: &mut current_state.last_endorsement,
+                    seed_nonces: &mut current_state.seed_nonces,
                 });
                 Some(current_state.counter)
             }

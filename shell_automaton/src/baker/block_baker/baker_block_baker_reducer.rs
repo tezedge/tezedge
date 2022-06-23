@@ -566,11 +566,23 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                     BakerBlockBakerState::SignSuccess {
                         header, operations, ..
                     } => {
+                        let seed_nonces = &baker.seed_nonces;
+                        let seed_nonces = baker
+                            .persisted
+                            .current_state()
+                            .and_then(|v| v.last_baked_block)
+                            // TODO: check if has seed_nonce for optimization
+                            // to not clone seed_nonces needlessly.
+                            // .filter(|b| ...)
+                            .map(|_| seed_nonces.clone());
                         let counter = baker.persisted.update(|p| {
                             *p.last_baked_block = Some(LastBakedBlock {
                                 header: header.clone(),
                                 operations: operations.clone(),
                             });
+                            if let Some(seed_nonces) = seed_nonces {
+                                *p.seed_nonces = seed_nonces.clone();
+                            }
                         });
                         let state_counter = match counter {
                             Some(v) => v,
