@@ -6,11 +6,11 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::time::{Duration, SystemTime};
-use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 
 use ::storage::persistent::SchemaError;
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash};
 use storage::BlockHeaderWithHash;
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::baker::BakerState;

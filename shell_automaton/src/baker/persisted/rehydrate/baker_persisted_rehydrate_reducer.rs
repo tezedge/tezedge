@@ -15,8 +15,6 @@ pub fn baker_persisted_rehydrate_reducer(state: &mut State, action: &ActionWithM
                     time: action.time_as_nanos(),
                     req_id: content.req_id,
                 };
-
-                ()
             });
         }
         Action::BakerPersistedRehydrateSuccess(content) => {
@@ -25,8 +23,6 @@ pub fn baker_persisted_rehydrate_reducer(state: &mut State, action: &ActionWithM
                     time: action.time_as_nanos(),
                     result: content.result.clone(),
                 };
-
-                ()
             });
         }
         Action::BakerPersistedRehydrated(content) => {

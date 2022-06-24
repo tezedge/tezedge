@@ -33,7 +33,7 @@ impl Default for BakerServiceDummy {
 impl BakerService for BakerServiceDummy {
     fn add_local_baker(&mut self, _pkh: SignaturePublicKeyHash, _secret_key: SecretKeyEd25519) {}
 
-    fn remove_local_baker(&mut self, pkh: &SignaturePublicKeyHash) {}
+    fn remove_local_baker(&mut self, _pkh: &SignaturePublicKeyHash) {}
 
     fn try_recv(&mut self) -> Result<(RequestId, BakerWorkerMessage), ResponseTryRecvError> {
         Err(ResponseTryRecvError::Empty)

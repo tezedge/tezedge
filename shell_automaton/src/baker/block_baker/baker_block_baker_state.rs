@@ -22,7 +22,7 @@ use tezos_messages::Timestamp;
 use crate::protocol_runner::ProtocolRunnerToken;
 use crate::request::RequestId;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BakingSlot {
     pub round: u32,
     pub start_time: u64,
