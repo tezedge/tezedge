@@ -26,6 +26,18 @@ impl crate::EnablingCondition<crate::State> for BakerAddAction {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+pub struct BakerRemoveAction {
+    pub baker: SignaturePublicKeyHash,
+}
+
+impl crate::EnablingCondition<crate::State> for BakerRemoveAction {
+    fn is_enabled(&self, state: &crate::State) -> bool {
+        state.bakers.contains_key(&self.baker)
+    }
+}
+
 pub fn baker_reducer(state: &mut crate::State, action: &crate::ActionWithMeta) {
     match &action.action {
         crate::Action::BakerAdd(content) => {
@@ -36,6 +48,12 @@ pub fn baker_reducer(state: &mut crate::State, action: &crate::ActionWithMeta) {
                 content.baker.clone(),
                 BakerState::new(state.config.liquidity_baking_escape_vote),
             );
+        }
+        crate::Action::BakerRemove(content) => {
+            slog::debug!(state.log, "Removing baker";
+                         "pkh" => slog::FnValue(|_| content.baker.to_string()),
+            );
+            state.bakers.remove(&content.baker);
         }
         _ => (),
     }

@@ -9,7 +9,7 @@ use std::time::Instant;
 use tezos_messages::base::signature_public_key::SignaturePublicKey;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
-use crate::baker::BakerAddAction;
+use crate::baker::{BakerAddAction, BakerRemoveAction};
 use crate::block_applier::BlockApplierApplyState;
 use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::mempool::mempool_actions::{
@@ -19,7 +19,7 @@ use crate::mempool::mempool_actions::{
 };
 use crate::mempool::OperationKind;
 use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
-use crate::service::rpc_service::{BakingState, RpcRequest, RpcRequestStream};
+use crate::service::rpc_service::{BakerPatch, BakingState, RpcRequest, RpcRequestStream};
 use crate::service::{BakerService, RpcService, Service};
 use crate::storage::request::StorageRequestStatus;
 use crate::{Action, ActionWithMeta, Store};
@@ -337,7 +337,11 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             .collect();
                         let _ = channel.send(stats);
                     }
-                    RpcRequest::PatchBakers { baker } => {
+                    RpcRequest::PatchBakers { patch } => {
+                        let (baker, add) = match patch {
+                            BakerPatch::Add { baker } => (baker, true),
+                            BakerPatch::Remove { baker } => (baker, false),
+                        };
                         let seed = match SeedEd25519::from_base58_check(&baker) {
                             Ok(v) => v,
                             Err(err) => {
@@ -359,11 +363,16 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             }
                         };
                         let pkh = SignaturePublicKey::Ed25519(public_key).pk_hash().unwrap();
-                        store
-                            .service
-                            .baker()
-                            .add_local_baker(pkh.clone(), secret_key);
-                        let res = store.dispatch(BakerAddAction { baker: pkh });
+                        let res = if add {
+                            store
+                                .service
+                                .baker()
+                                .add_local_baker(pkh.clone(), secret_key);
+                            store.dispatch(BakerAddAction { baker: pkh })
+                        } else {
+                            store.service.baker().remove_local_baker(&pkh);
+                            store.dispatch(BakerRemoveAction { baker: pkh })
+                        };
                         store
                             .service()
                             .rpc()

@@ -1162,12 +1162,12 @@ pub(crate) async fn get_best_remote_level(
 }
 
 pub(crate) async fn patch_bakers(
-    baker: String,
+    patch: shell_automaton::service::rpc_service::BakerPatch,
     env: &RpcServiceEnvironment,
 ) -> anyhow::Result<serde_json::Value> {
     let rx = env
         .shell_automaton_sender()
-        .send(RpcShellAutomatonMsg::PatchBakers { baker })
+        .send(RpcShellAutomatonMsg::PatchBakers { patch })
         .await?;
 
     let response = rx.await?;

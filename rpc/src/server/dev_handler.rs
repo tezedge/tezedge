@@ -820,9 +820,10 @@ pub async fn patch_bakers(
     _: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
+    use shell_automaton::service::rpc_service::BakerPatch;
     let body = req.into_body();
     let body_bytes = body::to_bytes(body).await?;
-    let baker = std::str::from_utf8(&body_bytes)?;
+    let patch = serde_json::from_str::<BakerPatch>(&std::str::from_utf8(&body_bytes)?)?;
 
-    make_json_response(&dev_services::patch_bakers(baker.to_string(), &env).await?)
+    make_json_response(&dev_services::patch_bakers(patch, &env).await?)
 }
