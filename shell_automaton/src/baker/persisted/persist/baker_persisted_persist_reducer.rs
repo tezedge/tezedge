@@ -14,8 +14,6 @@ pub fn baker_persisted_persist_reducer(state: &mut State, action: &ActionWithMet
                     req_id: content.req_id,
                     counter: content.counter,
                 };
-
-                ()
             });
         }
         Action::BakerPersistedPersistSuccess(content) => {
@@ -26,8 +24,6 @@ pub fn baker_persisted_persist_reducer(state: &mut State, action: &ActionWithMet
                     time: action.time_as_nanos(),
                     counter,
                 };
-
-                ()
             });
         }
         _ => {}

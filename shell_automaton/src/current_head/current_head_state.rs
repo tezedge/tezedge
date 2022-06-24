@@ -506,7 +506,7 @@ impl CurrentHeadState {
                 head,
                 applied_blocks,
                 ..
-            } => applied_blocks.get(&head.hash).and_then(|(_, v)| v.clone()),
+            } => applied_blocks.get(&head.hash).and_then(|(_, v)| *v),
             _ => None,
         }
     }
@@ -517,9 +517,7 @@ impl CurrentHeadState {
                 head_pred: Some(head_pred),
                 applied_blocks,
                 ..
-            } => applied_blocks
-                .get(&head_pred.hash)
-                .and_then(|(_, v)| v.clone()),
+            } => applied_blocks.get(&head_pred.hash).and_then(|(_, v)| *v),
             _ => None,
         }
     }

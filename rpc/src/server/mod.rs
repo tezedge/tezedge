@@ -170,7 +170,10 @@ pub fn spawn_server(
     bind_address: &SocketAddr,
     env: Arc<RpcServiceEnvironment>,
 ) -> impl Future<Output = Result<(), hyper::Error>> {
-    let routes = Arc::new(router::create_routes(env.tezedge_is_enabled, env.allow_unsafe_rpc));
+    let routes = Arc::new(router::create_routes(
+        env.tezedge_is_enabled,
+        env.allow_unsafe_rpc,
+    ));
 
     hyper::Server::bind(bind_address)
         .serve(make_service_fn(move |socket: &AddrStream| {

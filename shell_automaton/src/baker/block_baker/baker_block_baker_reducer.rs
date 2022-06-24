@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::BTreeSet;
-
 use crypto::hash::{
     BlockPayloadHash, HashTrait, HashType, OperationListHash, OperationMetadataListListHash,
 };
@@ -24,62 +22,36 @@ fn set_elected_block_operations(baker: &mut BakerState, mempool: &MempoolState) 
         if !block.operations.is_empty() {
             return block;
         }
-        let applied = &mempool.validated_operations.applied;
-        let applied = applied
-            .iter()
-            .map(|v| v.hash.clone())
-            .collect::<BTreeSet<_>>();
-
-        let ops = &mempool.validated_operations.ops;
 
         let empty_operations = vec![vec![], vec![], vec![], vec![]];
-        let operations = applied
-            .into_iter()
-            .filter_map(|hash| Some((ops.get(&hash)?, hash)))
-            .filter(|(op, hash)| {
-                if !OperationKind::from_operation_content_raw(op.data().as_ref())
-                    .is_consensus_operation()
-                {
-                    return true;
-                }
-                let op_state = mempool.operations_state.get(hash);
-                op_state
-                    .and_then(|op| {
-                        let op = op.operation_decoded_contents.as_ref()?;
-
-                        let (level, round) = op.level_round()?;
-                        Some(
-                            level == block.header().level()
-                                && round == block.round()
-                                && op.payload()? == block.payload_hash(),
-                        )
-                    })
-                    .unwrap_or(false)
-            })
-            .fold(empty_operations, |mut r, (op, hash)| {
-                let container = match OperationKind::from_operation_content_raw(op.data().as_ref())
-                {
-                    OperationKind::Unknown
-                    | OperationKind::Preendorsement
-                    | OperationKind::FailingNoop
-                    | OperationKind::EndorsementWithSlot => return r,
-                    OperationKind::Endorsement => &mut r[0],
-                    OperationKind::Proposals | OperationKind::Ballot => &mut r[1],
-                    OperationKind::SeedNonceRevelation
-                    | OperationKind::DoublePreendorsementEvidence
-                    | OperationKind::DoubleEndorsementEvidence
-                    | OperationKind::DoubleBakingEvidence
-                    | OperationKind::ActivateAccount => &mut r[2],
-                    OperationKind::Reveal
-                    | OperationKind::Transaction
-                    | OperationKind::Origination
-                    | OperationKind::Delegation
-                    | OperationKind::RegisterGlobalConstant
-                    | OperationKind::SetDepositsLimit => &mut r[3],
-                };
-                container.push((op, hash));
-                r
-            });
+        let ops_iter = mempool.operations_for_block_iter(
+            block.header().level(),
+            block.round(),
+            block.payload_hash(),
+        );
+        let operations = ops_iter.fold(empty_operations, |mut r, (hash, op, kind)| {
+            let container = match kind {
+                OperationKind::Unknown
+                | OperationKind::Preendorsement
+                | OperationKind::FailingNoop
+                | OperationKind::EndorsementWithSlot => return r,
+                OperationKind::Endorsement => &mut r[0],
+                OperationKind::Proposals | OperationKind::Ballot => &mut r[1],
+                OperationKind::SeedNonceRevelation
+                | OperationKind::DoublePreendorsementEvidence
+                | OperationKind::DoubleEndorsementEvidence
+                | OperationKind::DoubleBakingEvidence
+                | OperationKind::ActivateAccount => &mut r[2],
+                OperationKind::Reveal
+                | OperationKind::Transaction
+                | OperationKind::Origination
+                | OperationKind::Delegation
+                | OperationKind::RegisterGlobalConstant
+                | OperationKind::SetDepositsLimit => &mut r[3],
+            };
+            container.push((op.clone(), hash.clone()));
+            r
+        });
 
         block.operations = operations
             .iter()
@@ -134,13 +106,12 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                     .or_else(|| {
                         if pred?.header.proto() != head?.header.proto() {
                             let block = head?.clone();
-                            let payload_hash =
-                                block.header.payload_hash().clone().or_else(|| {
-                                    BlockPayloadHash::try_from_bytes(
-                                        &[0; HashType::BlockPayloadHash.size()],
-                                    )
-                                    .ok()
-                                })?;
+                            let payload_hash = block.header.payload_hash().or_else(|| {
+                                BlockPayloadHash::try_from_bytes(
+                                    &[0; HashType::BlockPayloadHash.size()],
+                                )
+                                .ok()
+                            })?;
                             let ops_metadata_hash = state
                                 .current_head
                                 .ops_metadata_hash()
@@ -721,14 +692,12 @@ impl<'a> RoundIter<'a> {
     }
 
     fn round(&'a self) -> Option<u32> {
-        let slot = self.slots.get(self.slot_index)?.clone().try_into().ok()?;
-        Some(
-            self.slot_loop
-                .checked_mul(self.committee_size)?
-                .checked_add(slot)?
-                .try_into()
-                .ok()?,
-        )
+        let slot = (*self.slots.get(self.slot_index)?).try_into().ok()?;
+        self.slot_loop
+            .checked_mul(self.committee_size)?
+            .checked_add(slot)?
+            .try_into()
+            .ok()
     }
 
     fn next_slot_index_and_loop(&self) -> Option<(usize, usize)> {
