@@ -250,8 +250,8 @@ name: build-old-tezedge-binaries
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
   ref:
     - refs/pull/*/head
 
@@ -311,8 +311,8 @@ name: build-monitoring-artifacts
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 workspace:
   path: /drone/src
@@ -360,8 +360,8 @@ name: corr/real-time-environment-cyclictest-latencies
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 clone:
   disable: true
@@ -445,8 +445,8 @@ name: corr/octez-tezedge-connection-with-different-networks-each
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   FROM_BLOCK_HEADER: 0
@@ -579,8 +579,8 @@ name: corr/tezedge-unit-tests
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 workspace:
   path: /drone/src
@@ -663,8 +663,8 @@ name: corr/tezedge-integration-tests
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 workspace:
   path: /drone/src
@@ -716,8 +716,8 @@ name: corr/import-snapshot
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   NETWORK: hangzhounet
@@ -912,8 +912,8 @@ name: corr/replay-and-snapshot-012-ithacanet
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   NETWORK: ithacanet
@@ -1310,8 +1310,8 @@ name: corr/octez-python-tests-applied-to-tezedge-012-ithaca-no-endorsement-prech
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _012
@@ -1584,8 +1584,8 @@ name: corr/octez-python-tests-applied-to-tezedge-012-ithaca
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _012
@@ -2184,8 +2184,8 @@ name: corr/octez-python-tests-applied-to-tezedge-013-jakarta-no-endorsement-prec
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   TEST_PROTO_DIR_SUFFIX: _013
@@ -2735,8 +2735,8 @@ name: corr/sandbox-launcher-rpc-server-012-ithaca
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -2907,8 +2907,8 @@ depends_on:
 #
 #trigger:
 #  branch:
-#    - xmaster
-#    - xdevelop
+#    - master
+#    - develop
 #
 #environment:
 #  SODIUM_USE_PKG_CONFIG: 1
@@ -3233,8 +3233,8 @@ depends_on:
 #
 #trigger:
 #  branch:
-#    - xmaster
-#    - xdevelop
+#    - master
+#    - develop
 #
 #environment:
 #  SODIUM_USE_PKG_CONFIG: 1
@@ -3512,8 +3512,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-007-delphinet
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   NETWORK: delphinet
@@ -3749,8 +3749,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-008-edo2net
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   NETWORK: edo2net
@@ -3976,8 +3976,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-009-florencenet
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   NETWORK: florencenet
@@ -4203,8 +4203,8 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-010-granadanet
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   NETWORK: granadanet
@@ -4692,8 +4692,8 @@ name: corr/indexer-tz-tezos-009-florence
 
 trigger:
   branch:
-    - xdevelop
-    - xmaster
+    - develop
+    - master
 
 clone:
   disable: true
@@ -4761,8 +4761,8 @@ name: corr/indexer-tz-tezedge-009-florence
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   NETWORK: florencenet
@@ -4886,8 +4886,8 @@ name: corr/indexer-conseil-octez-009-florence
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 clone:
   disable: true
@@ -4988,8 +4988,8 @@ name: corr/indexer-conseil-tezedge-009-florence
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   NETWORK: florencenet
@@ -5143,8 +5143,8 @@ name: corr/indexer-tzkt-octez-012-ithaca
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 clone:
   disable: true
@@ -5238,8 +5238,8 @@ name: corr/indexer-tzkt-tezedge-012-ithaca
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 environment:
   NETWORK: ithacanet
@@ -5395,8 +5395,8 @@ name: corr/monitoring-cpu-measurement-test
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 steps:
 
@@ -5476,8 +5476,8 @@ name: corr/monitoring-memory-measurement-test
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 steps:
 
@@ -5558,8 +5558,8 @@ name: corr/monitoring-io-and-network-measurement-test
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 steps:
 
@@ -5639,8 +5639,8 @@ name: corr/monitoring-disk-size-measurement-test
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 steps:
 
@@ -5728,8 +5728,8 @@ name: perf/tezedge-all-benchmarks
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 workspace:
   path: /drone/src
@@ -5996,8 +5996,8 @@ name: perf/dynamic-memory-allocation-decoding
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 workspace:
   path: /drone/src
@@ -6037,8 +6037,8 @@ name: perf/bootstrap-time-012-ithaca
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 depends_on:
   - build-tezedge-binaries
@@ -6308,8 +6308,8 @@ name: perf/wrk-tests-012-ithaca
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 clone:
   disable: true
@@ -6550,8 +6550,8 @@ depends_on:
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 volumes:
   - name: snapshots
@@ -6842,8 +6842,8 @@ name: corr/mitten-tezedge-node-octez-baker
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 clone:
   disable: true
@@ -7059,8 +7059,8 @@ name: corr/mitten-tezedge-node-external-baker
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 clone:
   disable: true
@@ -7277,8 +7277,8 @@ name: corr/mitten-octez-node-external-baker
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 clone:
   disable: true
