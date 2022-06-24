@@ -26,7 +26,7 @@ run_octez_baker() {
 }
 
 run_external_baker() {
-    CMD="$0.tezedge -a"
+    CMD="$0.tezedge --archive --protocol=ithaca"
     while true; do
         case $1 in
             run|with|local)
