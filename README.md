@@ -343,6 +343,7 @@ For a more detailed description of the RPCs, see the [shell](https://docs.tezedg
 ### Baking
 
 - [Using Tezedge external baker](apps/baker/README.md)
+- [Using Tezedge embedded baker](shell_automaton/src/baker/README.md)
 - [Baking in the Ithaca testnet](baking/012-Psithaca/README.md)
 - [Baking in the mainnet](baking/mainnet/README.md)
 
