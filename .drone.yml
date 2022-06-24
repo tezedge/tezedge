@@ -1934,7 +1934,7 @@ defs:
       - cd tezos-src/tezos/tests_python
       - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
       - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/$${PYTHON_TEST}
+      - poetry run pytest -s --log-dir=$log_dir --timeout=600 tests$${TEST_PROTO_DIR_SUFFIX}/$${PYTHON_TEST}
     failure: ignore
 
 steps:
@@ -2486,7 +2486,7 @@ defs:
       - cd tezos-src/tezos/tests_python
       - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
       - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
-      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/$${PYTHON_TEST}
+      - poetry run pytest -s --log-dir=$log_dir --timeout=600 tests$${TEST_PROTO_DIR_SUFFIX}/$${PYTHON_TEST}
     failure: ignore # TODO: remove later
 
 steps:
