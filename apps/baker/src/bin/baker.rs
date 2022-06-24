@@ -15,7 +15,9 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
-use baker::EventWithTime;
+use baker::{
+    EventWithTime, LiquidityBakingToggleVote, Protocol, ProtocolBlockHeaderI, ProtocolBlockHeaderJ,
+};
 
 #[derive(StructOpt, Debug)]
 pub struct Arguments {
@@ -27,6 +29,10 @@ pub struct Arguments {
     endpoint: Url,
     #[structopt(short, long)]
     archive: bool,
+    #[structopt(long, default_value = "j")]
+    protocol: Protocol,
+    #[structopt(long, default_value = "off")]
+    liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     // #[structopt(long)]
     // node_dir: Option<PathBuf>,
 }
@@ -40,6 +46,8 @@ fn main() {
         baker,
         endpoint,
         archive,
+        protocol,
+        liquidity_baking_toggle_vote,
     } = Arguments::from_args();
 
     let env = env_logger::Env::default().default_filter_or("info");
@@ -59,19 +67,30 @@ fn main() {
             Err(_) => std::thread::sleep(std::time::Duration::from_millis(200)),
         }
     };
+    slog::info!(srv.log, "chain_id: {chain_id}");
     loop {
         match srv.client.wait_bootstrapped() {
             Ok(_) => break,
             Err(_) => std::thread::sleep(std::time::Duration::from_millis(200)),
         }
     }
+    slog::info!(srv.log, "bootstrapped");
     let constants = loop {
         match srv.client.get_constants() {
             Ok(v) => break v,
             Err(_) => std::thread::sleep(std::time::Duration::from_millis(200)),
         }
     };
-    srv.client.monitor_heads(&chain_id).unwrap();
+    match protocol {
+        Protocol::Ithaca => srv
+            .client
+            .monitor_heads::<ProtocolBlockHeaderI>(&chain_id)
+            .unwrap(),
+        Protocol::Jakarta => srv
+            .client
+            .monitor_heads::<ProtocolBlockHeaderJ>(&chain_id)
+            .unwrap(),
+    }
     let log = srv.log.clone();
 
     // store the state here, and then atomically swap to avoid corruption
@@ -90,7 +109,13 @@ fn main() {
     let initial_state = if let Ok(persistent_state) = persistent_state {
         persistent_state
     } else {
-        BakerState::new(chain_id, constants, srv.crypto.public_key_hash().clone())
+        BakerState::new(
+            chain_id,
+            constants,
+            srv.crypto.public_key_hash().clone(),
+            protocol,
+            liquidity_baking_toggle_vote,
+        )
     };
 
     let initial_state = BakerStateEjectable(Some(initial_state));

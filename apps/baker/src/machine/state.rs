@@ -9,11 +9,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{
-    BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, OperationListHash, Signature,
-};
+use crypto::hash::{BlockHash, BlockPayloadHash, ChainId, ContractTz1Hash, Signature};
 use tenderbake as tb;
-use tezos_encoding::types::SizedBytes;
 use tezos_messages::protocol::proto_012::operation::{
     EndorsementOperation, InlinedEndorsement, InlinedEndorsementMempoolContents,
     InlinedEndorsementMempoolContentsEndorsementVariant, InlinedPreendorsement,
@@ -21,7 +18,7 @@ use tezos_messages::protocol::proto_012::operation::{
 };
 
 use crate::services::{
-    client::{Constants, ProtocolBlockHeader},
+    client::{Constants, LiquidityBakingToggleVote, Protocol},
     event::{Block, OperationKind, OperationSimple, Slots},
     EventWithTime,
 };
@@ -101,15 +98,23 @@ impl fmt::Display for BakerState {
 
 #[derive(Serialize, Deserialize)]
 pub struct Initialized {
+    #[serde(default)]
+    pub protocol: Protocol,
+    #[serde(default)]
+    pub liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
     pub chain_id: ChainId,
     pub proof_of_work_threshold: u64,
     pub this: ContractTz1Hash,
     // cycle state
     pub nonces: CycleNonce,
     // live blocks
+    #[serde(default)]
+    pub live_blocks_base: Option<BlockHash>,
     pub live_blocks: Vec<BlockHash>,
     // operations in this proposal
     pub operations: Vec<Vec<OperationSimple>>,
+    #[serde(default)]
+    pub new_operations: Vec<OperationSimple>,
     // tenderbake machine
     pub tb_config: tb::Config<tb::TimingLinearGrow, SlotsInfo>,
     pub tb_state: tb::Machine<ContractTz1Hash, OperationSimple, 200>,
@@ -154,7 +159,13 @@ impl AsMut<Initialized> for BakerState {
 }
 
 impl BakerState {
-    pub fn new(chain_id: ChainId, constants: Constants, this: ContractTz1Hash) -> Self {
+    pub fn new(
+        chain_id: ChainId,
+        constants: Constants,
+        this: ContractTz1Hash,
+        protocol: Protocol,
+        liquidity_baking_toggle_vote: LiquidityBakingToggleVote,
+    ) -> Self {
         let timing = tb::TimingLinearGrow {
             minimal_block_delay: constants.minimal_block_delay,
             delay_increment_per_round: constants.delay_increment_per_round,
@@ -173,6 +184,8 @@ impl BakerState {
         };
 
         BakerState::Idle(Initialized {
+            protocol,
+            liquidity_baking_toggle_vote,
             chain_id,
             proof_of_work_threshold: constants.proof_of_work_threshold,
             this,
@@ -184,8 +197,10 @@ impl BakerState {
                 previous: BTreeMap::new(),
                 this: BTreeMap::new(),
             },
+            live_blocks_base: None,
             live_blocks: Vec::new(),
             operations: Vec::new(),
+            new_operations: Vec::new(),
             tb_config,
             tb_state: tb::Machine::<ContractTz1Hash, OperationSimple, 200>::default(),
             actions: vec![],
@@ -318,11 +333,12 @@ impl BakerState {
                     BakerState::Gathering {
                         mut state,
                         gathering: Gathering::GetLiveBlocks(Request {
-                            id: _,
+                            id,
                             state: RequestState::Success(live_blocks),
                         }),
                         current_block,
                     } => {
+                        state.live_blocks_base = Some(id);
                         state.live_blocks = live_blocks;
                         state.actions.push(BakerAction::Idle(IdleAction {}));
                         BakerState::HaveBlock { state, current_block }
@@ -489,16 +505,22 @@ impl BakerState {
                             }
                         }
                         Some(_) => {
-                            // the operation does not belong to live_blocks
-                            if !state.live_blocks.contains(&op.branch) {
-                                let description = format!("the op is outdated {op:?}");
-                                state.actions.push(BakerAction::LogWarning(LogWarningAction { description }));
-                                // state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
+                            if state.live_blocks_base != Some(state.tb_state.hash().as_ref().unwrap().clone()) {
+                                state.new_operations.push(op);
                                 continue;
-                            };
-                            state
-                                .tb_state
-                                .handle(&state.tb_config, tb::Event::Operation(op));
+                            }
+                            for op in mem::take(&mut state.new_operations).into_iter().chain(std::iter::once(op)) {
+                                // the operation does not belong to live_blocks
+                                if !state.live_blocks.contains(&op.branch) {
+                                    let description = format!("the op is outdated {op:?}");
+                                    state.actions.push(BakerAction::LogWarning(LogWarningAction { description }));
+                                    // state.ahead_ops.entry(op.branch.clone()).or_default().push(op);
+                                    continue;
+                                };
+                                state
+                                    .tb_state
+                                    .handle(&state.tb_config, tb::Event::Operation(op));
+                            }
                         }
                     }
                 }
@@ -669,36 +691,12 @@ impl Initialized {
             }
         }
         let payload_round = payload.payload_round;
-        let payload_hash = if payload.hash.0.as_slice() != [0x55; 32] {
-            BlockPayloadHash(payload.hash.0.to_vec())
-        } else {
-            let hashes = operations[1..]
-                .as_ref()
-                .iter()
-                .flatten()
-                .filter_map(|op| op.hash.as_ref().cloned())
-                .collect::<Vec<_>>();
-            let operation_list_hash = OperationListHash::calculate(&hashes).unwrap();
-            BlockPayloadHash::calculate(
-                &predecessor_hash,
-                payload_round as u32,
-                &operation_list_hash,
-            )
-            .unwrap()
-        };
         let seed_nonce_hash = self.nonces.gen_nonce(block.level);
-        let protocol_header = ProtocolBlockHeader {
-            payload_hash,
-            payload_round,
-            seed_nonce_hash,
-            proof_of_work_nonce: SizedBytes(0x7985fafe1fb70300u64.to_be_bytes()),
-            liquidity_baking_escape_vote: false,
-            signature: Signature(vec![0x55; 64]),
-        };
         let timestamp = block.time_header.timestamp.unix_epoch.as_secs() as i64;
 
         self.actions.push(BakerAction::Propose(ProposeAction {
-            protocol_header,
+            payload_round,
+            seed_nonce_hash,
             predecessor_hash,
             operations,
             timestamp,
