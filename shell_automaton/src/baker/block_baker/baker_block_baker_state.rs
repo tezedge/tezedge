@@ -238,7 +238,7 @@ pub struct BuiltBlock {
     pub predecessor_header: BlockHeader,
     pub predecessor_max_operations_ttl: i32,
     pub pred_block_metadata_hash: BlockMetadataHash,
-    pub pred_ops_metadata_hash: OperationMetadataListListHash,
+    pub pred_ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
 impl BuiltBlock {
@@ -284,7 +284,7 @@ pub struct BlockPreapplyRequest {
     pub operations: Vec<Vec<Operation>>,
     pub predecessor_header: BlockHeader,
     pub predecessor_block_metadata_hash: BlockMetadataHash,
-    pub predecessor_ops_metadata_hash: OperationMetadataListListHash,
+    pub predecessor_ops_metadata_hash: Option<OperationMetadataListListHash>,
     pub predecessor_max_operations_ttl: i32,
 }
 
@@ -297,7 +297,7 @@ impl From<BlockPreapplyRequest> for tezos_api::ffi::PreapplyBlockRequest {
             operations: req.operations.clone(),
             predecessor_header: req.predecessor_header.clone(),
             predecessor_block_metadata_hash: Some(req.predecessor_block_metadata_hash.clone()),
-            predecessor_ops_metadata_hash: Some(req.predecessor_ops_metadata_hash.clone()),
+            predecessor_ops_metadata_hash: req.predecessor_ops_metadata_hash.clone(),
             predecessor_max_operations_ttl: req.predecessor_max_operations_ttl,
         }
     }
