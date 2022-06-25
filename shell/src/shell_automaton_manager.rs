@@ -244,6 +244,7 @@ impl ShellAutomatonManager {
             ),
 
             bakers: bakers_config,
+            liquidity_baking_escape_vote: p2p_config.liquidity_baking_escape_vote,
         });
 
         initial_state.set_logger(log.clone());

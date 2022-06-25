@@ -40,7 +40,7 @@ where
     S: Service,
 {
     match &action.action {
-        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) | Action::BakerAdd(_) => {
             store.dispatch(BakerBlockBakerRightsGetInitAction {});
         }
         Action::BakerBlockBakerRightsGetInit(_) => {
@@ -216,7 +216,7 @@ where
                 predecessor_header: block.predecessor_header.clone(),
                 predecessor_block_metadata_hash: block.pred_block_metadata_hash.clone(),
                 predecessor_ops_metadata_hash: block.pred_ops_metadata_hash.clone(),
-                predecessor_max_operations_ttl: 120,
+                predecessor_max_operations_ttl: block.predecessor_max_operations_ttl,
             };
 
             let req_id = store
@@ -226,7 +226,7 @@ where
 
             slog::debug!(&store.state().log, "Baker block preapply request sent";
                 "req_id" => format!("{:?}", req_id),
-                "request" => format!("{:?}", request));
+                "request" => format!("{:#?}", request));
 
             store.dispatch(BakerBlockBakerPreapplyPendingAction {
                 baker: content.baker.clone(),

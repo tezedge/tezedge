@@ -152,6 +152,16 @@ pub enum RpcRequest {
         level: Level,
         round: Option<i32>,
     },
+    PatchBakers {
+        patch: BakerPatch,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "command")]
+pub enum BakerPatch {
+    Add { baker: String },
+    Remove { baker: String },
 }
 
 #[derive(Debug)]

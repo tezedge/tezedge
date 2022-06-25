@@ -188,7 +188,7 @@ impl EnablingCondition<State> for BakerBlockBakerNextLevelTimeoutSuccessQuorumPe
                     next_level_timeout_notified,
                     ..
                 } => {
-                    next_level.map_or(false, |v| v.timeout <= state.time_as_nanos())
+                    next_level.map_or(false, |v| v.start_time <= state.time_as_nanos())
                         && baker.elected_block.is_none()
                         && !next_level_timeout_notified
                 }
@@ -210,7 +210,7 @@ impl EnablingCondition<State> for BakerBlockBakerBakeNextLevelAction {
             .get(&self.baker)
             .map_or(false, |baker| match &baker.block_baker {
                 BakerBlockBakerState::TimeoutPending { next_level, .. } => {
-                    next_level.map_or(false, |v| v.timeout <= state.time_as_nanos())
+                    next_level.map_or(false, |v| v.start_time <= state.time_as_nanos())
                         && baker.elected_block.is_some()
                 }
                 _ => false,
@@ -235,17 +235,17 @@ impl EnablingCondition<State> for BakerBlockBakerBakeNextRoundAction {
                 } => {
                     let now = state.time_as_nanos();
                     let has_elected_block = baker.elected_block.is_some();
-                    !next_level.map_or(false, |v| v.timeout <= now && has_elected_block)
+                    !next_level.map_or(false, |v| v.start_time <= now && has_elected_block)
                         && next_round
                             .and_then(|slot| {
                                 Some(match has_elected_block {
-                                    false => slot.timeout <= now,
+                                    false => slot.start_time <= now,
                                     true => {
                                         let constants = state.current_head.constants()?;
                                         let min_block_delay = constants.min_block_delay;
                                         // add a delay when quorum has been reached.
                                         let delay = (min_block_delay * 1_000_000_000) / 5;
-                                        slot.timeout + delay <= now
+                                        slot.start_time + delay <= now
                                     }
                                 })
                             })

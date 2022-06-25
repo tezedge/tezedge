@@ -1,15 +1,17 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::BTreeSet;
-
-use crypto::hash::{BlockPayloadHash, OperationListHash};
+use crypto::hash::{
+    BlockPayloadHash, HashTrait, HashType, OperationListHash, OperationMetadataListListHash,
+};
+use storage::BlockHeaderWithHash;
 use tezos_encoding::types::SizedBytes;
 use tezos_messages::p2p::encoding::block_header::BlockHeaderBuilder;
 
 use crate::baker::persisted::LastBakedBlock;
 use crate::baker::{BakerState, ElectedBlock};
 use crate::block_applier::BlockApplierApplyState;
+use crate::current_head::{CurrentHeadState, ProtocolConstants};
 use crate::mempool::{MempoolState, OperationKind};
 use crate::{Action, ActionWithMeta, State};
 
@@ -20,62 +22,36 @@ fn set_elected_block_operations(baker: &mut BakerState, mempool: &MempoolState) 
         if !block.operations.is_empty() {
             return block;
         }
-        let applied = &mempool.validated_operations.applied;
-        let applied = applied
-            .iter()
-            .map(|v| v.hash.clone())
-            .collect::<BTreeSet<_>>();
-
-        let ops = &mempool.validated_operations.ops;
 
         let empty_operations = vec![vec![], vec![], vec![], vec![]];
-        let operations = applied
-            .into_iter()
-            .filter_map(|hash| Some((ops.get(&hash)?, hash)))
-            .filter(|(op, hash)| {
-                if !OperationKind::from_operation_content_raw(op.data().as_ref())
-                    .is_consensus_operation()
-                {
-                    return true;
-                }
-                let op_state = mempool.operations_state.get(hash);
-                op_state
-                    .and_then(|op| {
-                        let op = op.operation_decoded_contents.as_ref()?;
-
-                        let (level, round) = op.level_round()?;
-                        Some(
-                            level == block.header().level()
-                                && round == block.round()
-                                && op.payload()? == block.payload_hash(),
-                        )
-                    })
-                    .unwrap_or(false)
-            })
-            .fold(empty_operations, |mut r, (op, hash)| {
-                let container = match OperationKind::from_operation_content_raw(op.data().as_ref())
-                {
-                    OperationKind::Unknown
-                    | OperationKind::Preendorsement
-                    | OperationKind::FailingNoop
-                    | OperationKind::EndorsementWithSlot => return r,
-                    OperationKind::Endorsement => &mut r[0],
-                    OperationKind::Proposals | OperationKind::Ballot => &mut r[1],
-                    OperationKind::SeedNonceRevelation
-                    | OperationKind::DoublePreendorsementEvidence
-                    | OperationKind::DoubleEndorsementEvidence
-                    | OperationKind::DoubleBakingEvidence
-                    | OperationKind::ActivateAccount => &mut r[2],
-                    OperationKind::Reveal
-                    | OperationKind::Transaction
-                    | OperationKind::Origination
-                    | OperationKind::Delegation
-                    | OperationKind::RegisterGlobalConstant
-                    | OperationKind::SetDepositsLimit => &mut r[3],
-                };
-                container.push((op, hash));
-                r
-            });
+        let ops_iter = mempool.operations_for_block_iter(
+            block.header().level(),
+            block.round(),
+            block.payload_hash(),
+        );
+        let operations = ops_iter.fold(empty_operations, |mut r, (hash, op, kind)| {
+            let container = match kind {
+                OperationKind::Unknown
+                | OperationKind::Preendorsement
+                | OperationKind::FailingNoop
+                | OperationKind::EndorsementWithSlot => return r,
+                OperationKind::Endorsement => &mut r[0],
+                OperationKind::Proposals | OperationKind::Ballot => &mut r[1],
+                OperationKind::SeedNonceRevelation
+                | OperationKind::DoublePreendorsementEvidence
+                | OperationKind::DoubleEndorsementEvidence
+                | OperationKind::DoubleBakingEvidence
+                | OperationKind::ActivateAccount => &mut r[2],
+                OperationKind::Reveal
+                | OperationKind::Transaction
+                | OperationKind::Origination
+                | OperationKind::Delegation
+                | OperationKind::RegisterGlobalConstant
+                | OperationKind::SetDepositsLimit => &mut r[3],
+            };
+            container.push((op.clone(), hash.clone()));
+            r
+        });
 
         block.operations = operations
             .iter()
@@ -110,19 +86,58 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
             }
         }
-        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) | Action::BakerAdd(_) => {
             for (_, baker) in state.bakers.iter_mut() {
                 baker.block_baker = BakerBlockBakerState::Idle {
                     time: action.time_as_nanos(),
                 };
                 let head = state.current_head.get();
-                baker.elected_block = baker.elected_block.take().and_then(|block| {
-                    if block.header().level() < head?.header.level() {
-                        None
-                    } else {
-                        Some(block)
-                    }
-                });
+                let pred = state.current_head.get_pred();
+                baker.elected_block = baker
+                    .elected_block
+                    .take()
+                    .and_then(|block| {
+                        if block.header().level() < head?.header.level() {
+                            None
+                        } else {
+                            Some(block)
+                        }
+                    })
+                    .or_else(|| {
+                        if pred?.header.proto() != head?.header.proto() {
+                            let block = head?.clone();
+                            let payload_hash = block.header.payload_hash().or_else(|| {
+                                BlockPayloadHash::try_from_bytes(
+                                    &[0; HashType::BlockPayloadHash.size()],
+                                )
+                                .ok()
+                            })?;
+                            let ops_metadata_hash = state
+                                .current_head
+                                .ops_metadata_hash()
+                                .cloned()
+                                .or_else(|| {
+                                    OperationMetadataListListHash::try_from_bytes(
+                                        &[0; HashType::OperationMetadataListListHash.size()],
+                                    )
+                                    .ok()
+                                })?;
+                            Some(ElectedBlock {
+                                block,
+                                round: 0,
+                                payload_hash,
+                                block_metadata_hash: state
+                                    .current_head
+                                    .block_metadata_hash()?
+                                    .clone(),
+                                ops_metadata_hash,
+                                operations: vec![],
+                                non_consensus_op_hashes: vec![],
+                            })
+                        } else {
+                            None
+                        }
+                    });
             }
         }
         Action::BakerBlockBakerRightsGetPending(content) => {
@@ -185,70 +200,23 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                     BakerBlockBakerState::RightsGetSuccess {
                         slots, next_slots, ..
                     } => {
-                        let constants = match state.current_head.constants() {
-                            Some(v) => v,
-                            None => return,
-                        };
-                        let current_slot = match state.current_head.round() {
-                            Some(round) => {
-                                (round as u32 % constants.consensus_committee_size) as u16
-                            }
-                            None => return,
-                        };
-                        let next_round = slots
-                            .iter()
-                            .map(|slot| *slot)
-                            .find(|slot| *slot > current_slot)
-                            .and_then(|slot| {
-                                let constants = state.current_head.constants()?;
-                                let pred = state.current_head.get()?;
-                                let round = pred.header.fitness().round()?;
-                                let timestamp = pred.header.timestamp().as_u64();
-                                let timestamp = timestamp * 1_000_000_000;
+                        let now = action.time_as_nanos();
 
-                                let rounds_left = slot.checked_sub(current_slot)? as i32;
-                                let target_round = round + rounds_left;
-                                let time_left = calc_time_until_round(
-                                    round as u64,
-                                    target_round as u64,
-                                    constants.min_block_delay,
-                                    constants.delay_increment_per_round,
-                                );
-                                let timeout = timestamp + time_left;
-                                Some(BakingSlot {
-                                    round: target_round as u32,
-                                    timeout,
-                                })
-                            });
-                        let next_level = next_slots.first().cloned().and_then(|slot| {
-                            let constants = state.current_head.constants()?;
-                            let pred = baker
-                                .elected_block_header_with_hash()
-                                .or_else(|| state.current_head.get())?;
-                            let round = pred.header.fitness().round()?;
-                            let timestamp = pred.header.timestamp().as_u64();
-                            let timestamp = timestamp * 1_000_000_000;
+                        let next_round =
+                            RoundTimeoutIter::new_for_next_round(&state.current_head, slots)
+                                .and_then(|mut iter| {
+                                    iter.find(|baking_slot| baking_slot.end_time >= now)
+                                });
 
-                            let time_left = calc_time_until_round(
-                                round as u64,
-                                (round + 1) as u64,
-                                constants.min_block_delay,
-                                constants.delay_increment_per_round,
-                            ) + calc_time_until_round(
-                                0,
-                                slot as u64,
-                                constants.min_block_delay,
-                                constants.delay_increment_per_round,
-                            );
-                            let timeout = timestamp + time_left;
-                            Some(BakingSlot {
-                                round: slot as u32,
-                                timeout,
-                            })
-                        });
+                        let next_level = RoundTimeoutIter::new_for_next_level(
+                            &state.current_head,
+                            next_slots,
+                            baker.elected_block_header_with_hash(),
+                        )
+                        .and_then(|mut iter| iter.find(|baking_slot| baking_slot.end_time >= now));
 
                         baker.block_baker = BakerBlockBakerState::TimeoutPending {
-                            time: action.time_as_nanos(),
+                            time: now,
                             next_round,
                             next_level,
                             next_level_timeout_notified: false,
@@ -279,7 +247,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             Some(v) => v,
                             None => return,
                         };
-                        let timestamp = next_round.timeout / 1_000_000_000;
+                        let timestamp = next_round.start_time / 1_000_000_000;
                         baker.block_baker = BakerBlockBakerState::BakeNextRound {
                             time: action.time_as_nanos(),
                             round: next_round.round,
@@ -300,7 +268,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                 .bakers
                 .iter_mut()
                 .filter(|(_, baker_state)| baker_state.elected_block.is_none())
-                .fold(None, |_, (_, baker_state)| {
+                .try_for_each(|(_, baker_state)| {
                     let block = head?.clone();
                     let round = block.header.fitness().round()?;
 
@@ -325,7 +293,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             None => return,
                         };
                         let round = next_level.round;
-                        let timestamp = next_level.timeout / 1_000_000_000;
+                        let timestamp = next_level.start_time / 1_000_000_000;
 
                         if baker
                             .elected_block
@@ -350,10 +318,6 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                     Some(v) => v,
                     None => return,
                 };
-                let constants = match state.current_head.constants() {
-                    Some(v) => v,
-                    None => return,
-                };
                 let block = match &baker.block_baker {
                     BakerBlockBakerState::BakeNextLevel {
                         round,
@@ -372,6 +336,8 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                 .unwrap(),
                         )
                         .unwrap();
+                        let predecessor_max_operations_ttl =
+                            state.current_head.max_operations_ttl().unwrap_or(1);
                         BuiltBlock {
                             round: payload_round as i32,
                             payload_round: payload_round as i32,
@@ -382,7 +348,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                             liquidity_baking_escape_vote: baker.liquidity_baking_escape_vote,
                             operations: elected_block.operations.clone(),
                             predecessor_header: elected_block.header().clone(),
-                            predecessor_max_operations_ttl: constants.max_operations_ttl,
+                            predecessor_max_operations_ttl,
                             pred_block_metadata_hash: elected_block.block_metadata_hash.clone(),
                             pred_ops_metadata_hash: elected_block.ops_metadata_hash.clone(),
                         }
@@ -392,6 +358,10 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                         block_timestamp,
                         ..
                     } => {
+                        let predecessor_max_operations_ttl = state
+                            .current_head
+                            .predecessor_max_operations_ttl()
+                            .unwrap_or(1);
                         let built_block = baker
                             .locked_payload
                             .as_ref()
@@ -406,7 +376,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                 liquidity_baking_escape_vote: baker.liquidity_baking_escape_vote,
                                 operations: p.operations.clone(),
                                 predecessor_header: p.pred_header.clone(),
-                                predecessor_max_operations_ttl: constants.max_operations_ttl,
+                                predecessor_max_operations_ttl,
                                 pred_block_metadata_hash: p.pred_block_metadata_hash.clone(),
                                 pred_ops_metadata_hash: p.pred_ops_metadata_hash.clone(),
                             })
@@ -423,7 +393,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                         .liquidity_baking_escape_vote,
                                     operations: current_head.operations()?.clone(),
                                     predecessor_header: (*current_head.get_pred()?.header).clone(),
-                                    predecessor_max_operations_ttl: constants.max_operations_ttl,
+                                    predecessor_max_operations_ttl,
                                     pred_block_metadata_hash: current_head
                                         .pred_block_metadata_hash()?
                                         .clone(),
@@ -681,6 +651,215 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
     }
 }
 
+struct RoundIter<'a> {
+    slots: &'a [u16],
+    committee_size: usize,
+    slot_index: usize,
+    slot_loop: usize,
+}
+
+impl<'a> RoundIter<'a> {
+    fn new_for_current_round(round: u32, slots: &'a [u16], committee_size: u32) -> Option<Self> {
+        if slots.is_empty() {
+            return None;
+        }
+        let curr_slot = round.checked_rem(committee_size)?;
+        let curr_slot_loop = round.checked_div(committee_size)?;
+        let part = slots.partition_point(|&slot| u32::from(slot) <= curr_slot);
+        let (slot_index, slot_loop) = if part < slots.len() {
+            (part, curr_slot_loop)
+        } else {
+            (0, curr_slot_loop + 1)
+        };
+        Some(Self {
+            slots,
+            committee_size: committee_size.try_into().ok()?,
+            slot_index,
+            slot_loop: slot_loop.try_into().ok()?,
+        })
+    }
+
+    fn new_for_first_round(slots: &'a [u16], committee_size: u32) -> Option<Self> {
+        if slots.is_empty() {
+            return None;
+        }
+        Some(Self {
+            slots,
+            committee_size: committee_size.try_into().ok()?,
+            slot_index: 0,
+            slot_loop: 0,
+        })
+    }
+
+    fn round(&'a self) -> Option<u32> {
+        let slot = (*self.slots.get(self.slot_index)?).try_into().ok()?;
+        self.slot_loop
+            .checked_mul(self.committee_size)?
+            .checked_add(slot)?
+            .try_into()
+            .ok()
+    }
+
+    fn next_slot_index_and_loop(&self) -> Option<(usize, usize)> {
+        let slot_index = self.slot_index.checked_add(1)?;
+        if slot_index < self.slots.len() {
+            Some((slot_index, self.slot_loop))
+        } else {
+            Some((0, self.slot_loop.checked_add(1)?))
+        }
+    }
+}
+
+impl<'a> Iterator for RoundIter<'a> {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let round = self.round()?;
+        let (next_slot_index, next_slots_loop) = self.next_slot_index_and_loop()?;
+        self.slot_index = next_slot_index;
+        self.slot_loop = next_slots_loop;
+        Some(round)
+    }
+}
+
+struct RoundTimeoutIter<'a> {
+    min_block_delay: u64,
+    delay_increment_per_round: u64,
+
+    round_iter: RoundIter<'a>,
+    prev_round: u32,
+    prev_timeout: u64,
+}
+
+impl<'a> RoundTimeoutIter<'a> {
+    fn new_for_next_round_(
+        prev_round: u32,
+        prev_timeout: u64,
+        slots: &'a [u16],
+        consensus_committee_size: u32,
+        min_block_delay: u64,
+        delay_increment_per_round: u64,
+    ) -> Option<Self> {
+        let round_iter =
+            RoundIter::new_for_current_round(prev_round, slots, consensus_committee_size)?;
+        Some(RoundTimeoutIter {
+            min_block_delay,
+            delay_increment_per_round,
+            round_iter,
+            prev_round,
+            prev_timeout,
+        })
+    }
+
+    fn new_for_next_round(current_head: &'_ CurrentHeadState, slots: &'a [u16]) -> Option<Self> {
+        let ProtocolConstants {
+            min_block_delay,
+            delay_increment_per_round,
+            consensus_committee_size,
+            ..
+        } = current_head.constants()?;
+        let pred = current_head.get()?;
+        let prev_round = pred.header.fitness().round()?.try_into().ok()?;
+        let prev_timeout: u64 = pred.header.timestamp().i64().try_into().ok()?;
+
+        Self::new_for_next_round_(
+            prev_round,
+            prev_timeout,
+            slots,
+            *consensus_committee_size,
+            *min_block_delay,
+            *delay_increment_per_round,
+        )
+    }
+
+    fn new_for_next_level_(
+        prev_round: u32,
+        prev_timeout: u64,
+        slots: &'a [u16],
+        consensus_committee_size: u32,
+        min_block_delay: u64,
+        delay_increment_per_round: u64,
+    ) -> Option<Self> {
+        let prev_timeout = calc_seconds_until_round(
+            prev_round.into(),
+            prev_round.checked_add(1)?.into(),
+            min_block_delay,
+            delay_increment_per_round,
+        )
+        .checked_add(prev_timeout)?;
+
+        let round_iter = RoundIter::new_for_first_round(slots, consensus_committee_size)?;
+        Some(RoundTimeoutIter {
+            min_block_delay,
+            delay_increment_per_round,
+            round_iter,
+            prev_round: 0,
+            prev_timeout,
+        })
+    }
+
+    fn new_for_next_level(
+        current_head: &'_ CurrentHeadState,
+        slots: &'a [u16],
+        elected_block_header_with_hash: Option<&BlockHeaderWithHash>,
+    ) -> Option<Self> {
+        let ProtocolConstants {
+            min_block_delay,
+            delay_increment_per_round,
+            consensus_committee_size,
+            ..
+        } = current_head.constants()?;
+        let pred = elected_block_header_with_hash.or_else(|| current_head.get())?;
+        let prev_round: u32 = pred
+            .header
+            .fitness()
+            .round()
+            .and_then(|round| round.try_into().ok())
+            .unwrap_or(0);
+        let prev_timeout: u64 = pred.header.timestamp().i64().try_into().ok()?;
+
+        Self::new_for_next_level_(
+            prev_round,
+            prev_timeout,
+            slots,
+            *consensus_committee_size,
+            *min_block_delay,
+            *delay_increment_per_round,
+        )
+    }
+}
+
+impl<'a> Iterator for RoundTimeoutIter<'a> {
+    type Item = BakingSlot;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let round = self.round_iter.next()?;
+        let start_time = calc_seconds_until_round(
+            self.prev_round.into(),
+            round.into(),
+            self.min_block_delay,
+            self.delay_increment_per_round,
+        )
+        .checked_add(self.prev_timeout)?;
+        let end_time = calc_seconds_until_round(
+            round.into(),
+            round.checked_add(1)?.into(),
+            self.min_block_delay,
+            self.delay_increment_per_round,
+        )
+        .checked_add(start_time)?;
+
+        self.prev_round = round;
+        self.prev_timeout = start_time;
+
+        Some(Self::Item {
+            round,
+            start_time: start_time.checked_mul(1_000_000_000)?,
+            end_time: end_time.checked_mul(1_000_000_000)?,
+        })
+    }
+}
+
 fn calc_seconds_until_round(
     current_round: u64,
     target_round: u64,
@@ -691,20 +870,6 @@ fn calc_seconds_until_round(
     min_block_delay * rounds_left
         + delay_increment_per_round * rounds_left * (current_round + target_round).saturating_sub(1)
             / 2
-}
-
-fn calc_time_until_round(
-    current_round: u64,
-    target_round: u64,
-    min_block_delay: u64,
-    delay_increment_per_round: u64,
-) -> u64 {
-    calc_seconds_until_round(
-        current_round,
-        target_round,
-        min_block_delay,
-        delay_increment_per_round,
-    ) * 1_000_000_000
 }
 
 #[cfg(test)]
@@ -733,5 +898,254 @@ mod tests {
         assert_eq!(calc_seconds_until_round(3, 5, 15, 5), 65);
 
         assert_eq!(calc_seconds_until_round(4, 5, 15, 5), 35);
+    }
+
+    #[test]
+    fn test_rounds_iter_next_slot_and_loop() {
+        let slots = &[0, 1, 2, 3];
+
+        let default = RoundIter {
+            slots,
+            committee_size: 4,
+            slot_index: 0,
+            slot_loop: 0,
+        };
+
+        let iter = |slot_index, slot_loop| RoundIter {
+            slot_index,
+            slot_loop,
+            ..default
+        };
+
+        assert_eq!(iter(0, 0).next_slot_index_and_loop(), Some((1, 0)));
+        assert_eq!(iter(1, 0).next_slot_index_and_loop(), Some((2, 0)));
+        assert_eq!(iter(2, 0).next_slot_index_and_loop(), Some((3, 0)));
+        assert_eq!(iter(3, 0).next_slot_index_and_loop(), Some((0, 1)));
+        assert_eq!(iter(0, 1).next_slot_index_and_loop(), Some((1, 1)));
+
+        let slots = &[0];
+
+        let default = RoundIter {
+            slots,
+            committee_size: 4,
+            slot_index: 0,
+            slot_loop: 0,
+        };
+
+        let iter = |slot_index, slot_loop| RoundIter {
+            slot_index,
+            slot_loop,
+            ..default
+        };
+
+        assert_eq!(iter(0, 0).next_slot_index_and_loop(), Some((0, 1)));
+        assert_eq!(iter(0, 1).next_slot_index_and_loop(), Some((0, 2)));
+        assert_eq!(iter(0, 2).next_slot_index_and_loop(), Some((0, 3)));
+        assert_eq!(iter(0, 3).next_slot_index_and_loop(), Some((0, 4)));
+        assert_eq!(iter(0, 4).next_slot_index_and_loop(), Some((0, 5)));
+    }
+
+    #[test]
+    fn test_rounds_iter_round() {
+        let slots = &[0, 1, 2, 3];
+
+        let default = RoundIter {
+            slots,
+            committee_size: 4,
+            slot_index: 0,
+            slot_loop: 0,
+        };
+
+        let iter = |slot_index, slot_loop| RoundIter {
+            slot_index,
+            slot_loop,
+            ..default
+        };
+
+        assert_eq!(iter(0, 0).round(), Some(0));
+        assert_eq!(iter(1, 0).round(), Some(1));
+        assert_eq!(iter(2, 0).round(), Some(2));
+        assert_eq!(iter(3, 0).round(), Some(3));
+        assert_eq!(iter(0, 1).round(), Some(4));
+
+        let slots = &[0, 2];
+
+        let default = RoundIter {
+            slots,
+            committee_size: 4,
+            slot_index: 0,
+            slot_loop: 0,
+        };
+
+        let iter = |slot_index, slot_loop| RoundIter {
+            slot_index,
+            slot_loop,
+            ..default
+        };
+
+        assert_eq!(iter(0, 0).round(), Some(0));
+        assert_eq!(iter(1, 0).round(), Some(2));
+        assert_eq!(iter(0, 1).round(), Some(4));
+        assert_eq!(iter(1, 1).round(), Some(6));
+        assert_eq!(iter(0, 2).round(), Some(8));
+    }
+
+    #[test]
+    fn test_rounds_iter_new_for_current_round() {
+        let slots = &[0, 1, 2, 3];
+
+        assert_eq!(
+            RoundIter::new_for_current_round(0, slots, 4)
+                .unwrap()
+                .next()
+                .unwrap(),
+            1
+        );
+
+        assert_eq!(
+            RoundIter::new_for_current_round(3, slots, 4)
+                .unwrap()
+                .next()
+                .unwrap(),
+            4
+        );
+
+        let slots = &[0, 2];
+
+        assert_eq!(
+            RoundIter::new_for_current_round(0, slots, 4)
+                .unwrap()
+                .next()
+                .unwrap(),
+            2
+        );
+
+        assert_eq!(
+            RoundIter::new_for_current_round(1, slots, 4)
+                .unwrap()
+                .next()
+                .unwrap(),
+            2
+        );
+
+        assert_eq!(
+            RoundIter::new_for_current_round(2, slots, 4)
+                .unwrap()
+                .next()
+                .unwrap(),
+            4
+        );
+
+        assert_eq!(
+            RoundIter::new_for_current_round(3, slots, 4)
+                .unwrap()
+                .next()
+                .unwrap(),
+            4
+        );
+    }
+
+    #[test]
+    fn test_next_round() {
+        let min_block_delay = 15;
+        let delay_increment_per_round = 5;
+        let consensus_committee_size = 5;
+        let slots_0_3 = [0, 3];
+
+        let next_round_iter = |prev_round, prev_timeout, slots| {
+            RoundTimeoutIter::new_for_next_round_(
+                prev_round,
+                prev_timeout,
+                slots,
+                consensus_committee_size,
+                min_block_delay,
+                delay_increment_per_round,
+            )
+            .unwrap()
+        };
+
+        let from_secs = |t: u64| t * 1_000_000_000;
+
+        let mut iter = next_round_iter(0, 0, &slots_0_3);
+        assert_eq!(
+            iter.next(),
+            Some(BakingSlot {
+                round: 3,
+                start_time: from_secs(15 + 20 + 25),
+                end_time: from_secs(15 + 20 + 25 + 30),
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(BakingSlot {
+                round: 5 + 0,
+                start_time: from_secs(15 + 20 + 25 + 30 + 35),
+                end_time: from_secs(15 + 20 + 25 + 30 + 35 + 40),
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(BakingSlot {
+                round: 5 + 3,
+                start_time: from_secs(15 + 20 + 25 + 30 + 35 + 40 + 45 + 50),
+                end_time: from_secs(15 + 20 + 25 + 30 + 35 + 40 + 45 + 50 + 55),
+            })
+        );
+    }
+
+    #[test]
+    fn test_next_level() {
+        let min_block_delay = 15;
+        let delay_increment_per_round = 5;
+        let consensus_committee_size = 5;
+        let slots_with_first_0 = [0, 3];
+        let slots_with_first_1 = [1, 3];
+
+        let next_level_iter = |prev_round, prev_timeout, slots| {
+            RoundTimeoutIter::new_for_next_level_(
+                prev_round,
+                prev_timeout,
+                slots,
+                consensus_committee_size,
+                min_block_delay,
+                delay_increment_per_round,
+            )
+            .unwrap()
+        };
+
+        let from_secs = |t: u64| t * 1_000_000_000;
+
+        assert_eq!(
+            next_level_iter(0, 0, &slots_with_first_0).next(),
+            Some(BakingSlot {
+                round: 0,
+                start_time: from_secs(15), // 15 secs for current 0 round to bake
+                end_time: from_secs(15 + 15), // 15 secs for current 0 round + 15 secs for this 0 round to bake
+            })
+        );
+        assert_eq!(
+            next_level_iter(1, 0, &slots_with_first_0).next(),
+            Some(BakingSlot {
+                round: 0,
+                start_time: from_secs(15 + 5), // 15 + 5 secs for current 1 round to bake
+                end_time: from_secs(15 + 5 + 15), // 15 + 5 secs for current 1 round + 15 secs for this 0 round to bake
+            })
+        );
+        assert_eq!(
+            next_level_iter(0, 0, &slots_with_first_1).next(),
+            Some(BakingSlot {
+                round: 1,
+                start_time: from_secs(15 + 15), // 15 secs for current 0 round + 15 secs for round 0 to bake
+                end_time: from_secs(15 + 15 + 20), // 15 secs for current 0 round + 15 secs for round 0 + (15 + 5) secs for this round 1 to bake
+            })
+        );
+        assert_eq!(
+            next_level_iter(1, 0, &slots_with_first_1).next(),
+            Some(BakingSlot {
+                round: 1,
+                start_time: from_secs(20 + 15), // 20 secs for current 1 round + 15 secs for next level round 0 to bake
+                end_time: from_secs(20 + 15 + 20), // 20 secs for current 1 round + 15 secs for next level round 0 + 20 secs for this round 1 to bake
+            })
+        );
     }
 }

@@ -78,6 +78,7 @@ config_init() {
 --peer-thresh-low=0
 --peer-thresh-high=10
 --disable-peer-graylist
+--allow-unsafe-rpc
 EOF
 
     mv "$config" "$data_dir/tezedge-node.config"
@@ -90,10 +91,10 @@ identity_generate() {
 
 data_dir() {
     DIR=$1
-    if [ "${DIR#/}" == "$DIR" ]; then
+    if [ "${DIR#/}" = "$DIR" ]; then
         echo "$PWD$DIR"
     else
-        echo $DIR
+        echo "$DIR"
     fi
 }
 

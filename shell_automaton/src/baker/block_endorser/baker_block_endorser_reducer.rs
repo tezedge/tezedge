@@ -44,7 +44,15 @@ fn set_locked_payload(state: &mut State, baker_key: &SignaturePublicKeyHash) -> 
         .iter()
         .any(|op| OperationKind::from_operation_content_raw(op.data().as_ref()).is_preendorsement())
     {
-        operations[0].extend(state.mempool.validated_operations.collect_preendorsements());
+        let ops_iter = state.mempool.operations_for_block_iter(
+            head.level()?,
+            head.round()?,
+            head.payload_hash()?,
+        );
+        let ops_iter = ops_iter
+            .filter(|(_, _, kind)| kind.is_preendorsement())
+            .map(|(_, op, _)| op.clone());
+        operations[0].extend(ops_iter);
     }
     baker.locked_payload = Some(LockedPayload {
         block: head_block.clone(),
@@ -61,7 +69,7 @@ fn set_locked_payload(state: &mut State, baker_key: &SignaturePublicKeyHash) -> 
 
 pub fn baker_block_endorser_reducer(state: &mut State, action: &ActionWithMeta) {
     match &action.action {
-        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) | Action::BakerAdd(_) => {
             let head = match state.current_head.get() {
                 Some(v) => v,
                 None => return,

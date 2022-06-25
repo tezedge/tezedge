@@ -14,19 +14,13 @@ use crate::{rights::Validators, Action, ActionWithMeta, State};
 
 use super::{
     prechecker_actions::*, ConsensusOperationError, EndorsementBranch, OperationDecodedContents,
-    PrecheckerError, PrecheckerOperation, PrecheckerOperationState, Round,
+    PrecheckerError, PrecheckerOperation, PrecheckerOperationState, ProtocolNeededReason, Round,
     TenderbakeConsensusContents,
 };
 
 pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
-    // let PrecheckerState {
-    //     cached_operations,
-    //     operations,
-    //     ..
-    // } = &mut state.prechecker;
     let operations = &mut state.prechecker.operations;
     let cached_operations = &mut state.prechecker.cached_operations;
-    //let rights = &mut state.prechecker.rights;
     let rights = &mut state.rights;
     match &action.action {
         Action::PrecheckerCurrentHeadUpdate(PrecheckerCurrentHeadUpdateAction { head, .. }) => {
@@ -68,19 +62,44 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             hash,
             proto,
         }) => {
-            let protocol = if let Some(p) = state.current_head.protocol_from_id(*proto) {
+            let protocol = if let Some(p) = state.current_head.protocol() {
                 p
             } else {
-                slog::error!(state.log, "Undefined protocol for proto `{proto}`");
                 return;
             };
-
-            slog::debug!(state.log, "Prechecking operation `{hash}`");
+            let state = if !state.current_head.is_precheckable() {
+                PrecheckerOperationState::ProtocolNeeded {
+                    reason: ProtocolNeededReason::UnsupportedProtocol(
+                        state.current_head.protocol(),
+                    ),
+                }
+            } else if proto == &state.prechecker.proto {
+                PrecheckerOperationState::Supported { protocol }
+            } else {
+                PrecheckerOperationState::Init { proto: *proto }
+            };
 
             operations.insert(
                 hash.clone(),
-                Ok(PrecheckerOperation::new(operation.clone(), protocol)),
+                Ok(PrecheckerOperation {
+                    operation: operation.clone(),
+                    state,
+                }),
             );
+        }
+
+        Action::PrecheckerProtocolSupported(action) => {
+            let protocol = if let Some(p) = state.current_head.protocol() {
+                p
+            } else {
+                return;
+            };
+            if let Some(Ok(PrecheckerOperation {
+                state: op_state, ..
+            })) = operations.get_mut(&action.hash)
+            {
+                *op_state = PrecheckerOperationState::Supported { protocol }
+            }
         }
 
         Action::PrecheckerRevalidateOperation(action) => {
@@ -130,7 +149,7 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
             if let Some(Ok(PrecheckerOperation { operation, state })) =
                 operations.get_mut(&action.hash)
             {
-                if let PrecheckerOperationState::Init { protocol } = state {
+                if let PrecheckerOperationState::Supported { protocol } = state {
                     *state = match OperationDecodedContents::parse(operation, protocol) {
                         Ok(operation_decoded_contents) => PrecheckerOperationState::Decoded {
                             operation_decoded_contents,
@@ -155,7 +174,9 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                 } = op_state
                 {
                     *op_state = if state.config.disable_endorsements_precheck {
-                        PrecheckerOperationState::ProtocolNeeded
+                        PrecheckerOperationState::ProtocolNeeded {
+                            reason: ProtocolNeededReason::PrecheckingDisabled,
+                        }
                     } else if let Some(consensus_contents) =
                         operation_decoded_contents.as_tenderbake_consensus()
                     {
@@ -165,7 +186,9 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                             endorsing_rights_verified: false,
                         }
                     } else {
-                        PrecheckerOperationState::ProtocolNeeded
+                        PrecheckerOperationState::ProtocolNeeded {
+                            reason: ProtocolNeededReason::NonTenderbakeConsensus,
+                        }
                     };
                 }
             }
@@ -193,7 +216,9 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                             endorsing_rights_verified,
                         ),
                         _ => {
-                            *op_state = PrecheckerOperationState::ProtocolNeeded;
+                            *op_state = PrecheckerOperationState::ProtocolNeeded {
+                                reason: ProtocolNeededReason::Other,
+                            };
                             return;
                         }
                     };
@@ -282,6 +307,14 @@ pub fn prechecker_reducer(state: &mut State, action: &ActionWithMeta) {
                     cached_operations.insert(level, hash.clone());
                 }
             }
+        }
+
+        Action::PrecheckerProtocolActivation(_) => {
+            state.prechecker.proto = if let Some(head) = state.current_head.get() {
+                head.header.proto()
+            } else {
+                return;
+            };
         }
 
         _ => (),

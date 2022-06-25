@@ -9,7 +9,7 @@ use crate::{empty, make_json_response, required_param, result_to_json_response, 
 use anyhow::format_err;
 use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
 use crypto::PublicKeyWithHash;
-use hyper::{Body, Request, Response};
+use hyper::{body, Body, Request, Response};
 use shell_automaton::service::{BlockApplyStats, BlockPeerStats};
 use slog::warn;
 use std::collections::BTreeSet;
@@ -812,4 +812,18 @@ pub async fn dev_cycle_delegate_reward_distribution(
         &rewards_services::get_cycle_rewards_distribution(&chain_id, &env, cycle_num, delegate)
             .await?,
     )
+}
+
+pub async fn patch_bakers(
+    req: Request<Body>,
+    _: Params,
+    _: Query,
+    env: Arc<RpcServiceEnvironment>,
+) -> ServiceResult {
+    use shell_automaton::service::rpc_service::BakerPatch;
+    let body = req.into_body();
+    let body_bytes = body::to_bytes(body).await?;
+    let patch = serde_json::from_str::<BakerPatch>(&std::str::from_utf8(&body_bytes)?)?;
+
+    make_json_response(&dev_services::patch_bakers(patch, &env).await?)
 }

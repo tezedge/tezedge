@@ -37,6 +37,7 @@ pub struct Rpc {
     ///     SocketAddr
     ///     u16 - max_number_of_websocket_connections
     pub websocket_cfg: Option<(SocketAddr, u16)>,
+    pub allow_unsafe_rpc: bool,
 }
 
 impl Rpc {
@@ -620,6 +621,11 @@ pub fn tezos_app() -> App<'static, 'static> {
                        Possible values:
                        - Proto012_Ithaca: on, off.
                        - After Proto013_Jakarta: on, off, pass."))
+        .arg(Arg::with_name("allow-unsafe-rpc")
+            .long("allow-unsafe-rpc")
+            .global(true)
+            .takes_value(false)
+            .help("Allows unsafe RPC functions, like adding/removing baker in runtime."))
         .subcommand(
             clap::SubCommand::with_name("replay")
                 .arg(Arg::with_name("from-block")
@@ -1270,6 +1276,7 @@ impl Environment {
                         Some((socket_addrs, max_connections))
                     })
                 }),
+                allow_unsafe_rpc: args.is_present("allow-unsafe-rpc"),
             },
             logging: crate::configuration::Logging {
                 slog: SlogConfig {

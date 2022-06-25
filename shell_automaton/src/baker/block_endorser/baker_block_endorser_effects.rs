@@ -37,7 +37,7 @@ where
     S: Service,
 {
     match &action.action {
-        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) | Action::BakerAdd(_) => {
             store.dispatch(BakerBlockEndorserRightsGetInitAction {});
         }
         Action::BakerBlockEndorserRightsGetInit(_) => {

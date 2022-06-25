@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
+use crypto::hash::{BlockHash, BlockPayloadHash, CryptoboxPublicKeyHash, OperationHash};
 use tezos_api::ffi::{ErrorListJson, Errored, OperationClassification, Validated};
 use tezos_messages::{
     base::signature_public_key::SignaturePublicKeyHash,
@@ -89,6 +89,40 @@ impl MempoolState {
                     .map(|content| (hash, content))
             })
             .or_else(|| self.pending_operations.next_for_prevalidation())
+    }
+
+    pub fn operations_for_block_iter<'a>(
+        &'a self,
+        block_level: Level,
+        block_round: i32,
+        block_payload_hash: &'a BlockPayloadHash,
+    ) -> impl 'a + Iterator<Item = (&'a OperationHash, &'a Operation, OperationKind)> {
+        let applied_ops_iter = self.validated_operations.applied_iter();
+        applied_ops_iter
+            .map(|(op_hash, op)| {
+                let kind = OperationKind::from_operation_content_raw(op.data().as_ref());
+                (op_hash, op, kind)
+            })
+            .filter(move |(op_hash, _, kind)| {
+                if !kind.is_consensus_operation() {
+                    return true;
+                }
+
+                // check if consensus op is for current head.
+                let op_state = self.operations_state.get(op_hash);
+                op_state
+                    .and_then(|op| {
+                        let op = op.operation_decoded_contents.as_ref()?;
+
+                        let (level, round) = op.level_round()?;
+                        Some(
+                            level == block_level
+                                && round == block_round
+                                && op.payload()? == block_payload_hash,
+                        )
+                    })
+                    .unwrap_or(false)
+            })
     }
 }
 
@@ -233,15 +267,10 @@ impl ValidatedOperations {
         Self::enforce_max_refused_operations_helper(&mut self.outdated, &mut self.ops);
     }
 
-    pub fn collect_preendorsements(&self) -> Vec<Operation> {
+    pub fn applied_iter(&self) -> impl Iterator<Item = (&OperationHash, &Operation)> {
         self.applied
             .iter()
-            .filter_map(|op| self.ops.get(&op.hash))
-            .filter(|op| {
-                OperationKind::from_operation_content_raw(op.data().as_ref()).is_preendorsement()
-            })
-            .cloned()
-            .collect()
+            .filter_map(|op| Some((&op.hash, self.ops.get(&op.hash)?)))
     }
 }
 
@@ -783,13 +812,8 @@ pub struct QuorumState {
 
 impl QuorumState {
     /// Whether or not quorum is reached.
-    ///
-    /// TODO(zura): at the moment quorum constant is hardcoded here,
-    /// read from context storage instead.
     pub fn is_reached(&self) -> bool {
-        // TODO(zura): check if it should be strictly greater or greater
-        // or equal.
-        self.total > self.threshold
+        self.total >= self.threshold
     }
 
     pub fn reset(&mut self, new_threshold: Option<u16>) {

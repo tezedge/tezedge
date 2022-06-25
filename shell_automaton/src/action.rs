@@ -158,11 +158,12 @@ use crate::storage::{
     kv_cycle_meta, kv_operations,
 };
 
-use crate::baker::block_baker::*;
 use crate::baker::block_endorser::*;
 use crate::baker::persisted::persist::*;
 use crate::baker::persisted::rehydrate::*;
 use crate::baker::seed_nonce::*;
+use crate::baker::BakerAddAction;
+use crate::baker::{block_baker::*, BakerRemoveAction};
 
 use crate::shutdown::{ShutdownInitAction, ShutdownPendingAction, ShutdownSuccessAction};
 
@@ -536,9 +537,11 @@ pub enum Action {
     BlockInject(BlockInjectAction),
 
     PrecheckerCurrentHeadUpdate(PrecheckerCurrentHeadUpdateAction),
+    PrecheckerProtocolActivation(PrecheckerProtocolActivationAction),
     PrecheckerStoreEndorsementBranch(PrecheckerStoreEndorsementBranchAction),
     PrecheckerPrecheckOperation(PrecheckerPrecheckOperationAction),
     PrecheckerRevalidateOperation(PrecheckerPrecheckDelayedOperationAction),
+    PrecheckerProtocolSupported(PrecheckerProtocolSupportedAction),
     PrecheckerDecodeOperation(PrecheckerDecodeOperationAction),
     PrecheckerProtocolNeeded(PrecheckerProtocolNeededAction),
     PrecheckerCategorizeOperation(PrecheckerCategorizeOperationAction),
@@ -723,6 +726,9 @@ pub enum Action {
     BakerPersistedPersistInit(BakerPersistedPersistInitAction),
     BakerPersistedPersistPending(BakerPersistedPersistPendingAction),
     BakerPersistedPersistSuccess(BakerPersistedPersistSuccessAction),
+
+    BakerAdd(BakerAddAction),
+    BakerRemove(BakerRemoveAction),
 
     BakerBlockEndorserRightsGetInit(BakerBlockEndorserRightsGetInitAction),
     BakerBlockEndorserRightsGetPending(BakerBlockEndorserRightsGetPendingAction),

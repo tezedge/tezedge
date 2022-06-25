@@ -505,7 +505,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 return;
             }
             if let Some(head) = state.current_head.get() {
-                if state.current_head.is_precheckable() && is_consensus_op(operation) {
+                if is_consensus_op(operation) {
                     mempool_state
                         .prechecking_operations
                         .insert(hash.clone(), head.header.proto());
@@ -545,7 +545,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
 
             if let Some(head) = state.current_head.get() {
-                if state.current_head.is_precheckable() && is_consensus_op(operation) {
+                if is_consensus_op(operation) {
                     mempool_state
                         .prechecking_operations
                         .insert(operation_hash.clone(), head.header.proto());
