@@ -32,6 +32,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Nothing.
 
+## [3.0.0] - 2022-06-25
+
+### Added
+- Internal baker built inside the node.
+- Prechecking for manager operations.
+- Jakarta support in mempool and bakers.
+
+### Changed
+
+- New version of block application code in the protocol runner that performs extra checks.
+- Prechecking for endorsement operations is now disabled by default.
+
 ## [2.3.6] - 2022-06-16
 
 ### Changed
@@ -669,22 +681,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Reworked websocket implementation, now uses warp::ws instead of default ws
 - Various changes around the P2P layer and bootstrapping
 
-### Deprecated
-
-- Nothing.
-
-### Removed
-
-- Nothing.
-
-### Fixed
-
-- Nothing.
-
-### Security
-
-- Nothing.
-
 ## [0.9.1] - 2021-01-13
 
 ### Added
@@ -878,7 +874,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v2.3.6...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v3.0.0...develop
+[3.0.0]: https://github.com/tezedge/tezedge/releases/v3.0.0
 [2.3.6]: https://github.com/tezedge/tezedge/releases/v2.3.6
 [2.3.5]: https://github.com/tezedge/tezedge/releases/v2.3.5
 [2.3.4]: https://github.com/tezedge/tezedge/releases/v2.3.4
