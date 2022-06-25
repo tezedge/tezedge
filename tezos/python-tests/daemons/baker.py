@@ -46,18 +46,14 @@ class Baker(subprocess.Popen):
         if run_params is None:
             run_params = []
         endpoint = f'http://127.0.0.1:{rpc_port}'
-        cmd = [baker, '-m', 'json', '-base-dir', base_dir, '-endpoint', endpoint]
+        cmd = [baker, '-m', 'json']
         cmd.extend(params)
-        cmd.extend(
-            [
-                'run',
-                'with',
-                'local',
-                'node',
-                node_dir
-            ]
-            + accounts
-        )
+        if os.environ.get("RUN_TEZEDGE_BAKER") == "external":
+            cmd.extend(['--base-dir', base_dir, '--endpoint', endpoint, '--archive'])
+            cmd.extend(['--baker'] + accounts)
+        else:
+            cmd.extend(['-base-dir', base_dir, '-endpoint', endpoint])
+            cmd.extend(['run', 'with', 'local', 'node', node_dir] + accounts)
         cmd.extend(run_params)
         env = os.environ.copy()
         if log_levels is not None:

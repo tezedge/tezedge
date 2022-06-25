@@ -29,7 +29,7 @@ use crate::{
         },
         PrecheckerResultKind,
     },
-    rights::Slot,
+    rights::{rights_actions::RightsGetAction, RightsKey, Slot},
     service::{RandomnessService, RpcService},
     Action, ActionWithMeta, Service, State,
 };
@@ -53,8 +53,10 @@ where
     if store.state().config.disable_mempool {
         match &action.action {
             Action::MempoolOperationInject(MempoolOperationInjectAction { rpc_id, .. }) => {
-                let json = serde_json::Value::String("disabled".to_string());
-                store.service().rpc().respond(*rpc_id, json);
+                if let Some(rpc_id) = rpc_id.as_ref() {
+                    let json = serde_json::Value::String("disabled".to_string());
+                    store.service().rpc().respond(*rpc_id, json);
+                }
             }
             Action::MempoolGetPendingOperations(MempoolGetPendingOperationsAction { rpc_id }) => {
                 store
@@ -85,7 +87,10 @@ where
             store.dispatch(MempoolOperationValidateNextAction {});
         }
         Action::MempoolValidatorValidateSuccess(content) => {
-            if content.result.is_applied() {
+            if content.result.is_validated() {
+                store.dispatch(MempoolPrequorumReachedAction {});
+                store.dispatch(MempoolQuorumReachedAction {});
+
                 let addresses = store.state().peers.iter_addr().cloned().collect::<Vec<_>>();
 
                 for address in addresses {
@@ -125,10 +130,14 @@ where
                 };
                 let prot = prevalidator.protocol.to_base58_check();
                 let resp: Vec<_> = match &content.result {
-                    MempoolValidatorValidateResult::Applied(applied) if stream.applied => {
+                    MempoolValidatorValidateResult::Applied(applied)
+                    | MempoolValidatorValidateResult::Prechecked(applied)
+                        if stream.applied =>
+                    {
                         MonitoredOperation::collect_applied([applied], ops, &prot).collect()
                     }
-                    MempoolValidatorValidateResult::Applied(_) => {
+                    MempoolValidatorValidateResult::Applied(_)
+                    | MempoolValidatorValidateResult::Prechecked(_) => {
                         MonitoredOperation::collect_applied([], ops, &prot).collect()
                     }
                     MempoolValidatorValidateResult::Refused(errored) if stream.refused => {
@@ -147,7 +156,13 @@ where
                     MempoolValidatorValidateResult::Outdated(errored) if stream.outdated => {
                         MonitoredOperation::collect_errored([errored], ops, &prot).collect()
                     }
-                    _ => MonitoredOperation::collect_errored([], ops, &prot).collect(),
+                    MempoolValidatorValidateResult::Unparseable(_)
+                    | MempoolValidatorValidateResult::Outdated(_)
+                    | MempoolValidatorValidateResult::BranchDelayed(_)
+                    | MempoolValidatorValidateResult::BranchRefused(_)
+                    | MempoolValidatorValidateResult::Refused(_) => {
+                        MonitoredOperation::collect_errored([], ops, &prot).collect()
+                    }
                 };
                 if resp.is_empty() {
                     return;
@@ -229,7 +244,7 @@ where
             } = &store.state.get().block_applier.current
             {
                 let head = block.clone();
-                let protocol = block_additional_data.protocol_hash().clone();
+                let protocol = block_additional_data.next_protocol_hash().clone();
                 let payload_hash = payload_hash.clone();
                 store.dispatch(PrecheckerCurrentHeadUpdateAction {
                     head,
@@ -248,6 +263,14 @@ where
         }
         Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
             if store.state().mempool.running_since.is_some() {
+                let head_hash = match store.state().current_head.hash() {
+                    Some(v) => v.clone(),
+                    None => return,
+                };
+                // Needed for calculating (pre)quorum.
+                store.dispatch(RightsGetAction {
+                    key: RightsKey::endorsing(head_hash, None),
+                });
                 store.dispatch(MempoolBroadcastAction {
                     send_operations: false,
                 });
@@ -373,6 +396,9 @@ where
             store.dispatch(MempoolOperationValidateNextAction {});
         }
         Action::PrecheckerOperationValidated(action) => {
+            store.dispatch(MempoolPrequorumReachedAction {});
+            store.dispatch(MempoolQuorumReachedAction {});
+
             if let Some(result) = store.state.get().prechecker.result(&action.hash) {
                 let kind = result.kind();
                 let is_applied = matches!(kind, PrecheckerResultKind::Applied { .. });
@@ -626,6 +652,10 @@ where
         }
         Action::MempoolRequestFullContent(MempoolRequestFullContentAction { address, .. }) => {
             store.dispatch(MempoolGetOperationsAction { address: *address });
+        }
+        Action::RightsValidatorsReady(_) => {
+            store.dispatch(MempoolPrequorumReachedAction {});
+            store.dispatch(MempoolQuorumReachedAction {});
         }
         _ => (),
     }

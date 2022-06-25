@@ -1,12 +1,15 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::{BlockHash, ChainId};
+use crypto::hash::{BlockHash, ChainId, SeedEd25519};
+use crypto::PublicKeyWithHash;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::time::Instant;
+use tezos_messages::base::signature_public_key::SignaturePublicKey;
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
+use crate::baker::{BakerAddAction, BakerRemoveAction};
 use crate::block_applier::BlockApplierApplyState;
 use crate::block_applier::BlockApplierEnqueueBlockAction;
 use crate::mempool::mempool_actions::{
@@ -16,8 +19,8 @@ use crate::mempool::mempool_actions::{
 };
 use crate::mempool::OperationKind;
 use crate::rights::{rights_actions::RightsRpcGetAction, RightsKey};
-use crate::service::rpc_service::{RpcRequest, RpcRequestStream};
-use crate::service::{RpcService, Service};
+use crate::service::rpc_service::{BakerPatch, BakingState, RpcRequest, RpcRequestStream};
+use crate::service::{BakerService, RpcService, Service};
 use crate::storage::request::StorageRequestStatus;
 use crate::{Action, ActionWithMeta, Store};
 
@@ -189,6 +192,18 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         let stats = store.service().statistics();
                         let _ = channel.send(stats.map(|s| s.block_stats_get_all().clone()));
                     }
+                    RpcRequest::GetBakingState { channel } => {
+                        let data = Some(())
+                            .and_then(|_| store.state().current_head.get().cloned())
+                            .map(|current_head| BakingState {
+                                current_head,
+                                prequorum: store.state().mempool.prequorum.clone(),
+                                quorum: store.state().mempool.quorum.clone(),
+                                bakers: store.state().bakers.clone(),
+                            });
+
+                        let _ = channel.send(data);
+                    }
                     RpcRequest::InjectBlock { block } => {
                         if !store.dispatch(RpcInjectBlockAction {
                             rpc_id,
@@ -232,7 +247,7 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                         store.dispatch(MempoolOperationInjectAction {
                             operation,
                             hash: operation_hash,
-                            rpc_id,
+                            rpc_id: Some(rpc_id),
                             injected_timestamp,
                         });
                     }
@@ -321,6 +336,47 @@ pub fn rpc_effects<S: Service>(store: &mut Store<S>, action: &ActionWithMeta) {
                             })
                             .collect();
                         let _ = channel.send(stats);
+                    }
+                    RpcRequest::PatchBakers { patch } => {
+                        let (baker, add) = match patch {
+                            BakerPatch::Add { baker } => (baker, true),
+                            BakerPatch::Remove { baker } => (baker, false),
+                        };
+                        let seed = match SeedEd25519::from_base58_check(&baker) {
+                            Ok(v) => v,
+                            Err(err) => {
+                                store
+                                    .service()
+                                    .rpc()
+                                    .respond(rpc_id, format!("error {err}"));
+                                return;
+                            }
+                        };
+                        let (public_key, secret_key) = match seed.keypair() {
+                            Ok(v) => v,
+                            Err(err) => {
+                                store
+                                    .service()
+                                    .rpc()
+                                    .respond(rpc_id, format!("error {err}"));
+                                return;
+                            }
+                        };
+                        let pkh = SignaturePublicKey::Ed25519(public_key).pk_hash().unwrap();
+                        let res = if add {
+                            store
+                                .service
+                                .baker()
+                                .add_local_baker(pkh.clone(), secret_key);
+                            store.dispatch(BakerAddAction { baker: pkh })
+                        } else {
+                            store.service.baker().remove_local_baker(&pkh);
+                            store.dispatch(BakerRemoveAction { baker: pkh })
+                        };
+                        store
+                            .service()
+                            .rpc()
+                            .respond(rpc_id, serde_json::Value::Bool(res));
                     }
                 }
             }

@@ -461,6 +461,7 @@ fn test_validate_operation_request_conv() {
         prevalidator,
         operation_hash,
         operation,
+        include_operation_data_json: true,
     };
 
     let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {

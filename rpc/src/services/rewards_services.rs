@@ -307,7 +307,7 @@ pub(crate) async fn get_cycle_delegate_rewards(
     let constants = get_constants(protocol_hash, env)?;
 
     match SupportedProtocol::try_from(protocol_hash)? {
-        SupportedProtocol::Proto012 => {
+        SupportedProtocol::Proto012 | SupportedProtocol::Proto013 => {
             let end_hash = parse_block_hash(chain_id, &end.to_string(), env)?;
 
             let cycle_rewards = get_cycle_rewards(cycle_num, &cycle_era, env, chain_id).await?;
@@ -367,7 +367,7 @@ pub(crate) async fn get_cycle_rewards_distribution(
     let constants = get_constants(protocol_hash, env)?;
 
     match SupportedProtocol::try_from(protocol_hash)? {
-        SupportedProtocol::Proto012 => {
+        SupportedProtocol::Proto012 | SupportedProtocol::Proto013 => {
             let end_hash = parse_block_hash(chain_id, &end.to_string(), env)?;
 
             let cycle_rewards = get_cycle_rewards(cycle_num, &cycle_era, env, chain_id).await?;

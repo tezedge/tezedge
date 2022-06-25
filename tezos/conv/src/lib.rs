@@ -114,7 +114,7 @@ pub struct OCamlInitProtocolContextParams {}
 
 // Responses
 
-pub struct OCamlApplied {}
+pub struct OCamlValidated {}
 pub struct OCamlApplyBlockResponse {}
 pub struct OCamlApplyBlockExecutionTimestamps {}
 pub struct OCamlBeginApplicationResponse {}

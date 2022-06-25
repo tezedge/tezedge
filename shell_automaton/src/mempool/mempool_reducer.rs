@@ -7,20 +7,20 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use crypto::hash::OperationHash;
-use tezos_api::ffi::{Applied, Errored, HasOperationHash};
+use tezos_api::ffi::{Errored, HasOperationHash, Validated};
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::Operation;
 use tezos_messages::p2p::encoding::peer::PeerMessage;
 
 use crate::block_applier::BlockApplierApplyState;
 use crate::peers::remove::PeersRemoveAction;
-use crate::prechecker::{prechecking_enabled, PrecheckerResult};
+use crate::prechecker::PrecheckerResult;
 use crate::{Action, ActionWithMeta, State};
 
-use super::validator::MempoolValidatorValidateResult;
+use super::validator::{MempoolValidatorReclassifyOperationAction, MempoolValidatorValidateResult};
 use super::{
     mempool_actions::*,
-    mempool_state::{HeadState, MempoolOperation, OperationStream, MAX_REFUSED_OPERATIONS},
+    mempool_state::{HeadState, MempoolOperation, OperationStream},
 };
 use super::{
     OperationKind, OperationNodeCurrentHeadStats, OperationState, OperationStats,
@@ -58,13 +58,51 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
                                 Some(content.protocol_preapply_end),
                                 current_head_level,
                                 OperationValidationResult::Applied,
+                            );
+                        update_quorum_state_with_validated_operation(state, &v.hash);
+                    }
+                    let mempool_state = &mut state.mempool;
+                    if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
+                        if let MempoolOperation {
+                            state: OperationState::Decoded,
+                            ..
+                        } = operation_state
+                        {
+                            *operation_state =
+                                operation_state.next_state(OperationState::Applied, action);
+                        }
+                    }
+                }
+                MempoolValidatorValidateResult::Prechecked(v) => {
+                    if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
+                        mempool_state
+                            .validated_operations
+                            .ops
+                            .insert(v.hash.clone(), op);
+                        mempool_state.validated_operations.applied.push(v.clone());
+                        mempool_state
+                            .operation_stats
+                            .entry(v.hash.clone())
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
+                            .validation_finished(
+                                action.time_as_nanos(),
+                                Some(content.protocol_preapply_start),
+                                Some(content.protocol_preapply_end),
+                                current_head_level,
+                                OperationValidationResult::Prechecked,
                             );
                     }
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
@@ -80,16 +118,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 MempoolValidatorValidateResult::Refused(v) => {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
-                        while mempool_state.validated_operations.refused.len()
-                            >= MAX_REFUSED_OPERATIONS
-                        {
-                            let hash = match mempool_state.validated_operations.refused.pop_front()
-                            {
-                                Some(v) => v.hash,
-                                None => break,
-                            };
-                            mempool_state.validated_operations.ops.remove(&hash);
-                        }
                         mempool_state
                             .validated_operations
                             .ops
@@ -101,7 +129,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
@@ -109,6 +140,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                                 current_head_level,
                                 OperationValidationResult::Refused,
                             );
+                        mempool_state
+                            .validated_operations
+                            .enforce_max_refused_operations();
                     }
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
                         if let MempoolOperation {
@@ -123,19 +157,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 MempoolValidatorValidateResult::BranchRefused(v) => {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
-                        while mempool_state.validated_operations.branch_refused.len()
-                            >= MAX_REFUSED_OPERATIONS
-                        {
-                            let hash = match mempool_state
-                                .validated_operations
-                                .branch_refused
-                                .pop_front()
-                            {
-                                Some(v) => v.hash,
-                                None => break,
-                            };
-                            mempool_state.validated_operations.ops.remove(&hash);
-                        }
                         mempool_state
                             .validated_operations
                             .ops
@@ -147,7 +168,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
@@ -155,6 +179,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                                 current_head_level,
                                 OperationValidationResult::BranchRefused,
                             );
+                        mempool_state
+                            .validated_operations
+                            .enforce_max_refused_operations();
                     }
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
                         if let MempoolOperation {
@@ -169,19 +196,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 MempoolValidatorValidateResult::BranchDelayed(v) => {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
-                        while mempool_state.validated_operations.branch_delayed.len()
-                            >= MAX_REFUSED_OPERATIONS
-                        {
-                            let hash = match mempool_state
-                                .validated_operations
-                                .branch_delayed
-                                .pop_front()
-                            {
-                                Some(v) => v.hash,
-                                None => break,
-                            };
-                            mempool_state.validated_operations.ops.remove(&hash);
-                        }
                         mempool_state
                             .validated_operations
                             .ops
@@ -193,7 +207,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
@@ -201,6 +218,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                                 current_head_level,
                                 OperationValidationResult::BranchDelayed,
                             );
+                        mempool_state
+                            .validated_operations
+                            .enforce_max_refused_operations();
                     }
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(&v.hash) {
                         if let MempoolOperation {
@@ -215,16 +235,6 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 }
                 MempoolValidatorValidateResult::Outdated(v) => {
                     if let Some(op) = mempool_state.pending_operations.remove(&v.hash) {
-                        while mempool_state.validated_operations.outdated.len()
-                            >= MAX_REFUSED_OPERATIONS
-                        {
-                            let hash = match mempool_state.validated_operations.outdated.pop_front()
-                            {
-                                Some(v) => v.hash,
-                                None => break,
-                            };
-                            mempool_state.validated_operations.ops.remove(&hash);
-                        }
                         mempool_state
                             .validated_operations
                             .ops
@@ -236,7 +246,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(v.hash.clone())
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .validation_finished(
                                 action.time_as_nanos(),
                                 Some(content.protocol_preapply_start),
@@ -244,6 +257,9 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                                 current_head_level,
                                 OperationValidationResult::Outdated,
                             );
+                        mempool_state
+                            .validated_operations
+                            .enforce_max_refused_operations();
                     }
                     if let Some(rpc_id) = mempool_state.injecting_rpc_ids.remove(&v.hash) {
                         mempool_state.injected_rpc_ids.push(rpc_id);
@@ -269,6 +285,19 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         .insert(operation_hash.clone());
                 }
             }
+        }
+        Action::MempoolValidatorReclassifyOperation(
+            MempoolValidatorReclassifyOperationAction {
+                op_hash,
+                classification,
+            },
+        ) => {
+            mempool_state
+                .validated_operations
+                .reclassify_manager_operation(op_hash, classification);
+            mempool_state
+                .validated_operations
+                .enforce_max_refused_operations();
         }
         Action::BlockApplierApplySuccess(_) => {
             let block_operations = match &state.block_applier.current {
@@ -307,13 +336,11 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
         Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
-            // TODO: get from protocol
-            const TTL: i32 = 120;
-
             let block = match state.current_head.get() {
                 Some(v) => v,
                 None => return,
             };
+            let level = block.header.level();
             let old_head_state = mempool_state.local_head_state.clone();
             mempool_state.branch_changed = old_head_state
                 .as_ref()
@@ -329,13 +356,29 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
             let mempool_state = &mut state.mempool;
 
-            let t = Instant::now();
-
-            if mempool_state.branch_changed {
-                // remove all `branch_refused` results, put them into `pending_operations`
-                // to validate again with new prevalidator
+            if !state.config.disable_endorsements_precheck {
+                let t = Instant::now();
+                if mempool_state.branch_changed {
+                    // remove all `branch_refused` results, put them into `pending_operations`
+                    // to validate again with new prevalidator
+                    for v in drain_consensus_deq(
+                        &mut mempool_state.validated_operations.branch_refused,
+                        &mempool_state.validated_operations.ops,
+                    ) {
+                        if mempool_state
+                            .validated_operations
+                            .ops
+                            .remove(&v.hash)
+                            .is_some()
+                        {
+                            mempool_state.prechecking_delayed_operations.insert(v.hash);
+                        }
+                    }
+                }
+                // remove all remaining `applied` results and all `branch_delayed` results,
+                // put them into `pending_operations` to validate again with prechecker
                 for v in drain_consensus_deq(
-                    &mut mempool_state.validated_operations.branch_refused,
+                    &mut mempool_state.validated_operations.branch_delayed,
                     &mempool_state.validated_operations.ops,
                 ) {
                     if mempool_state
@@ -347,105 +390,73 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state.prechecking_delayed_operations.insert(v.hash);
                     }
                 }
-            }
-            // remove all remaining `applied` results and all `branch_delayed` results,
-            // put them into `pending_operations` to validate again with prechecker
-            for v in drain_consensus_deq(
-                &mut mempool_state.validated_operations.branch_delayed,
-                &mempool_state.validated_operations.ops,
-            ) {
-                if mempool_state
-                    .validated_operations
-                    .ops
-                    .remove(&v.hash)
-                    .is_some()
-                {
-                    mempool_state.prechecking_delayed_operations.insert(v.hash);
+                // remove all applied consensus operations
+                for v in drain_consensus(
+                    &mut mempool_state.validated_operations.applied,
+                    &mempool_state.validated_operations.ops,
+                ) {
+                    mempool_state.validated_operations.ops.remove(&v.hash);
                 }
+                slog::debug!(state.log, "validated_operations: updated consensus operations"; "time" => format!("{:?}", Instant::now() - t));
             }
-            // remove all applied consensus operations
-            for v in drain_consensus(
-                &mut mempool_state.validated_operations.applied,
-                &mempool_state.validated_operations.ops,
-            ) {
-                mempool_state.validated_operations.ops.remove(&v.hash);
-            }
-            // remove all outdated consensus operations
-            for v in drain_consensus_deq(
-                &mut mempool_state.validated_operations.outdated,
-                &mempool_state.validated_operations.ops,
-            ) {
-                mempool_state.validated_operations.ops.remove(&v.hash);
-            }
-            // remove all refused consensus operations
-            for v in drain_consensus_deq(
-                &mut mempool_state.validated_operations.refused,
-                &mempool_state.validated_operations.ops,
-            ) {
-                mempool_state.validated_operations.ops.remove(&v.hash);
-            }
-            slog::debug!(state.log, "validated_operations: updated consensus operations"; "time" => format!("{:?}", Instant::now() - t));
 
             let t = Instant::now();
-            // update last 120 predecessor blocks map.
-            let last_predecessor_blocks = &mut mempool_state.last_predecessor_blocks;
-            last_predecessor_blocks
-                .insert(block.header.predecessor().clone(), block.header.level() - 1);
-            if last_predecessor_blocks.len() as i32 > TTL {
-                if let Some((oldest, _)) = last_predecessor_blocks
-                    .iter()
-                    .min_by(|(_, l0), (_, l1)| l0.cmp(l1))
-                {
-                    let oldest = oldest.clone();
-                    last_predecessor_blocks.remove(&oldest);
-                }
-            }
 
-            let level = block.header.level().saturating_sub(TTL);
+            let current_head = &state.current_head;
 
             // `drain_filter` is unstable for now
-            for (_, ops) in mempool_state.level_to_operation.range(..level) {
-                for op in ops {
-                    mempool_state.pending_full_content.remove(op);
-                    mempool_state.pending_operations.remove(op);
-                    mempool_state.validated_operations.ops.remove(op);
-                    mempool_state
-                        .validated_operations
-                        .applied
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .refused
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .branch_delayed
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .branch_refused
-                        .retain(|v| v.hash.ne(op));
-                    mempool_state
-                        .validated_operations
-                        .outdated
-                        .retain(|v| v.hash.ne(op));
-                    for peer_state in mempool_state.peer_state.values_mut() {
-                        peer_state.seen_operations.remove(op);
-                    }
-
-                    // remove operation from stats
-                    mempool_state.operation_stats.remove(op);
-                }
+            let ops = &mut mempool_state.validated_operations.ops;
+            // TODO: replace with drain_filter once it's stable.
+            let outdated_ops = ops
+                .iter()
+                .filter(|(_, op)| !current_head.is_live_block(op.branch()))
+                .map(|(op_hash, _)| op_hash.clone())
+                .collect::<BTreeSet<_>>();
+            ops.retain(|hash, _| !outdated_ops.contains(hash));
+            for hash in outdated_ops.iter() {
+                mempool_state.pending_operations.remove(hash);
             }
-            mempool_state.level_to_operation.retain(|x, _| *x >= level);
+            mempool_state
+                .validated_operations
+                .refused
+                .retain(|v| !outdated_ops.contains(&v.hash));
+            mempool_state
+                .validated_operations
+                .branch_delayed
+                .retain(|v| !outdated_ops.contains(&v.hash));
+            mempool_state
+                .validated_operations
+                .branch_refused
+                .retain(|v| !outdated_ops.contains(&v.hash));
+            mempool_state
+                .validated_operations
+                .outdated
+                .retain(|v| !outdated_ops.contains(&v.hash));
+            mempool_state
+                .operation_stats
+                .retain(|_, s| s.level + 120 >= level);
+            for peer_state in mempool_state.peer_state.values_mut() {
+                peer_state
+                    .seen_operations
+                    .retain(|hash| !outdated_ops.contains(hash));
+            }
+
             mempool_state.operations_state.retain(|_, operation| {
-                level - operation.level < OPERATION_STATUS_RETAIN_LEVELS
+                level.saturating_sub(operation.level) < OPERATION_STATUS_RETAIN_LEVELS
                     && operation
                         .operation_decoded_contents
                         .as_ref()
                         .map_or(true, |c| c.is_endorsement() || c.is_preendorsement())
             });
             slog::debug!(state.log, "validated_operations: removed old operations"; "time" => format!("{:?}", Instant::now() - t));
+
+            // reset quorum state.
+            let threshold = match state.current_head.constants() {
+                Some(v) => v.consensus_threshold,
+                None => return,
+            };
+            state.mempool.prequorum.reset(Some(threshold));
+            state.mempool.quorum.reset(Some(threshold));
         }
         Action::MempoolRecvDone(MempoolRecvDoneAction {
             address,
@@ -458,21 +469,17 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             let known_valid = message.known_valid().iter().cloned();
 
             let peer = mempool_state.peer_state.entry(*address).or_default();
-            let ops = mempool_state.level_to_operation.entry(level).or_default();
 
             for hash in pending.chain(known_valid) {
                 let known = mempool_state.pending_operations.contains_key(&hash)
                     || mempool_state.prechecking_operations.contains_key(&hash)
                     || mempool_state.validated_operations.ops.contains_key(&hash);
 
-                if !known {
-                    ops.push(hash.clone());
-                    if !mempool_state.pending_full_content.contains_key(&hash) {
-                        peer.requesting_full_content.insert(hash.clone());
-                        mempool_state
-                            .operations_state
-                            .insert(hash.clone(), MempoolOperation::received(level, action));
-                    }
+                if !known && !mempool_state.pending_full_content.contains_key(&hash) {
+                    peer.requesting_full_content.insert(hash.clone());
+                    mempool_state
+                        .operations_state
+                        .insert(hash.clone(), MempoolOperation::received(level, action));
                 }
                 // of course peer knows about it, because he sent us it
                 peer.seen_operations.insert(hash);
@@ -493,12 +500,15 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 // We might already processed it.
                 return;
             }
+            if !state.current_head.is_live_block(operation.branch()) {
+                mempool_state.operations_state.remove(hash);
+                return;
+            }
             if let Some(head) = state.current_head.get() {
-                let proto = head.header.proto();
-                if prechecking_enabled(&state.prechecker, proto) && is_consensus_op(operation) {
+                if is_consensus_op(operation) {
                     mempool_state
                         .prechecking_operations
-                        .insert(hash.clone(), proto);
+                        .insert(hash.clone(), head.header.proto());
                     if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
                         if let MempoolOperation {
                             state: OperationState::ReceivedHash,
@@ -528,18 +538,17 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 .as_ref()
                 .map(|state| state.header.level())
                 .unwrap_or(0);
-            let ops = mempool_state.level_to_operation.entry(level).or_default();
-            ops.push(operation_hash.clone());
-            mempool_state
-                .injecting_rpc_ids
-                .insert(operation_hash.clone(), *rpc_id);
+            if let Some(rpc_id) = rpc_id.as_ref() {
+                mempool_state
+                    .injecting_rpc_ids
+                    .insert(operation_hash.clone(), *rpc_id);
+            }
 
             if let Some(head) = state.current_head.get() {
-                let proto = head.header.proto();
-                if prechecking_enabled(&state.prechecker, proto) && is_consensus_op(operation) {
+                if is_consensus_op(operation) {
                     mempool_state
                         .prechecking_operations
-                        .insert(operation_hash.clone(), proto);
+                        .insert(operation_hash.clone(), head.header.proto());
                     mempool_state.operations_state.insert(
                         operation_hash.clone(),
                         MempoolOperation::injected(level, *injected_timestamp, action),
@@ -570,7 +579,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             mempool_state
                 .operation_stats
                 .entry(operation_hash.clone())
-                .or_insert_with(OperationStats::new)
+                .or_insert_with(|| OperationStats::new(level))
                 .received_via_rpc(
                     &pkh,
                     OperationNodeCurrentHeadStats {
@@ -614,7 +623,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 mempool_state
                     .operation_stats
                     .entry(hash.clone())
-                    .or_insert_with(OperationStats::new)
+                    .or_insert_with(|| {
+                        let level = current_head_level.unwrap_or(0);
+                        OperationStats::new(level)
+                    })
                     .validation_finished(
                         action.time_as_nanos(),
                         None,
@@ -660,82 +672,93 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 mempool_state.injected_rpc_ids.push(rpc_id);
             }
 
-            let mut update_stats = |state1, state2| {
-                if let Some(operation_state) = mempool_state.operations_state.get_mut(hash) {
-                    if matches!(
-                        operation_state.state,
-                        OperationState::Decoded | OperationState::BranchDelayed
-                    ) {
-                        *operation_state = operation_state.next_state(state1, action);
-                    }
-                }
-                mempool_state
-                    .operation_stats
-                    .entry(hash.clone())
-                    .or_insert_with(OperationStats::new)
-                    .validation_finished(
-                        action.time_as_nanos(),
-                        None,
-                        None,
-                        current_head_level,
-                        state2,
-                    );
-            };
-
-            match result.kind() {
+            let is_applied = result.kind().is_applied();
+            let (state1, state2) = match result.kind() {
                 crate::prechecker::PrecheckerResultKind::Applied => {
-                    mempool_state
+                    state
+                        .mempool
                         .validated_operations
                         .applied
-                        .push(as_applied(hash, result));
+                        .push(as_validated(hash, result));
 
-                    update_stats(
+                    (
                         OperationState::Prechecked,
                         OperationValidationResult::Prechecked,
-                    );
+                    )
                 }
                 crate::prechecker::PrecheckerResultKind::Outdated => {
-                    mempool_state
+                    state
+                        .mempool
                         .validated_operations
                         .outdated
                         .push_back(as_errored(hash, result));
 
-                    update_stats(
+                    (
                         OperationState::Outdated,
                         OperationValidationResult::Outdated,
-                    );
+                    )
                 }
                 crate::prechecker::PrecheckerResultKind::Refused(_) => {
-                    mempool_state
+                    state
+                        .mempool
                         .validated_operations
                         .refused
                         .push_back(as_errored(hash, result));
 
-                    update_stats(OperationState::Refused, OperationValidationResult::Refused);
+                    (OperationState::Refused, OperationValidationResult::Refused)
                 }
                 crate::prechecker::PrecheckerResultKind::BranchRefused => {
-                    mempool_state
+                    state
+                        .mempool
                         .validated_operations
                         .branch_refused
                         .push_back(as_errored(hash, result));
 
-                    update_stats(
+                    (
                         OperationState::BranchRefused,
                         OperationValidationResult::BranchRefused,
-                    );
+                    )
                 }
                 crate::prechecker::PrecheckerResultKind::BranchDelayed => {
-                    mempool_state
+                    state
+                        .mempool
                         .validated_operations
                         .branch_delayed
                         .push_back(as_errored(hash, result));
 
-                    update_stats(
+                    (
                         OperationState::BranchDelayed,
                         OperationValidationResult::BranchDelayed,
-                    );
+                    )
+                }
+            };
+
+            if let Some(operation_state) = state.mempool.operations_state.get_mut(hash) {
+                if matches!(
+                    operation_state.state,
+                    OperationState::Decoded | OperationState::BranchDelayed
+                ) {
+                    *operation_state = operation_state.next_state(state1, action);
+                }
+                if is_applied {
+                    update_quorum_state_with_validated_operation(state, hash);
                 }
             }
+            state
+                .mempool
+                .operation_stats
+                .entry(hash.clone())
+                .or_insert_with(|| {
+                    let level = current_head_level.unwrap_or(0);
+                    OperationStats::new(level)
+                })
+                .validation_finished(
+                    action.time_as_nanos(),
+                    None,
+                    None,
+                    current_head_level,
+                    state2,
+                );
         }
         Action::MempoolBroadcastDone(MempoolBroadcastDoneAction {
             address,
@@ -786,11 +809,14 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
         Action::MempoolValidatorValidateInit(content) => {
-            let current_head_level = state.current_head.get().map(|v| v.header.level());
+            let current_head_level = state.current_head.level();
             mempool_state
                 .operation_stats
                 .entry(content.op_hash.clone())
-                .or_insert_with(OperationStats::new)
+                .or_insert_with(|| {
+                    let level = current_head_level.unwrap_or(0);
+                    OperationStats::new(level)
+                })
                 .validation_started(action.time_as_nanos(), current_head_level);
         }
         Action::PeerMessageReadSuccess(content) => {
@@ -808,6 +834,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             };
             let peer_pkh = &peer.public_key_hash;
             let time = action.time_as_nanos();
+            let current_head_level = state.current_head.level();
 
             match content.message.message() {
                 PeerMessage::CurrentHead(msg) => {
@@ -824,7 +851,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(op_hash)
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .received_in_current_head(
                                 peer_pkh,
                                 block_hash.clone(),
@@ -841,7 +871,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                         mempool_state
                             .operation_stats
                             .entry(op_hash)
-                            .or_insert_with(OperationStats::new)
+                            .or_insert_with(|| {
+                                let level = current_head_level.unwrap_or(0);
+                                OperationStats::new(level)
+                            })
                             .content_requested_remote(peer_pkh, time);
                     }
                 }
@@ -854,7 +887,10 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                     mempool_state
                         .operation_stats
                         .entry(op_hash)
-                        .or_insert_with(OperationStats::new)
+                        .or_insert_with(|| {
+                            let level = current_head_level.unwrap_or(0);
+                            OperationStats::new(level)
+                        })
                         .content_received(peer_pkh, time, msg.operation().data().as_ref());
                 }
                 _ => {}
@@ -926,6 +962,7 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
                 })
                 .collect();
         }
+
         Action::MempoolRequestFullContent(MempoolRequestFullContentAction {
             address,
             operations,
@@ -940,6 +977,36 @@ pub fn mempool_reducer(state: &mut State, action: &ActionWithMeta) {
             }
         }
 
+        Action::RightsValidatorsReady(_) => {
+            if state.mempool.prequorum.total != 0 || state.mempool.quorum.total != 0 {
+                // if we have already incremented quorum total endorsing
+                // power state, that means we already had rights so we
+                // don't need to fill quorum state with the operations
+                // that were validated before we had rights available.
+                return;
+            }
+            let ops = &state.mempool.validated_operations;
+            let consensus_ops = ops
+                .applied
+                .iter()
+                .map(|v| &v.hash)
+                .filter_map(|hash| Some((hash, ops.ops.get(hash)?)))
+                .filter(|(_, op)| {
+                    OperationKind::from_operation_content_raw(op.data().as_ref())
+                        .is_consensus_operation()
+                })
+                .map(|(hash, _)| hash.clone())
+                .collect::<Vec<_>>();
+            for hash in consensus_ops {
+                update_quorum_state_with_validated_operation(state, &hash);
+            }
+        }
+        Action::MempoolPrequorumReached(_) => {
+            state.mempool.prequorum.set_notified();
+        }
+        Action::MempoolQuorumReached(_) => {
+            state.mempool.quorum.set_notified();
+        }
         _ => (),
     }
 }
@@ -973,7 +1040,7 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                     .mempool
                     .operation_stats
                     .entry(op_hash)
-                    .or_insert_with(OperationStats::new)
+                    .or_default()
                     .sent_in_current_head(
                         pkh,
                         OperationNodeCurrentHeadStats {
@@ -990,7 +1057,7 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                     .mempool
                     .operation_stats
                     .entry(op_hash)
-                    .or_insert_with(OperationStats::new)
+                    .or_default()
                     .content_requested(&peer.public_key_hash, time);
             }
         }
@@ -1004,15 +1071,15 @@ fn update_operation_sent_stats(state: &mut State, address: SocketAddr, time: u64
                 .mempool
                 .operation_stats
                 .entry(op_hash)
-                .or_insert_with(OperationStats::new)
+                .or_default()
                 .content_sent(&peer.public_key_hash, time);
         }
         _ => {}
     };
 }
 
-fn as_applied(hash: &OperationHash, result: PrecheckerResult) -> Applied {
-    Applied {
+fn as_validated(hash: &OperationHash, result: PrecheckerResult) -> Validated {
+    Validated {
         hash: hash.clone(),
         protocol_data_json: result
             .contents()
@@ -1060,4 +1127,35 @@ fn drain_consensus<T: HasOperationHash>(
         .partition(|v| ops.get(v.operation_hash()).map_or(false, is_consensus_op));
     *deq = non_consensus;
     consensus
+}
+
+fn update_quorum_state_with_validated_operation(
+    state: &mut State,
+    hash: &OperationHash,
+) -> Option<()> {
+    let operation_state = state.mempool.operations_state.get(hash)?;
+    let (is_preendorsement, op) = operation_state
+        .operation_decoded_contents
+        .as_ref()
+        .filter(|op| op.is_preendorsement() || op.is_endorsement())
+        .and_then(|op| Some((op.is_preendorsement(), op.as_tenderbake_consensus()?)))?;
+
+    let head_level = state.current_head.level()?;
+    let head_round = state.current_head.round()?;
+    if op.level != head_level || op.round != head_round {
+        return None;
+    }
+    let rights = state.rights.tenderbake_validators(op.level)?;
+    let delegate = rights.validators.get(op.slot as usize)?;
+    let endorsing_power = rights.slots.get(delegate)?.len() as u16;
+
+    if is_preendorsement {
+        state
+            .mempool
+            .prequorum
+            .add(delegate.clone(), endorsing_power);
+    } else {
+        state.mempool.quorum.add(delegate.clone(), endorsing_power);
+    }
+    Some(())
 }

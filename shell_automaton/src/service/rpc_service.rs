@@ -16,13 +16,17 @@ use storage::persistent::SchemaError;
 use storage::{
     shell_automaton_action_meta_storage::ShellAutomatonActionsStats, BlockHeaderWithHash,
 };
-use tezos_messages::p2p::encoding::{
-    block_header::{BlockHeader, Level},
-    operation::Operation,
+use tezos_messages::{
+    base::signature_public_key::SignaturePublicKeyHash,
+    p2p::encoding::{
+        block_header::{BlockHeader, Level},
+        operation::Operation,
+    },
 };
 
 use crate::{
-    mempool::{mempool_actions::ConsensusOperationMatcher, OperationStats},
+    baker::BakerState,
+    mempool::{mempool_actions::ConsensusOperationMatcher, OperationStats, QuorumState},
     request::RequestId,
     rpc::ValidBlocksQuery,
     storage::request::StorageRequestor,
@@ -73,6 +77,14 @@ pub struct StorageRequests {
     pub finished: Vec<crate::service::statistics_service::StorageRequestFinished>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BakingState {
+    pub current_head: BlockHeaderWithHash,
+    pub prequorum: QuorumState,
+    pub quorum: QuorumState,
+    pub bakers: BTreeMap<SignaturePublicKeyHash, BakerState>,
+}
+
 #[derive(Debug)]
 pub enum RpcRequest {
     GetCurrentGlobalState {
@@ -101,6 +113,10 @@ pub enum RpcRequest {
     },
     GetBlockStats {
         channel: oneshot::Sender<Option<crate::service::statistics_service::BlocksApplyStats>>,
+    },
+
+    GetBakingState {
+        channel: oneshot::Sender<Option<BakingState>>,
     },
 
     InjectBlockStart {
@@ -136,6 +152,16 @@ pub enum RpcRequest {
         level: Level,
         round: Option<i32>,
     },
+    PatchBakers {
+        patch: BakerPatch,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "command")]
+pub enum BakerPatch {
+    Add { baker: String },
+    Remove { baker: String },
 }
 
 #[derive(Debug)]

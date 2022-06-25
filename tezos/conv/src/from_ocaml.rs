@@ -12,14 +12,14 @@ use crate::{
 };
 
 use super::{
-    FfiPath, FfiPathLeft, FfiPathRight, OCamlApplied, OCamlApplyBlockResponse,
-    OCamlBeginApplicationResponse, OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId,
-    OCamlContextHash, OCamlContextKvStoreConfiguration, OCamlErrored, OCamlForkingTestchainData,
-    OCamlHash, OCamlHelpersPreapplyResponse, OCamlOperationClassification, OCamlOperationHash,
+    FfiPath, FfiPathLeft, FfiPathRight, OCamlApplyBlockResponse, OCamlBeginApplicationResponse,
+    OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId, OCamlContextHash,
+    OCamlContextKvStoreConfiguration, OCamlErrored, OCamlForkingTestchainData, OCamlHash,
+    OCamlHelpersPreapplyResponse, OCamlOperationClassification, OCamlOperationHash,
     OCamlOperationMetadataHash, OCamlOperationMetadataListListHash, OCamlPrevalidatorWrapper,
     OCamlProtocolHash, OCamlProtocolRpcError, OCamlProtocolRpcResponse, OCamlRpcArgDesc,
     OCamlRpcMethod, OCamlTezosContextTezEdgeStorageConfiguration, OCamlTezosErrorTrace,
-    OCamlValidateOperationResponse, OCamlValidateOperationResult,
+    OCamlValidateOperationResponse, OCamlValidateOperationResult, OCamlValidated,
 };
 use crypto::hash::{
     BlockHash, BlockMetadataHash, BlockPayloadHash, ChainId, ContextHash, Hash, OperationHash,
@@ -30,17 +30,16 @@ use ocaml_interop::{
     FromOCaml, OCaml, OCamlBytes, OCamlFloat, OCamlInt, OCamlInt32, OCamlInt64, OCamlList,
 };
 use tezos_api::ffi::{
-    Applied, ApplyBlockError, ApplyBlockExecutionTimestamps, ApplyBlockResponse,
-    BeginApplicationError, BeginApplicationResponse, BeginConstructionError, ClassifiedOperation,
-    CommitGenesisResult, ComputePathError, ComputePathResponse, CycleRollsOwnerSnapshot,
-    DumpContextError, Errored, FfiJsonEncoderError, ForkingTestchainData, GetDataError,
-    GetLastContextHashesError, HelpersPreapplyError, HelpersPreapplyResponse,
-    InitProtocolContextResult, IntegrityCheckContextError, OperationClassification,
-    PreFilterOperationError, PreFilterOperationResponse, PreFilterOperationResult,
-    PreapplyBlockResponse, PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError,
-    ProtocolRpcResponse, Rational, RestoreContextError, RpcArgDesc, RpcMethod, TezosErrorTrace,
-    TezosStorageInitError, ValidateOperationError, ValidateOperationResponse,
-    ValidateOperationResult,
+    ApplyBlockError, ApplyBlockExecutionTimestamps, ApplyBlockResponse, BeginApplicationError,
+    BeginApplicationResponse, BeginConstructionError, ClassifiedOperation, CommitGenesisResult,
+    ComputePathError, ComputePathResponse, CycleRollsOwnerSnapshot, DumpContextError, Errored,
+    FfiJsonEncoderError, ForkingTestchainData, GetDataError, GetLastContextHashesError,
+    HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult,
+    IntegrityCheckContextError, OperationClassification, PreFilterOperationError,
+    PreFilterOperationResponse, PreFilterOperationResult, PreapplyBlockResponse,
+    PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError, ProtocolRpcResponse, Rational,
+    RestoreContextError, RpcArgDesc, RpcMethod, TezosErrorTrace, TezosStorageInitError,
+    ValidateOperationError, ValidateOperationResponse, ValidateOperationResult, Validated,
 };
 use tezos_context_api::{
     ContextKvStoreConfiguration, TezosContextTezEdgeStorageConfiguration,
@@ -208,7 +207,7 @@ impl_from_ocaml_record! {
 }
 
 impl_from_ocaml_record! {
-    OCamlApplied => Applied {
+    OCamlValidated => Validated {
         hash: OCamlOperationHash,
         protocol_data_json: OCamlBytes,
     }
@@ -237,7 +236,7 @@ impl_from_ocaml_polymorphic_variant! {
 impl_from_ocaml_record! {
     OCamlClassifiedOperation => ClassifiedOperation {
         classification: OCamlOperationClassification,
-        operation_data_json: String,
+        operation_data_json: Option<String>,
         is_endorsement: bool,
     }
 }
@@ -260,7 +259,8 @@ impl_from_ocaml_polymorphic_variant! {
         Drop => PreFilterOperationResult::Drop,
         High => PreFilterOperationResult::High,
         Medium => PreFilterOperationResult::Medium,
-        Low(weights: OCamlList<OCamlRationalString>) => PreFilterOperationResult::Low(weights),
+        Low(weights: OCamlList<OCamlRationalString>)
+            => PreFilterOperationResult::Low(weights),
     }
 }
 
@@ -275,6 +275,7 @@ impl_from_ocaml_record! {
     OCamlPreFilterOperationResponse => PreFilterOperationResponse {
         prevalidator: OCamlPrevalidatorWrapper,
         operation_hash: OCamlOperationHash,
+        operation_data_json: Option<String>,
         result: OCamlPreFilterOperationResult,
         pre_filter_operation_started_at: OCamlFloat,
         parse_operation_started_at: OCamlFloat,
@@ -288,6 +289,7 @@ impl_from_ocaml_record! {
         prevalidator: OCamlPrevalidatorWrapper,
         operation_hash: OCamlOperationHash,
         result: OCamlValidateOperationResult,
+        to_reclassify: Option<(OCamlOperationHash, OCamlOperationClassification)>,
         validate_operation_started_at: OCamlFloat,
         parse_operation_started_at: OCamlFloat,
         parse_operation_ended_at: OCamlFloat,

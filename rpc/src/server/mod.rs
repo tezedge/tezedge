@@ -97,6 +97,7 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     context_stats_db_path: Option<PathBuf>,
     pub tezedge_is_enabled: bool,
+    pub allow_unsafe_rpc: bool,
 }
 
 impl RpcServiceEnvironment {
@@ -111,6 +112,7 @@ impl RpcServiceEnvironment {
         state: RpcCollectedStateRef,
         context_stats_db_path: Option<PathBuf>,
         tezedge_is_enabled: bool,
+        allow_unsafe_rpc: bool,
         log: Logger,
     ) -> Self {
         let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_protocol_api));
@@ -127,6 +129,7 @@ impl RpcServiceEnvironment {
             tezos_protocol_api,
             context_stats_db_path,
             tezedge_is_enabled,
+            allow_unsafe_rpc,
         }
     }
 }
@@ -167,7 +170,10 @@ pub fn spawn_server(
     bind_address: &SocketAddr,
     env: Arc<RpcServiceEnvironment>,
 ) -> impl Future<Output = Result<(), hyper::Error>> {
-    let routes = Arc::new(router::create_routes(env.tezedge_is_enabled));
+    let routes = Arc::new(router::create_routes(
+        env.tezedge_is_enabled,
+        env.allow_unsafe_rpc,
+    ));
 
     hyper::Server::bind(bind_address)
         .serve(make_service_fn(move |socket: &AddrStream| {

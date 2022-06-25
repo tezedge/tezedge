@@ -25,7 +25,10 @@ where
     match &action.action {
         Action::PrecheckerPrecheckOperation(action) => {
             match prechecker_state_operations.get(&action.hash) {
-                Some(Ok(_)) => {
+                Some(Ok(PrecheckerOperation {
+                    state: PrecheckerOperationState::Supported { .. },
+                    ..
+                })) => {
                     store.dispatch(PrecheckerDecodeOperationAction::from(&action.hash));
                 }
                 Some(Err(_)) => {
@@ -39,6 +42,21 @@ where
             match prechecker_state_operations.get(&action.hash) {
                 Some(Ok(_)) => {
                     store.dispatch(PrecheckerValidateOperationAction::from(&action.hash));
+                }
+                Some(Err(_)) => {
+                    store.dispatch(PrecheckerErrorAction::from(&action.hash));
+                    store.dispatch(PrecheckerPruneOperationAction::from(&action.hash));
+                }
+                _ => {}
+            }
+        }
+        Action::PrecheckerProtocolSupported(action) => {
+            match prechecker_state_operations.get(&action.hash) {
+                Some(Ok(PrecheckerOperation {
+                    state: PrecheckerOperationState::Init { .. },
+                    ..
+                })) => {
+                    store.dispatch(PrecheckerDecodeOperationAction::from(&action.hash));
                 }
                 Some(Err(_)) => {
                     store.dispatch(PrecheckerErrorAction::from(&action.hash));
@@ -64,7 +82,8 @@ where
                     store.dispatch(PrecheckerCategorizeOperationAction::from(&action.hash));
                 }
                 Some(Err(_)) => {
-                    store.dispatch(PrecheckerErrorAction::from(&action.hash));
+                    store.dispatch(PrecheckerProtocolNeededAction::from(&action.hash));
+                    // store.dispatch(PrecheckerErrorAction::from(&action.hash));
                     store.dispatch(PrecheckerPruneOperationAction::from(&action.hash));
                 }
                 _ => {}
@@ -76,7 +95,7 @@ where
                     PrecheckerOperationState::TenderbakeConsensus { .. } => {
                         store.dispatch(PrecheckerValidateOperationAction::from(&action.hash));
                     }
-                    PrecheckerOperationState::ProtocolNeeded => {
+                    PrecheckerOperationState::ProtocolNeeded { .. } => {
                         store.dispatch(PrecheckerProtocolNeededAction::from(&action.hash));
                         store.dispatch(PrecheckerPruneOperationAction::from(&action.hash));
                     }
@@ -100,7 +119,7 @@ where
                             store.dispatch(PrecheckerPruneOperationAction::from(&action.hash));
                         }
                     }
-                    PrecheckerOperationState::ProtocolNeeded => {
+                    PrecheckerOperationState::ProtocolNeeded { .. } => {
                         store.dispatch(PrecheckerProtocolNeededAction::from(&action.hash));
                         store.dispatch(PrecheckerPruneOperationAction::from(&action.hash));
                     }
@@ -145,15 +164,15 @@ where
                     .cloned()
                     .collect::<Vec<_>>()
                 {
-                    store.dispatch(PrecheckerValidateOperationAction { hash });
+                    store.dispatch(PrecheckerValidateOperationAction::from(hash));
                 }
             }
         }
 
         Action::PrecheckerCurrentHeadUpdate(PrecheckerCurrentHeadUpdateAction {
-            protocol,
             payload_hash,
             head,
+            ..
         }) => {
             if !store.state().is_bootstrapped() {
                 return;
@@ -174,15 +193,45 @@ where
             } else {
                 None
             };
-            store.dispatch(PrecheckerCacheProtocolAction {
-                proto: head.header.proto(),
-                protocol_hash: protocol.clone(),
+            store.dispatch(PrecheckerStoreEndorsementBranchAction { endorsement_branch });
+            store.dispatch(RightsGetAction {
+                key: RightsKey::endorsing(block_hash, Some(level + 1)),
             });
-            if !store.state.get().config.disable_endorsements_precheck {
-                store.dispatch(PrecheckerStoreEndorsementBranchAction { endorsement_branch });
-                store.dispatch(RightsGetAction {
-                    key: RightsKey::endorsing(block_hash, Some(level + 1)),
-                });
+        }
+
+        Action::CurrentHeadRehydrated(_) | Action::CurrentHeadUpdate(_) => {
+            let in_init_state = |(hash, op): (_, &Result<PrecheckerOperation, _>)| {
+                op.as_ref().ok().and_then(|op| {
+                    if let PrecheckerOperationState::Init { .. } = &op.state {
+                        Some(hash)
+                    } else {
+                        None
+                    }
+                })
+            };
+            let in_init_ops = store
+                .state()
+                .prechecker
+                .operations
+                .iter()
+                .filter_map(in_init_state)
+                .cloned()
+                .collect::<Vec<_>>();
+            if store.dispatch(PrecheckerProtocolActivationAction {}) {
+                if store.state().current_head.is_precheckable() {
+                    for hash in in_init_ops {
+                        store.dispatch(PrecheckerProtocolSupportedAction::from(hash));
+                    }
+                } else {
+                    for hash in in_init_ops {
+                        store.dispatch(PrecheckerProtocolNeededAction::from(&hash));
+                        store.dispatch(PrecheckerPruneOperationAction::from(hash));
+                    }
+                }
+            } else {
+                for hash in in_init_ops {
+                    store.dispatch(PrecheckerPruneOperationAction::from(hash));
+                }
             }
         }
 

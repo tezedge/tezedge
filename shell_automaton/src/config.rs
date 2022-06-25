@@ -12,9 +12,11 @@ use tezos_context_api::{
     ContextKvStoreConfiguration, GenesisChain, ProtocolOverrides, TezosContextStorageConfiguration,
     TezosContextTezEdgeStorageConfiguration, TezosContextTezedgeOnDiskBackendOptions,
 };
+use tezos_messages::base::signature_public_key::SignaturePublicKeyHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_protocol_ipc_client::ProtocolRunnerConfiguration;
 
+use crate::baker::block_baker::LiquidityBakingToggleVote;
 use crate::shell_compatibility_version::ShellCompatibilityVersion;
 use crypto::{
     crypto_box::{CryptoKey, PublicKey, SecretKey},
@@ -116,12 +118,13 @@ pub struct Config {
     /// Record/Persist actions.
     pub record_actions: bool,
 
-    pub quota: Quota,
-
     pub disable_block_precheck: bool,
     pub disable_endorsements_precheck: bool,
 
     pub mempool_get_operation_timeout: Duration,
+
+    pub bakers: Vec<BakerConfig>,
+    pub liquidity_baking_escape_vote: LiquidityBakingToggleVote,
 }
 
 impl Config {
@@ -131,10 +134,9 @@ impl Config {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Quota {
-    pub restore_duration_millis: u64,
-    pub read_quota: usize,
-    pub write_quota: usize,
+pub struct BakerConfig {
+    pub pkh: SignaturePublicKeyHash,
+    pub liquidity_baking_escape_vote: LiquidityBakingToggleVote,
 }
 
 pub fn default_test_config() -> Config {
@@ -224,15 +226,12 @@ pub fn default_test_config() -> Config {
         record_state_snapshots_with_interval: None,
         record_actions: false,
 
-        quota: Quota {
-            restore_duration_millis: 1000,
-            read_quota: 1024,
-            write_quota: 1024,
-        },
-
-        disable_endorsements_precheck: false,
+        disable_endorsements_precheck: true,
         disable_block_precheck: true,
 
         mempool_get_operation_timeout: Duration::from_secs(1),
+
+        bakers: vec![],
+        liquidity_baking_escape_vote: LiquidityBakingToggleVote::Off,
     }
 }

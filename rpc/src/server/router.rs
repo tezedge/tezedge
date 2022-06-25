@@ -17,7 +17,7 @@ macro_rules! hash_set {
     };
 }
 
-pub fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler> {
+pub fn create_routes(tezedge_is_enabled: bool, allow_unsafe: bool) -> PathTree<MethodHandler> {
     let mut routes = PathTree::<MethodHandler>::new();
 
     // Shell rpc - implemented
@@ -383,6 +383,11 @@ pub fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler> {
     );
     routes.handle(
         hash_set![Method::GET],
+        "/dev/shell/automaton/baking_state",
+        dev_handler::dev_shell_automaton_baking_state,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/dev/peers/best_remote_level",
         dev_handler::best_remote_level,
     );
@@ -396,6 +401,15 @@ pub fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler> {
         "/dev/rewards/cycle/:cycle_num/:delegate",
         dev_handler::dev_cycle_delegate_reward_distribution,
     );
+
+    if allow_unsafe {
+        eprintln!("======= adding unsafe rpc");
+        routes.handle(
+            hash_set![Method::PATCH],
+            "/dev/shell/automaton/bakers",
+            dev_handler::patch_bakers,
+        );
+    }
 
     routes.handle(
         hash_set![Method::GET],

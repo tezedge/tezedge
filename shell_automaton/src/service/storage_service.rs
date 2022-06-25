@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use std::{fmt, thread};
 
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, ProtocolHash};
 use storage::block_meta_storage::Meta;
-use storage::cycle_eras_storage::CycleErasData;
+use storage::cycle_eras_storage::{CycleEra, CycleErasData};
 use storage::cycle_storage::CycleData;
 use storage::{
     BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader,
@@ -25,6 +25,7 @@ use tezos_messages::p2p::encoding::fitness::Fitness;
 use tezos_messages::p2p::encoding::operation::Operation;
 use tezos_messages::p2p::encoding::operations_for_blocks::OperationsForBlocksMessage;
 
+use crate::current_head::ProtocolConstants;
 use crate::request::RequestId;
 use crate::storage::kv_cycle_meta::CycleKey;
 use crate::{Action, ActionId, ActionWithMeta, State};
@@ -66,6 +67,18 @@ impl StorageError {
 impl From<storage::StorageError> for StorageError {
     fn from(err: storage::StorageError) -> Self {
         Self(err.to_string())
+    }
+}
+
+impl From<std::io::Error> for StorageError {
+    fn from(err: std::io::Error) -> Self {
+        Self(format!("io error: {}", err))
+    }
+}
+
+impl From<serde_json::Error> for StorageError {
+    fn from(err: serde_json::Error) -> Self {
+        Self(format!("json error: {}", err))
     }
 }
 
@@ -115,6 +128,34 @@ impl StorageRequestPayload {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CurrentHeadData {
+    pub head: BlockHeaderWithHash,
+    pub pred: Option<BlockHeaderWithHash>,
+    pub additional_data: BlockAdditionalData,
+    pub pred_additional_data: Option<BlockAdditionalData>,
+    pub cycle: Option<BlockCycleInfo>,
+    pub operations: Vec<Vec<Operation>>,
+    pub constants: Option<ProtocolConstants>,
+    pub cemented_live_blocks: BTreeMap<BlockHash, Level>,
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BlockCycleInfo {
+    pub cycle: i32,
+    pub position: i32,
+}
+
+impl BlockCycleInfo {
+    pub fn calculate(level: Level, era: &CycleEra) -> Self {
+        let cycle = (level - era.first_level()) / era.blocks_per_cycle() + era.first_cycle();
+        let position = (level - era.first_level()) % era.blocks_per_cycle();
+        Self { cycle, position }
+    }
+}
+
+#[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum StorageResponseSuccess {
     StateSnapshotPutSuccess(ActionId),
     ActionPutSuccess(ActionId),
@@ -130,11 +171,7 @@ pub enum StorageResponseSuccess {
     CycleMetaGetSuccess(CycleKey, Option<CycleData>),
 
     /// Returns: `(CurrentHead, CurrentHeadPredecessor)`.
-    CurrentHeadGetSuccess(
-        BlockHeaderWithHash,
-        Option<BlockHeaderWithHash>,
-        BlockAdditionalData,
-    ),
+    CurrentHeadGetSuccess(CurrentHeadData),
 
     BlockHeaderPutSuccess(bool),
     BlockOperationsPutSuccess(bool),
@@ -347,7 +384,7 @@ impl StorageServiceDefault {
                     .map_err(|err| BlockAdditionalDataGetError(block_hash, err.into())),
                 OperationsGet(block_hash) => operations_storage
                     .get_operations(&block_hash)
-                    .map(|data| data.into_iter().map(Vec::from).flatten().collect())
+                    .map(|data| data.into_iter().flat_map(Vec::from).collect())
                     .map(|ops| OperationsGetSuccess(block_hash.clone(), Some(ops)))
                     .map_err(|err| OperationsGetError(block_hash.clone(), err.into())),
                 ConstantsGet(protocol_hash) => constants_storage
@@ -393,12 +430,40 @@ impl StorageServiceDefault {
                                 .ok_or_else(|| {
                                     StorageError("missing additional_data".to_owned())
                                 })?;
-                            Ok((head, pred, additional_data))
+                            let pred_additional_data = pred
+                                .as_ref()
+                                .map(|pred| block_meta_storage.get_additional_data(&pred.hash))
+                                .transpose()?
+                                .flatten();
+                            let head_level = head.header.level();
+                            let cycle_info = cycle_eras_storage
+                                .get_for_level(head_level)?
+                                .map(|eras| BlockCycleInfo::calculate(head_level, &eras));
+                            let operations =
+                                operations_storage.get_operations(&head.hash).map(|ops| {
+                                    ops.into_iter()
+                                        .map(|v| v.as_operations())
+                                        .collect::<Vec<_>>()
+                                })?;
+                            let constants: Option<ProtocolConstants> = constants_storage
+                                .get(additional_data.next_protocol_hash())?
+                                .and_then(|json| serde_json::from_str(&json).ok());
+                            let ttl = constants.as_ref().map_or(120, |v| v.max_operations_ttl);
+                            let cemented_live_blocks = block_meta_storage
+                                .get_cemented_live_blocks(head.hash.clone(), ttl as usize)?;
+                            Ok(CurrentHeadData {
+                                head,
+                                pred,
+                                additional_data,
+                                pred_additional_data,
+                                cycle: cycle_info,
+                                operations,
+                                constants,
+                                cemented_live_blocks,
+                            })
                         });
                     match result {
-                        Ok((head, pred, additional_data)) => {
-                            Ok(CurrentHeadGetSuccess(head, pred, additional_data))
-                        }
+                        Ok(data) => Ok(CurrentHeadGetSuccess(data)),
                         Err(err) => Err(CurrentHeadGetError(err)),
                     }
                 }

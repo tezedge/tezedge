@@ -28,7 +28,7 @@ pub async fn handle_request(
     env: &RpcServiceEnvironmentRef,
 ) -> JsonRpcResponse {
     // TODO move this out, to the connection establishment, or even to the WS construction
-    let routes = rpc::server::router::create_routes(false);
+    let routes = rpc::server::router::create_routes(false, env.allow_unsafe_rpc);
     let method = &req.method;
 
     let request_with_body = match reconstruct_request(req, method) {

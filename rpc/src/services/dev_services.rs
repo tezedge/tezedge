@@ -9,7 +9,7 @@
 use crypto::hash::{BlockPayloadHash, ContractKt1Hash, OperationHash};
 use serde::{Deserialize, Serialize};
 use shell_automaton::mempool::{OperationKind, OperationValidationResult};
-use shell_automaton::service::rpc_service::RpcShellAutomatonActionsRaw;
+use shell_automaton::service::rpc_service::{BakingState, RpcShellAutomatonActionsRaw};
 use shell_automaton::service::statistics_service::ActionKindStatsForBlock;
 use shell_automaton::{Action, ActionWithMeta};
 use slog::Logger;
@@ -853,7 +853,7 @@ pub(crate) async fn get_shell_automaton_block_stats_graph(
         None => return Ok(None),
     };
 
-    let times_sub = |a: Option<u64>, b: Option<u64>| a.and_then(|a| b.map(|b| a - b));
+    let times_sub = |a: Option<u64>, b: Option<u64>| a.and_then(|a| b.map(|b| a.saturating_sub(b)));
 
     let mut result = stats
         .into_iter()
@@ -1138,6 +1138,18 @@ fn map_operations_stats(
         .collect()
 }
 
+pub(crate) async fn get_shell_automaton_baking_state(
+    env: &RpcServiceEnvironment,
+) -> Option<BakingState> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let _ = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::GetBakingState { channel: tx })
+        .await;
+
+    rx.await.ok()?
+}
+
 // get_best_remote_level
 pub(crate) async fn get_best_remote_level(
     env: &RpcServiceEnvironment,
@@ -1147,4 +1159,17 @@ pub(crate) async fn get_best_remote_level(
     } else {
         Ok(None)
     }
+}
+
+pub(crate) async fn patch_bakers(
+    patch: shell_automaton::service::rpc_service::BakerPatch,
+    env: &RpcServiceEnvironment,
+) -> anyhow::Result<serde_json::Value> {
+    let rx = env
+        .shell_automaton_sender()
+        .send(RpcShellAutomatonMsg::PatchBakers { patch })
+        .await?;
+
+    let response = rx.await?;
+    Ok(response)
 }

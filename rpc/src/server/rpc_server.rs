@@ -51,6 +51,7 @@ impl RpcServer {
         init_storage_data: &StorageInitInfo,
         hydrated_current_head_block: Arc<BlockHeaderWithHash>,
         tezedge_is_enabled: bool,
+        allow_unsafe_rpc: bool,
     ) -> Self {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: hydrated_current_head_block,
@@ -69,6 +70,7 @@ impl RpcServer {
             shared_state,
             init_storage_data.context_stats_db_path.clone(),
             tezedge_is_enabled,
+            allow_unsafe_rpc,
             log.clone(),
         ));
 

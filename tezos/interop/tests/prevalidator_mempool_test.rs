@@ -56,6 +56,7 @@ fn test_begin_construction_and_validate_operation() -> Result<(), anyhow::Error>
             prevalidator,
             operation_hash,
             operation,
+            include_operation_data_json: true,
         },
     ))
     .unwrap();

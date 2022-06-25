@@ -302,6 +302,12 @@ where
         Some(initialized.pred_hash.clone())
     }
 
+    /// hash of last proposal
+    pub fn hash(&self) -> Option<BlockHash> {
+        let initialized = self.inner.as_ref()?.as_ref().ok()?;
+        Some(initialized.hash.clone())
+    }
+
     /// payload hash of last proposal
     pub fn payload_hash(&self) -> Option<PayloadHash> {
         let initialized = self.inner.as_ref()?.as_ref().ok()?;

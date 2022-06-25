@@ -978,7 +978,6 @@ enum PrecheckerActionTest {
     TestPrecheckerValidateOperationAction(prechecker_actions::PrecheckerValidateOperationAction),
     TestPrecheckerOperationValidatedAction(prechecker_actions::PrecheckerOperationValidatedAction),
     TestPrecheckerErrorAction(prechecker_actions::PrecheckerErrorAction),
-    TestPrecheckerCacheProtocolAction(prechecker_actions::PrecheckerCacheProtocolAction),
     TestPrecheckerCacheDelayedOperationAction(
         prechecker_actions::PrecheckerCacheDelayedOperationAction,
     ),
@@ -998,7 +997,6 @@ impl PrecheckerActionTest {
             Self::TestPrecheckerValidateOperationAction(a) => a.into(),
             Self::TestPrecheckerOperationValidatedAction(a) => a.into(),
             Self::TestPrecheckerErrorAction(a) => a.into(),
-            Self::TestPrecheckerCacheProtocolAction(a) => a.into(),
             Self::TestPrecheckerCacheDelayedOperationAction(a) => a.into(),
             Self::TestPrecheckerPruneOperationAction(a) => a.into(),
         }

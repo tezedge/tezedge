@@ -53,7 +53,7 @@ pub enum CurrentHeadPrecheckError {
 // ====================
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, thiserror::Error)]
 pub enum BakingPriorityError {
     #[error("timestamp `{timestamp}` is too far in the future, now is `{now}`")]
     TimeInFuture { now: u64, timestamp: i64 },

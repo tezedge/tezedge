@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use networking::network_channel::NewCurrentHeadNotification;
+use tezos_messages::protocol::SupportedProtocol;
 
 use crate::bootstrap::BootstrapInitAction;
 use crate::protocol_runner::ProtocolRunnerState;
@@ -57,13 +58,52 @@ where
             }
 
             match &content.response.result {
-                Ok(StorageResponseSuccess::CurrentHeadGetSuccess(head, pred, additional_data)) => {
+                Ok(StorageResponseSuccess::CurrentHeadGetSuccess(data)) => {
+                    let protocols = [
+                        Some((
+                            data.head.header.proto(),
+                            &data.additional_data.next_protocol_hash,
+                        )),
+                        Some(()).and_then(|_| {
+                            Some((
+                                data.pred.as_ref()?.header.proto(),
+                                &data.pred_additional_data.as_ref()?.next_protocol_hash,
+                            ))
+                        }),
+                    ];
+                    let log = &store.state().log;
+                    let proto_cache = IntoIterator::into_iter(protocols)
+                        .flatten()
+                        .filter_map(|(id, hash)| match SupportedProtocol::try_from(hash) {
+                            Ok(protocol) => Some((id, protocol)),
+                            Err(err) => {
+                                slog::error!(log, "Detected unknown protocol when rehydrating state";
+                                    "protocol_hash" => hash.to_base58_check(),
+                                    "proto" => id,
+                                    "error" => format!("{:?}", err));
+                                None
+                            }
+                        })
+                        .collect();
                     store.dispatch(CurrentHeadRehydrateSuccessAction {
-                        head: head.clone(),
-                        head_pred: pred.clone(),
+                        head: data.head.clone(),
+                        head_pred: data.pred.clone(),
 
-                        block_metadata_hash: additional_data.block_metadata_hash().clone(),
-                        ops_metadata_hash: additional_data.ops_metadata_hash().clone(),
+                        block_metadata_hash: data.additional_data.block_metadata_hash().clone(),
+                        ops_metadata_hash: data.additional_data.ops_metadata_hash().clone(),
+                        pred_block_metadata_hash: data
+                            .pred_additional_data
+                            .as_ref()
+                            .and_then(|v| v.block_metadata_hash().clone()),
+                        pred_ops_metadata_hash: data
+                            .pred_additional_data
+                            .as_ref()
+                            .and_then(|v| v.ops_metadata_hash().clone()),
+                        cycle: data.cycle.clone(),
+                        operations: data.operations.clone(),
+                        constants: data.constants.clone(),
+                        cemented_live_blocks: data.cemented_live_blocks.clone(),
+                        proto_cache,
                     });
                 }
                 Err(StorageResponseError::CurrentHeadGetError(error)) => {

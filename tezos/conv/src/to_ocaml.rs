@@ -330,6 +330,7 @@ impl_to_ocaml_record! {
         prevalidator: OCamlPrevalidatorWrapper,
         operation_hash: OCamlOperationHash,
         operation: OCamlOperation => FfiOperation::from(operation),
+        include_operation_data_json: bool,
     }
 }
 

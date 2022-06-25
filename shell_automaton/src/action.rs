@@ -158,6 +158,13 @@ use crate::storage::{
     kv_cycle_meta, kv_operations,
 };
 
+use crate::baker::block_endorser::*;
+use crate::baker::persisted::persist::*;
+use crate::baker::persisted::rehydrate::*;
+use crate::baker::seed_nonce::*;
+use crate::baker::BakerAddAction;
+use crate::baker::{block_baker::*, BakerRemoveAction};
+
 use crate::shutdown::{ShutdownInitAction, ShutdownPendingAction, ShutdownSuccessAction};
 
 pub use redux_rs::{ActionId, EnablingCondition};
@@ -522,20 +529,25 @@ pub enum Action {
     MempoolValidatorValidateInit(MempoolValidatorValidateInitAction),
     MempoolValidatorValidatePending(MempoolValidatorValidatePendingAction),
     MempoolValidatorValidateSuccess(MempoolValidatorValidateSuccessAction),
+    MempoolValidatorReclassifyOperation(MempoolValidatorReclassifyOperationAction),
+
+    MempoolPrequorumReached(MempoolPrequorumReachedAction),
+    MempoolQuorumReached(MempoolQuorumReachedAction),
 
     BlockInject(BlockInjectAction),
 
     PrecheckerCurrentHeadUpdate(PrecheckerCurrentHeadUpdateAction),
+    PrecheckerProtocolActivation(PrecheckerProtocolActivationAction),
     PrecheckerStoreEndorsementBranch(PrecheckerStoreEndorsementBranchAction),
     PrecheckerPrecheckOperation(PrecheckerPrecheckOperationAction),
     PrecheckerRevalidateOperation(PrecheckerPrecheckDelayedOperationAction),
+    PrecheckerProtocolSupported(PrecheckerProtocolSupportedAction),
     PrecheckerDecodeOperation(PrecheckerDecodeOperationAction),
     PrecheckerProtocolNeeded(PrecheckerProtocolNeededAction),
     PrecheckerCategorizeOperation(PrecheckerCategorizeOperationAction),
     PrecheckerValidateOperation(PrecheckerValidateOperationAction),
     PrecheckerOperationValidated(PrecheckerOperationValidatedAction),
     PrecheckerError(PrecheckerErrorAction),
-    PrecheckerCacheProtocol(PrecheckerCacheProtocolAction),
     PrecheckerCacheDelayedOperation(PrecheckerCacheDelayedOperationAction),
     PrecheckerPruneOperation(PrecheckerPruneOperationAction),
 
@@ -705,6 +717,98 @@ pub enum Action {
     ),
 
     StorageBlocksGenesisInitSuccess(StorageBlocksGenesisInitSuccessAction),
+
+    BakerPersistedRehydrateInit(BakerPersistedRehydrateInitAction),
+    BakerPersistedRehydratePending(BakerPersistedRehydratePendingAction),
+    BakerPersistedRehydrateSuccess(BakerPersistedRehydrateSuccessAction),
+    BakerPersistedRehydrated(BakerPersistedRehydratedAction),
+
+    BakerPersistedPersistInit(BakerPersistedPersistInitAction),
+    BakerPersistedPersistPending(BakerPersistedPersistPendingAction),
+    BakerPersistedPersistSuccess(BakerPersistedPersistSuccessAction),
+
+    BakerAdd(BakerAddAction),
+    BakerRemove(BakerRemoveAction),
+
+    BakerBlockEndorserRightsGetInit(BakerBlockEndorserRightsGetInitAction),
+    BakerBlockEndorserRightsGetPending(BakerBlockEndorserRightsGetPendingAction),
+    BakerBlockEndorserRightsGetSuccess(BakerBlockEndorserRightsGetSuccessAction),
+
+    BakerBlockEndorserRightsNoRights(BakerBlockEndorserRightsNoRightsAction),
+    BakerBlockEndorserPayloadOutdated(BakerBlockEndorserPayloadOutdatedAction),
+    BakerBlockEndorserPayloadLocked(BakerBlockEndorserPayloadLockedAction),
+    BakerBlockEndorserPayloadUnlockedAsPreQuorumReached(
+        BakerBlockEndorserPayloadUnlockedAsPreQuorumReachedAction,
+    ),
+
+    BakerBlockEndorserPreendorse(BakerBlockEndorserPreendorseAction),
+    BakerBlockEndorserPreendorsementSignInit(BakerBlockEndorserPreendorsementSignInitAction),
+    BakerBlockEndorserPreendorsementSignPending(BakerBlockEndorserPreendorsementSignPendingAction),
+    BakerBlockEndorserPreendorsementSignSuccess(BakerBlockEndorserPreendorsementSignSuccessAction),
+    BakerBlockEndorserPreendorsementInjectPending(
+        BakerBlockEndorserPreendorsementInjectPendingAction,
+    ),
+    BakerBlockEndorserPreendorsementInjectSuccess(
+        BakerBlockEndorserPreendorsementInjectSuccessAction,
+    ),
+
+    BakerBlockEndorserPrequorumPending(BakerBlockEndorserPrequorumPendingAction),
+    BakerBlockEndorserPrequorumSuccess(BakerBlockEndorserPrequorumSuccessAction),
+
+    BakerBlockEndorserEndorse(BakerBlockEndorserEndorseAction),
+    BakerBlockEndorserEndorsementSignInit(BakerBlockEndorserEndorsementSignInitAction),
+    BakerBlockEndorserEndorsementSignPending(BakerBlockEndorserEndorsementSignPendingAction),
+    BakerBlockEndorserEndorsementSignSuccess(BakerBlockEndorserEndorsementSignSuccessAction),
+    BakerBlockEndorserStatePersistPending(BakerBlockEndorserStatePersistPendingAction),
+    BakerBlockEndorserStatePersistSuccess(BakerBlockEndorserStatePersistSuccessAction),
+    BakerBlockEndorserEndorsementInjectPending(BakerBlockEndorserEndorsementInjectPendingAction),
+    BakerBlockEndorserEndorsementInjectSuccess(BakerBlockEndorserEndorsementInjectSuccessAction),
+
+    BakerBlockBakerRightsGetInit(BakerBlockBakerRightsGetInitAction),
+    BakerBlockBakerRightsGetPending(BakerBlockBakerRightsGetPendingAction),
+    BakerBlockBakerRightsGetCurrentLevelSuccess(BakerBlockBakerRightsGetCurrentLevelSuccessAction),
+    BakerBlockBakerRightsGetNextLevelSuccess(BakerBlockBakerRightsGetNextLevelSuccessAction),
+    BakerBlockBakerRightsGetSuccess(BakerBlockBakerRightsGetSuccessAction),
+    BakerBlockBakerRightsNoRights(BakerBlockBakerRightsNoRightsAction),
+    BakerBlockBakerTimeoutPending(BakerBlockBakerTimeoutPendingAction),
+    BakerBlockBakerNextLevelTimeoutSuccessQuorumPending(
+        BakerBlockBakerNextLevelTimeoutSuccessQuorumPendingAction,
+    ),
+    BakerBlockBakerBakeNextLevel(BakerBlockBakerBakeNextLevelAction),
+    BakerBlockBakerBakeNextRound(BakerBlockBakerBakeNextRoundAction),
+    BakerBlockBakerBuildBlockInit(BakerBlockBakerBuildBlockInitAction),
+    BakerBlockBakerBuildBlockSuccess(BakerBlockBakerBuildBlockSuccessAction),
+    BakerBlockBakerPreapplyInit(BakerBlockBakerPreapplyInitAction),
+    BakerBlockBakerPreapplyPending(BakerBlockBakerPreapplyPendingAction),
+    BakerBlockBakerPreapplySuccess(BakerBlockBakerPreapplySuccessAction),
+    BakerBlockBakerComputeProofOfWorkInit(BakerBlockBakerComputeProofOfWorkInitAction),
+    BakerBlockBakerComputeProofOfWorkPending(BakerBlockBakerComputeProofOfWorkPendingAction),
+    BakerBlockBakerComputeProofOfWorkSuccess(BakerBlockBakerComputeProofOfWorkSuccessAction),
+    BakerBlockBakerSignInit(BakerBlockBakerSignInitAction),
+    BakerBlockBakerSignPending(BakerBlockBakerSignPendingAction),
+    BakerBlockBakerSignSuccess(BakerBlockBakerSignSuccessAction),
+    BakerBlockBakerStatePersistPending(BakerBlockBakerStatePersistPendingAction),
+    BakerBlockBakerStatePersistSuccess(BakerBlockBakerStatePersistSuccessAction),
+    BakerBlockBakerComputeOperationsPathsInit(BakerBlockBakerComputeOperationsPathsInitAction),
+    BakerBlockBakerComputeOperationsPathsPending(
+        BakerBlockBakerComputeOperationsPathsPendingAction,
+    ),
+    BakerBlockBakerComputeOperationsPathsSuccess(
+        BakerBlockBakerComputeOperationsPathsSuccessAction,
+    ),
+    BakerBlockBakerInjectInit(BakerBlockBakerInjectInitAction),
+    BakerBlockBakerInjectPending(BakerBlockBakerInjectPendingAction),
+    BakerBlockBakerInjectSuccess(BakerBlockBakerInjectSuccessAction),
+
+    BakerSeedNonceGenerated(BakerSeedNonceGeneratedAction),
+    BakerSeedNonceCommitted(BakerSeedNonceCommittedAction),
+    BakerSeedNonceCycleNextWait(BakerSeedNonceCycleNextWaitAction),
+    BakerSeedNonceRevealInit(BakerSeedNonceRevealInitAction),
+    BakerSeedNonceRevealPending(BakerSeedNonceRevealPendingAction),
+    BakerSeedNonceRevealMempoolInject(BakerSeedNonceRevealMempoolInjectAction),
+    BakerSeedNonceRevealIncluded(BakerSeedNonceRevealIncludedAction),
+    BakerSeedNonceRevealSuccess(BakerSeedNonceRevealSuccessAction),
+    BakerSeedNonceFinish(BakerSeedNonceFinishAction),
 
     ShutdownInit(ShutdownInitAction),
     ShutdownPending(ShutdownPendingAction),

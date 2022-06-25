@@ -177,6 +177,14 @@ impl EndorsementValidator for OperationDecodedContents {
                     ),
                 });
             }
+            OperationDecodedContents::Proto013(_) => {
+                return Err(Refused {
+                    decoded_contents: self.clone(),
+                    error: EndorsementValidationError::UnsupportedProtocol(
+                        "013_PtJakarta".to_string(),
+                    ),
+                });
+            }
         };
         match result {
             Ok(_) => Ok(Applied {

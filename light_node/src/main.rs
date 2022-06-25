@@ -210,6 +210,7 @@ fn block_on_actors(
         env.storage
             .context_storage_configuration
             .tezedge_is_enabled(),
+        env.rpc.allow_unsafe_rpc,
     );
     let _ = RpcNotificationCallbackActor::actor(
         actor_system.as_ref(),

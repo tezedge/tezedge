@@ -208,6 +208,7 @@ pub struct ValidateOperationRequest {
     pub prevalidator: PrevalidatorWrapper,
     pub operation_hash: OperationHash,
     pub operation: Operation,
+    pub include_operation_data_json: bool,
 }
 
 #[cfg(feature = "fuzzing")]
@@ -284,6 +285,7 @@ pub enum PreFilterOperationResult {
 pub struct PreFilterOperationResponse {
     pub prevalidator: PrevalidatorWrapper,
     pub operation_hash: OperationHash,
+    pub operation_data_json: Option<OperationProtocolDataJson>,
     pub result: PreFilterOperationResult,
     pub pre_filter_operation_started_at: f64,
     pub parse_operation_started_at: f64,
@@ -297,6 +299,7 @@ pub struct ValidateOperationResponse {
     pub prevalidator: PrevalidatorWrapper,
     pub operation_hash: OperationHash,
     pub result: ValidateOperationResult,
+    pub to_reclassify: Option<(OperationHash, OperationClassification)>,
     pub validate_operation_started_at: f64,
     pub parse_operation_started_at: f64,
     pub parse_operation_ended_at: f64,
@@ -312,18 +315,18 @@ pub trait HasOperationHash {
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Applied {
+pub struct Validated {
     pub hash: OperationHash,
     pub protocol_data_json: OperationProtocolDataJson,
 }
 
-impl HasOperationHash for Applied {
+impl HasOperationHash for Validated {
     fn operation_hash(&self) -> &OperationHash {
         &self.hash
     }
 }
 
-impl fmt::Debug for Applied {
+impl fmt::Debug for Validated {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -375,7 +378,7 @@ pub enum OperationClassification {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClassifiedOperation {
     pub classification: OperationClassification,
-    pub operation_data_json: String,
+    pub operation_data_json: Option<String>,
     pub is_endorsement: bool,
 }
 
@@ -718,7 +721,7 @@ impl From<CallError> for BeginConstructionError {
 #[derive(Error, Serialize, Deserialize, Debug, Clone)]
 pub enum PreFilterOperationError {
     #[error("Failed to pre-filter operation - message: {message}!")]
-    FailedToPreFiltereOperation { message: String },
+    FailedToPreFilterOperation { message: String },
     #[error("Invalid request/response data - message: {message}!")]
     InvalidRequestResponseData { message: String },
 }
@@ -727,7 +730,7 @@ impl From<CallError> for PreFilterOperationError {
     fn from(error: CallError) -> Self {
         match error {
             CallError::FailedToCall { trace_message, .. } => {
-                PreFilterOperationError::FailedToPreFiltereOperation {
+                PreFilterOperationError::FailedToPreFilterOperation {
                     message: trace_message,
                 }
             }

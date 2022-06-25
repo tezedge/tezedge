@@ -16,7 +16,7 @@ use tezos_messages::{
     protocol::{
         proto_010, proto_011,
         proto_012::{self, operation::OperationVerifyError},
-        SupportedProtocol, UnsupportedProtocolError,
+        proto_013, SupportedProtocol,
     },
 };
 
@@ -36,9 +36,9 @@ pub struct EndorsementBranch {
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PrecheckerState {
     pub endorsement_branch: Option<EndorsementBranch>,
+    pub proto: u8,
     pub operations: HashMap<OperationHash, Result<PrecheckerOperation, PrecheckerError>>,
     pub cached_operations: CachedOperations,
-    pub proto_cache: BTreeMap<u8, SupportedProtocol>,
 }
 
 impl PrecheckerState {
@@ -77,6 +77,12 @@ pub(crate) enum PrecheckerResultKind<'a> {
     Refused(&'a PrecheckerError),
     BranchRefused,
     BranchDelayed,
+}
+
+impl<'a> PrecheckerResultKind<'a> {
+    pub fn is_applied(&self) -> bool {
+        matches!(self, Self::Applied)
+    }
 }
 
 impl<'a> TryFrom<&'a PrecheckerOperation> for PrecheckerResult<'a> {
@@ -162,6 +168,7 @@ impl<'a> PrecheckerResult<'a> {
             Some(OperationDecodedContents::Proto010(_)) => proto_010::PROTOCOL_HASH,
             Some(OperationDecodedContents::Proto011(_)) => proto_011::PROTOCOL_HASH,
             Some(OperationDecodedContents::Proto012(_)) => proto_012::PROTOCOL_HASH,
+            Some(OperationDecodedContents::Proto013(_)) => proto_013::PROTOCOL_HASH,
             None => "<no protocol>",
         }
     }
@@ -186,13 +193,6 @@ pub struct PrecheckerOperation {
 }
 
 impl PrecheckerOperation {
-    pub(super) fn new(operation: Operation, protocol: SupportedProtocol) -> Self {
-        Self {
-            operation,
-            state: PrecheckerOperationState::Init { protocol },
-        }
-    }
-
     fn operation(&self) -> &Operation {
         &self.operation
     }
@@ -216,6 +216,9 @@ pub struct TenderbakeConsensusContents {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, strum_macros::AsRefStr)]
 pub enum PrecheckerOperationState {
     Init {
+        proto: u8,
+    },
+    Supported {
         protocol: SupportedProtocol,
     },
     Decoded {
@@ -248,7 +251,17 @@ pub enum PrecheckerOperationState {
     Outdated {
         operation_decoded_contents: OperationDecodedContents,
     },
-    ProtocolNeeded,
+    ProtocolNeeded {
+        reason: ProtocolNeededReason,
+    },
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum ProtocolNeededReason {
+    UnsupportedProtocol(Option<SupportedProtocol>),
+    PrecheckingDisabled,
+    NonTenderbakeConsensus,
+    Other,
 }
 
 impl PrecheckerOperationState {
@@ -321,10 +334,6 @@ pub enum PrecheckerResponseError {
     Rights(#[from] RightsError),
     #[error("Error parsing protocol data: {0}")]
     Decode(#[from] BinaryReaderError),
-    #[error("Unknown protocol: {0}")]
-    Protocol(#[from] UnsupportedProtocolError),
-    // #[error("Storage error: {0}")]
-    // Storage(#[from] BlockAdditionalDataStorageError),
     #[error("Error: `{0}`")]
     Other(#[from] PrecheckerError),
 }
@@ -341,7 +350,7 @@ pub enum PrecheckerError {
     #[error("Error decoding protocol specific operation contents: `{0}`")]
     OperationContentsDecode(#[from] BinaryReaderError),
     #[error("Unsupported protocol: `{0}`")]
-    UnsupportedProtocol(#[from] UnsupportedProtocolError),
+    UnsupportedProtocol(String),
     #[error("Error getting endorsing rights: `{0}`")]
     EndorsingRights(#[from] RightsError),
     #[error("Signature does not match")]

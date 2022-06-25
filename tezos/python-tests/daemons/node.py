@@ -138,6 +138,7 @@ class Node:
             str(rpc_port),
             '--identity-file',
             node_dir + '/identity.json',
+            '--allow-unsafe-rpc'
         ]
         if 'TEZEDGE_NODE_PARAMS' in os.environ:
             tezedge_node_run.extend(

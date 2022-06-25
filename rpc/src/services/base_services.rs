@@ -264,7 +264,7 @@ pub(crate) fn live_blocks(
     let live_blocks = block_meta_storage
         .get_live_blocks(block_hash, max_ttl)?
         .iter()
-        .map(|block| block.to_base58_check())
+        .map(|(hash, _)| hash.to_base58_check())
         .collect();
 
     Ok(live_blocks)

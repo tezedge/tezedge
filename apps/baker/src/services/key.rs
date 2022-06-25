@@ -102,13 +102,15 @@ impl CryptoService {
         value: &T,
         level: i32,
         round: i32,
+        force: bool,
     ) -> Result<(Vec<u8>, Signature), SignError>
     where
         T: BinWriter,
     {
         if watermark_tag == 0x12 {
-            if level < self.1.preendorsement.0
-                || (level == self.1.preendorsement.0 && round <= self.1.preendorsement.1)
+            if !force
+                && (level < self.1.preendorsement.0
+                    || (level == self.1.preendorsement.0 && round <= self.1.preendorsement.1))
             {
                 return Err(SignError::AlreadySigned {
                     kind: "preendorsement".to_string(),
@@ -118,8 +120,9 @@ impl CryptoService {
             }
             self.1.preendorsement = (level, round);
         } else if watermark_tag == 0x13 {
-            if level < self.1.endorsement.0
-                || (level == self.1.endorsement.0 && round <= self.1.endorsement.1)
+            if !force
+                && (level < self.1.endorsement.0
+                    || (level == self.1.endorsement.0 && round <= self.1.endorsement.1))
             {
                 return Err(SignError::AlreadySigned {
                     kind: "endorsement".to_string(),
@@ -129,7 +132,9 @@ impl CryptoService {
             }
             self.1.endorsement = (level, round);
         } else if watermark_tag == 0x11 {
-            if level < self.1.block.0 || (level == self.1.block.0 && round <= self.1.block.1) {
+            if !force
+                && (level < self.1.block.0 || (level == self.1.block.0 && round <= self.1.block.1))
+            {
                 return Err(SignError::AlreadySigned {
                     kind: "block".to_string(),
                     level,

@@ -78,7 +78,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         start: *start,
                         block_header: block_header.clone(),
                         proto_hash: proto_hash.clone(),
-                        protocol: protocol.clone(),
+                        protocol: *protocol,
                     };
                 }
             }
@@ -96,7 +96,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         start: *start,
                         block_header: block_header.clone(),
                         proto_hash: proto_hash.clone(),
-                        protocol: protocol.clone(),
+                        protocol: *protocol,
                     };
                 }
             }
@@ -117,7 +117,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         start: *start,
                         block_header: block_header.clone(),
                         proto_hash: proto_hash.clone(),
-                        protocol: protocol.clone(),
+                        protocol: *protocol,
                         protocol_constants: constants.clone(),
                     };
                 }
@@ -138,7 +138,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                             RightsRequest::CycleErasReady {
                                 start: *start,
                                 block_header: block_header.clone(),
-                                protocol: protocol.clone(),
+                                protocol: *protocol,
                                 protocol_constants: protocol_constants.clone(),
                                 cycle_eras: cycle_eras.clone(),
                             }
@@ -147,7 +147,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                                 start: *start,
                                 block_header: block_header.clone(),
                                 proto_hash: proto_hash.clone(),
-                                protocol: protocol.clone(),
+                                protocol: *protocol,
                                 protocol_constants: protocol_constants.clone(),
                             }
                         };
@@ -167,7 +167,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     *request = RightsRequest::CycleErasReady {
                         start: *start,
                         block_header: block_header.clone(),
-                        protocol: protocol.clone(),
+                        protocol: *protocol,
                         protocol_constants: protocol_constants.clone(),
                         cycle_eras: cycle_eras.clone(),
                     };
@@ -187,7 +187,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     *request = RightsRequest::PendingCycle {
                         start: *start,
                         block_header: block_header.clone(),
-                        protocol: protocol.clone(),
+                        protocol: *protocol,
                         protocol_constants: protocol_constants.clone(),
                         cycle_eras: cycle_eras.clone(),
                     };
@@ -211,7 +211,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     *request = RightsRequest::CycleReady {
                         start: *start,
                         block_header: block_header.clone(),
-                        protocol: protocol.clone(),
+                        protocol: *protocol,
                         protocol_constants: protocol_constants.clone(),
                         level: key.level().unwrap_or_else(|| block_header.level()),
                         cycle: *cycle,
@@ -235,7 +235,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 {
                     *request = RightsRequest::PendingCycleData {
                         start: *start,
-                        protocol: protocol.clone(),
+                        protocol: *protocol,
                         protocol_constants: protocol_constants.clone(),
                         level: *level,
                         cycle: *cycle,
@@ -257,7 +257,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 {
                     *request = RightsRequest::CycleDataReady {
                         start: *start,
-                        protocol: protocol.clone(),
+                        protocol: *protocol,
                         protocol_constants: protocol_constants.clone(),
                         level: *level,
                         position: *position,
@@ -279,7 +279,7 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                 {
                     *request = RightsRequest::PendingRightsCalculation {
                         start: *start,
-                        protocol: protocol.clone(),
+                        protocol: *protocol,
                         protocol_constants: protocol_constants.clone(),
                         level: *level,
                         cycle_data: cycle_data.clone(),
@@ -390,12 +390,12 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                     ..
                 } = request
                 {
-                    let validators = context_validators
+                    let validators_by_pk = context_validators
                         .validators
                         .iter()
                         .filter_map(|pkh| delegates.get(pkh).cloned())
                         .collect();
-                    let slots = context_validators
+                    let slots_by_pk = context_validators
                         .slots
                         .iter()
                         .filter_map(|(pkh, rights)| {
@@ -404,8 +404,10 @@ pub fn rights_reducer(state: &mut State, action: &ActionWithMeta<Action>) {
                         .collect();
                     *request = RightsRequest::ValidatorsReady(Validators {
                         level: *level,
-                        validators,
-                        slots,
+                        validators: context_validators.validators.clone(),
+                        slots: context_validators.slots.clone(),
+                        validators_by_pk,
+                        slots_by_pk,
                     });
                 }
             }

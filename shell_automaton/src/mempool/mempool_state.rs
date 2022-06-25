@@ -8,15 +8,21 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, OperationHash};
-use tezos_api::ffi::{Applied, Errored};
-use tezos_messages::p2p::encoding::{
-    block_header::{BlockHeader, Level},
-    operation::Operation,
+use crypto::hash::{BlockHash, BlockPayloadHash, CryptoboxPublicKeyHash, OperationHash};
+use tezos_api::ffi::{ErrorListJson, Errored, OperationClassification, Validated};
+use tezos_messages::{
+    base::signature_public_key::SignaturePublicKeyHash,
+    p2p::encoding::{
+        block_header::{BlockHeader, Level},
+        operation::Operation,
+    },
 };
 
 use crate::{
-    prechecker::OperationDecodedContents, rights::Slot, service::rpc_service::RpcId, ActionWithMeta,
+    prechecker::OperationDecodedContents,
+    rights::{EndorsingPower, Slot},
+    service::rpc_service::RpcId,
+    ActionWithMeta,
 };
 
 use super::{map_with_timestamps::BTreeMapWithTimestamps, validator::MempoolValidatorState};
@@ -54,17 +60,16 @@ pub struct MempoolState {
     pub(super) prechecking_operations: BTreeMap<OperationHash, u8>,
     pub(super) prechecking_delayed_operations: BTreeSet<OperationHash>,
     pub validated_operations: ValidatedOperations,
+    // TODO operation_json: BTreeMap<OperationHash, OperationJson>
     // Unparseable operations
     pub unparseable_operations: BTreeSet<OperationHash>,
-    // track ttl
-    pub(super) level_to_operation: BTreeMap<i32, Vec<OperationHash>>,
-
-    /// Last 120 (TTL) predecessor blocks.
-    pub last_predecessor_blocks: BTreeMap<BlockHash, i32>,
 
     pub operation_stats: OperationsStats,
 
     pub operations_state: BTreeMap<OperationHash, MempoolOperation>,
+
+    pub prequorum: QuorumState,
+    pub quorum: QuorumState,
 }
 
 impl MempoolState {
@@ -84,6 +89,40 @@ impl MempoolState {
                     .map(|content| (hash, content))
             })
             .or_else(|| self.pending_operations.next_for_prevalidation())
+    }
+
+    pub fn operations_for_block_iter<'a>(
+        &'a self,
+        block_level: Level,
+        block_round: i32,
+        block_payload_hash: &'a BlockPayloadHash,
+    ) -> impl 'a + Iterator<Item = (&'a OperationHash, &'a Operation, OperationKind)> {
+        let applied_ops_iter = self.validated_operations.applied_iter();
+        applied_ops_iter
+            .map(|(op_hash, op)| {
+                let kind = OperationKind::from_operation_content_raw(op.data().as_ref());
+                (op_hash, op, kind)
+            })
+            .filter(move |(op_hash, _, kind)| {
+                if !kind.is_consensus_operation() {
+                    return true;
+                }
+
+                // check if consensus op is for current head.
+                let op_state = self.operations_state.get(op_hash);
+                op_state
+                    .and_then(|op| {
+                        let op = op.operation_decoded_contents.as_ref()?;
+
+                        let (level, round) = op.level_round()?;
+                        Some(
+                            level == block_level
+                                && round == block_round
+                                && op.payload()? == block_payload_hash,
+                        )
+                    })
+                    .unwrap_or(false)
+            })
     }
 }
 
@@ -155,13 +194,84 @@ pub struct ValidatedOperations {
     pub ops: BTreeMap<OperationHash, Operation>,
     // operations that passed all checks and classified
     // can be applied in the current context
-    pub applied: Vec<Applied>,
+    pub applied: Vec<Validated>,
     // cannot be included in the next head of the chain, but it could be included in a descendant
     pub branch_delayed: VecDeque<Errored>,
     // might be applied on a different branch if a reorganization happens
     pub branch_refused: VecDeque<Errored>,
     pub refused: VecDeque<Errored>,
     pub outdated: VecDeque<Errored>,
+}
+
+impl ValidatedOperations {
+    fn errored_of_validated(validated: Validated, error_json: &ErrorListJson) -> Errored {
+        Errored {
+            hash: validated.hash,
+            is_endorsement: false, // NOTE: We assume it is a manager operation
+            protocol_data_json: validated.protocol_data_json,
+            error_json: error_json.clone(),
+        }
+    }
+
+    fn enforce_max_refused_operations_helper(
+        vd: &mut VecDeque<Errored>,
+        ops: &mut BTreeMap<OperationHash, Operation>,
+    ) {
+        while vd.len() > MAX_REFUSED_OPERATIONS {
+            let hash = match vd.pop_front() {
+                Some(v) => v.hash,
+                None => break,
+            };
+            ops.remove(&hash);
+        }
+    }
+
+    /// Operations can be reclassifier by the prechecker when a manager operation
+    /// gets replaced by a newer one. In that case the old operation needs to be removed
+    /// from the "applied" classification and added to the new (error) classification.
+    pub fn reclassify_manager_operation(
+        &mut self,
+        op_hash: &OperationHash,
+        classification: &OperationClassification,
+    ) {
+        for nth in 0..self.applied.len() {
+            if &self.applied[nth].hash == op_hash {
+                let validated = self.applied.remove(nth);
+
+                match classification {
+                    // These two cannot happen, the new classification is always an error class
+                    OperationClassification::Applied | OperationClassification::Prechecked => {}
+                    OperationClassification::BranchDelayed(error_json) => self
+                        .branch_delayed
+                        .push_back(Self::errored_of_validated(validated, error_json)),
+                    OperationClassification::BranchRefused(error_json) => self
+                        .branch_refused
+                        .push_back(Self::errored_of_validated(validated, error_json)),
+                    OperationClassification::Refused(error_json) => self
+                        .refused
+                        .push_back(Self::errored_of_validated(validated, error_json)),
+                    OperationClassification::Outdated(error_json) => self
+                        .outdated
+                        .push_back(Self::errored_of_validated(validated, error_json)),
+                }
+                break;
+            }
+        }
+    }
+
+    /// Enforces the `MAX_REFUSED_OPERATIONS` limit
+    pub fn enforce_max_refused_operations(&mut self) {
+        Self::enforce_max_refused_operations_helper(&mut self.branch_delayed, &mut self.ops);
+        Self::enforce_max_refused_operations_helper(&mut self.branch_refused, &mut self.ops);
+        Self::enforce_max_refused_operations_helper(&mut self.refused, &mut self.ops);
+        Self::enforce_max_refused_operations_helper(&mut self.outdated, &mut self.ops);
+    }
+
+    pub fn applied_iter(&self) -> impl Iterator<Item = (&OperationHash, &Operation)> {
+        self.applied
+            .iter()
+            .filter_map(|op| Some((&op.hash, self.ops.get(&op.hash)?)))
+    }
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -178,6 +288,8 @@ pub type OperationsStats = BTreeMap<OperationHash, OperationStats>;
 pub struct OperationStats {
     /// First time we saw this operation in the current head.
     pub kind: Option<OperationKind>,
+    /// Current head's block level when we saw this operation.
+    pub level: Level,
     pub min_time: Option<u64>,
     pub first_block_timestamp: Option<u64>,
     pub validation_started: Option<u64>,
@@ -190,8 +302,11 @@ pub struct OperationStats {
 }
 
 impl OperationStats {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(level: Level) -> Self {
+        Self {
+            level,
+            ..Default::default()
+        }
     }
 
     /// Sets operation kind if not already set.
@@ -452,7 +567,7 @@ pub enum OperationValidationResult {
 
 impl OperationValidationResult {
     pub fn is_applied(&self) -> bool {
-        matches!(self, Self::Applied)
+        matches!(self, Self::Applied | Self::Prechecked)
     }
 }
 
@@ -507,7 +622,7 @@ pub enum OperationKind {
 impl OperationKind {
     pub fn from_operation_content_raw(bytes: &[u8]) -> Self {
         bytes
-            .get(0)
+            .first()
             .map_or(Self::Unknown, |tag| Self::from_tag(*tag))
     }
 
@@ -555,6 +670,10 @@ impl OperationKind {
             111 => Self::RegisterGlobalConstant,
             _ => Self::Unknown,
         }
+    }
+
+    pub fn is_preendorsement(&self) -> bool {
+        matches!(self, Self::Preendorsement)
     }
 
     pub fn is_consensus_operation(&self) -> bool {
@@ -680,5 +799,50 @@ pub enum OperationState {
 impl OperationState {
     fn time_name(&self) -> String {
         self.to_string() + "_time"
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct QuorumState {
+    pub threshold: u16,
+    pub delegates: BTreeMap<SignaturePublicKeyHash, EndorsingPower>,
+    pub total: EndorsingPower,
+    pub notified: bool,
+}
+
+impl QuorumState {
+    /// Whether or not quorum is reached.
+    pub fn is_reached(&self) -> bool {
+        self.total >= self.threshold
+    }
+
+    pub fn reset(&mut self, new_threshold: Option<u16>) {
+        if let Some(threshold) = new_threshold {
+            self.threshold = threshold;
+        }
+        self.delegates.clear();
+        self.total = 0;
+        self.notified = false;
+    }
+
+    pub fn add(&mut self, delegate: SignaturePublicKeyHash, endorsing_power: EndorsingPower) {
+        if self.delegates.insert(delegate, endorsing_power).is_none() {
+            self.total += endorsing_power;
+        }
+    }
+
+    pub fn set_notified(&mut self) {
+        self.notified = true;
+    }
+}
+
+impl Default for QuorumState {
+    fn default() -> Self {
+        Self {
+            threshold: 4667,
+            delegates: Default::default(),
+            total: Default::default(),
+            notified: false,
+        }
     }
 }
