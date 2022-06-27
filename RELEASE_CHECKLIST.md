@@ -43,6 +43,7 @@ Follow this checklist when creating a new release for the tezedge node.
 - [ ] [README.md](README.md)
 - [ ] [apps/baker/README.md](apps/baker/README.md)
 - [ ] [baking/012-Psithaca/README.md](baking/012-Psithaca/README.md)
+- [ ] [baking/013-PtJakart/README.md](baking/013-PtJakart/README.md)
 - [ ] [baking/mainnet/README.md](baking/mainnet/README.md)
 
 ### Merging to develop

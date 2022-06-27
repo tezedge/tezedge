@@ -1,4 +1,4 @@
-# Runing Baker/Endorser/Accuser on Testnet (Ithacanet)
+# Runing Baker/Endorser/Accuser on Testnet (Jakartanet)
 
 ## Table of Contents
 * [Get Free XTZ](#get-free-xtz)
@@ -14,7 +14,7 @@ _Note that link to free Tez ther is outdated, use the one below._
 
 Download free faucets:
 
-https://teztnets.xyz/ithacanet-faucet
+https://teztnets.xyz/jakartanet-faucet
 
 # Run from Sources/Binaries
 
@@ -23,27 +23,27 @@ https://teztnets.xyz/ithacanet-faucet
 _Tezos baker requires access to the context directory, which is produced by TezEdge node._
 
 ```
-mkdir $HOME/data-dir-012-Psithaca
-mkdir $HOME/data-dir-012-Psithaca/client
+mkdir $HOME/data-dir-013-PtJakart
+mkdir $HOME/data-dir-013-PtJakart/client
 
-cp faucet.json $HOME/data-dir-012-Psithaca
+cp faucet.json $HOME/data-dir-013-PtJakart
 ```
 
 ## Import Snapshot
 
-To get node bootstrapped with the rest of the network faster, you can optionally import latest irmin snapshot mentioned here: [http://snapshots.tezedge.com]. Find the topmost Ithaca archive snapshot and launch the following command:
+To get node bootstrapped with the rest of the network faster, you can optionally import latest irmin snapshot mentioned here: [http://snapshots.tezedge.com]. Find the topmost Jakarta archive snapshot and launch the following command:
 
 ``` sh
 $ target/release/light-node import-snapshot \
-  --tezos-data-dir "$HOME/data-dir-012-Psithaca/tezedge-data" \
-  --from http://snapshots.tezedge.com:8880/testnet/tezedge/archive/tezedge_ithaca_<...>_irmin.archive \
+  --tezos-data-dir "$HOME/data-dir-013-PtJakart/tezedge-data" \
+  --from http://snapshots.tezedge.com:8880/testnet/tezedge/archive/tezedge_jakarta_<...>_irmin.archive \
 ```
 
 ## Run TezEdge Node
 
 At first you need to [build TezEdge from sources](../../README.md#build-from-source-code) and then check [how to run it](../../README.md#how-to-run).
 
-E.g. for Ithacanet to support baking/endorsing:
+E.g. for Jakartanet to support baking/endorsing:
 
 _Note: This cmd runs from the main git sources directory_
 
@@ -51,10 +51,10 @@ _Note: This cmd runs from the main git sources directory_
 
 ```
 $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
- --network "ithacanet" \
- --identity-file "$HOME/data-dir-012-Psithaca/identity.json" \
+ --network "jakartanet" \
+ --identity-file "$HOME/data-dir-013-PtJakart/identity.json" \
  --identity-expected-pow 26.0 \
- --tezos-data-dir "$HOME/data-dir-012-Psithaca/tezedge-data" \
+ --tezos-data-dir "$HOME/data-dir-013-PtJakart/tezedge-data" \
  --peer-thresh-low 30 --peer-thresh-high 45 \
  --protocol-runner "./target/release/protocol-runner" \
  --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
@@ -68,7 +68,7 @@ $ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
  --log-format simple
 Mar 31 16:10:22.937 INFO Open files limit set to 65536.
 Mar 31 16:10:22.937 INFO Loaded configuration, ...
-Mar 31 16:10:22.937 INFO Configured network ["ithacanet", "ithaca"] -> TEZOS_ITHACANET_2022-01-25T15:00:00Z
+Mar 31 16:10:22.937 INFO Configured network ["jakartanet", "jakarta"] -> TEZOS_ITHACANET_2022-01-25T15:00:00Z
 Mar 31 16:10:22.937 INFO Loading databases...
 Mar 31 16:10:23.358 INFO Storage based on data, patch_context: ...
 Mar 31 16:10:23.359 INFO Databases loaded successfully 421 ms
@@ -82,14 +82,14 @@ Mar 31 16:10:23.359 INFO Generating new tezos identity. This will take a while, 
 
 ## Download Tezos Client Binaries (or Build from Source)
 
-Download `tezos-client`, `tezos-baker-012-Psithaca` and `tezos-accuser-012-Psithaca` from the [Tezos project v13.0 Releases page at Gitlab.com](https://gitlab.com/tezos/tezos/-/releases). E.g. this [archive containing all x86-64 binaries for v13.0 release](https://gitlab.com/tezos/tezos/-/package_files/36986880/download).
+Download `tezos-client`, `tezos-baker-013-PtJakart` and `tezos-accuser-013-PtJakart` from the [Tezos project v13.0 Releases page at Gitlab.com](https://gitlab.com/tezos/tezos/-/releases). E.g. this [archive containing all x86-64 binaries for v13.0 release](https://gitlab.com/tezos/tezos/-/package_files/36986880/download).
 
 Or alternatively, build them from source. See [https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam](https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam) for instructions.
 
 After successfull compilation, you should see this binaries in Tezos source directory:
 ```
-tezos-accuser-012-Psithaca
-tezos-baker-012-Psithaca
+tezos-accuser-013-PtJakart
+tezos-baker-013-PtJakart
 tezos-client
 ```
 
@@ -100,7 +100,7 @@ $ export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=y
 ```
 ## TezEdge Baker
 
-It is recommended to use TezEdge baker instead of `tezos-baker-012-Psithaca`.
+It is recommended to use TezEdge baker instead of `tezos-baker-013-PtJakart`.
 
 See [TezEdge Baker](../../apps/baker/README.md#running) to build and run it.
 
@@ -123,8 +123,8 @@ _TezEdge node have to be synced already._
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
-    activate account my_delegate with "$HOME/data-dir-012-Psithaca/faucet.json"
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
+    activate account my_delegate with "$HOME/data-dir-013-PtJakart/faucet.json"
 ...
 Account my_delegate (tz1XXXXXX) activated with ꜩ76351.572618.
 ...
@@ -137,7 +137,7 @@ _TezEdge node have to be synced already._
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
     register key my_delegate as delegate
 ...
 The operation has only been included 0 blocks ago.
@@ -156,7 +156,7 @@ _Also it takes several cycles to get baking/endorsing rights (2 + num of preserv
 ```
 $ tezedge-baker \
    --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
    --baker my_delegate
 ```
 
@@ -166,18 +166,18 @@ $ tezedge-baker \
 _Note. For Tezos baker executable from v12.x.x and higher `--media-type json` (or `-m json`) paramters should be added to make it expect JSON RPC instead of new compact encoding_
 
 ```
-$ tezos-baker-012-Psithaca \
+$ tezos-baker-013-PtJakart \
    --endpoint "http://localhost:12535" \
    --media-type json \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
-   run with local node "$HOME/data-dir-012-Psithaca/tezedge-data" my_delegate
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
+   run with local node "$HOME/data-dir-013-PtJakart/tezedge-data" my_delegate
 Node is bootstrapped.
-Waiting for protocol 012-Psithaca to start...
-Baker v13.0 (cb9f439e) for Psithaca2MLR started.
-May 30 16:13:47.527 - 012-Psithaca.baker.transitions: received new head BL3vMPUdS4xCofnPjARGtbHgmLySqNtAV26WwRew46um1Qfyqa6 at
-May 30 16:13:47.527 - 012-Psithaca.baker.transitions:   level 614179, round 0
-May 30 16:14:01.447 - 012-Psithaca.baker.transitions: received new head BLvPTWvcfZ9KgUCXBogAyhe6S3Pta9LEAbT61wncfNoFLAEg7Z9 at
-May 30 16:14:01.447 - 012-Psithaca.baker.transitions:   level 614180, round 0
+Waiting for protocol 013-PtJakart to start...
+Baker v13.0 (cb9f439e) for PtJakart2xVj started.
+May 30 16:13:47.527 - 013-PtJakart.baker.transitions: received new head ... at
+May 30 16:13:47.527 - 013-PtJakart.baker.transitions:   level 614179, round 0
+May 30 16:14:01.447 - 013-PtJakart.baker.transitions: received new head ... at
+May 30 16:14:01.447 - 013-PtJakart.baker.transitions:   level 614180, round 0
 ...
 ```
 
@@ -186,14 +186,14 @@ May 30 16:14:01.447 - 012-Psithaca.baker.transitions:   level 614180, round 0
 ## Run accuser
 
 ```
-$ tezos-accuser-012-Psithaca \
+$ tezos-accuser-013-PtJakart \
    --endpoint "http://localhost:12535" \
    --media-type json \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
    run
 Node is bootstrapped.
-Accuser v13.0 (cb9f439e) for Psithaca2MLR started.
-May 30 16:15:02.443 - 012-Psithaca.delegate.denunciation: block BMMFUcQCQSYgo4yoM8VoUar5oaSg7rAEAUTLXEPJ9fQGTXtawUV registered
+Accuser v13.0 (cb9f439e) for PtJakart2xVj started.
+May 30 16:15:02.443 - 013-PtJakart.delegate.denunciation: block ... registered
 ...
 ```
 
@@ -226,7 +226,7 @@ First, inspect if the ledger is recognized by the `tezos-client`
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
    list connected ledgers
 ## Ledger `major-squirrel-thick-hedgehog`
 Found a Tezos Wallet 2.1.0 (git-description: "091e74e9") application running
@@ -248,7 +248,7 @@ Use the second proposed command (with `ed25519` curve) to import public key from
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
    import secret key my_delegate "ledger://major-squirrel-thick-hedgehog/ed25519/0h/0h"
 ```
 
@@ -259,7 +259,7 @@ Check that the address is now known to the `tezos-client`.
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
    list known addresses
 my_delegate: tzXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX (ledger sk known)
 ```
@@ -271,14 +271,14 @@ To get baking/endorsing rights, this account needs owning some funds, at least �
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
-    activate account faucet with "$HOME/data-dir-012-Psithaca/faucet.json"
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
+    activate account faucet with "$HOME/data-dir-013-PtJakart/faucet.json"
 ...
 Account faucet (tz1XXXXXX) activated with ꜩ76351.572618.
 ...
 $ tezos-client \
    --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
    transfer 76351.572618 from faucet to my_delegate
 ...
 ```
@@ -288,7 +288,7 @@ Now register this account in the network as a Tezos delegate:
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
    register key my_delegate as delegate
 ```
 
@@ -298,16 +298,16 @@ $ tezos-client \
 Start baker daemon:
 
 ```
-$ tezos-baker-012-Psithaca \
+$ tezos-baker-013-PtJakart \
    --endpoint "http://localhost:12535" \
    --media-type json \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
-   run with local node "$HOME/data-dir-012-Psithaca/tezedge-data" my_delegate
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
+   run with local node "$HOME/data-dir-013-PtJakart/tezedge-data" my_delegate
 Node is bootstrapped.
-Waiting for protocol 012-Psithaca to start...
-Baker v13.0 (cb9f439e) for Psithaca2MLR started.
-May 30 19:09:49.898 - 012-Psithaca.baker.transitions: received new head BM9C35y2Eh1L3GTuQpB5FXpm8hYedMMYy8NU3JFayWs7onThf5N at
-May 30 19:09:49.898 - 012-Psithaca.baker.transitions:   level 614596, round 0
+Waiting for protocol 013-PtJakart to start...
+Baker v13.0 (cb9f439e) for PtJakart2xVj started.
+May 30 19:09:49.898 - 013-PtJakart.baker.transitions: received new head ... at
+May 30 19:09:49.898 - 013-PtJakart.baker.transitions:   level 614596, round 0
 ...
 ```
 
@@ -320,7 +320,7 @@ To enable non-interactive singing of blocks and endorsements use the following c
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
    setup ledger to bake for my_delegate
 ```
 
@@ -342,7 +342,7 @@ Start remote signer application with schema of your choice. For example, the fol
 
 ```
 $ tezos-signer \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
    launch http signer --address 0.0.0.0 -p 12536
 Feb 25 18:09:09.074 - signer.http: accepting HTTP requests on port 12536
 Feb 25 18:09:09.074 - signer.http: listening on address: ::ffff:0.0.0.0
@@ -359,22 +359,22 @@ To make `tezos-baker` use remote signing, corresponding remote address should be
 ```
 $ tezos-client \
    --endpoint "http://localhost:12535" \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
    import secret key my_delegate http://home:12536/tz1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```
 
 Now you can run `tezos-baker` using this alias:
 
 ```
-$ tezos-baker-012-Psithaca \
+$ tezos-baker-013-PtJakart \
    --endpoint "http://localhost:12535" \
    --media-type json \
-   --base-dir "$HOME/data-dir-012-Psithaca/client" \
-   run with local node "$HOME/data-dir-012-Psithaca/tezedge-data" my_delegate
+   --base-dir "$HOME/data-dir-013-PtJakart/client" \
+   run with local node "$HOME/data-dir-013-PtJakart/tezedge-data" my_delegate
 Node is bootstrapped.
-Waiting for protocol 012-Psithaca to start...
-Baker v13.0 (cb9f439e) for Psithaca2MLR started.
-May 30 19:12:54.408 - 012-Psithaca.baker.transitions: received new head BKonMyPBnbYk8uGiaVADdiHWqJ2XynoqafrLW27v586AFvfx1HF at
-May 30 19:12:54.408 - 012-Psithaca.baker.transitions:   level 614606, round 1
+Waiting for protocol 013-PtJakart to start...
+Baker v13.0 (cb9f439e) for PtJakart2xVj started.
+May 30 19:12:54.408 - 013-PtJakart.baker.transitions: received new head ... at
+May 30 19:12:54.408 - 013-PtJakart.baker.transitions:   level 614606, round 1
 ...
 ```
