@@ -18,7 +18,7 @@ services:
       - "10001:10001/udp"  # debugger syslog port for tezedge node
 
   tezedge-node:
-    image: tezedge/tezedge:v3.0.0
+    image: tezedge/tezedge:v3.1.0
     pid: host
     network_mode: host
     command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=${TEZOS_CONTEXT_STORAGE:-irmin}", "--context-stats-db-path", "context-stats-db", "--record-shell-automaton-state-snapshots", "--record-shell-automaton-actions"]
@@ -49,7 +49,7 @@ services:
   monitoring:
     privileged: true
     network_mode: host
-    image: tezedge/node-monitoring:v3.0.0
+    image: tezedge/node-monitoring:v3.1.0
     pid: "host"
     command: ["--tezedge-nodes", "tezedge:18732:/tmp/tezedge", "--wait-for-nodes", "--debugger-path", "/tmp/debugger", "--rpc-port", "4444"]
     volumes:
