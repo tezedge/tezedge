@@ -154,6 +154,7 @@ where
                     let mut s = String::new();
                     node_log.read_to_string(&mut s).expect("read node log");
                     log::info!("{s:?}");
+                    node.kill().expect("msg");
                     return Err(TestError::NodeTimeout);
                 }
                 thread::sleep(Duration::from_secs(1));

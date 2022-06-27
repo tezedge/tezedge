@@ -117,7 +117,7 @@ pub struct Initialized {
     pub new_operations: Vec<OperationSimple>,
     // tenderbake machine
     pub tb_config: tb::Config<tb::TimingLinearGrow, SlotsInfo>,
-    pub tb_state: tb::Machine<ContractTz1Hash, OperationSimple, 200>,
+    pub tb_state: tb::Machine<ContractTz1Hash, OperationSimple>,
 
     pub actions: Vec<BakerAction>,
 }
@@ -202,7 +202,7 @@ impl BakerState {
             operations: Vec::new(),
             new_operations: Vec::new(),
             tb_config,
-            tb_state: tb::Machine::<ContractTz1Hash, OperationSimple, 200>::default(),
+            tb_state: tb::Machine::default(),
             actions: vec![],
         })
     }
