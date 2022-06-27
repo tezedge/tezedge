@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems, Trili Tech and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 //! Defines types of the intermediate data format.
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::fuzzing::bigint::BigIntMutator;
 
 /// This is a wrapper for [num_bigint::BigInt] type.
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BigInt(pub num_bigint::BigInt);
 
 impl From<num_bigint::BigInt> for BigInt {
@@ -47,7 +47,7 @@ impl From<&BigInt> for num_bigint::BigInt {
 }
 
 /// Zarith number
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Zarith(pub num_bigint::BigInt);
 
 impl From<num_bigint::BigInt> for Zarith {
