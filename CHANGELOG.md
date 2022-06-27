@@ -11,7 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
-- Jakarta support in rewards RPC.
+- Nothing.
+
 ### Deprecated
 
 - Nothing.
@@ -22,7 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
-- Fixed rewards RPC edge cases when the interrogated cycle was lower than preserved_cycles.
+- Nothing.
 
 ### Security
 
@@ -31,6 +32,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Performance
 
 - Nothing.
+
+## [3.1.0] - 2022-06-27
+
+### Added
+- Jakarta support in rewards RPC.
+
+### Fixed
+
+- Fixed rewards RPC edge cases when the interrogated cycle was lower than preserved_cycles.
+- Fixed embedded baker for blocks with predecessor containing a protocol activation.
+- Minor fixes in Tezos encoding library.
+
+### Security
+
+- Removed `chrono` dependency from `node_monitoring` application.
 
 ## [3.0.0] - 2022-06-25
 
@@ -874,7 +890,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v3.0.0...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v3.1.0...develop
+[3.1.0]: https://github.com/tezedge/tezedge/releases/v3.1.0
 [3.0.0]: https://github.com/tezedge/tezedge/releases/v3.0.0
 [2.3.6]: https://github.com/tezedge/tezedge/releases/v2.3.6
 [2.3.5]: https://github.com/tezedge/tezedge/releases/v2.3.5
