@@ -1935,7 +1935,6 @@ defs:
       - log_dir=/drone/src/python-test-logs/$${DRONE_STEP_NAME}_logs
       - mkdir -p $log_dir && echo "Logs are place on $${PYTHON_LOGS_SERVER_ADDRESS} - $${PYTHON_LOGS_SERVER_PATH}}"
       - poetry run pytest -s --log-dir=$log_dir --timeout=600 tests$${TEST_PROTO_DIR_SUFFIX}/$${PYTHON_TEST}
-    failure: ignore
 
 steps:
 
@@ -2110,6 +2109,7 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_per_block_votes.py
+  failure: ignore # TODO: remove once everything has been fixed
 
 - name: sapling-test
   <<: *python-test
@@ -2120,13 +2120,11 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake.py
-  failure: ignore # TODO: remove once everything has been fixed
 
 - name: tenderbake-manual-bake-test
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake_manual_bake.py
-  failure: ignore # TODO: remove once everything has been fixed
 
 - name: tenderbake-long-dynamic-bake-test
   <<: *python-test
@@ -2138,13 +2136,11 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake_bakers_restart.py
-  failure: ignore # TODO: remove once everything has been fixed
 
 - name: tenderbake-incremental-start-test
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake_incremental_start.py
-  failure: ignore # TODO: remove once everything has been fixed
 
 - name: basic-test
   <<: *python-test
@@ -2662,6 +2658,7 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_per_block_votes.py
+  failure: ignore # TODO: remove once everything has been fixed
 
 - name: sapling-test
   <<: *python-test
@@ -2672,13 +2669,11 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake.py
-  failure: ignore # TODO: remove once everything has been fixed
 
 - name: tenderbake-manual-bake-test
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake_manual_bake.py
-  failure: ignore # TODO: remove once everything has been fixed
 
 - name: tenderbake-long-dynamic-bake-test
   <<: *python-test
@@ -2690,13 +2685,11 @@ steps:
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake_bakers_restart.py
-  failure: ignore # TODO: remove once everything has been fixed
 
 - name: tenderbake-incremental-start-test
   <<: *python-test
   environment:
     PYTHON_TEST: test_tenderbake_incremental_start.py
-  failure: ignore # TODO: remove once everything has been fixed
 
 - name: basic-test
   <<: *python-test

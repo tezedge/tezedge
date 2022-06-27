@@ -3,7 +3,7 @@ version: "3"
 services:
 
   tezedge-with-memory-storage:
-    image: tezedge/tezedge:v3.0.0
+    image: tezedge/tezedge:v3.1.0
     pid: host
     network_mode: host
     command: [ "--network=mainnet", "--p2p-port=5554", "--rpc-port=5555", "--websocket-address=0.0.0.0:5556", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=tezedge", "--context-stats-db-path", "context-stats-db", "--context-kv-store", "inmem"]
@@ -24,7 +24,7 @@ services:
   monitoring:
     privileged: true
     network_mode: host
-    image: tezedge/node-monitoring:v3.0.0
+    image: tezedge/node-monitoring:v3.1.0
     pid: "host"
     command: ["--tezedge-nodes", "tezedge:5555:/tmp/tezedge", "--wait-for-nodes", "--rpc-port", "5557"]
     volumes:

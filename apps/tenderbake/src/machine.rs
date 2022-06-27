@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use core::{mem, cmp::Ordering, time::Duration};
+use core::{mem, cmp::Ordering};
 use alloc::{boxed::Box, vec::Vec, collections::BTreeMap};
 
 use serde::{Serialize, Deserialize};
@@ -20,11 +20,11 @@ use super::{
 
 /// The state machine. Aims to contain only possible states.
 #[derive(Serialize, Deserialize)]
-pub struct Machine<Id, Op, const DELAY_MS: u64>
+pub struct Machine<Id, Op>
 where
     Id: Ord,
 {
-    inner: Option<Result<Initialized<Id, Op, DELAY_MS>, Transition<Id>>>,
+    inner: Option<Result<Initialized<Id, Op>, Transition<Id>>>,
 }
 
 struct Pair<L, Id, Op>(L, ArrayVec<Action<Id, Op>>)
@@ -55,7 +55,7 @@ struct Transition<Id> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Initialized<Id, Op, const DELAY_MS: u64>
+struct Initialized<Id, Op>
 where
     Id: Ord,
 {
@@ -116,7 +116,7 @@ where
     },
 }
 
-impl<Id, Op, const DELAY_MS: u64> Default for Machine<Id, Op, DELAY_MS>
+impl<Id, Op> Default for Machine<Id, Op>
 where
     Id: Ord,
 {
@@ -125,7 +125,7 @@ where
     }
 }
 
-impl<Id, Op, const DELAY_MS: u64> Machine<Id, Op, DELAY_MS>
+impl<Id, Op> Machine<Id, Op>
 where
     Id: Clone + Ord,
     Op: Clone,
@@ -254,7 +254,7 @@ where
             Event::Timeout => match inner {
                 None => Pair(None, ArrayVec::default()),
                 Some(Ok(mut m)) => {
-                    let actions = m.timeout(&mut log);
+                    let actions = m.timeout(&config.timing, &mut log);
                     Pair(Some(Ok(m)), actions)
                 }
                 Some(Err(mut m)) => {
@@ -361,7 +361,7 @@ where
     }
 }
 
-impl<Id, Op, const DELAY_MS: u64> Initialized<Id, Op, DELAY_MS>
+impl<Id, Op> Initialized<Id, Op>
 where
     Id: Ord + Clone,
     Op: Clone,
@@ -461,7 +461,7 @@ where
         };
 
         let timeout_this_level = pred_time_header.calculate(log, config, now, block.level);
-        let delay = Duration::from_millis(DELAY_MS);
+        let delay = config.timing.round_duration(0) / 5;
         actions.extend(
             timeout_this_level
                 .as_ref()
@@ -517,7 +517,7 @@ where
     }
 
     fn next_round<T, P>(
-        self_: Initialized<Id, Op, DELAY_MS>,
+        self_: Initialized<Id, Op>,
         log: &mut ArrayVec<LogRecord>,
         config: &Config<T, P>,
         block: Block<Id, Op>,
@@ -666,7 +666,7 @@ where
             };
             self_.timeout_this_level = pred_time_header.calculate(log, config, now, block.level);
 
-            let delay = Duration::from_millis(DELAY_MS);
+            let delay = config.timing.round_duration(0) / 5;
             let t = match (&self_.timeout_this_level, &self_.timeout_next_level) {
                 (Some(ref this), Some(ref next)) => {
                     if this.timestamp < next.timestamp {
@@ -938,12 +938,15 @@ where
     }
 }
 
-impl<Id, Op, const DELAY_MS: u64> Initialized<Id, Op, DELAY_MS>
+impl<Id, Op> Initialized<Id, Op>
 where
     Id: Clone + Ord,
     Op: Clone,
 {
-    fn timeout(&mut self, log: &mut ArrayVec<LogRecord>) -> ArrayVec<Action<Id, Op>> {
+    fn timeout<T>(&mut self, timing: &T, log: &mut ArrayVec<LogRecord>) -> ArrayVec<Action<Id, Op>>
+    where
+        T: Timing,
+    {
         let (
             this,
             Timeout {
@@ -1024,7 +1027,7 @@ where
             timestamp: new_block.time_header.timestamp,
         });
         actions.push(Action::Propose(Box::new(new_block), proposer, this));
-        let delay = Duration::from_millis(DELAY_MS);
+        let delay = timing.round_duration(0) / 5;
         let t = match (&self.timeout_this_level, &self.timeout_next_level) {
             (Some(ref this), None) => Some(this.timestamp + delay),
             (None, Some(ref next)) => Some(next.timestamp),
@@ -1050,7 +1053,7 @@ mod tests {
 
     #[test]
     fn determine_round() {
-        let mut machine = Machine::<u8, u8, 200>::default();
+        let mut machine = Machine::<u8, u8>::default();
 
         struct Map;
 

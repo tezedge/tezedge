@@ -1,6 +1,6 @@
 [package]
 name = "node-monitoring"
-version = "3.0.0"
+version = "3.1.0"
 authors = ["Adrian Nagy <adrian.nagy@viablesystems.io>"]
 edition = "2021"
 rust-version = "1.58"
@@ -32,7 +32,7 @@ sysinfo = { git = "https://github.com/tezedge/sysinfo.git", tag = "tezedge-v0.19
 tokio = { version = "1.19", features = ["full"] }
 wait-timeout = "0.2"
 warp = "0.3"
-procfs = "0.9"
+procfs = { version = "0.9", features = [], default-features = false }
 netinfo = { git = "https://github.com/tezedge/netinfo.git", tag = "tezedge-v0.5.1-1" }
 crypto = { path = "../../crypto" }
 tezos_messages = { path = "../../tezos/messages" }

@@ -180,19 +180,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "chrono"
-version = "0.4.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
-dependencies = [
- "libc",
- "num-integer",
- "num-traits",
- "time 0.1.43",
- "winapi",
-]
-
-[[package]]
 name = "clap"
 version = "2.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -300,7 +287,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
 name = "crypto"
-version = "2.3.0"
+version = "3.1.0"
 dependencies = [
  "anyhow",
  "base58",
@@ -316,13 +303,14 @@ dependencies = [
  "strum 0.20.0",
  "strum_macros 0.20.1",
  "thiserror",
+ "zeroize",
 ]
 
 [[package]]
 name = "crypto-bigint"
-version = "0.2.11"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f83bd3bb4314701c568e340cd8cf78c975aa0ca79e03d3f6d1677d5b0c9c0c03"
+checksum = "8658c15c5d921ddf980f7fe25b1e82f4b7a4083b2c4985fea4922edb8e43e07d"
 dependencies = [
  "generic-array",
  "rand_core 0.6.3",
@@ -495,9 +483,9 @@ checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
 name = "elliptic-curve"
-version = "0.10.6"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "beca177dcb8eb540133e7680baff45e7cc4d93bf22002676cec549f82343721b"
+checksum = "83e5c176479da93a0983f0a6fdc3c1b8e7d5be0d7fe3fe05a99f15b96582b9a8"
 dependencies = [
  "crypto-bigint",
  "ff",
@@ -1236,7 +1224,7 @@ dependencies = [
 
 [[package]]
 name = "node-monitoring"
-version = "2.3.0"
+version = "3.1.0"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1263,7 +1251,7 @@ dependencies = [
  "sysinfo",
  "tezos_messages",
  "thiserror",
- "time 0.3.9",
+ "time",
  "tokio",
  "wait-timeout",
  "warp",
@@ -1757,7 +1745,6 @@ checksum = "ab8809e0c18450a2db0f236d2a44ec0b4c1412d0eb936233579f0990faa5d5cd"
 dependencies = [
  "bitflags",
  "byteorder",
- "chrono",
  "flate2",
  "hex",
  "lazy_static",
@@ -2198,7 +2185,7 @@ dependencies = [
  "slog",
  "term",
  "thread_local",
- "time 0.3.9",
+ "time",
 ]
 
 [[package]]
@@ -2384,7 +2371,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding"
-version = "2.3.0"
+version = "3.1.0"
 dependencies = [
  "bit-vec",
  "crypto",
@@ -2400,7 +2387,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding_derive"
-version = "2.3.0"
+version = "3.1.0"
 dependencies = [
  "lazy_static",
  "once_cell",
@@ -2412,7 +2399,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_identity"
-version = "2.3.0"
+version = "3.1.0"
 dependencies = [
  "anyhow",
  "crypto",
@@ -2424,7 +2411,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_messages"
-version = "2.3.0"
+version = "3.1.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -2447,7 +2434,7 @@ dependencies = [
  "tezos_encoding_derive",
  "tezos_identity",
  "thiserror",
- "time 0.3.9",
+ "time",
 ]
 
 [[package]]
@@ -2477,16 +2464,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5516c27b78311c50bf42c071425c560ac799b11c30b31f87e3081965fe5e0180"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "time"
-version = "0.1.43"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca8a50ef2360fbd1eeb0ecd46795a87a19024eb4b53c5dc916ca1fd95fe62438"
-dependencies = [
- "libc",
- "winapi",
 ]
 
 [[package]]
@@ -2524,9 +2501,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.17.0"
+version = "1.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2af73ac49756f3f7c01172e34a23e5d0216f6c32333757c2c61feb2bbff5a5ee"
+checksum = "c51a52ed6686dd62c320f9b89299e9dfb46f730c7a48e635c19f21d116cb1439"
 dependencies = [
  "bytes",
  "libc",
@@ -3017,6 +2994,6 @@ checksum = "85e60b0d1b5f99db2556934e21937020776a5d31520bf169e851ac44e6420214"
 
 [[package]]
 name = "zeroize"
-version = "1.4.3"
+version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d68d9dcec5f9b43a30d38c49f91dfedfaac384cb8f085faca366c26207dd1619"
+checksum = "94693807d016b2f2d2e14420eb3bfcca689311ff775dcf113d74ea624b7cdf07"

@@ -403,7 +403,6 @@ pub fn create_routes(tezedge_is_enabled: bool, allow_unsafe: bool) -> PathTree<M
     );
 
     if allow_unsafe {
-        eprintln!("======= adding unsafe rpc");
         routes.handle(
             hash_set![Method::PATCH],
             "/dev/shell/automaton/bakers",
