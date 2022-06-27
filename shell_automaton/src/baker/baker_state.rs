@@ -65,7 +65,7 @@ pub struct ElectedBlock {
     pub(super) round: i32,
     pub(super) payload_hash: BlockPayloadHash,
     pub(super) block_metadata_hash: BlockMetadataHash,
-    pub(super) ops_metadata_hash: OperationMetadataListListHash,
+    pub(super) ops_metadata_hash: Option<OperationMetadataListListHash>,
     pub(super) operations: Vec<Vec<Operation>>,
     pub(super) non_consensus_op_hashes: Vec<OperationHash>,
 }

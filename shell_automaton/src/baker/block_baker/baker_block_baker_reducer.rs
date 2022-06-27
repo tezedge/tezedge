@@ -1,9 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::{
-    BlockPayloadHash, HashTrait, HashType, OperationListHash, OperationMetadataListListHash,
-};
+use crypto::hash::{BlockPayloadHash, HashTrait, HashType, OperationListHash};
 use storage::BlockHeaderWithHash;
 use tezos_encoding::types::SizedBytes;
 use tezos_messages::p2p::encoding::block_header::BlockHeaderBuilder;
@@ -112,16 +110,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                 )
                                 .ok()
                             })?;
-                            let ops_metadata_hash = state
-                                .current_head
-                                .ops_metadata_hash()
-                                .cloned()
-                                .or_else(|| {
-                                    OperationMetadataListListHash::try_from_bytes(
-                                        &[0; HashType::OperationMetadataListListHash.size()],
-                                    )
-                                    .ok()
-                                })?;
+                            let ops_metadata_hash = state.current_head.ops_metadata_hash().cloned();
                             Some(ElectedBlock {
                                 block,
                                 round: 0,
@@ -277,7 +266,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                         round,
                         payload_hash: payload_hash?.clone(),
                         block_metadata_hash: block_metadata_hash?.clone(),
-                        ops_metadata_hash: ops_metadata_hash?.clone(),
+                        ops_metadata_hash: ops_metadata_hash.cloned(),
                         operations: vec![],
                         non_consensus_op_hashes: vec![],
                     });
@@ -378,7 +367,7 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                 predecessor_header: p.pred_header.clone(),
                                 predecessor_max_operations_ttl,
                                 pred_block_metadata_hash: p.pred_block_metadata_hash.clone(),
-                                pred_ops_metadata_hash: p.pred_ops_metadata_hash.clone(),
+                                pred_ops_metadata_hash: Some(p.pred_ops_metadata_hash.clone()),
                             })
                             .or_else(|| {
                                 let current_head = &state.current_head;
@@ -398,8 +387,8 @@ pub fn baker_block_baker_reducer(state: &mut State, action: &ActionWithMeta) {
                                         .pred_block_metadata_hash()?
                                         .clone(),
                                     pred_ops_metadata_hash: current_head
-                                        .pred_ops_metadata_hash()?
-                                        .clone(),
+                                        .pred_ops_metadata_hash()
+                                        .cloned(),
                                 })
                             });
                         match built_block {
