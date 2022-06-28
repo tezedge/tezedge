@@ -1,6 +1,6 @@
 [package]
 name = "fuzz_peer_response_message"
-version = "3.2.0"
+version = "3.1.1"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2021"
 rust-version = "1.58"
