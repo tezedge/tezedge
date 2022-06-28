@@ -1,6 +1,6 @@
 [package]
 name = "tezos_conv"
-version = "3.1.1"
+version = "3.2.0"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2021"
 rust-version = "1.58"
