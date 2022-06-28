@@ -1,6 +1,6 @@
 [package]
 name = "ipc"
-version = "3.1.0"
+version = "3.1.1"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2021"
 rust-version = "1.58"

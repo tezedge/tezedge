@@ -33,6 +33,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Nothing.
 
+## [3.1.1] - 2022-06-28
+
+### Fixed
+
+- Added missing jakarta protocol recognition to context timings tool.
+
 ## [3.1.0] - 2022-06-27
 
 ### Added
@@ -890,7 +896,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v3.1.0...develop
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v3.1.1...develop
+[3.1.1]: https://github.com/tezedge/tezedge/releases/v3.1.1
 [3.1.0]: https://github.com/tezedge/tezedge/releases/v3.1.0
 [3.0.0]: https://github.com/tezedge/tezedge/releases/v3.0.0
 [2.3.6]: https://github.com/tezedge/tezedge/releases/v2.3.6

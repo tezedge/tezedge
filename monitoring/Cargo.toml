@@ -1,6 +1,6 @@
 [package]
 name = "monitoring"
-version = "3.1.0"
+version = "3.1.1"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2021"
 rust-version = "1.58"
