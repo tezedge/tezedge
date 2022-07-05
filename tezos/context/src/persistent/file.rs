@@ -28,6 +28,8 @@ pub enum FileType {
     BigStrings,
     Hashes,
     Sizes,
+    NewShapeDirectories,
+    NewShapeDirectoriesIndex,
 }
 
 type TaggedFile = u64;
@@ -40,6 +42,8 @@ pub const TAG_STRINGS: u64 = 4;
 pub const TAG_BIG_STRINGS: u64 = 5;
 pub const TAG_HASHES: u64 = 6;
 pub const TAG_SIZES: u64 = 7;
+pub const TAG_NEW_SHAPES: u64 = 8;
+pub const TAG_NEW_SHAPES_INDEX: u64 = 9;
 
 impl From<FileType> for u64 {
     fn from(file_type: FileType) -> Self {
@@ -52,6 +56,8 @@ impl From<FileType> for u64 {
             FileType::BigStrings => TAG_BIG_STRINGS,
             FileType::Hashes => TAG_HASHES,
             FileType::Sizes => TAG_SIZES,
+            FileType::NewShapeDirectories => TAG_NEW_SHAPES,
+            FileType::NewShapeDirectoriesIndex => TAG_NEW_SHAPES_INDEX,
         }
     }
 }
@@ -67,6 +73,8 @@ impl From<u64> for FileType {
             TAG_BIG_STRINGS => FileType::BigStrings,
             TAG_HASHES => FileType::Hashes,
             TAG_SIZES => FileType::Sizes,
+            TAG_NEW_SHAPES => FileType::NewShapeDirectories,
+            TAG_NEW_SHAPES_INDEX => FileType::NewShapeDirectoriesIndex,
             _ => unreachable!(), // error at compile time
         }
     }
@@ -101,13 +109,15 @@ impl FileType {
             FileType::Hashes => Path::new("hashes.db"),
             FileType::BigStrings => Path::new("big_strings.db"),
             FileType::Sizes => Path::new("sizes.db"),
+            FileType::NewShapeDirectories => Path::new("new_shape_directories.db"),
+            FileType::NewShapeDirectoriesIndex => Path::new("new_shape_directories_index.db"),
         }
     }
 }
 
 // Note: Use `File<const T: FileType` once the feature `adt_const_params` is stabilized
 pub struct File<const T: TaggedFile> {
-    file: std::fs::File,
+    pub file: std::fs::File,
     offset: u64,
     /// Value used during reloading only. This is to keep track of until
     /// where the checksum was computed
@@ -181,6 +191,8 @@ impl<const T: TaggedFile> File<T> {
         if filepath.exists() && !read_only {
             remove_file_when_empty(&filepath)?;
         }
+
+        eprintln!("Opening {:?}", filepath);
 
         let append_mode = !matches!(file_type, FileType::Sizes);
         let mut options = OpenOptions::new();
@@ -354,9 +366,9 @@ impl<const T: TaggedFile> File<T> {
         Ok(())
     }
 
-    pub fn buffered(self) -> Result<BufReader<std::fs::File>, io::Error> {
+    pub fn buffered(&self) -> Result<BufReader<std::fs::File>, io::Error> {
         let start = self.start();
-        let mut file = self.file;
+        let mut file = self.file.try_clone()?;
 
         file.seek(SeekFrom::Start(start))?;
         Ok(BufReader::with_capacity(4 * 1024 * 1024, file)) // 4 MB
@@ -377,7 +389,8 @@ impl<const T: TaggedFile> File<T> {
 
     #[cfg(not(test))]
     pub fn sync(&mut self) -> Result<(), io::Error> {
-        self.file.sync_data()
+        Ok(())
+        // self.file.sync_data()
     }
 
     pub fn append(&mut self, bytes: impl AsRef<[u8]>) -> Result<(), io::Error> {

@@ -14,23 +14,27 @@ use crate::{
     chunks::ChunkedVec,
     kv_store::{in_memory::BATCH_CHUNK_CAPACITY, inline_boxed_slice::InlinedBoxedSlice, HashId},
     serialize::{deserialize_hash_id, ObjectHeader, ObjectTag},
+    shapes::{DirectoryShapeId, ShapeStrings},
     working_tree::{
-        shape::ShapeStrings,
+        // shape::ShapeStrings,
         storage::{
             DirectoryId, DirectoryOrInodeId, FatPointer, Inode, PointerOnStack, PointersBitfield,
         },
         string_interner::StringInterner,
         working_tree::SerializeOutput,
-        Commit, DirEntryKind, ObjectReference,
+        Commit,
+        DirEntryKind,
+        ObjectReference,
     },
     ContextKeyValueStore,
 };
 
 use crate::working_tree::{
-    shape::DirectoryShapeId,
+    // shape::DirectoryShapeId,
     storage::{DirEntryId, Storage},
     string_interner::StringId,
-    DirEntry, Object,
+    DirEntry,
+    Object,
 };
 
 use super::{

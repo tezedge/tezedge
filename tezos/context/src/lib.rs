@@ -133,6 +133,7 @@ pub mod chunks;
 pub mod gc;
 pub mod hash;
 pub mod serialize;
+pub mod shapes;
 pub mod working_tree;
 
 pub mod ffi;
