@@ -1,0 +1,200 @@
+version: "3"
+
+x-node-template: &node-template
+  image: ${TEZEDGE_IMAGE:-tezedge/tezedge:latest-frame-pointers-enabled}
+  command:
+    - --network=sandbox
+    - --private-node=true
+    - --peers=${NET_PREFIX:-172.22}.0.101:9732,${NET_PREFIX:-172.22}.0.102:9732,${NET_PREFIX:-172.22}.0.103:9732,${NET_PREFIX:-172.22}.0.104:9732
+    - --p2p-port=9732
+    - --rpc-port=8732
+    - --websocket-address=0.0.0.0:4927
+    - --log
+    - terminal
+    - file
+    - --log-file=/tmp/tezedge/tezedge.log
+    - --log-level=debug
+    - --tezos-context-storage=irmin
+    - --peer-thresh-low=0
+    - --peer-thresh-high=5
+    - --identity-expected-pow=0
+    - --disable-peer-graylist
+  build:
+    dockerfile: Dockerfile-tezedge-node
+    target: light-node
+    args:
+      SOURCE_BRANCH: ${TEZEDGE_BRANCH:-develop}
+      tezedge_git: https://github.com/${TEZEDGE_FORK:-tezedge}/tezedge
+      rust_toolchain: 1.58.1
+
+x-tezedge-baker-template: &baker-template
+  image: tezedge-baker:local
+  build:
+    dockerfile: Dockerfile-tezedge-baker
+    args:
+      SOURCE_BRANCH: ${TEZEDGE_BAKER_BRANCH:-develop}
+      tezedge_git: https://github.com/${TEZEDGE_BAKER_FORK:-tezedge}/tezedge
+      rust_toolchain: 1.58.1
+  entrypoint: ["sh", "-ex", "-c"]
+  command:
+    - |
+      sleep 5
+      mkdir /tmp/tezos-data
+      /tezos-client --base-dir /tmp/tezos-data --endpoint http://$${TEZOS_NODE}:8732 import secret key baker $${BAKER_SECRET_KEY} --force
+      exec /tezedge-baker --base-dir /tmp/tezos-data --endpoint http://$${TEZOS_NODE}:8732 --baker baker
+
+x-octez-baker-template: &octez-baker-template
+  image: tezos/tezos:v13-release
+  entrypoint: ["sh", "-ex", "-c"]
+  command:
+    - |
+      sleep 5
+      tezos-client --media-type json --endpoint http://$${TEZOS_NODE}:8732 config init
+      tezos-client import secret key baker $${BAKER_SECRET_KEY} --force
+      exec tezos-baker-012-Psithaca run with local node /tmp/tezedge baker --keep-alive
+
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+        - subnet: ${NET_PREFIX:-172.22}.0.0/16
+
+volumes:
+  node1:
+  node2:
+  node3:
+  node4:
+  node5:
+
+services:
+
+  activator:
+    image: tezos/tezos:v13-release
+    environment:
+      - TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER=yes
+    entrypoint: ["sh", "-ex", "-c"]
+    command:
+      - |
+        while ! tezos-client --endpoint http://node1:8732 rpc get /network/version; do sleep 1; done
+        sleep 1
+        sed -e "s/LEDGER_PUBLIC_KEY/${LEDGER_PUBLIC_KEY}/" /tmp/parameters-template.json > /tmp/parameters.json
+        tezos-client --endpoint http://node1:8732 config init
+        tezos-client import secret key \
+            activator unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6 --force
+        tezos-client -block genesis \
+            activate protocol Psithaca2MLRFYargivpo7YvUr7wUDqyxrdhC5CQq78mRvimz6A \
+            with fitness 1 and key activator and parameters /tmp/parameters.json
+
+        sleep 10
+
+        tezos-client import secret key bootstrap4 unencrypted:edsk2uqQB9AY4FvioK2YMdfmyMrer5R8mGFyuaLLFfSRo8EoyNdht3
+        tezos-client import public key ledger unencrypted:${LEDGER_PUBLIC_KEY}
+        num=${DELEGATORT_NUM:-10}
+        for k in $$(seq 1 $$num); do
+            tezos-client gen keys user$$k
+        done
+        (
+            echo '['
+            COMMA=''
+            for k in $$(seq 1 $$num); do
+                t=$$((k * 100))
+                echo "$$COMMA {\"destination\": \"user$$k\", \"amount\": \"$$t\" }"
+                COMMA=','
+            done
+            echo " ]"
+        ) > multi.json
+        cat multi.json
+        tezos-client multiple transfers from bootstrap4 using multi.json --burn-cap $$(echo "$$num * 0.06425" | bc)
+        for k in $$(seq 1 $$num); do
+            tezos-client --wait none set delegate for user$$k to ledger
+        done
+    volumes:
+      - ./parameters-template.json:/tmp/parameters-template.json
+
+
+  node1:
+    <<: *node-template
+    networks:
+      default:
+        ipv4_address: ${NET_PREFIX:-172.22}.0.101
+    ports: [ "${RPC_PORT_PREFIX}1:8732" ]
+    volumes:
+      - node1:/tmp/tezedge
+
+  baker1:
+    <<: *baker-template
+    environment:
+      - TEZOS_NODE=node1
+      - BAKER_SECRET_KEY=unencrypted:edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh
+    volumes:
+      - node1:/tmp/tezedge
+
+
+  node2:
+    <<: *node-template
+    networks:
+      default:
+        ipv4_address: ${NET_PREFIX:-172.22}.0.102
+    ports: [ "${RPC_PORT_PREFIX}2:8732" ]
+    volumes:
+      - node2:/tmp/tezedge
+
+  baker2:
+    <<: *baker-template
+    environment:
+      - TEZOS_NODE=node2
+      - BAKER_SECRET_KEY=unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
+    volumes:
+      - node2:/tmp/tezedge
+
+  node3:
+    <<: *node-template
+    networks:
+      default:
+        ipv4_address: ${NET_PREFIX:-172.22}.0.103
+    ports: [ "${RPC_PORT_PREFIX}3:8732" ]
+    volumes:
+      - node3:/tmp/tezedge
+
+  baker3:
+    <<: *baker-template
+    environment:
+      - TEZOS_NODE=node3
+      - BAKER_SECRET_KEY=unencrypted:edsk4ArLQgBTLWG5FJmnGnT689VKoqhXwmDPBuGx3z4cvwU9MmrPZZ
+    volumes:
+      - node3:/tmp/tezedge
+
+  node4:
+    <<: *node-template
+    networks:
+      default:
+        ipv4_address: ${NET_PREFIX:-172.22}.0.104
+    ports: [ "${RPC_PORT_PREFIX}4:8732" ]
+    volumes:
+      - node4:/tmp/tezedge
+
+  baker4:
+    <<: *baker-template
+    environment:
+      - TEZOS_NODE=node4
+      - BAKER_SECRET_KEY=unencrypted:edsk2uqQB9AY4FvioK2YMdfmyMrer5R8mGFyuaLLFfSRo8EoyNdht3
+    volumes:
+      - node4:/tmp/tezedge
+
+  node5:
+    <<: *node-template
+    networks:
+      default:
+        ipv4_address: ${NET_PREFIX:-172.22}.0.105
+    ports: [ "${RPC_PORT_PREFIX}5:8732" ]
+    volumes:
+      - node5:/tmp/tezedge
+  
+  ledger-baker:
+    <<: *baker-template
+    environment:
+      - TEZOS_NODE=node5
+      - BAKER_SECRET_KEY=${LEDGER_SECRET_KEY}
+    volumes:
+      - node5:/tmp/tezedge

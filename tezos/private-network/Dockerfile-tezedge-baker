@@ -1,0 +1,42 @@
+# ARG BASE_IMAGE=tezedge/tezedge-libs:latest
+
+# FROM tezedge/tezos-opam-builder:debian10 as build-env
+
+FROM debian:10 as build-env
+USER root
+RUN apt-get update && apt-get install -y libssl-dev pkg-config libsodium-dev git curl
+
+# Checkout and compile tezedge source code
+ARG rust_toolchain="1.58.1"
+RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain ${rust_toolchain} -y
+
+ENV PATH=/root/.cargo/bin:$PATH
+ENV SODIUM_USE_PKG_CONFIG=1
+RUN apt-get install -y clang libclang-dev zlib1g
+
+ARG tezedge_git="https://github.com/tezedge/tezedge.git"
+ARG SOURCE_BRANCH=develop
+RUN git clone ${tezedge_git} --branch ${SOURCE_BRANCH} && cd tezedge && cargo build --package baker --release
+
+# WORKDIR /home/appuser/tezedge
+
+FROM tezedge/tezedge-ci-builder:rust-1.58.1-v13.0-octez as octez
+
+FROM debian:10
+
+USER root
+RUN apt-get update && apt-get install -y libssl-dev curl libhidapi-libusb0 libev4
+# Copy binaries
+COPY --from=build-env /tezedge/target/release/tezedge-baker /tezedge-baker
+
+COPY --from=octez /home/appuser/tezos-src/tezos/tezos-client /tezos-client
+
+# Copy shared libraries
+COPY --from=build-env /usr/lib/x86_64-linux-gnu/libssl.so.1.1 /usr/lib/x86_64-linux-gnu
+COPY --from=build-env /usr/lib/x86_64-linux-gnu/libcrypto.so.1.1 /usr/lib/x86_64-linux-gnu
+COPY --from=build-env /usr/lib/x86_64-linux-gnu/libzstd.so.1 /usr/lib/x86_64-linux-gnu
+COPY --from=build-env /usr/lib/x86_64-linux-gnu/libsodium.so.23 /usr/lib/x86_64-linux-gnu
+COPY --from=build-env /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu
+
+# Default entry point runs monitoring with default config + several default values, which can be overriden by CMD
+ENTRYPOINT [ "/tezedge-baker" ]
