@@ -1,4 +1,4 @@
-//! Copyright (c) SimpleStaking and Tezedge Contributors
+//! Copyright (c) SimpleStaking, Trili Tech and Tezedge Contributors
 //! SPDX-License-Identifier: MIT
 
 use std::convert::TryFrom;
@@ -268,6 +268,7 @@ encode_hash!(crypto::hash::ContractKt1Hash);
 encode_hash!(crypto::hash::ContractTz1Hash);
 encode_hash!(crypto::hash::ContractTz2Hash);
 encode_hash!(crypto::hash::ContractTz3Hash);
+encode_hash!(crypto::hash::ContractTz4Hash);
 encode_hash!(crypto::hash::CryptoboxPublicKeyHash);
 encode_hash!(crypto::hash::PublicKeyEd25519);
 encode_hash!(crypto::hash::PublicKeySecp256k1);
