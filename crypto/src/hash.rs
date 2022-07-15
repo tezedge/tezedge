@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems, Trili Tech and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::convert::{TryFrom, TryInto};
@@ -29,6 +29,7 @@ mod prefix_bytes {
     pub const CONTRACT_TZ1_HASH: [u8; 3] = [6, 161, 159];
     pub const CONTRACT_TZ2_HASH: [u8; 3] = [6, 161, 161];
     pub const CONTRACT_TZ3_HASH: [u8; 3] = [6, 161, 164];
+    pub const CONTRACT_TZ4_HASH: [u8; 3] = [6, 161, 166];
     pub const PUBLIC_KEY_ED25519: [u8; 4] = [13, 15, 37, 217];
     pub const PUBLIC_KEY_SECP256K1: [u8; 4] = [3, 254, 226, 86];
     pub const PUBLIC_KEY_P256: [u8; 4] = [3, 178, 139, 127];
@@ -286,6 +287,7 @@ define_hash!(ContractKt1Hash);
 define_hash!(ContractTz1Hash);
 define_hash!(ContractTz2Hash);
 define_hash!(ContractTz3Hash);
+define_hash!(ContractTz4Hash);
 define_hash!(CryptoboxPublicKeyHash);
 define_hash!(PublicKeyEd25519);
 define_hash!(PublicKeySecp256k1);
@@ -329,6 +331,8 @@ pub enum HashType {
     ContractTz2Hash,
     // "\006\161\164" (* tz3(36) *)
     ContractTz3Hash,
+    // "\006\161\166" (* tz4(36) *)
+    ContractTz4Hash,
     // "\013\015\037\217" (* edpk(54) *)
     PublicKeyEd25519,
     // "\003\254\226\086" (* sppk(55) *)
@@ -367,6 +371,7 @@ impl HashType {
             HashType::ContractTz1Hash => &CONTRACT_TZ1_HASH,
             HashType::ContractTz2Hash => &CONTRACT_TZ2_HASH,
             HashType::ContractTz3Hash => &CONTRACT_TZ3_HASH,
+            HashType::ContractTz4Hash => &CONTRACT_TZ4_HASH,
             HashType::PublicKeyEd25519 => &PUBLIC_KEY_ED25519,
             HashType::PublicKeySecp256k1 => &PUBLIC_KEY_SECP256K1,
             HashType::PublicKeyP256 => &PUBLIC_KEY_P256,
@@ -398,7 +403,8 @@ impl HashType {
             HashType::ContractKt1Hash
             | HashType::ContractTz1Hash
             | HashType::ContractTz2Hash
-            | HashType::ContractTz3Hash => 20,
+            | HashType::ContractTz3Hash
+            | HashType::ContractTz4Hash => 20,
             HashType::PublicKeySecp256k1 | HashType::PublicKeyP256 => 33,
             HashType::SeedEd25519 => 32,
             HashType::Ed25519Signature | HashType::Signature => 64,
@@ -930,6 +936,16 @@ mod tests {
     }
 
     #[test]
+    fn test_encode_contract_tz4() -> Result<(), anyhow::Error> {
+        let decoded = HashType::ContractTz4Hash
+            .hash_to_b58check(&hex::decode("886fed9ede9a91bb73a84108d991422c80fc40a3")?)?;
+        let expected = "tz4MSfZsn6kMDczShy8PMeB628TNukn9hi2K";
+        assert_eq!(expected, decoded);
+
+        Ok(())
+    }
+
+    #[test]
     fn test_encode_contract_kt1() -> Result<(), anyhow::Error> {
         let decoded = HashType::ContractKt1Hash
             .hash_to_b58check(&hex::decode("42b419240509ddacd12839700b7f720b4aa55e4e")?)?;
@@ -1172,6 +1188,16 @@ mod tests {
         test!(tz2_hash, ContractTz2Hash, []);
 
         test!(tz3_hash, ContractTz3Hash, []);
+
+        test!(
+            tz4_hash,
+            ContractTz4Hash,
+            [
+                "tz4MSfZsn6kMDczShy8PMeB628TNukn9hi2K",
+                "tz4UGLdFGkjXEtED52TEfZiFrPDA4ShL77rS",
+                "tz4WnGDH3YteS9vc7V7Fz2FnYVnY9z2iFdyv"
+            ]
+        );
 
         test!(pk_hash, CryptoboxPublicKeyHash, []);
 
