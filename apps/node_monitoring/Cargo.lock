@@ -287,7 +287,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
 name = "crypto"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "base58",
@@ -1224,7 +1224,7 @@ dependencies = [
 
 [[package]]
 name = "node-monitoring"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2371,7 +2371,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "bit-vec",
  "crypto",
@@ -2387,7 +2387,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding_derive"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "lazy_static",
  "once_cell",
@@ -2399,7 +2399,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_identity"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "crypto",
@@ -2411,7 +2411,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_messages"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "bytes",
@@ -2501,16 +2501,16 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.19.2"
+version = "1.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c51a52ed6686dd62c320f9b89299e9dfb46f730c7a48e635c19f21d116cb1439"
+checksum = "664cf6576f16c0ad68184998f3c2d4be9903ede6b291a5b5cfc97d29e0057283"
 dependencies = [
+ "autocfg",
  "bytes",
  "libc",
  "memchr",
  "mio",
  "num_cpus",
- "once_cell",
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
