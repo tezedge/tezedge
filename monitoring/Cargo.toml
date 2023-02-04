@@ -18,7 +18,7 @@ crypto = { path = "../crypto" }
 networking = { path = "../networking" }
 shell = { path = "../shell" }
 tezos_messages = { path = "../tezos/messages" }
-tokio = { version = "1.19", features = ["full"] }
+tokio = { version = "1.20", features = ["full"] }
 tokio-stream = "0.1.2"
 futures = { version = "0.3", default-features = false }
 warp = "0.3"
