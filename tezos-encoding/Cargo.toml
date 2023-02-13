@@ -1,0 +1,26 @@
+[package]
+name = "tezos_encoding"
+version = "3.1.1"
+authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
+edition = "2021"
+rust-version = "1.58"
+
+[dependencies]
+bit-vec = "0.6.2"
+thiserror = "1.0"
+hex = "0.4"
+num-bigint = "0.3"
+num-traits = "0.2.8"
+serde = { version = "1.0", features = ["derive"] }
+nom = "6.1"
+lazy_static = "1.4"
+# local dependencies
+crypto = { path = "../crypto" }
+tezos_encoding_derive = { path = "../tezos-encoding-derive" }
+fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
+
+[features]
+fuzzing = ["fuzzcheck", "crypto/fuzzing", "tezos_encoding_derive/fuzzing"]
+
+[dev-dependencies]
+serde_json = "1.0"

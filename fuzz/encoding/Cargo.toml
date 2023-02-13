@@ -11,4 +11,4 @@ honggfuzz = "0.5"
 log = "0.4.8"
 rand = "0.7.3"
 # Local dependencies
-tezos_encoding = { path = "../../tezos/encoding" }
+tezos_encoding = { path = "../../tezos-encoding" }
