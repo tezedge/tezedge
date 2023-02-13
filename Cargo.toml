@@ -7,10 +7,6 @@ members = [
     "tezos-encoding-derive",
 ]
 
-[patch.crates-io]
-ocaml-boxroot-sys = { git = "https://gitlab.com/bruno.deferrari/ocaml-boxroot.git", branch = "ocaml-410-headers" }
-librocksdb-sys = { git = "https://github.com/tezedge/rust-rocksdb.git", tag = "tezedge-v2.3.0" }
-
 [profile.fuzz]
 inherits = "release"
 opt-level = 3
