@@ -2,11 +2,13 @@ name: fuzzcheck
 
 on:
   push:
-    branches: [ develop ]
+    branches: [ master ]
   pull_request:
 
+# TODO: enable once 'fuzz/encoding' has been brought up to date
 jobs:
   fuzzcheck:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2

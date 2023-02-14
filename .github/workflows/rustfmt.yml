@@ -2,7 +2,7 @@ name: rustfmt
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [ master ]
   pull_request:
 
 jobs:
@@ -10,13 +10,9 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@1.58.1
         with:
-          toolchain: 1.58.1
-          default: true
-      - run: rustup component add rustfmt
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+          components: rustfmt
+      - name: check formatting
+        run: cargo fmt --all -- --check
