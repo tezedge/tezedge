@@ -14,4 +14,4 @@ jobs:
         with:
           components: clippy
       - name: lint
-        run: cargo clippy --all-targets -- -A clippy::too_many_arguments -A clippy::doc_markdown
+        run: cargo clippy --all-targets

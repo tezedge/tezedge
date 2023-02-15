@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems, TriliTech and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 #![cfg_attr(feature = "fuzzing", feature(no_coverage))]
@@ -9,8 +9,6 @@ use thiserror::Error;
 pub mod blake2b;
 pub mod base58;
 pub mod crypto_box;
-pub mod nonce;
-pub mod proof_of_work;
 pub mod seeded_step;
 #[macro_use]
 pub mod hash;
