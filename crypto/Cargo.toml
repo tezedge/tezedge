@@ -10,12 +10,12 @@ anyhow = "1.0"
 base58 = "0.1.0"
 thiserror = "1.0"
 hex = "0.4"
-libsecp256k1 = "0.7"
+libsecp256k1 = { version = "0.7", default-features = false, features = ["static-context"] }
 byteorder = "1.4.3"
-num-bigint = { version = "0.3", features = ["serde", "rand"] }
+num-bigint = { version = "0.3", features = ["serde"] }
 num-traits = "0.2.8"
-p256 = "0.9"
-rand = "0.7.3"
+p256 = { version = "0.9", default-features = false, features = ["ecdsa"] }
+rand = { version = "0.7.3", default-features = false }
 sodiumoxide = "=0.2.6"
 serde = { version = "1.0", features = ["derive"] }
 strum = "0.20"
@@ -29,4 +29,6 @@ serde_json = "1.0"
 
 
 [features]
+default = ["std"]
+std = ["rand/std", "num-bigint/rand", "libsecp256k1/std", "p256/std"]
 fuzzing = ["fuzzcheck"]
