@@ -50,7 +50,9 @@ jobs:
       - name: OSX dependencies
         if: runner.os == 'macOS'
         run: brew install pkg-config gmp libev libsodium hidapi libffi
-      - name: cargo check
+      - name: cargo check (default features)
         run: cargo check
+      - name: cargo check (no default features)
+        run: cargo check --no-default-features
       - name: cargo test
         run: cargo test
