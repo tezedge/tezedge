@@ -2,23 +2,16 @@ name: clippy
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [ master ]
   pull_request:
 
 jobs:
   clippy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@1.58.1
         with:
-          toolchain: 1.58.1
           components: clippy
-          override: true
-
       - name: lint
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets -- -A clippy::too_many_arguments -A clippy::doc_markdown
+        run: cargo clippy --all-targets -- -A clippy::too_many_arguments -A clippy::doc_markdown
