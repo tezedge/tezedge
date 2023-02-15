@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems, TriliTech and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::convert::{TryFrom, TryInto};
@@ -523,53 +523,39 @@ impl TryFrom<PublicKeyP256> for ContractTz3Hash {
     }
 }
 
-impl TryFrom<&PublicKeyEd25519> for sodiumoxide::crypto::sign::PublicKey {
+impl TryFrom<&PublicKeyEd25519> for ed25519_compact::PublicKey {
     type Error = FromBytesError;
 
     fn try_from(source: &PublicKeyEd25519) -> Result<Self, Self::Error> {
-        Ok(sodiumoxide::crypto::sign::PublicKey(
-            source
-                .0
-                .as_slice()
-                .try_into()
-                .map_err(|_| FromBytesError::InvalidSize)?,
-        ))
-    }
-}
-
-impl TryFrom<&Signature> for sodiumoxide::crypto::sign::Signature {
-    type Error = FromBytesError;
-
-    fn try_from(source: &Signature) -> Result<Self, Self::Error> {
-        Ok(sodiumoxide::crypto::sign::Signature(
-            source
-                .0
-                .as_slice()
-                .try_into()
-                .map_err(|_| FromBytesError::InvalidSize)?,
-        ))
+        source
+            .0
+            .as_slice()
+            .try_into()
+            .map(ed25519_compact::PublicKey::new)
+            .map_err(|_| FromBytesError::InvalidSize)
     }
 }
 
 impl SeedEd25519 {
     pub fn keypair(self) -> Result<(PublicKeyEd25519, SecretKeyEd25519), CryptoError> {
+        use ed25519_compact::{KeyPair, Seed};
+
         let mut v = self.0;
         let seed_bytes = v
             .as_slice()
             .try_into()
             .map_err(|_| CryptoError::InvalidKeySize {
-                expected: 32,
+                expected: Seed::BYTES,
                 actual: v.len(),
             })?;
         v.zeroize();
-        let seed = sodiumoxide::crypto::sign::Seed(seed_bytes);
-        let (pk, sk) = sodiumoxide::crypto::sign::keypair_from_seed(&seed);
-        Ok((PublicKeyEd25519(pk.0.to_vec()), SecretKeyEd25519(sk)))
+        let seed = Seed::new(seed_bytes);
+        let KeyPair { pk, sk } = KeyPair::from_seed(seed);
+        Ok((PublicKeyEd25519(pk.to_vec()), SecretKeyEd25519(sk)))
     }
 }
 
-#[derive(Clone)]
-pub struct SecretKeyEd25519(sodiumoxide::crypto::sign::SecretKey);
+pub struct SecretKeyEd25519(ed25519_compact::SecretKey);
 
 impl PublicKeyEd25519 {
     /// Generates public key hash for public key ed25519
@@ -588,8 +574,24 @@ impl SecretKeyEd25519 {
         I: AsRef<[u8]>,
     {
         let digest = blake2b::digest_all(data, 32).map_err(|_| CryptoError::InvalidMessage)?;
-        let signature = sodiumoxide::crypto::sign::sign_detached(&digest, &self.0);
-        Ok(Signature(signature.0.to_vec()))
+        let signature = self.0.sign(&digest, None);
+        Ok(Signature(signature.to_vec()))
+    }
+}
+
+fn convert_ed25519_err(e: ed25519_compact::Error) -> Result<bool, CryptoError> {
+    use ed25519_compact::Error::*;
+    match e {
+        SignatureMismatch => Ok(false),
+        InvalidPublicKey => Err(CryptoError::InvalidPublicKey),
+        WeakPublicKey => Err(CryptoError::Unsupported("ed25519: WeakPublicKey")),
+        InvalidSecretKey => Err(CryptoError::Unsupported("ed25519: InvalidSecretKey")),
+        InvalidSignature => Err(CryptoError::InvalidSignature),
+        InvalidSeed => Err(CryptoError::Unsupported("ed25519: InvalidSeed")),
+        InvalidBlind => Err(CryptoError::Unsupported("ed25519: InvalidBlind")),
+        InvalidNoise => Err(CryptoError::Unsupported("ed25519: InvalidNoise")),
+        ParseError => Err(CryptoError::Unsupported("ed25519: ParseError")),
+        NonCanonical => Err(CryptoError::Unsupported("ed25519: NonCanonical")),
     }
 }
 
@@ -599,13 +601,22 @@ impl PublicKeySignatureVerifier for PublicKeyEd25519 {
 
     /// Verifies the correctness of `bytes` signed by Ed25519 as the `signature`.
     fn verify_signature(&self, signature: &Signature, bytes: &[u8]) -> Result<bool, Self::Error> {
-        Ok(sodiumoxide::crypto::sign::verify_detached(
-            &signature
-                .try_into()
-                .map_err(|_| CryptoError::InvalidSignature)?,
-            bytes,
-            &self.try_into().map_err(|_| CryptoError::InvalidPublicKey)?,
-        ))
+        let signature = signature
+            .0
+            .as_slice()
+            .try_into()
+            .map(ed25519_compact::Signature::new)
+            .map_err(|_| CryptoError::InvalidSignature)?;
+
+        let pk: ed25519_compact::PublicKey = self
+            .0
+            .as_slice()
+            .try_into()
+            .map(ed25519_compact::PublicKey::new)
+            .map_err(|_| CryptoError::InvalidPublicKey)?;
+
+        pk.verify(bytes, &signature)
+            .map_or_else(convert_ed25519_err, |()| Ok(true))
     }
 }
 

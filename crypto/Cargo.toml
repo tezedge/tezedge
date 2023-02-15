@@ -21,6 +21,7 @@ serde = { version = "1.0", features = ["derive"] }
 strum = "0.20"
 strum_macros = "0.20"
 zeroize = { version = "1.5" }
+ed25519-compact = { version ="2.0", default-features = false }
 
 fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
 
