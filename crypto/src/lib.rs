@@ -9,7 +9,6 @@ use thiserror::Error;
 pub mod blake2b;
 pub mod base58;
 pub mod crypto_box;
-pub mod seeded_step;
 #[macro_use]
 pub mod hash;
 
