@@ -6,12 +6,13 @@ use std::convert::{TryFrom, TryInto};
 use crate::{
     base58::{FromBase58Check, FromBase58CheckError, ToBase58Check},
     blake2b::{self, Blake2bError},
-    crypto_box::CRYPTO_KEY_SIZE,
     CryptoError, PublicKeySignatureVerifier, PublicKeyWithHash,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use zeroize::Zeroize;
+
+const CRYPTO_KEY_SIZE: usize = 32;
 
 mod prefix_bytes {
     pub const CHAIN_ID: [u8; 3] = [87, 82, 0];
@@ -557,11 +558,17 @@ impl SeedEd25519 {
 
 pub struct SecretKeyEd25519(ed25519_compact::SecretKey);
 
+#[derive(Debug, Error, PartialEq)]
+pub enum PublicKeyError {
+    #[error("Error constructing hash: {0}")]
+    HashError(#[from] FromBytesError),
+    #[error("Blake2b digest error: {0}")]
+    Blake2bError(#[from] Blake2bError),
+}
+
 impl PublicKeyEd25519 {
     /// Generates public key hash for public key ed25519
-    pub fn public_key_hash(
-        &self,
-    ) -> Result<CryptoboxPublicKeyHash, crate::crypto_box::PublicKeyError> {
+    pub fn public_key_hash(&self) -> Result<CryptoboxPublicKeyHash, PublicKeyError> {
         CryptoboxPublicKeyHash::try_from(crate::blake2b::digest_128(self.0.as_ref())?)
             .map_err(Into::into)
     }
@@ -732,8 +739,6 @@ impl BlockPayloadHash {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto_box::PublicKey;
-    use hex::FromHex;
 
     #[test]
     fn test_encode_chain_id() -> Result<(), anyhow::Error> {
@@ -869,32 +874,6 @@ mod tests {
         .to_base58_check();
         let expected = "LLoads9N8uB8v659hpNhpbrLzuzLdUCjz5euiR6Lm2hd7C6sS2Vep";
         assert_eq!(expected, encoded);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_encode_public_key_hash() -> Result<(), anyhow::Error> {
-        let pk = PublicKey::from_hex(
-            "2cc1b580f4b8b1f6dbd0aa1d9cde2655c2081c07d7e61249aad8b11d954fb01a",
-        )?;
-        let pk_hash = pk.public_key_hash()?;
-        let decoded = HashType::CryptoboxPublicKeyHash.hash_to_b58check(pk_hash.as_ref())?;
-        let expected = "idsg2wkkDDv2cbEMK4zH49fjgyn7XT";
-        assert_eq!(expected, decoded);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_encode_public_key_hash_new() -> Result<(), anyhow::Error> {
-        let pk = PublicKey::from_hex(
-            "2cc1b580f4b8b1f6dbd0aa1d9cde2655c2081c07d7e61249aad8b11d954fb01a",
-        )?;
-        let pk_hash = pk.public_key_hash()?;
-        let decoded = CryptoboxPublicKeyHash::from_bytes(pk_hash.as_ref())?.to_base58_check();
-        let expected = "idsg2wkkDDv2cbEMK4zH49fjgyn7XT";
-        assert_eq!(expected, decoded);
 
         Ok(())
     }
