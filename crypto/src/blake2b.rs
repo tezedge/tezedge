@@ -1,15 +1,16 @@
-// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems, TriliTech and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use cryptoxide::blake2b::Blake2b;
+use cryptoxide::digest::Digest;
 use serde::{Deserialize, Serialize};
-use sodiumoxide::crypto::generichash::State;
 use thiserror::Error;
 
 #[cfg_attr(feature = "fuzzing", derive(fuzzcheck::DefaultMutator))]
 #[derive(Serialize, Deserialize, Error, Debug, PartialEq, Clone, Copy)]
 pub enum Blake2bError {
     #[error("Output digest length must be between 16 and 64 bytes.")]
-    InvalidLenght,
+    InvalidLength,
     #[error("Blake2b failed")]
     Other,
 }
@@ -38,12 +39,24 @@ pub fn digest_128(data: &[u8]) -> Result<Vec<u8>, Blake2bError> {
 /// Arbitrary Blake2b digest generation from generic data.
 // Should be noted, that base Blake2b supports arbitrary digest length from 16 to 64 bytes
 pub fn digest(data: &[u8], out_len: usize) -> Result<Vec<u8>, Blake2bError> {
-    let mut hasher = State::new(out_len, None).map_err(|_| Blake2bError::InvalidLenght)?;
-    hasher.update(data)?;
+    if out_len < 16 || out_len > 64 {
+        return Err(Blake2bError::InvalidLength);
+    }
 
-    let hash = hasher.finalize()?;
-    let mut result = Vec::with_capacity(out_len);
-    result.extend_from_slice(hash.as_ref());
+    let mut hasher = Blake2b::new(out_len);
+
+    hasher.input(data);
+
+    println!(
+        "DIGEST: out_len {} | output_bytes {} | output_bits {}",
+        out_len,
+        hasher.output_bytes(),
+        hasher.output_bits()
+    );
+    let mut result = vec![0; out_len];
+
+    hasher.result(result.as_mut_slice());
+
     Ok(result)
 }
 
@@ -54,14 +67,19 @@ where
     T: IntoIterator<Item = I>,
     I: AsRef<[u8]>,
 {
-    let mut hasher = State::new(out_len, None).map_err(|_| Blake2bError::InvalidLenght)?;
-    for d in data.into_iter() {
-        hasher.update(d.as_ref())?;
+    if out_len < 16 || out_len > 64 {
+        return Err(Blake2bError::InvalidLength);
     }
 
-    let hash = hasher.finalize()?;
-    let mut result = Vec::with_capacity(out_len);
-    result.extend_from_slice(hash.as_ref());
+    let mut hasher = Blake2b::new(out_len);
+    for d in data.into_iter() {
+        hasher.input(d.as_ref());
+    }
+
+    let mut result = vec![0; out_len];
+
+    hasher.result(result.as_mut_slice());
+
     Ok(result)
 }
 
