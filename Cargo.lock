@@ -155,6 +155,7 @@ dependencies = [
  "anyhow",
  "base58",
  "byteorder",
+ "cryptoxide",
  "ed25519-compact",
  "fuzzcheck",
  "hex",
@@ -193,6 +194,12 @@ dependencies = [
  "generic-array",
  "subtle",
 ]
+
+[[package]]
+name = "cryptoxide"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e71fc7b8ebdfe6f948c2b6cc237301846958ba07a0e3fd8bea4a39f22cc94f2c"
 
 [[package]]
 name = "decent-synquote-alternative"
