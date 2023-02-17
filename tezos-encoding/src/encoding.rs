@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking, Viable Systems, TriliTech and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems, TriliTech, Nomadic Labs and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 //! Schema used for serialization and deserialization.
@@ -336,6 +336,7 @@ hash_has_encoding!(PublicKeySecp256k1, PUBLIC_KEY_SECP256K1);
 hash_has_encoding!(PublicKeyP256, PUBLIC_KEY_P256);
 hash_has_encoding!(Signature, SIGNATURE);
 hash_has_encoding!(NonceHash, NONCE_HASH);
+hash_has_encoding!(SmartRollupHash, SMART_ROLLUP_HASH);
 
 /// Creates impl HasEncoding for given struct backed by lazy_static ref instance with encoding.
 #[macro_export]
