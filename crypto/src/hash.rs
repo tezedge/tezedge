@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems, TriliTech and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::convert::{TryFrom, TryInto};
@@ -6,12 +6,13 @@ use std::convert::{TryFrom, TryInto};
 use crate::{
     base58::{FromBase58Check, FromBase58CheckError, ToBase58Check},
     blake2b::{self, Blake2bError},
-    crypto_box::CRYPTO_KEY_SIZE,
     CryptoError, PublicKeySignatureVerifier, PublicKeyWithHash,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use zeroize::Zeroize;
+
+const CRYPTO_KEY_SIZE: usize = 32;
 
 mod prefix_bytes {
     pub const CHAIN_ID: [u8; 3] = [87, 82, 0];
@@ -523,59 +524,51 @@ impl TryFrom<PublicKeyP256> for ContractTz3Hash {
     }
 }
 
-impl TryFrom<&PublicKeyEd25519> for sodiumoxide::crypto::sign::PublicKey {
+impl TryFrom<&PublicKeyEd25519> for ed25519_compact::PublicKey {
     type Error = FromBytesError;
 
     fn try_from(source: &PublicKeyEd25519) -> Result<Self, Self::Error> {
-        Ok(sodiumoxide::crypto::sign::PublicKey(
-            source
-                .0
-                .as_slice()
-                .try_into()
-                .map_err(|_| FromBytesError::InvalidSize)?,
-        ))
-    }
-}
-
-impl TryFrom<&Signature> for sodiumoxide::crypto::sign::Signature {
-    type Error = FromBytesError;
-
-    fn try_from(source: &Signature) -> Result<Self, Self::Error> {
-        Ok(sodiumoxide::crypto::sign::Signature(
-            source
-                .0
-                .as_slice()
-                .try_into()
-                .map_err(|_| FromBytesError::InvalidSize)?,
-        ))
+        source
+            .0
+            .as_slice()
+            .try_into()
+            .map(ed25519_compact::PublicKey::new)
+            .map_err(|_| FromBytesError::InvalidSize)
     }
 }
 
 impl SeedEd25519 {
     pub fn keypair(self) -> Result<(PublicKeyEd25519, SecretKeyEd25519), CryptoError> {
+        use ed25519_compact::{KeyPair, Seed};
+
         let mut v = self.0;
         let seed_bytes = v
             .as_slice()
             .try_into()
             .map_err(|_| CryptoError::InvalidKeySize {
-                expected: 32,
+                expected: Seed::BYTES,
                 actual: v.len(),
             })?;
         v.zeroize();
-        let seed = sodiumoxide::crypto::sign::Seed(seed_bytes);
-        let (pk, sk) = sodiumoxide::crypto::sign::keypair_from_seed(&seed);
-        Ok((PublicKeyEd25519(pk.0.to_vec()), SecretKeyEd25519(sk)))
+        let seed = Seed::new(seed_bytes);
+        let KeyPair { pk, sk } = KeyPair::from_seed(seed);
+        Ok((PublicKeyEd25519(pk.to_vec()), SecretKeyEd25519(sk)))
     }
 }
 
-#[derive(Clone)]
-pub struct SecretKeyEd25519(sodiumoxide::crypto::sign::SecretKey);
+pub struct SecretKeyEd25519(ed25519_compact::SecretKey);
+
+#[derive(Debug, Error, PartialEq)]
+pub enum PublicKeyError {
+    #[error("Error constructing hash: {0}")]
+    HashError(#[from] FromBytesError),
+    #[error("Blake2b digest error: {0}")]
+    Blake2bError(#[from] Blake2bError),
+}
 
 impl PublicKeyEd25519 {
     /// Generates public key hash for public key ed25519
-    pub fn public_key_hash(
-        &self,
-    ) -> Result<CryptoboxPublicKeyHash, crate::crypto_box::PublicKeyError> {
+    pub fn public_key_hash(&self) -> Result<CryptoboxPublicKeyHash, PublicKeyError> {
         CryptoboxPublicKeyHash::try_from(crate::blake2b::digest_128(self.0.as_ref())?)
             .map_err(Into::into)
     }
@@ -588,8 +581,24 @@ impl SecretKeyEd25519 {
         I: AsRef<[u8]>,
     {
         let digest = blake2b::digest_all(data, 32).map_err(|_| CryptoError::InvalidMessage)?;
-        let signature = sodiumoxide::crypto::sign::sign_detached(&digest, &self.0);
-        Ok(Signature(signature.0.to_vec()))
+        let signature = self.0.sign(&digest, None);
+        Ok(Signature(signature.to_vec()))
+    }
+}
+
+fn convert_ed25519_err(e: ed25519_compact::Error) -> Result<bool, CryptoError> {
+    use ed25519_compact::Error::*;
+    match e {
+        SignatureMismatch => Ok(false),
+        InvalidPublicKey => Err(CryptoError::InvalidPublicKey),
+        WeakPublicKey => Err(CryptoError::Unsupported("ed25519: WeakPublicKey")),
+        InvalidSecretKey => Err(CryptoError::Unsupported("ed25519: InvalidSecretKey")),
+        InvalidSignature => Err(CryptoError::InvalidSignature),
+        InvalidSeed => Err(CryptoError::Unsupported("ed25519: InvalidSeed")),
+        InvalidBlind => Err(CryptoError::Unsupported("ed25519: InvalidBlind")),
+        InvalidNoise => Err(CryptoError::Unsupported("ed25519: InvalidNoise")),
+        ParseError => Err(CryptoError::Unsupported("ed25519: ParseError")),
+        NonCanonical => Err(CryptoError::Unsupported("ed25519: NonCanonical")),
     }
 }
 
@@ -599,13 +608,22 @@ impl PublicKeySignatureVerifier for PublicKeyEd25519 {
 
     /// Verifies the correctness of `bytes` signed by Ed25519 as the `signature`.
     fn verify_signature(&self, signature: &Signature, bytes: &[u8]) -> Result<bool, Self::Error> {
-        Ok(sodiumoxide::crypto::sign::verify_detached(
-            &signature
-                .try_into()
-                .map_err(|_| CryptoError::InvalidSignature)?,
-            bytes,
-            &self.try_into().map_err(|_| CryptoError::InvalidPublicKey)?,
-        ))
+        let signature = signature
+            .0
+            .as_slice()
+            .try_into()
+            .map(ed25519_compact::Signature::new)
+            .map_err(|_| CryptoError::InvalidSignature)?;
+
+        let pk: ed25519_compact::PublicKey = self
+            .0
+            .as_slice()
+            .try_into()
+            .map(ed25519_compact::PublicKey::new)
+            .map_err(|_| CryptoError::InvalidPublicKey)?;
+
+        pk.verify(bytes, &signature)
+            .map_or_else(convert_ed25519_err, |()| Ok(true))
     }
 }
 
@@ -721,8 +739,6 @@ impl BlockPayloadHash {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto_box::PublicKey;
-    use hex::FromHex;
 
     #[test]
     fn test_encode_chain_id() -> Result<(), anyhow::Error> {
@@ -858,32 +874,6 @@ mod tests {
         .to_base58_check();
         let expected = "LLoads9N8uB8v659hpNhpbrLzuzLdUCjz5euiR6Lm2hd7C6sS2Vep";
         assert_eq!(expected, encoded);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_encode_public_key_hash() -> Result<(), anyhow::Error> {
-        let pk = PublicKey::from_hex(
-            "2cc1b580f4b8b1f6dbd0aa1d9cde2655c2081c07d7e61249aad8b11d954fb01a",
-        )?;
-        let pk_hash = pk.public_key_hash()?;
-        let decoded = HashType::CryptoboxPublicKeyHash.hash_to_b58check(pk_hash.as_ref())?;
-        let expected = "idsg2wkkDDv2cbEMK4zH49fjgyn7XT";
-        assert_eq!(expected, decoded);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_encode_public_key_hash_new() -> Result<(), anyhow::Error> {
-        let pk = PublicKey::from_hex(
-            "2cc1b580f4b8b1f6dbd0aa1d9cde2655c2081c07d7e61249aad8b11d954fb01a",
-        )?;
-        let pk_hash = pk.public_key_hash()?;
-        let decoded = CryptoboxPublicKeyHash::from_bytes(pk_hash.as_ref())?.to_base58_check();
-        let expected = "idsg2wkkDDv2cbEMK4zH49fjgyn7XT";
-        assert_eq!(expected, decoded);
 
         Ok(())
     }

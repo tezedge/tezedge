@@ -16,11 +16,12 @@ num-bigint = { version = "0.3", features = ["serde"] }
 num-traits = "0.2.8"
 p256 = { version = "0.9", default-features = false, features = ["ecdsa"] }
 rand = { version = "0.7.3", default-features = false }
-sodiumoxide = "=0.2.6"
 serde = { version = "1.0", features = ["derive"] }
 strum = "0.20"
 strum_macros = "0.20"
 zeroize = { version = "1.5" }
+ed25519-compact = { version ="2.0", default-features = false }
+cryptoxide = { version = "0.4.3", default-features = false, features = ["sha2", "blake2"] }
 
 fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
 

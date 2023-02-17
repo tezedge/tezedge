@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use base58::{FromBase58, ToBase58};
-use sodiumoxide::crypto::hash::sha256;
+use cryptoxide::hashing::sha256;
 use thiserror::Error;
 
 /// Possible errors for base58checked
@@ -33,9 +33,9 @@ pub enum ToBase58CheckError {
 }
 
 /// Create double hash of given binary data
-fn double_sha256(data: &[u8]) -> sha256::Digest {
-    let digest = sha256::hash(data);
-    sha256::hash(digest.as_ref())
+fn double_sha256(data: &[u8]) -> [u8; 32] {
+    let digest = sha256(data);
+    sha256(digest.as_ref())
 }
 
 /// A trait for converting a value to base58 encoded string.

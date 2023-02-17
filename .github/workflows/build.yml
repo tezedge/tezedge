@@ -22,6 +22,8 @@ jobs:
       - name: Setup Rust (regular)
         if: matrix.sanitizer != 'address'
         uses: dtolnay/rust-toolchain@1.58.1
+        with:
+          target: wasm32-unknown-unknown
       - name: Setup Rust (for sanitizer)
         if: matrix.sanitizer == 'address'
         uses: dtolnay/rust-toolchain@master
@@ -56,3 +58,6 @@ jobs:
         run: cargo check --no-default-features
       - name: cargo test
         run: cargo test
+      - name: cargo build - wasm32
+        if: matrix.sanitizer != 'address'
+        run: cargo build --target wasm32-unknown-unknown --no-default-features
