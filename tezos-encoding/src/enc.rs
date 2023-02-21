@@ -12,6 +12,8 @@ pub use tezos_encoding_derive::BinWriter;
 
 use thiserror::Error;
 
+use crypto::bls::Compressed as BlsCompressed;
+
 #[derive(Debug, Error)]
 /// Encoding error kind.
 pub enum BinErrorKind {
@@ -354,6 +356,13 @@ encode_hash!(crypto::hash::SmartRollupHash);
 impl BinWriter for Mutez {
     fn bin_write(&self, out: &mut Vec<u8>) -> BinResult {
         n_bignum(self.0.magnitude(), out)
+    }
+}
+
+impl<T, const COMPRESSED_SIZE: usize> BinWriter for BlsCompressed<T, { COMPRESSED_SIZE }> {
+    fn bin_write(&self, output: &mut Vec<u8>) -> BinResult {
+        output.extend_from_slice(self.as_ref());
+        Ok(())
     }
 }
 

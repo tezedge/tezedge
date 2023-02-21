@@ -22,14 +22,15 @@ strum_macros = "0.20"
 zeroize = { version = "1.5" }
 ed25519-compact = { version ="2.0", default-features = false }
 cryptoxide = { version = "0.4.4", default-features = false, features = ["sha2", "blake2"] }
+blst = "0.3.10"
 
 fuzzcheck = { git = "https://github.com/tezedge/fuzzcheck-rs.git", optional = true }
+proptest = { version = "1.0", optional = true }
 
 [dev-dependencies]
 serde_json = "1.0"
 
-
 [features]
 default = ["std"]
-std = ["rand/std", "num-bigint/rand", "libsecp256k1/std", "p256/std"]
+std = ["rand/std", "num-bigint/rand", "libsecp256k1/std", "p256/std", "proptest"]
 fuzzing = ["fuzzcheck"]

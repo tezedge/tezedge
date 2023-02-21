@@ -48,16 +48,21 @@ jobs:
             sudo add-apt-repository ppa:ubuntu-toolchain-r/test
             sudo add-apt-repository "deb https://apt.llvm.org/trusty/ llvm-toolchain-trusty main"
             sudo apt-get update -y
-            sudo apt-get install libhidapi-dev libsodium-dev libev4 clang libclang-dev llvm-dev g++
+            sudo apt-get install libhidapi-dev libev4 clang libclang-dev llvm-dev g++
       - name: OSX dependencies
         if: runner.os == 'macOS'
-        run: brew install pkg-config gmp libev libsodium hidapi libffi
+        run: brew install pkg-config gmp libev hidapi libffi
       - name: cargo check (default features)
         run: cargo check
       - name: cargo check (no default features)
         run: cargo check --no-default-features
       - name: cargo test
         run: cargo test
-      - name: cargo build - wasm32
-        if: matrix.sanitizer != 'address'
+      - name: cargo build - wasm32 (OSX)
+        if: runner.os == 'macOS'
+        run: |
+          export PATH=/usr/local/opt/llvm/bin:$PATH
+          cargo check --target wasm32-unknown-unknown --no-default-features
+      - name: cargo build - wasm32 (Linux)
+        if: runner.os == 'linux' && matrix.sanitizer != 'address'
         run: cargo build --target wasm32-unknown-unknown --no-default-features
