@@ -1,4 +1,5 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-FileCopyrightText: 2023 TriliTech <contact@trili.tech>
 // SPDX-License-Identifier: MIT
 
 use proc_macro2::Span;
@@ -148,7 +149,7 @@ fn make_basic_encoding_from_type<'a>(
         // String type is mapped to String encoding.
         let string_attr =
             get_attribute_with_option(meta, &symbol::STRING, Some(&symbol::MAX), true)?;
-        Encoding::String(string_attr.map(|param| param.param).flatten(), ident.span())
+        Encoding::String(string_attr.and_then(|param| param.param), ident.span())
     } else if ident == symbol::rust::I64 && has_attribute(meta, &symbol::TIMESTAMP) {
         if let Some(timestamp) = get_attribute_no_param(meta, &symbol::TIMESTAMP)? {
             Encoding::Primitive(PrimitiveEncoding::Timestamp, timestamp.span)
@@ -514,7 +515,7 @@ fn assert_empty_meta(meta: &[syn::Meta]) -> Result<()> {
     }
 }
 
-fn has_attribute(meta: &mut Vec<syn::Meta>, name: &symbol::Symbol) -> bool {
+fn has_attribute(meta: &mut [syn::Meta], name: &symbol::Symbol) -> bool {
     match meta.last() {
         Some(syn::Meta::Path(path)) if path == *name => true,
         Some(syn::Meta::NameValue(name_value)) if name_value.path == *name => true,

@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@1.58.1
+      - uses: dtolnay/rust-toolchain@1.60.0
       - name: install cargo-audit
         run: cargo install cargo-audit
       - name: audit dependencies

@@ -3,7 +3,7 @@ name = "crypto"
 version = "3.1.1"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2021"
-rust-version = "1.58"
+rust-version = "1.60"
 
 [dependencies]
 anyhow = "1.0"

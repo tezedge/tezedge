@@ -50,6 +50,7 @@ pub trait FromBase58Check {
     const CHECKSUM_BYTE_SIZE: usize = 4;
 
     /// Convert a value of `self`, interpreted as base58check encoded data, into the tuple with version and payload as bytes vector.
+    #[allow(clippy::wrong_self_convention)]
     fn from_base58check(&self) -> Result<Vec<u8>, FromBase58CheckError>;
 }
 

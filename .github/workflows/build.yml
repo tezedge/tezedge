@@ -21,14 +21,14 @@ jobs:
       - uses: actions/checkout@v3
       - name: Setup Rust (regular)
         if: matrix.sanitizer != 'address'
-        uses: dtolnay/rust-toolchain@1.58.1
+        uses: dtolnay/rust-toolchain@1.60.0
         with:
           target: wasm32-unknown-unknown
       - name: Setup Rust (for sanitizer)
         if: matrix.sanitizer == 'address'
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2021-12-22
+          toolchain: nightly-2022-04-07
       - name: Settings for cargo in Linux
         if: matrix.sanitizer == 'address'
         run: |
