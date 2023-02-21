@@ -4,6 +4,9 @@
 use std::convert::TryFrom;
 use std::fmt;
 
+use crate::bit_utils::BitReverse;
+use crate::types::{Mutez, Zarith};
+
 use num_bigint::BigUint;
 pub use tezos_encoding_derive::BinWriter;
 
@@ -180,6 +183,79 @@ impl BinWriter for u16 {
     }
 }
 
+impl BinWriter for Zarith {
+    fn bin_write(&self, output: &mut Vec<u8>) -> BinResult {
+        use bit_vec::BitVec;
+        use num_bigint::Sign;
+
+        let (sign, bytes) = self.0.to_bytes_be();
+
+        let mut bits = BitVec::from_bytes(&bytes).reverse();
+
+        // Clear any leading 0-bytes
+        while !bits.is_empty() && !bits[bits.len() - 1] {
+            let _ = bits.pop();
+        }
+
+        let num_bits = bits.len();
+
+        let is_multiple_bytes_encoded = num_bits > 6;
+
+        let encoding = if !is_multiple_bytes_encoded {
+            let mut encoding = BitVec::with_capacity(8);
+            encoding.push(false);
+            encoding.push(Sign::Minus == sign);
+            for _ in 0..(6 - num_bits) {
+                encoding.push(false);
+            }
+            encoding.append(&mut bits.reverse());
+            encoding
+        } else {
+            let rest_bits = num_bits - 6;
+            let last_byte_padding = (7 - rest_bits % 7) % 7;
+            let continuation_bits = (last_byte_padding + rest_bits) / 7;
+            let capacity = 8 + rest_bits + last_byte_padding + continuation_bits;
+
+            let mut encoding = BitVec::with_capacity(capacity);
+            encoding.push(true);
+            encoding.push(Sign::Minus == sign);
+
+            let mut stack = BitVec::with_capacity(7);
+            let mut idx = 0;
+
+            let mut push_next = |num, idx: &mut usize, encoding: &mut BitVec| {
+                for _ in 0..num {
+                    stack.push(bits[*idx]);
+                    *idx += 1;
+                }
+                encoding.append(&mut stack.reverse());
+                stack.truncate(0);
+            };
+
+            push_next(6, &mut idx, &mut encoding);
+
+            while idx % 7 != 0 && idx + 7 < num_bits + last_byte_padding {
+                encoding.push(true); // continuation bit
+                push_next(7, &mut idx, &mut encoding);
+            }
+
+            encoding.push(false); // continuation bit
+            for _ in 0..last_byte_padding {
+                encoding.push(false);
+            }
+
+            push_next(num_bits - idx, &mut idx, &mut encoding);
+
+            encoding
+        };
+        let encoded_bytes = &mut encoding.to_bytes();
+
+        output.append(encoded_bytes);
+
+        Ok(())
+    }
+}
+
 pub fn put_bytes(bytes: &[u8], out: &mut Vec<u8>) {
     out.extend_from_slice(bytes);
 }
@@ -240,8 +316,6 @@ mod integers {
 }
 
 pub use integers::*;
-
-use crate::types::Mutez;
 
 macro_rules! encode_hash {
     ($hash_name:ty) => {
@@ -469,6 +543,8 @@ pub fn n_bignum(n: &BigUint, out: &mut Vec<u8>) -> BinResult {
 #[cfg(test)]
 mod test {
     use super::BinResult;
+    use crate::enc::BinWriter;
+    use crate::types::Zarith;
 
     fn serialize_slice(slice: &[u8], out: &mut Vec<u8>) -> BinResult {
         out.extend_from_slice(slice);
@@ -702,6 +778,45 @@ mod test {
             super::n_bignum(&num, &mut act_enc).unwrap();
             assert_eq!(act_enc, exp_enc);
         }
+    }
+
+    #[test]
+    fn test_zarith() {
+        let data = [
+            ("0", "00"),
+            ("1", "01"),
+            ("7f", "bf01"),
+            ("80", "8002"),
+            ("81", "8102"),
+            ("ff", "bf03"),
+            ("100", "8004"),
+            ("101", "8104"),
+            ("7fff", "bfff03"),
+            ("8000", "808004"),
+            ("8001", "818004"),
+            ("ffff", "bfff07"),
+            ("10000", "808008"),
+            ("10001", "818008"),
+            ("9da879e", "9e9ed49d01"),
+        ];
+
+        for (hex, enc) in data {
+            let num = hex_to_bigint(hex);
+            let enc = hex::decode(enc).unwrap();
+            // let (input, dec) = z_bignum(&input).unwrap();
+
+            let mut bin = Vec::new();
+            Zarith(num.clone())
+                .bin_write(&mut bin)
+                .expect("serialization should work");
+
+            assert_eq!(bin, enc);
+        }
+    }
+
+    fn hex_to_bigint(s: &str) -> num_bigint::BigInt {
+        use num_traits::FromPrimitive;
+        num_bigint::BigInt::from_u64(u64::from_str_radix(s, 16).unwrap()).unwrap()
     }
 
     fn hex_to_biguint(s: &str) -> num_bigint::BigUint {
