@@ -39,7 +39,7 @@ pub fn digest_128(data: &[u8]) -> Result<Vec<u8>, Blake2bError> {
 /// Arbitrary Blake2b digest generation from generic data.
 // Should be noted, that base Blake2b supports arbitrary digest length from 16 to 64 bytes
 pub fn digest(data: &[u8], out_len: usize) -> Result<Vec<u8>, Blake2bError> {
-    if out_len < 16 || out_len > 64 {
+    if !(16..=64).contains(&out_len) {
         return Err(Blake2bError::InvalidLength);
     }
 
@@ -53,7 +53,7 @@ pub fn digest(data: &[u8], out_len: usize) -> Result<Vec<u8>, Blake2bError> {
         hasher.output_bytes(),
         hasher.output_bits()
     );
-    let mut result = vec![0; out_len];
+    let mut result = vec![0; hasher.output_bytes()];
 
     hasher.result(result.as_mut_slice());
 
@@ -67,7 +67,7 @@ where
     T: IntoIterator<Item = I>,
     I: AsRef<[u8]>,
 {
-    if out_len < 16 || out_len > 64 {
+    if !(16..=64).contains(&out_len) {
         return Err(Blake2bError::InvalidLength);
     }
 
@@ -76,7 +76,7 @@ where
         hasher.input(d.as_ref());
     }
 
-    let mut result = vec![0; out_len];
+    let mut result = vec![0; hasher.output_bytes()];
 
     hasher.result(result.as_mut_slice());
 

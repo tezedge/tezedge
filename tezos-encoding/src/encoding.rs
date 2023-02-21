@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking, Viable Systems, Trili Tech and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems, TriliTech, Nomadic Labs and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 //! Schema used for serialization and deserialization.
@@ -329,12 +329,14 @@ hash_has_encoding!(ContractKt1Hash, CONTRACT_KT1HASH);
 hash_has_encoding!(ContractTz1Hash, CONTRACT_TZ1HASH);
 hash_has_encoding!(ContractTz2Hash, CONTRACT_TZ2HASH);
 hash_has_encoding!(ContractTz3Hash, CONTRACT_TZ3HASH);
+hash_has_encoding!(ContractTz4Hash, CONTRACT_TZ4HASH);
 hash_has_encoding!(CryptoboxPublicKeyHash, CRYPTOBOX_PUBLIC_KEY_HASH);
 hash_has_encoding!(PublicKeyEd25519, PUBLIC_KEY_ED25519);
 hash_has_encoding!(PublicKeySecp256k1, PUBLIC_KEY_SECP256K1);
 hash_has_encoding!(PublicKeyP256, PUBLIC_KEY_P256);
 hash_has_encoding!(Signature, SIGNATURE);
 hash_has_encoding!(NonceHash, NONCE_HASH);
+hash_has_encoding!(SmartRollupHash, SMART_ROLLUP_HASH);
 
 /// Creates impl HasEncoding for given struct backed by lazy_static ref instance with encoding.
 #[macro_export]

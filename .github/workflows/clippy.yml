@@ -14,4 +14,4 @@ jobs:
         with:
           components: clippy
       - name: lint
-        run: cargo clippy --all-targets
+        run: cargo clippy --all-targets -- --deny warnings

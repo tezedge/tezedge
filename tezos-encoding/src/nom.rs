@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems, TriliTech, Nomadic Labs and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::HashTrait;
@@ -255,12 +255,14 @@ hash_nom_reader!(ContractKt1Hash);
 hash_nom_reader!(ContractTz1Hash);
 hash_nom_reader!(ContractTz2Hash);
 hash_nom_reader!(ContractTz3Hash);
+hash_nom_reader!(ContractTz4Hash);
 hash_nom_reader!(CryptoboxPublicKeyHash);
 hash_nom_reader!(PublicKeyEd25519);
 hash_nom_reader!(PublicKeySecp256k1);
 hash_nom_reader!(PublicKeyP256);
 hash_nom_reader!(Signature);
 hash_nom_reader!(NonceHash);
+hash_nom_reader!(SmartRollupHash);
 
 impl NomReader for Zarith {
     fn nom_read(bytes: &[u8]) -> NomResult<Self> {

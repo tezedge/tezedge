@@ -1,4 +1,4 @@
-//! Copyright (c) SimpleStaking and Tezedge Contributors
+//! Copyright (c) SimpleStaking, TriliTech, Nomadic Labs and Tezedge Contributors
 //! SPDX-License-Identifier: MIT
 
 use std::convert::TryFrom;
@@ -268,12 +268,14 @@ encode_hash!(crypto::hash::ContractKt1Hash);
 encode_hash!(crypto::hash::ContractTz1Hash);
 encode_hash!(crypto::hash::ContractTz2Hash);
 encode_hash!(crypto::hash::ContractTz3Hash);
+encode_hash!(crypto::hash::ContractTz4Hash);
 encode_hash!(crypto::hash::CryptoboxPublicKeyHash);
 encode_hash!(crypto::hash::PublicKeyEd25519);
 encode_hash!(crypto::hash::PublicKeySecp256k1);
 encode_hash!(crypto::hash::PublicKeyP256);
 encode_hash!(crypto::hash::Signature);
 encode_hash!(crypto::hash::NonceHash);
+encode_hash!(crypto::hash::SmartRollupHash);
 
 impl BinWriter for Mutez {
     fn bin_write(&self, out: &mut Vec<u8>) -> BinResult {

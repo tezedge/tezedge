@@ -30,6 +30,7 @@ mod prefix_bytes {
     pub const CONTRACT_TZ1_HASH: [u8; 3] = [6, 161, 159];
     pub const CONTRACT_TZ2_HASH: [u8; 3] = [6, 161, 161];
     pub const CONTRACT_TZ3_HASH: [u8; 3] = [6, 161, 164];
+    pub const CONTRACT_TZ4_HASH: [u8; 3] = [6, 161, 166];
     pub const PUBLIC_KEY_ED25519: [u8; 4] = [13, 15, 37, 217];
     pub const PUBLIC_KEY_SECP256K1: [u8; 4] = [3, 254, 226, 86];
     pub const PUBLIC_KEY_P256: [u8; 4] = [3, 178, 139, 127];
@@ -38,6 +39,7 @@ mod prefix_bytes {
     pub const GENERIC_SIGNATURE_HASH: [u8; 3] = [4, 130, 43];
     pub const NONCE_HASH: [u8; 3] = [69, 220, 169];
     pub const OPERATION_LIST_HASH: [u8; 2] = [133, 233];
+    pub const SMART_ROLLUP_HASH: [u8; 3] = [6, 124, 117];
 }
 
 pub type Hash = Vec<u8>;
@@ -287,6 +289,7 @@ define_hash!(ContractKt1Hash);
 define_hash!(ContractTz1Hash);
 define_hash!(ContractTz2Hash);
 define_hash!(ContractTz3Hash);
+define_hash!(ContractTz4Hash);
 define_hash!(CryptoboxPublicKeyHash);
 define_hash!(PublicKeyEd25519);
 define_hash!(PublicKeySecp256k1);
@@ -296,6 +299,7 @@ define_hash!(Ed25519Signature);
 define_hash!(Signature);
 define_hash!(NonceHash);
 define_hash!(OperationListHash);
+define_hash!(SmartRollupHash);
 
 /// Note: see Tezos ocaml lib_crypto/base58.ml
 #[derive(Debug, Copy, Clone, PartialEq, strum_macros::AsRefStr)]
@@ -330,6 +334,8 @@ pub enum HashType {
     ContractTz2Hash,
     // "\006\161\164" (* tz3(36) *)
     ContractTz3Hash,
+    // "\006\161\166" (* tz4(36) *)
+    ContractTz4Hash,
     // "\013\015\037\217" (* edpk(54) *)
     PublicKeyEd25519,
     // "\003\254\226\086" (* sppk(55) *)
@@ -346,6 +352,8 @@ pub enum HashType {
     NonceHash,
     // "\133\233" (* Lo(52) *)
     OperationListHash,
+    // "\006\124\117" (* sr1(36) *)
+    SmartRollupHash,
 }
 
 impl HashType {
@@ -368,6 +376,7 @@ impl HashType {
             HashType::ContractTz1Hash => &CONTRACT_TZ1_HASH,
             HashType::ContractTz2Hash => &CONTRACT_TZ2_HASH,
             HashType::ContractTz3Hash => &CONTRACT_TZ3_HASH,
+            HashType::ContractTz4Hash => &CONTRACT_TZ4_HASH,
             HashType::PublicKeyEd25519 => &PUBLIC_KEY_ED25519,
             HashType::PublicKeySecp256k1 => &PUBLIC_KEY_SECP256K1,
             HashType::PublicKeyP256 => &PUBLIC_KEY_P256,
@@ -376,6 +385,7 @@ impl HashType {
             HashType::Signature => &GENERIC_SIGNATURE_HASH,
             HashType::NonceHash => &NONCE_HASH,
             HashType::OperationListHash => &OPERATION_LIST_HASH,
+            HashType::SmartRollupHash => &SMART_ROLLUP_HASH,
         }
     }
 
@@ -399,7 +409,9 @@ impl HashType {
             HashType::ContractKt1Hash
             | HashType::ContractTz1Hash
             | HashType::ContractTz2Hash
-            | HashType::ContractTz3Hash => 20,
+            | HashType::ContractTz3Hash
+            | HashType::ContractTz4Hash
+            | HashType::SmartRollupHash => 20,
             HashType::PublicKeySecp256k1 | HashType::PublicKeyP256 => 33,
             HashType::SeedEd25519 => 32,
             HashType::Ed25519Signature | HashType::Signature => 64,
@@ -1163,6 +1175,12 @@ mod tests {
 
         test!(tz3_hash, ContractTz3Hash, []);
 
+        test!(
+            tz4_hash,
+            ContractTz4Hash,
+            ["tz4FENGt5zkiGaHPm1ya4MgLomgkL1k7Dy7q"]
+        );
+
         test!(pk_hash, CryptoboxPublicKeyHash, []);
 
         test!(pk_ed25519, PublicKeyEd25519, []);
@@ -1174,6 +1192,15 @@ mod tests {
         test!(ed25519_sig, Ed25519Signature, ["edsigtXomBKi5CTRf5cjATJWSyaRvhfYNHqSUGrn4SdbYRcGwQrUGjzEfQDTuqHhuA8b2d8NarZjz8TRf65WkpQmo423BtomS8Q"]);
 
         test!(generic_sig, Signature, ["sigNCaj9CnmD94eZH9C7aPPqBbVCJF72fYmCFAXqEbWfqE633WNFWYQJFnDUFgRUQXR8fQ5tKSfJeTe6UAi75eTzzQf7AEc1"]);
+
+        test!(
+            smart_rollup_hash,
+            SmartRollupHash,
+            [
+                "sr1VN4vvy9uW7zftBvCRmh3RXm3KWS9atR9Q",
+                "sr1VHPsgVnB3gzRyRULuVV2zmbKyRBMq9gbV"
+            ]
+        );
     }
 
     #[test]
