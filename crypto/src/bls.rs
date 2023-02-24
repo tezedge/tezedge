@@ -7,9 +7,8 @@
 use std::fmt::Debug;
 
 use crate::hash::BlsSignature;
-use crate::hash::ContractTz4Hash;
 use crate::hash::PublicKeyBls;
-use crate::PublicKeyWithHash;
+use crate::hash::SecretKeyBls;
 use blst::min_pk;
 use blst::min_pk::{AggregateSignature, SecretKey};
 use blst::BLST_ERROR;
@@ -142,62 +141,30 @@ impl TryFrom<&BlsSignature> for min_pk::Signature {
     }
 }
 
-/// Wrapper of a [SecretKey], alongside its public key.
-#[derive(Clone)]
-pub struct BlsKey {
-    sk: SecretKey,
-    pk: PublicKeyBls,
-    pk_hash: ContractTz4Hash,
-}
-
-impl BlsKey {
-    /// Public key of the contained secret key.
-    pub fn public_key(&self) -> &PublicKeyBls {
-        &self.pk
+/// Bls SecretKey
+impl SecretKeyBls {
+    /// Generate a secret key from initial key material.
+    pub fn from_ikm(ikm: [u8; 32]) -> Result<Self, BlsError> {
+        let sk = SecretKey::key_gen(&ikm, &[]).map_err(BlsError)?;
+        Ok(Self(sk.to_bytes().to_vec()))
     }
 
-    /// Hash of the public key - a.k.a a *Layer 2* address.
-    pub fn public_key_hash(&self) -> &ContractTz4Hash {
-        &self.pk_hash
+    /// Derive the public key for the current secret key.
+    pub fn derive_pk(&self) -> Result<PublicKeyBls, BlsError> {
+        let sk = SecretKey::from_bytes(&self.0).map_err(BlsError)?;
+        let pk = sk.sk_to_pk();
+
+        Ok(PublicKeyBls(pk.to_bytes().to_vec()))
     }
 
-    /// Sign a message, using the *aug* cipher suite.
-    pub fn sign(&self, msg: &[u8]) -> BlsSignature {
-        let message_with_pk = prepend_public_key(msg, &self.pk);
+    /// Sign the given data.
+    pub fn sign(&self, message: impl AsRef<[u8]>) -> Result<BlsSignature, BlsError> {
+        let sk = SecretKey::from_bytes(&self.0).map_err(BlsError)?;
+        let pk = sk.sk_to_pk();
+        let msg = prepend_public_key(message.as_ref(), &PublicKeyBls(pk.to_bytes().to_vec()));
+        let sig = sk.sign(&msg, AUG_CIPHER_SUITE.as_bytes(), &[]);
 
-        BlsSignature(
-            self.sk
-                .sign(&message_with_pk, AUG_CIPHER_SUITE.as_bytes(), &[])
-                .to_bytes()
-                .to_vec(),
-        )
-    }
-
-    /// Deterministically generate a `BlsKey` from initial key material.
-    pub fn from_ikm(ikm: [u8; 32]) -> Self {
-        let sk = SecretKey::key_gen(&ikm, &[]).unwrap();
-        let pk = PublicKeyBls(sk.sk_to_pk().to_bytes().to_vec());
-        let pk_hash = pk.pk_hash().unwrap();
-
-        BlsKey { sk, pk, pk_hash }
-    }
-}
-
-impl PartialEq for BlsKey {
-    /// Equality by comparison of [ContractTz4Hash].
-    fn eq(&self, other: &Self) -> bool {
-        self.pk_hash == other.pk_hash
-    }
-}
-
-impl Debug for BlsKey {
-    /// Debug [BlsKey] must not expose the [SecretKey].
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(
-            f,
-            "BlsKey(\"{}\")",
-            self.public_key_hash().to_base58_check()
-        )
+        Ok(BlsSignature(sig.to_bytes().to_vec()))
     }
 }
 
@@ -210,7 +177,7 @@ fn prepend_public_key(msg: &[u8], pk: &PublicKeyBls) -> Vec<u8> {
     message_with_pk
 }
 
-#[cfg(any(test, feature = "rand"))]
+#[cfg(any(test, feature = "std"))]
 mod bls_gen {
     //! Generation of Bls keys used for testing.
     //!
@@ -218,18 +185,21 @@ mod bls_gen {
     //! - `key in BlsKey::arb()` during Property Based Tests.
     //! - `let key: BlsKey = Faker.fake()` in unit tests, when hardcoding a key is
     //!   undesirable.
-    use super::*;
+    use crate::hash::SecretKeyBls;
     use proptest::prelude::*;
     use rand::Rng;
 
-    impl BlsKey {
+    impl SecretKeyBls {
         /// Generate arbitrary bls keys for testing
-        pub fn arb() -> BoxedStrategy<BlsKey> {
-            any::<[u8; 32]>().prop_map(Self::from_ikm).boxed()
+        pub fn arb() -> BoxedStrategy<Self> {
+            any::<[u8; 32]>()
+                .prop_map(Self::from_ikm)
+                .prop_map(Result::unwrap)
+                .boxed()
         }
 
         /// Generate random bls key
-        pub fn generate() -> Self {
+        pub fn generate() -> Result<Self, super::BlsError> {
             let ikm = rand::thread_rng().gen::<[u8; 32]>();
             Self::from_ikm(ikm)
         }
@@ -346,14 +316,14 @@ mod tests {
     // prepended to msg.
     #[test]
     fn bls_sign_with_public_key() {
-        use super::*;
-
         let ikm = [0; 32];
-        let key = BlsKey::from_ikm(ikm);
+        let key = SecretKeyBls::from_ikm(ikm).expect("Valid ikm");
+        let pk = key.derive_pk().expect("Should derive pk");
+        let pk_hash = pk.pk_hash().unwrap();
 
         assert_eq!(
             "tz4TpX5Qb3w7xnnnwSpjFs7Kq35GC4qr3uMg",
-            &key.pk_hash.to_base58_check(),
+            &pk_hash.to_base58_check(),
             "expected addresses to match"
         );
 
@@ -363,7 +333,7 @@ mod tests {
             0, 240, 81, 245, 127, 30, 24, 147, 198, 135, 89,
         ];
 
-        let actual_pk_bytes = key.pk.0.as_slice();
+        let actual_pk_bytes = pk.0.as_slice();
         assert_eq!(expected_pk_bytes, actual_pk_bytes, "expected pk to match");
 
         let msg_bytes = &[
@@ -377,7 +347,7 @@ mod tests {
             101, 116, 115,
         ];
 
-        let sig = key.sign(msg_bytes);
+        let sig = key.sign(msg_bytes).expect("Signing should succeed");
 
         let expected_sig = &[
             170, 60, 254, 35, 122, 181, 133, 165, 130, 161, 54, 157, 133, 39, 163, 49, 146, 56, 61,
@@ -469,10 +439,11 @@ mod tests {
 
     proptest! {
       #[test]
-      fn verify_signature_of_single_pk(key in BlsKey::arb(), msg in any::<Vec<u8>>()) {
-          let sig = key.sign(msg.as_slice());
+      fn verify_signature_of_single_pk(sk in SecretKeyBls::arb(), msg in any::<Vec<u8>>()) {
+          let sig = sk.sign(msg.as_slice()).unwrap();
+          let pk = sk.derive_pk().unwrap();
 
-          let msg_keys = [(msg.as_slice(), &key.pk)];
+          let msg_keys = [(msg.as_slice(), &pk)];
 
           let res = sig.aggregate_verify(&mut msg_keys.into_iter());
 
@@ -481,24 +452,27 @@ mod tests {
 
       #[test]
       fn verify_aggregate_signature(
-          fst_key in BlsKey::arb(),
-          snd_key in BlsKey::arb(),
+          fst_key in SecretKeyBls::arb(),
+          snd_key in SecretKeyBls::arb(),
           fst_msg in any::<Vec<u8>>(),
           snd_msg in any::<Vec<u8>>(),
       ) {
-          let sig1 = fst_key.sign(fst_msg.as_slice());
-          let sig2 = fst_key.sign(snd_msg.as_slice());
-          let sig3 = snd_key.sign(fst_msg.as_slice());
-          let sig4 = snd_key.sign(snd_msg.as_slice());
+          let sig1 = fst_key.sign(fst_msg.as_slice()).unwrap();
+          let sig2 = fst_key.sign(snd_msg.as_slice()).unwrap();
+          let sig3 = snd_key.sign(fst_msg.as_slice()).unwrap();
+          let sig4 = snd_key.sign(snd_msg.as_slice()).unwrap();
+
+          let fst_pk = fst_key.derive_pk().unwrap();
+          let snd_pk = snd_key.derive_pk().unwrap();
 
           let sig = BlsSignature::aggregate_sigs(&[&sig1, &sig2, &sig3, &sig4])
               .expect("aggregation should work");
 
           let msg_keys = [
-              (fst_msg.as_slice(), &fst_key.pk),
-              (snd_msg.as_slice(), &fst_key.pk),
-              (fst_msg.as_slice(), &snd_key.pk),
-              (snd_msg.as_slice(), &snd_key.pk),
+              (fst_msg.as_slice(), &fst_pk),
+              (snd_msg.as_slice(), &fst_pk),
+              (fst_msg.as_slice(), &snd_pk),
+              (snd_msg.as_slice(), &snd_pk),
           ];
 
           let res = sig.aggregate_verify(&mut msg_keys.into_iter());
@@ -508,13 +482,14 @@ mod tests {
 
       #[test]
       fn verify_signature_fails_with_wrong_pk(
-          signing_key in BlsKey::arb(),
-          other_key in BlsKey::arb(),
+          signing_key in SecretKeyBls::arb(),
+          other_key in SecretKeyBls::arb(),
           msg in any::<Vec<u8>>()
       ) {
-          let sig = signing_key.sign(msg.as_slice());
+          let sig = signing_key.sign(msg.as_slice()).unwrap();
+          let other_pk = other_key.derive_pk().unwrap();
 
-          let msg_keys = [(msg.as_slice(), &other_key.pk)];
+          let msg_keys = [(msg.as_slice(), &other_pk)];
 
           let res = sig.aggregate_verify(&mut msg_keys.into_iter());
 

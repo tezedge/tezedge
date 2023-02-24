@@ -37,6 +37,7 @@ mod prefix_bytes {
     pub const PUBLIC_KEY_P256: [u8; 4] = [3, 178, 139, 127];
     pub const PUBLIC_KEY_BLS: [u8; 4] = [6, 149, 135, 204];
     pub const SEED_ED25519: [u8; 4] = [43, 246, 78, 7];
+    pub const SECRET_KEY_BLS: [u8; 4] = [3, 150, 192, 40];
     pub const ED22519_SIGNATURE_HASH: [u8; 5] = [9, 245, 205, 134, 18];
     pub const GENERIC_SIGNATURE_HASH: [u8; 3] = [4, 130, 43];
     pub const BLS_SIGNATURE_HASH: [u8; 4] = [40, 171, 64, 207];
@@ -299,6 +300,7 @@ define_hash!(PublicKeySecp256k1);
 define_hash!(PublicKeyP256);
 define_hash!(PublicKeyBls);
 define_hash!(SeedEd25519);
+define_hash!(SecretKeyBls);
 define_hash!(Ed25519Signature);
 define_hash!(Signature);
 define_hash!(BlsSignature);
@@ -351,6 +353,8 @@ pub enum HashType {
     PublicKeyBls,
     // "\043\246\078\007" (* edsk(98) *)
     SeedEd25519,
+    // "\003\150\192\040" (* BLsk(54) *)
+    SecretKeyBls,
     // "\009\245\205\134\018" (* edsig(99) *)
     Ed25519Signature,
     // "\004\130\043" (* sig(96) *)
@@ -391,6 +395,7 @@ impl HashType {
             HashType::PublicKeyP256 => &PUBLIC_KEY_P256,
             HashType::PublicKeyBls => &PUBLIC_KEY_BLS,
             HashType::SeedEd25519 => &SEED_ED25519,
+            HashType::SecretKeyBls => &SECRET_KEY_BLS,
             HashType::Ed25519Signature => &ED22519_SIGNATURE_HASH,
             HashType::Signature => &GENERIC_SIGNATURE_HASH,
             HashType::BlsSignature => &BLS_SIGNATURE_HASH,
@@ -424,7 +429,7 @@ impl HashType {
             | HashType::ContractTz4Hash
             | HashType::SmartRollupHash => 20,
             HashType::PublicKeySecp256k1 | HashType::PublicKeyP256 => 33,
-            HashType::SeedEd25519 => 32,
+            HashType::SeedEd25519 | HashType::SecretKeyBls => 32,
             HashType::PublicKeyBls => 48,
             HashType::Ed25519Signature | HashType::Signature => 64,
             HashType::BlsSignature => 96,
@@ -1217,6 +1222,12 @@ mod tests {
             pk_bls,
             PublicKeyBls,
             ["BLpk1xKLj4548aKR3x7NRwjz5zUnW54MMJAbwTC2qy7owXHvhFomZsYwgAF7agLEzEgrjj5LDeBh"]
+        );
+
+        test!(
+            sk_bls,
+            SecretKeyBls,
+            ["BLsk1WTwJFkLU2P57itDq1cgEUqJK7Fwygvtj49vT4HeLfNBXRgpDA"]
         );
 
         test!(ed25519_sig, Ed25519Signature, ["edsigtXomBKi5CTRf5cjATJWSyaRvhfYNHqSUGrn4SdbYRcGwQrUGjzEfQDTuqHhuA8b2d8NarZjz8TRf65WkpQmo423BtomS8Q"]);
