@@ -1,5 +1,6 @@
-//! Copyright (c) SimpleStaking, TriliTech, Nomadic Labs and Tezedge Contributors
-//! SPDX-License-Identifier: MIT
+// Copyright (c) SimpleStaking, Nomadic Labs and Tezedge Contributors
+// SPDX-CopyrightText: 2022-2023 TriliTech <contact@trili.tech>
+// SPDX-License-Identifier: MIT
 
 use std::convert::TryFrom;
 use std::fmt;
@@ -349,6 +350,7 @@ encode_hash!(crypto::hash::CryptoboxPublicKeyHash);
 encode_hash!(crypto::hash::PublicKeyEd25519);
 encode_hash!(crypto::hash::PublicKeySecp256k1);
 encode_hash!(crypto::hash::PublicKeyP256);
+encode_hash!(crypto::hash::PublicKeyBls);
 encode_hash!(crypto::hash::Signature);
 encode_hash!(crypto::hash::NonceHash);
 encode_hash!(crypto::hash::SmartRollupHash);

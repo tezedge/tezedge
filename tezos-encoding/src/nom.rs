@@ -1,7 +1,7 @@
-// Copyright (c) SimpleStaking, Viable Systems, TriliTech, Nomadic Labs and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems, Nomadic Labs and Tezedge Contributors
+// SPDX-CopyrightText: 2022-2023 TriliTech <contact@trili.tech>
 // SPDX-License-Identifier: MIT
 
-use crypto::bls::CompressedPublicKey as BlsCompressedPublicKey;
 use crypto::bls::CompressedSignature as BlsCompressedSignature;
 use crypto::hash::HashTrait;
 use nom::{
@@ -262,6 +262,7 @@ hash_nom_reader!(CryptoboxPublicKeyHash);
 hash_nom_reader!(PublicKeyEd25519);
 hash_nom_reader!(PublicKeySecp256k1);
 hash_nom_reader!(PublicKeyP256);
+hash_nom_reader!(PublicKeyBls);
 hash_nom_reader!(Signature);
 hash_nom_reader!(NonceHash);
 hash_nom_reader!(SmartRollupHash);
@@ -277,19 +278,6 @@ impl NomReader for Mutez {
         map(n_bignum, |big_uint| {
             BigInt::from_biguint(Sign::Plus, big_uint).into()
         })(bytes)
-    }
-}
-
-impl NomReader for BlsCompressedPublicKey {
-    fn nom_read(input: &[u8]) -> NomResult<Self> {
-        sized(
-            Self::COMPRESSED_SIZE,
-            map(rest, |input: &[u8]| {
-                let mut bytes = [0; Self::COMPRESSED_SIZE];
-                bytes.copy_from_slice(input);
-                Self::from(bytes)
-            }),
-        )(input)
     }
 }
 

@@ -15,11 +15,11 @@
 
 use std::fmt::{Debug, Formatter};
 
-use crate::hash::{ContractTz4Hash, TryFromPKError};
+use crate::hash::ContractTz4Hash;
+use crate::hash::PublicKeyBls;
 use crate::PublicKeyWithHash;
-use blst::min_pk::{
-    AggregateSignature, PublicKey as BlstPublicKey, SecretKey, Signature as BlstSignature,
-};
+use blst::min_pk;
+use blst::min_pk::{AggregateSignature, SecretKey, Signature as BlstSignature};
 use blst::BLST_ERROR;
 use thiserror::Error;
 
@@ -52,25 +52,15 @@ fn bool_result_from(blst_error: BLST_ERROR) -> Result<bool, BlsError> {
 
 /// Wrap a `blst` signature
 ///
-/// The signature can be verified together with a message and [PublicKey].
+/// The signature can be verified together with a message and [PublicKeyBls].
 #[derive(Debug, PartialEq)]
 pub struct Signature(BlstSignature);
 
-/// Wrap `blst` public key
-///
-/// Use with a [Signature] for verification.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct PublicKey(BlstPublicKey);
+impl TryFrom<&PublicKeyBls> for min_pk::PublicKey {
+    type Error = BlsError;
 
-impl PublicKey {
-    /// The length in bytes of a compressed [BlstPublicKey].
-    pub const COMPRESSED_SIZE: usize = 48;
-}
-
-#[allow(clippy::from_over_into)]
-impl Into<[u8; 48]> for PublicKey {
-    fn into(self) -> [u8; 48] {
-        self.0.to_bytes()
+    fn try_from(source: &PublicKeyBls) -> Result<Self, Self::Error> {
+        min_pk::PublicKey::from_bytes(&source.0).map_err(BlsError)
     }
 }
 
@@ -78,7 +68,7 @@ impl Into<[u8; 48]> for PublicKey {
 ///
 /// This follows the `aggregate_verify` calling convention used for TORU.
 /// Not currently being used, but the mode is available in the tezos protocol.
-pub type Message<'a> = (&'a [u8], &'a PublicKey);
+pub type Message<'a> = (&'a [u8], &'a PublicKeyBls);
 
 /// Basic `dst` parameter for `blst`
 ///
@@ -114,17 +104,27 @@ impl Signature {
         &self,
         messages: &mut impl Iterator<Item = Message<'a>>,
     ) -> Result<bool, BlsError> {
-        let (messages, public_keys): (Vec<_>, Vec<_>) = messages
+        let messages_with_pk = messages
             .map(|(message, public_key)| {
                 // For saftey, we ensure that each message is unique by prepending the
                 // public key.
                 let message_with_pk = prepend_public_key(message, public_key);
 
-                (message_with_pk, &public_key.0)
+                public_key
+                    .try_into()
+                    .map(move |public_key| (message_with_pk, public_key))
             })
-            .unzip();
+            .collect::<Result<Vec<(Vec<u8>, min_pk::PublicKey)>, _>>()?;
 
-        let messages = messages.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let messages = messages_with_pk
+            .iter()
+            .map(|(message, _)| message.as_slice())
+            .collect::<Vec<_>>();
+
+        let public_keys = messages_with_pk
+            .iter()
+            .map(|(_, pk)| pk)
+            .collect::<Vec<_>>();
 
         // Tezos_crypto uses the Aug suite
         let dst = AUG_CIPHER_SUITE.as_bytes();
@@ -278,31 +278,6 @@ macro_rules! compressed {
 compressed!(Signature, BlstSignature, CompressedSignature, {
     Signature::COMPRESSED_SIZE
 });
-compressed!(PublicKey, BlstPublicKey, CompressedPublicKey, {
-    PublicKey::COMPRESSED_SIZE
-});
-
-impl PublicKeyWithHash for CompressedPublicKey {
-    type Hash = ContractTz4Hash;
-    type Error = TryFromPKError;
-
-    fn pk_hash(&self) -> Result<Self::Hash, Self::Error> {
-        let hash = crate::blake2b::digest_160(&self.compressed)?;
-        let typed_hash = Self::Hash::try_from(hash.as_slice())?;
-        Ok(typed_hash)
-    }
-}
-
-impl Debug for CompressedPublicKey {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        match self.pk_hash() {
-            Ok(hash) => {
-                write!(f, "CompressedPK(\"{}\")", hash.to_base58_check())
-            }
-            Err(e) => write!(f, "CompressedPK(<hash unavailable: {:?}>)", e),
-        }
-    }
-}
 
 impl Debug for CompressedSignature {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -314,20 +289,14 @@ impl Debug for CompressedSignature {
 #[derive(Clone)]
 pub struct BlsKey {
     sk: SecretKey,
-    pk: PublicKey,
-    cpk: CompressedPublicKey,
+    pk: PublicKeyBls,
     pk_hash: ContractTz4Hash,
 }
 
 impl BlsKey {
     /// Public key of the contained secret key.
-    pub fn public_key(&self) -> &PublicKey {
+    pub fn public_key(&self) -> &PublicKeyBls {
         &self.pk
-    }
-
-    /// Compressed public key of the contained secret key.
-    pub fn compressed_public_key(&self) -> &CompressedPublicKey {
-        &self.cpk
     }
 
     /// Hash of the public key - a.k.a a *Layer 2* address.
@@ -348,16 +317,10 @@ impl BlsKey {
     /// Deterministically generate a `BlsKey` from initial key material.
     pub fn from_ikm(ikm: [u8; 32]) -> Self {
         let sk = SecretKey::key_gen(&ikm, &[]).unwrap();
-        let pk = PublicKey(sk.sk_to_pk());
-        let cpk: CompressedPublicKey = (&pk).into();
-        let pk_hash = cpk.pk_hash().unwrap();
+        let pk = PublicKeyBls(sk.sk_to_pk().to_bytes().to_vec());
+        let pk_hash = pk.pk_hash().unwrap();
 
-        BlsKey {
-            sk,
-            pk,
-            cpk,
-            pk_hash,
-        }
+        BlsKey { sk, pk, pk_hash }
     }
 }
 
@@ -380,9 +343,10 @@ impl Debug for BlsKey {
 }
 
 // We prepend each message with the public key used to sign it.
-fn prepend_public_key(msg: &[u8], pk: &PublicKey) -> Vec<u8> {
-    let mut message_with_pk = Vec::with_capacity(msg.len() + PublicKey::COMPRESSED_SIZE);
-    message_with_pk.extend_from_slice(&pk.0.compress());
+fn prepend_public_key(msg: &[u8], pk: &PublicKeyBls) -> Vec<u8> {
+    let mut message_with_pk =
+        Vec::with_capacity(msg.len() + crate::hash::HashType::PublicKeyP256.size());
+    message_with_pk.extend_from_slice(&pk.0);
     message_with_pk.extend_from_slice(msg);
     message_with_pk
 }
@@ -415,8 +379,7 @@ mod bls_gen {
 
 #[cfg(test)]
 mod tests {
-    use super::{BlsKey, CompressedPublicKey};
-    use crate::bls::Signature;
+    use super::*;
     use crate::{
         base58::FromBase58Check,
         hash::{ContractTz4Hash, HashTrait},
@@ -463,7 +426,7 @@ mod tests {
 
     #[test]
     fn return_error_on_invalid_public_key_encoding() {
-        use super::{BlsError, PublicKey};
+        use super::{min_pk, BlsError, PublicKeyBls};
         use blst::BLST_ERROR;
 
         let bytes: [u8; 48] = [
@@ -472,29 +435,29 @@ mod tests {
             181, 190, 79, 226, 209, 166, 137, 54, 88, 14, 28,
         ];
 
-        let pk = PublicKey::try_from(bytes);
+        let pk = PublicKeyBls(bytes.to_vec());
+        let pk = min_pk::PublicKey::try_from(&pk);
 
         assert_eq!(pk, Err(BlsError(BLST_ERROR::BLST_BAD_ENCODING)));
     }
 
     #[test]
     fn decode_valid_public_key_is_ok() {
-        use super::PublicKey;
-
         let bytes: [u8; 48] = [
             145, 150, 3, 232, 142, 40, 236, 191, 116, 53, 15, 47, 240, 143, 182, 94, 110, 121, 160,
             108, 247, 42, 34, 231, 133, 156, 81, 111, 62, 109, 59, 223, 198, 220, 89, 7, 173, 251,
             241, 82, 161, 86, 161, 40, 141, 57, 145, 123,
         ];
 
-        let pk = PublicKey::try_from(bytes);
+        let pk = PublicKeyBls(bytes.to_vec());
+        let pk = min_pk::PublicKey::try_from(&pk);
 
         assert!(pk.is_ok());
     }
 
     #[test]
     fn can_verify_signature_is_true() {
-        use super::{PublicKey, Signature, AUG_CIPHER_SUITE};
+        use super::{Signature, AUG_CIPHER_SUITE};
         use blst::min_pk::SecretKey;
 
         let ikm: [u8; 32] = [
@@ -503,13 +466,13 @@ mod tests {
         ];
 
         let sk = SecretKey::key_gen(&ikm, &[]).unwrap();
-        let pk = PublicKey(sk.sk_to_pk());
+        let pk = PublicKeyBls(sk.sk_to_pk().to_bytes().to_vec());
 
         let dst = AUG_CIPHER_SUITE.as_bytes();
 
         let msg = b"blst is such a blast";
         let mut signed_bytes = Vec::new();
-        signed_bytes.extend_from_slice(&pk.0.compress());
+        signed_bytes.extend_from_slice(&pk.0);
         signed_bytes.extend_from_slice(msg);
 
         let sig = Signature(sk.sign(&signed_bytes, dst, &[]));
@@ -541,8 +504,8 @@ mod tests {
             0, 240, 81, 245, 127, 30, 24, 147, 198, 135, 89,
         ];
 
-        let actual_pk_bytes = CompressedPublicKey::from(&key.pk).compressed;
-        assert_eq!(expected_pk_bytes, &actual_pk_bytes, "expected pk to match");
+        let actual_pk_bytes = key.pk.0.as_slice();
+        assert_eq!(expected_pk_bytes, actual_pk_bytes, "expected pk to match");
 
         let msg_bytes = &[
             0, 0, 0, 141, 0, 166, 149, 173, 50, 93, 252, 126, 17, 145, 251, 201, 241, 134, 245,
@@ -576,7 +539,7 @@ mod tests {
 
     #[test]
     fn can_verify_signature_is_false() {
-        use super::{PublicKey, Signature};
+        use super::Signature;
         use blst::min_pk::SecretKey;
 
         let ikm: [u8; 32] = [
@@ -594,7 +557,7 @@ mod tests {
         ];
 
         let sk = SecretKey::key_gen(&ikm, &[]).unwrap();
-        let pk = PublicKey(sk.sk_to_pk());
+        let pk = PublicKeyBls(sk.sk_to_pk().to_bytes().to_vec());
 
         let msg = b"blst is such a blast";
         let sig = Signature::try_from(signature_bytes);
@@ -637,9 +600,9 @@ mod tests {
             let pk_bytes: [u8; 48] = pk_bytes[4..] // remove prefix of `BLpk`
                 .try_into()
                 .expect("pk_bytes should be 48 bytes long");
-            let cpk = CompressedPublicKey::try_from(pk_bytes).expect("Valid pk bytes");
+            let pk = PublicKeyBls(pk_bytes.to_vec());
 
-            let tz4 = cpk.pk_hash().expect("CompressedPublicKey hashable");
+            let tz4 = pk.pk_hash().expect("PublicKey hashable");
 
             let expected_tz4 = ContractTz4Hash::from_b58check(tz4_b58).expect("Valid tz4 b58");
 
