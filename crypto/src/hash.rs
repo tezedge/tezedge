@@ -39,6 +39,7 @@ mod prefix_bytes {
     pub const SEED_ED25519: [u8; 4] = [43, 246, 78, 7];
     pub const ED22519_SIGNATURE_HASH: [u8; 5] = [9, 245, 205, 134, 18];
     pub const GENERIC_SIGNATURE_HASH: [u8; 3] = [4, 130, 43];
+    pub const BLS_SIGNATURE_HASH: [u8; 4] = [40, 171, 64, 207];
     pub const NONCE_HASH: [u8; 3] = [69, 220, 169];
     pub const OPERATION_LIST_HASH: [u8; 2] = [133, 233];
     pub const SMART_ROLLUP_HASH: [u8; 3] = [6, 124, 117];
@@ -300,6 +301,7 @@ define_hash!(PublicKeyBls);
 define_hash!(SeedEd25519);
 define_hash!(Ed25519Signature);
 define_hash!(Signature);
+define_hash!(BlsSignature);
 define_hash!(NonceHash);
 define_hash!(OperationListHash);
 define_hash!(SmartRollupHash);
@@ -353,6 +355,8 @@ pub enum HashType {
     Ed25519Signature,
     // "\004\130\043" (* sig(96) *)
     Signature,
+    // "\040\171\064\207" (* BLsig(142) *)
+    BlsSignature,
     // "\069\220\169" (* nce(53) *)
     NonceHash,
     // "\133\233" (* Lo(52) *)
@@ -389,6 +393,7 @@ impl HashType {
             HashType::SeedEd25519 => &SEED_ED25519,
             HashType::Ed25519Signature => &ED22519_SIGNATURE_HASH,
             HashType::Signature => &GENERIC_SIGNATURE_HASH,
+            HashType::BlsSignature => &BLS_SIGNATURE_HASH,
             HashType::NonceHash => &NONCE_HASH,
             HashType::OperationListHash => &OPERATION_LIST_HASH,
             HashType::SmartRollupHash => &SMART_ROLLUP_HASH,
@@ -422,6 +427,7 @@ impl HashType {
             HashType::SeedEd25519 => 32,
             HashType::PublicKeyBls => 48,
             HashType::Ed25519Signature | HashType::Signature => 64,
+            HashType::BlsSignature => 96,
         }
     }
 

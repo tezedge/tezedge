@@ -2,24 +2,16 @@
 //
 // SPDX-License-Identifier: MIT
 
-//! BLS support for the kernel
-//!
-//! Provides signature verification and de-serialization functions for BLS
-//! signatures & public keys.
-//!
-//! Encoding is done via the [Compressed] struct, for compatability with [tezos_encoding],
-//! as deserialization must either succeed, or return a limited number of error types.
-//!
-//! Therefore, we encode using an intermediate structure, and will provide separate logic
-//! covering instances where the encoding succeeds, but the final conversion fails.
+//! BLS support (min_key).
 
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 
+use crate::hash::BlsSignature;
 use crate::hash::ContractTz4Hash;
 use crate::hash::PublicKeyBls;
 use crate::PublicKeyWithHash;
 use blst::min_pk;
-use blst::min_pk::{AggregateSignature, SecretKey, Signature as BlstSignature};
+use blst::min_pk::{AggregateSignature, SecretKey};
 use blst::BLST_ERROR;
 use thiserror::Error;
 
@@ -49,12 +41,6 @@ fn bool_result_from(blst_error: BLST_ERROR) -> Result<bool, BlsError> {
         _ => Err(BlsError(blst_error)),
     }
 }
-
-/// Wrap a `blst` signature
-///
-/// The signature can be verified together with a message and [PublicKeyBls].
-#[derive(Debug, PartialEq)]
-pub struct Signature(BlstSignature);
 
 impl TryFrom<&PublicKeyBls> for min_pk::PublicKey {
     type Error = BlsError;
@@ -89,10 +75,7 @@ const AUG_CIPHER_SUITE: &str = "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_AUG_";
 #[allow(dead_code)]
 const POP_CIPHER_SUITE: &str = "BLS_POP_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
 
-impl Signature {
-    /// The length in bytes of a compressed [BlstSignature].
-    pub const COMPRESSED_SIZE: usize = 96;
-
+impl BlsSignature {
     /// Verify several messages with public keys and _one_ signature.
     ///
     /// Verify a signature for one or more messages. The signature must have been
@@ -104,6 +87,8 @@ impl Signature {
         &self,
         messages: &mut impl Iterator<Item = Message<'a>>,
     ) -> Result<bool, BlsError> {
+        let signature: min_pk::Signature = self.try_into()?;
+
         let messages_with_pk = messages
             .map(|(message, public_key)| {
                 // For saftey, we ensure that each message is unique by prepending the
@@ -129,159 +114,31 @@ impl Signature {
         // Tezos_crypto uses the Aug suite
         let dst = AUG_CIPHER_SUITE.as_bytes();
 
-        bool_result_from(
-            self.0
-                .aggregate_verify(true, &messages, dst, &public_keys, true),
-        )
+        bool_result_from(signature.aggregate_verify(true, &messages, dst, &public_keys, true))
     }
 
     /// Aggregate individual signatures into a single signature.
     pub fn aggregate_sigs(sigs: &[&Self]) -> Result<Self, BlsError> {
-        let sigs: Vec<_> = sigs.iter().map(|Self(s)| s).collect();
+        let sigs = sigs
+            .iter()
+            .map(|s| min_pk::Signature::try_from(*s))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let sigs = sigs.iter().collect::<Vec<_>>();
 
         let aggregate = AggregateSignature::aggregate(sigs.as_slice(), true).map_err(BlsError)?;
 
         aggregate.validate().map_err(BlsError)?;
 
-        Ok(Signature(aggregate.to_signature()))
+        Ok(Self(aggregate.to_signature().compress().to_vec()))
     }
 }
 
-/// Compressed version of `T` in bytes of a known length; used for encoding.
-///
-/// It may freely be deserialized to/from bytes, but must be validated when
-/// uncompressing into `T`.
-pub struct Compressed<T, const COMPRESSED_SIZE: usize> {
-    compressed: [u8; COMPRESSED_SIZE],
-    phantom: core::marker::PhantomData<T>,
-}
+impl TryFrom<&BlsSignature> for min_pk::Signature {
+    type Error = BlsError;
 
-#[allow(clippy::from_over_into)]
-impl<T, const COMPRESSED_SIZE: usize> Into<String> for Compressed<T, { COMPRESSED_SIZE }> {
-    fn into(self) -> String {
-        hex::encode(self.compressed)
-    }
-}
-
-impl<T, const COMPRESSED_SIZE: usize> TryFrom<String> for Compressed<T, { COMPRESSED_SIZE }> {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let compressed: [u8; COMPRESSED_SIZE] = hex::decode(value)
-            .expect("valid hex")
-            .try_into()
-            .expect("correct length");
-        Ok(Self {
-            compressed,
-            phantom: core::marker::PhantomData,
-        })
-    }
-}
-
-// Manual impl of `Copy + Clone` required, as auto-derive places bounds on `T`,
-// which in this case should be avoided as `T` is only used within `PhantomData`.
-impl<T, const COMPRESSED_SIZE: usize> Clone for Compressed<T, { COMPRESSED_SIZE }> {
-    fn clone(&self) -> Self {
-        Self {
-            compressed: self.compressed,
-            phantom: core::marker::PhantomData,
-        }
-    }
-}
-
-impl<T, const COMPRESSED_SIZE: usize> Copy for Compressed<T, { COMPRESSED_SIZE }> {}
-
-impl<T, const COMPRESSED_SIZE: usize> core::cmp::PartialEq for Compressed<T, { COMPRESSED_SIZE }> {
-    fn eq(&self, other: &Self) -> bool {
-        self.compressed == other.compressed
-    }
-}
-
-impl<T, const COMPRESSED_SIZE: usize> Eq for Compressed<T, { COMPRESSED_SIZE }> {}
-
-impl<T, const COMPRESSED_SIZE: usize> AsRef<[u8; COMPRESSED_SIZE]>
-    for Compressed<T, { COMPRESSED_SIZE }>
-{
-    fn as_ref(&self) -> &[u8; COMPRESSED_SIZE] {
-        &self.compressed
-    }
-}
-
-macro_rules! compressed {
-    ($uncompress:ty, $inner:ty, $compressed:ident, $compressed_size:expr) => {
-        /// See [Compressed].
-        pub type $compressed = Compressed<$uncompress, $compressed_size>;
-
-        impl $compressed {
-            /// Size in bytes
-            pub const COMPRESSED_SIZE: usize = $compressed_size;
-        }
-
-        impl TryFrom<&$compressed> for $uncompress {
-            type Error = BlsError;
-
-            fn try_from(c: &$compressed) -> Result<Self, Self::Error> {
-                Ok(Self(
-                    <$inner>::from_bytes(c.compressed.as_slice()).map_err(BlsError)?,
-                ))
-            }
-        }
-
-        impl TryFrom<$compressed> for $uncompress {
-            type Error = BlsError;
-
-            fn try_from(c: $compressed) -> Result<Self, Self::Error> {
-                Ok(Self(
-                    <$inner>::from_bytes(c.compressed.as_slice()).map_err(BlsError)?,
-                ))
-            }
-        }
-
-        impl From<&$uncompress> for $compressed {
-            fn from(value: &$uncompress) -> $compressed {
-                Self {
-                    compressed: value.0.compress(),
-                    phantom: core::marker::PhantomData,
-                }
-            }
-        }
-
-        impl From<$uncompress> for $compressed {
-            fn from(value: $uncompress) -> $compressed {
-                Self {
-                    compressed: value.0.compress(),
-                    phantom: core::marker::PhantomData,
-                }
-            }
-        }
-
-        impl From<[u8; $compressed_size]> for $compressed {
-            fn from(value: [u8; $compressed_size]) -> $compressed {
-                Self {
-                    compressed: value,
-                    phantom: core::marker::PhantomData,
-                }
-            }
-        }
-
-        impl TryFrom<[u8; $compressed_size]> for $uncompress {
-            type Error = BlsError;
-
-            fn try_from(value: [u8; $compressed_size]) -> Result<Self, Self::Error> {
-                let compressed = <$compressed>::from(value);
-                (&compressed).try_into()
-            }
-        }
-    };
-}
-
-compressed!(Signature, BlstSignature, CompressedSignature, {
-    Signature::COMPRESSED_SIZE
-});
-
-impl Debug for CompressedSignature {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "CompressedSignature({:?})", self.compressed)
+    fn try_from(value: &BlsSignature) -> Result<Self, Self::Error> {
+        min_pk::Signature::from_bytes(&value.0).map_err(BlsError)
     }
 }
 
@@ -305,12 +162,14 @@ impl BlsKey {
     }
 
     /// Sign a message, using the *aug* cipher suite.
-    pub fn sign(&self, msg: &[u8]) -> Signature {
+    pub fn sign(&self, msg: &[u8]) -> BlsSignature {
         let message_with_pk = prepend_public_key(msg, &self.pk);
 
-        Signature(
+        BlsSignature(
             self.sk
-                .sign(&message_with_pk, AUG_CIPHER_SUITE.as_bytes(), &[]),
+                .sign(&message_with_pk, AUG_CIPHER_SUITE.as_bytes(), &[])
+                .to_bytes()
+                .to_vec(),
         )
     }
 
@@ -389,7 +248,7 @@ mod tests {
 
     #[test]
     fn decoding_invalid_signature_gives_error() {
-        use super::{BlsError, Signature};
+        use super::BlsError;
         use blst::BLST_ERROR;
 
         let bytes: [u8; 96] = [
@@ -401,15 +260,14 @@ mod tests {
             11, 255,
         ];
 
-        let sig = Signature::try_from(bytes);
+        let sig = BlsSignature(bytes.to_vec());
+        let sig = min_pk::Signature::try_from(&sig);
 
         assert_eq!(sig, Err(BlsError(BLST_ERROR::BLST_BAD_ENCODING)));
     }
 
     #[test]
     fn decoding_valid_signature_is_ok() {
-        use super::Signature;
-
         let bytes: [u8; 96] = [
             149, 240, 234, 160, 166, 30, 18, 15, 229, 113, 68, 192, 204, 118, 169, 78, 252, 237,
             251, 111, 240, 127, 236, 68, 231, 114, 243, 76, 61, 156, 148, 34, 203, 153, 6, 255,
@@ -419,7 +277,8 @@ mod tests {
             48, 52, 211, 178,
         ];
 
-        let sig = Signature::try_from(bytes);
+        let sig = BlsSignature(bytes.to_vec());
+        let sig = min_pk::Signature::try_from(&sig);
 
         assert!(sig.is_ok());
     }
@@ -457,7 +316,7 @@ mod tests {
 
     #[test]
     fn can_verify_signature_is_true() {
-        use super::{Signature, AUG_CIPHER_SUITE};
+        use super::AUG_CIPHER_SUITE;
         use blst::min_pk::SecretKey;
 
         let ikm: [u8; 32] = [
@@ -475,7 +334,7 @@ mod tests {
         signed_bytes.extend_from_slice(&pk.0);
         signed_bytes.extend_from_slice(msg);
 
-        let sig = Signature(sk.sign(&signed_bytes, dst, &[]));
+        let sig = BlsSignature(sk.sign(&signed_bytes, dst, &[]).to_bytes().to_vec());
 
         let msg_keys = [(&msg[..], &pk)];
         let res = sig.aggregate_verify(&mut msg_keys.into_iter());
@@ -529,17 +388,15 @@ mod tests {
             32, 238, 240,
         ];
 
-        let actual_sig = CompressedSignature::from(sig);
-
         assert_eq!(
-            expected_sig, &actual_sig.compressed,
+            expected_sig,
+            sig.0.as_slice(),
             "expected signatures to match"
         );
     }
 
     #[test]
     fn can_verify_signature_is_false() {
-        use super::Signature;
         use blst::min_pk::SecretKey;
 
         let ikm: [u8; 32] = [
@@ -560,12 +417,10 @@ mod tests {
         let pk = PublicKeyBls(sk.sk_to_pk().to_bytes().to_vec());
 
         let msg = b"blst is such a blast";
-        let sig = Signature::try_from(signature_bytes);
-
-        assert!(sig.is_ok());
+        let sig = BlsSignature(signature_bytes.to_vec());
 
         let msg_keys = [(&msg[..], &pk)];
-        let res = sig.unwrap().aggregate_verify(&mut msg_keys.into_iter());
+        let res = sig.aggregate_verify(&mut msg_keys.into_iter());
 
         assert_eq!(res, Ok(false));
     }
@@ -636,7 +491,7 @@ mod tests {
           let sig3 = snd_key.sign(fst_msg.as_slice());
           let sig4 = snd_key.sign(snd_msg.as_slice());
 
-          let sig = Signature::aggregate_sigs(&[&sig1, &sig2, &sig3, &sig4])
+          let sig = BlsSignature::aggregate_sigs(&[&sig1, &sig2, &sig3, &sig4])
               .expect("aggregation should work");
 
           let msg_keys = [
