@@ -4,48 +4,19 @@
 
 //! BLS support (min_key).
 
-use std::fmt::Debug;
-
 use crate::hash::BlsSignature;
 use crate::hash::PublicKeyBls;
 use crate::hash::SecretKeyBls;
+use crate::CryptoError;
 use blst::min_pk;
 use blst::min_pk::{AggregateSignature, SecretKey};
 use blst::BLST_ERROR;
-use thiserror::Error;
-
-/// Wrapper for all errors coming from `blst`
-///
-/// Wrapping of the C style return code used by blst. Functions in this
-/// module should avoid ever returning something like `BlsError(BLST_SUCCESS)`.
-#[derive(Debug, PartialEq, Error, Clone)]
-pub struct BlsError(BLST_ERROR);
-
-impl std::fmt::Display for BlsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "BlsError {:?}", self.0)
-    }
-}
-
-/// Transform `blst` errors to Rust `Result`.
-///
-/// Go from `BLST_ERROR` to normal Rust `Result`, where a success is
-/// interpreted as true, ie, it is true that signature is valid and
-/// false means signature is invalid. Errors can be caused by invalid
-/// public keys, et.c.
-fn bool_result_from(blst_error: BLST_ERROR) -> Result<bool, BlsError> {
-    match blst_error {
-        BLST_ERROR::BLST_SUCCESS => Ok(true),
-        BLST_ERROR::BLST_VERIFY_FAIL => Ok(false),
-        _ => Err(BlsError(blst_error)),
-    }
-}
 
 impl TryFrom<&PublicKeyBls> for min_pk::PublicKey {
-    type Error = BlsError;
+    type Error = CryptoError;
 
     fn try_from(source: &PublicKeyBls) -> Result<Self, Self::Error> {
-        min_pk::PublicKey::from_bytes(&source.0).map_err(BlsError)
+        min_pk::PublicKey::from_bytes(&source.0).map_err(|_| CryptoError::InvalidPublicKey)
     }
 }
 
@@ -85,7 +56,7 @@ impl BlsSignature {
     pub fn aggregate_verify<'a>(
         &self,
         messages: &mut impl Iterator<Item = Message<'a>>,
-    ) -> Result<bool, BlsError> {
+    ) -> Result<bool, CryptoError> {
         let signature: min_pk::Signature = self.try_into()?;
 
         let messages_with_pk = messages
@@ -113,11 +84,15 @@ impl BlsSignature {
         // Tezos_crypto uses the Aug suite
         let dst = AUG_CIPHER_SUITE.as_bytes();
 
-        bool_result_from(signature.aggregate_verify(true, &messages, dst, &public_keys, true))
+        match signature.aggregate_verify(true, &messages, dst, &public_keys, true) {
+            BLST_ERROR::BLST_SUCCESS => Ok(true),
+            BLST_ERROR::BLST_VERIFY_FAIL => Ok(false),
+            err => Err(CryptoError::AlgorithmError(format!("BLS_ERROR: {:?}", err))),
+        }
     }
 
     /// Aggregate individual signatures into a single signature.
-    pub fn aggregate_sigs(sigs: &[&Self]) -> Result<Self, BlsError> {
+    pub fn aggregate_sigs(sigs: &[&Self]) -> Result<Self, CryptoError> {
         let sigs = sigs
             .iter()
             .map(|s| min_pk::Signature::try_from(*s))
@@ -125,41 +100,50 @@ impl BlsSignature {
 
         let sigs = sigs.iter().collect::<Vec<_>>();
 
-        let aggregate = AggregateSignature::aggregate(sigs.as_slice(), true).map_err(BlsError)?;
+        let aggregate = AggregateSignature::aggregate(sigs.as_slice(), true)
+            .map_err(|e| CryptoError::AlgorithmError(format!("BLST_ERROR: {:?}", e)))?;
 
-        aggregate.validate().map_err(BlsError)?;
+        aggregate
+            .validate()
+            .map_err(|e| CryptoError::AlgorithmError(format!("BLST_ERROR: {:?}", e)))?;
 
         Ok(Self(aggregate.to_signature().compress().to_vec()))
     }
 }
 
 impl TryFrom<&BlsSignature> for min_pk::Signature {
-    type Error = BlsError;
+    type Error = CryptoError;
 
     fn try_from(value: &BlsSignature) -> Result<Self, Self::Error> {
-        min_pk::Signature::from_bytes(&value.0).map_err(BlsError)
+        min_pk::Signature::from_bytes(&value.0).map_err(|_| CryptoError::InvalidSignature)
     }
 }
 
 /// Bls SecretKey
 impl SecretKeyBls {
     /// Generate a secret key from initial key material.
-    pub fn from_ikm(ikm: [u8; 32]) -> Result<Self, BlsError> {
-        let sk = SecretKey::key_gen(&ikm, &[]).map_err(BlsError)?;
+    pub fn from_ikm(ikm: [u8; 32]) -> Result<Self, CryptoError> {
+        let sk = SecretKey::key_gen(&ikm, &[])
+            .map_err(|e| CryptoError::AlgorithmError(format!("BLST_ERROR: {:?}", e)))?;
+
         Ok(Self(sk.to_bytes().to_vec()))
     }
 
     /// Derive the public key for the current secret key.
-    pub fn derive_pk(&self) -> Result<PublicKeyBls, BlsError> {
-        let sk = SecretKey::from_bytes(&self.0).map_err(BlsError)?;
+    pub fn derive_pk(&self) -> Result<PublicKeyBls, CryptoError> {
+        let sk = SecretKey::from_bytes(&self.0)
+            .map_err(|e| CryptoError::AlgorithmError(format!("BLST_ERROR: {:?}", e)))?;
+
         let pk = sk.sk_to_pk();
 
         Ok(PublicKeyBls(pk.to_bytes().to_vec()))
     }
 
     /// Sign the given data.
-    pub fn sign(&self, message: impl AsRef<[u8]>) -> Result<BlsSignature, BlsError> {
-        let sk = SecretKey::from_bytes(&self.0).map_err(BlsError)?;
+    pub fn sign(&self, message: impl AsRef<[u8]>) -> Result<BlsSignature, CryptoError> {
+        let sk = SecretKey::from_bytes(&self.0)
+            .map_err(|e| CryptoError::AlgorithmError(format!("BLST_ERROR: {:?}", e)))?;
+
         let pk = sk.sk_to_pk();
         let msg = prepend_public_key(message.as_ref(), &PublicKeyBls(pk.to_bytes().to_vec()));
         let sig = sk.sign(&msg, AUG_CIPHER_SUITE.as_bytes(), &[]);
@@ -199,7 +183,7 @@ mod bls_gen {
         }
 
         /// Generate random bls key
-        pub fn generate() -> Result<Self, super::BlsError> {
+        pub fn generate() -> Result<Self, crate::CryptoError> {
             let ikm = rand::thread_rng().gen::<[u8; 32]>();
             Self::from_ikm(ikm)
         }
@@ -218,8 +202,7 @@ mod tests {
 
     #[test]
     fn decoding_invalid_signature_gives_error() {
-        use super::BlsError;
-        use blst::BLST_ERROR;
+        use super::CryptoError;
 
         let bytes: [u8; 96] = [
             212, 164, 10, 104, 205, 205, 23, 255, 218, 184, 156, 159, 150, 133, 185, 31, 221, 34,
@@ -233,7 +216,7 @@ mod tests {
         let sig = BlsSignature(bytes.to_vec());
         let sig = min_pk::Signature::try_from(&sig);
 
-        assert_eq!(sig, Err(BlsError(BLST_ERROR::BLST_BAD_ENCODING)));
+        assert_eq!(sig, Err(CryptoError::InvalidSignature));
     }
 
     #[test]
@@ -255,8 +238,7 @@ mod tests {
 
     #[test]
     fn return_error_on_invalid_public_key_encoding() {
-        use super::{min_pk, BlsError, PublicKeyBls};
-        use blst::BLST_ERROR;
+        use super::{min_pk, PublicKeyBls};
 
         let bytes: [u8; 48] = [
             118, 187, 155, 125, 42, 190, 144, 143, 145, 250, 125, 184, 90, 9, 210, 24, 202, 72, 22,
@@ -267,7 +249,7 @@ mod tests {
         let pk = PublicKeyBls(bytes.to_vec());
         let pk = min_pk::PublicKey::try_from(&pk);
 
-        assert_eq!(pk, Err(BlsError(BLST_ERROR::BLST_BAD_ENCODING)));
+        assert_eq!(pk, Err(CryptoError::InvalidPublicKey));
     }
 
     #[test]

@@ -1,4 +1,5 @@
-// Copyright (c) SimpleStaking, Viable Systems, TriliTech and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-CopyrightText: 2023 TriliTech <contact@trili.tech>
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 #![cfg_attr(feature = "fuzzing", feature(no_coverage))]
@@ -12,7 +13,7 @@ pub mod bls;
 #[macro_use]
 pub mod hash;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum CryptoError {
     #[error("Invalid crypto key, reason: {reason}")]
     InvalidKey { reason: String },
