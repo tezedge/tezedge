@@ -98,24 +98,19 @@ pub(crate) async fn get_block_metadata(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Arc<BlockMetadata>, RpcServiceError> {
-    // TODO - TE-709: these two  sync calls, need to be wrapped in `tokio::task::spawn_blocking`
-
     // header + jsons
-    let block_header_with_json_data =
-        async { get_block_with_json_data(chain_id, block_hash, env.persistent_storage()) };
+    let block_header_with_json_data = tokio::task::block_in_place(|| {
+        get_block_with_json_data(chain_id, block_hash, env.persistent_storage())
+    })?;
 
     // additional data
-    let block_additional_data = async {
+    let block_additional_data = tokio::task::block_in_place(|| {
         crate::services::base_services::get_additional_data_or_fail(
             chain_id,
             block_hash,
             env.persistent_storage(),
         )
-    };
-
-    // 1. wait for data to collect
-    let (block_header_with_json_data, block_additional_data) =
-        tokio::try_join!(block_header_with_json_data, block_additional_data,)?;
+    })?;
 
     let block_header = &block_header_with_json_data.0;
     let block_json_data = &block_header_with_json_data.1;
@@ -169,24 +164,19 @@ pub async fn get_block_header(
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Arc<BlockHeaderInfo>, RpcServiceError> {
-    // TODO - TE-709: these two  sync calls, need to be wrapped in `tokio::task::spawn_blocking`
-
     // header + jsons
-    let block_header_with_json_data =
-        async { get_block_with_json_data(&chain_id, &block_hash, persistent_storage) };
+    let block_header_with_json_data = tokio::task::block_in_place(|| {
+        get_block_with_json_data(&chain_id, &block_hash, persistent_storage)
+    })?;
 
     // additional data
-    let block_additional_data = async {
+    let block_additional_data = tokio::task::block_in_place(|| {
         crate::services::base_services::get_additional_data_or_fail(
             &chain_id,
             &block_hash,
             persistent_storage,
         )
-    };
-
-    // 1. wait for data to collect
-    let (block_header_with_json_data, block_additional_data) =
-        tokio::try_join!(block_header_with_json_data, block_additional_data,)?;
+    })?;
 
     let block_header = &block_header_with_json_data.0;
     let block_json_data = &block_header_with_json_data.1;
@@ -397,10 +387,8 @@ pub(crate) async fn get_block_operations_metadata(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Arc<BlockOperations>, RpcServiceError> {
-    // TODO - TE-709: these two  sync calls, need to be wrapped in `tokio::task::spawn_blocking`
-
     // header + jsons
-    let block_json_data = async {
+    let block_json_data = tokio::task::block_in_place(|| {
         match BlockStorage::new(env.persistent_storage()).get_json_data(block_hash) {
             Ok(Some(data)) => Ok(data),
             Ok(None) => Err(RpcServiceError::NoDataFoundError {
@@ -411,27 +399,23 @@ pub(crate) async fn get_block_operations_metadata(
             }),
             Err(e) => Err(RpcServiceError::StorageError { error: e }),
         }
-    };
+    })?;
 
     // additional data
-    let block_additional_data = async {
+    let block_additional_data = tokio::task::block_in_place(|| {
         crate::services::base_services::get_additional_data_or_fail(
             &chain_id,
             block_hash,
             env.persistent_storage(),
         )
-    };
+    })?;
 
     // operations
-    let operations = async {
+    let operations = tokio::task::block_in_place(|| {
         OperationsStorage::new(env.persistent_storage())
             .get_operations(block_hash)
             .map_err(|error| RpcServiceError::StorageError { error })
-    };
-
-    // 1. wait for data to collect
-    let (block_json_data, block_additional_data, operations) =
-        tokio::try_join!(block_json_data, block_additional_data, operations)?;
+    })?;
 
     convert_block_operations_metadata(
         chain_id,
@@ -563,34 +547,26 @@ pub async fn get_block(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Arc<BlockInfo>, RpcServiceError> {
-    // TODO - TE-709: these two  sync calls, need to be wrapped in `tokio::task::spawn_blocking`
-
     // header + jsons
-    let block_header_with_json_data =
-        async { get_block_with_json_data(chain_id, block_hash, env.persistent_storage()) };
+    let block_header_with_json_data = tokio::task::block_in_place(|| {
+        get_block_with_json_data(chain_id, block_hash, env.persistent_storage())
+    })?;
 
     // additional data
-    let block_additional_data = async {
+    let block_additional_data = tokio::task::block_in_place(|| {
         crate::services::base_services::get_additional_data_or_fail(
             chain_id,
             block_hash,
             env.persistent_storage(),
         )
-    };
+    })?;
 
     // operations
-    let operations = async {
+    let operations = tokio::task::block_in_place(|| {
         OperationsStorage::new(env.persistent_storage())
             .get_operations(block_hash)
             .map_err(|error| RpcServiceError::StorageError { error })
-    };
-
-    // 1. wait for data to collect
-    let (block_header_with_json_data, block_additional_data, operations) = tokio::try_join!(
-        block_header_with_json_data,
-        block_additional_data,
-        operations
-    )?;
+    })?;
 
     let block_json_data = &block_header_with_json_data.1;
     let block_header = &block_header_with_json_data.0;
