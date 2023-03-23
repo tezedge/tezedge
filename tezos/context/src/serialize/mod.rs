@@ -185,6 +185,16 @@ pub enum DeserializationError {
     },
     #[error("Cannot find next shape")]
     CannotFindNextShape,
+    #[error("The relative offset is bigger than the object's offset")]
+    InvalidRelativeOffset,
+    #[error("The absolute offset of an object cannot be zero")]
+    AbsoluteOffsetIsZero,
+    #[error("The absolute offset of an object cannot be more than 6 bytes")]
+    AbsoluteOffsetIsTooBig,
+    #[error("The object length is invalid")]
+    InvalidObjectLength,
+    #[error("The author length is invalid")]
+    InvalidAuthorLength,
     #[error("Directory shape error: {error:?}")]
     DirectoryShapeError {
         #[from]
