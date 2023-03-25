@@ -287,7 +287,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
 name = "crypto"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "base58",
@@ -1224,7 +1224,7 @@ dependencies = [
 
 [[package]]
 name = "node-monitoring"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1457,16 +1457,28 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
 name = "openssl"
-version = "0.10.38"
+version = "0.10.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c7ae222234c30df141154f159066c5093ff73b63204dcda7121eb082fc56a95"
+checksum = "518915b97df115dd36109bfa429a48b8f737bd05508cf9588977b599648926d2"
 dependencies = [
  "bitflags",
  "cfg-if",
  "foreign-types",
  "libc",
  "once_cell",
+ "openssl-macros",
  "openssl-sys",
+]
+
+[[package]]
+name = "openssl-macros"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b501e44f11665960c7e7fcf062c7d96a14ade4aa98116c004b2e37b5be7d736c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1477,9 +1489,9 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.72"
+version = "0.9.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e46109c383602735fa0a2e48dd2b7c892b048e1bf69e5c3b1d804b7d9c203cb"
+checksum = "666416d899cf077260dac8698d60a60b435a46d57e82acb1be3d0dad87284e5b"
 dependencies = [
  "autocfg",
  "cc",
@@ -2371,7 +2383,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "bit-vec",
  "crypto",
@@ -2387,7 +2399,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_encoding_derive"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "lazy_static",
  "once_cell",
@@ -2399,7 +2411,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_identity"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "crypto",
@@ -2411,7 +2423,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_messages"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "anyhow",
  "bytes",
